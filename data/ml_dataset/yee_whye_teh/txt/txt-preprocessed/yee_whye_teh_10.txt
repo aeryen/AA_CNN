@@ -1,0 +1,1133 @@
+Abstract
+
+We consider problems involving groups of data, where each observation within a group is
+a draw from a mixture model, and where it is desirable to share mixture components between
+groups. We assume that the number of mixture components is unknown a priori and is to be
+inferred from the data. In this setting it is natural to consider sets of Dirichlet processes, one
+for each group, where the well-known clustering property of the Dirichlet process provides a
+nonparametric prior for the number of mixture components within each group. Given our desire
+to tie the mixture models in the various groups, we consider a hierarchical model, specically
+one in which the base measure for the child Dirichlet processes is itself distributed according to
+a Dirichlet process. Such a base measure being discrete, the child Dirichlet processes necessar-
+ily share atoms. Thus, as desired, the mixture models in the different groups necessarily share
+mixture components. We discuss representations of hierarchical Dirichlet processes in terms of
+a stick-breaking process, and a generalization of the Chinese restaurant process that we refer
+to as the Chinese restaurant franchise. We present Markov chain Monte Carlo algorithms
+for posterior inference in hierarchical Dirichlet process mixtures, and describe applications to
+problems in information retrieval and text modelling.
+
+Keywords: clustering, mixture models, nonparametric Bayesian statistics, hierarchical
+models, Markov chain Monte Carlo
+
+1
+
+1 INTRODUCTION
+
+A recurring theme in statistics is the need to separate observations into groups, and yet allow the
+groups to remain linkedto share statistical strength. In the Bayesian formalism such sharing is
+achieved naturally via hierarchical modeling; parameters are shared among groups, and the random-
+ness of the parameters induces dependencies among the groups. Estimates based on the posterior
+distribution exhibit shrinkage.
+
+In the current paper we explore a hierarchical approach to the problem of model-based clustering
+of grouped data. We assume that the data are subdivided into a set of groups, and that within each
+group we wish to nd clusters that capture latent structure in the data assigned to that group. The
+number of clusters within each group is unknown and is to be inferred. Moreover, in a sense that
+we make precise, we wish to allow clusters to be shared among the groups.
+
+An example of the kind of problem that motivates us can be found in genetics. Consider a set
+of k binary markers (e.g., single nucleotide polymorphisms or SNPs) in a localized region of the
+human genome. While an individual human could exhibit any of 2k different patterns of markers
+on a single chromosome, in real populations only a small subset of such patternshaplotypesare
+actually observed (Gabriel et al. 2002). Given a meiotic model for the combination of a pair of
+haplotypes into a genotype during mating, and given a set of observed genotypes in a sample from
+a human population, it is of great interest to identify the underlying haplotypes (Stephens et al.
+2001). Now consider an extension of this problem in which the population is divided into a set of
+groups; e.g., African, Asian and European subpopulations. We may not only want to discover the
+sets of haplotypes within each subpopulation, but we may also wish to discover which haplotypes
+are shared between subpopulations. The identication of such haplotypes would have signicant
+implications for the understanding of the migration patterns of ancestral populations of humans.
+
+As a second example, consider the problem from the eld of information retrieval (IR) of mod-
+eling of relationships among sets of documents. In IR, documents are generally modeled under
+an exchangeability assumption, the bag of words assumption, in which the order of words in a
+document is ignored (Salton and McGill 1983). It is also common to view the words in a document
+as arising from a number of latent clusters or topics, where a topic is generally modeled as a
+multinomial probability distribution on words from some basic vocabulary (Blei et al. 2003). Thus,
+in a document concerned with university funding the words in the document might be drawn from
+the topics education and nance. Considering a collection of such documents, we may wish
+to allow topics to be shared among the documents in the corpus. For example, if the corpus also
+contains a document concerned with university football, the topics may be education and sports,
+and we would want the former topic to be related to that discovered in the analysis of the document
+on university funding.
+
+Moreover, we may want to extend the model to allow for multiple corpora. For example, doc-
+uments in scientic journals are often grouped into themes (e.g., empirical process theory, mul-
+tivariate statistics, survival analysis), and it would be of interest to discover to what extent the
+latent topics that are shared among documents are also shared across these groupings. Thus in
+general we wish to consider the sharing of clusters across multiple, nested groupings of data.
+
+Our approach to the problem of sharing clusters among multiple, related groups is a nonpara-
+metric Bayesian approach, reposing on the Dirichlet process (Ferguson 1973). The Dirichlet process
+DP((cid:11)0; G0) is a measure on measures. It has two parameters, a scaling parameter (cid:11)0 > 0 and a
+base probability measure G0. An explicit representation of a draw from a Dirichlet process (DP)
+
+2
+
+was given by Sethuraman (1994), who showed that if G (cid:24) DP((cid:11)0; G0), then with probability one:
+
+1
+
+G =
+
+(cid:12)k(cid:14)(cid:30)k ;
+
+(1)
+
+Xk=1
+
+where the (cid:30)k are independent random variables distributed according to G0, where (cid:14)(cid:30)k is an atom
+at (cid:30)k, and where the stick-breaking weights (cid:12)k are also random and depend on the parameter (cid:11)0
+(the denition of the (cid:12)k is provided in Section 3.1).
+
+The representation in (1) shows that draws from a DP are discrete (with probability one). The
+discrete nature of the DP makes it unsuitable for general applications in Bayesian nonparametrics,
+but it is well suited for the problem of placing priors on mixture components in mixture modeling.
+The idea is basically to associate a mixture component with each atom in G. Introducing indica-
+tor variables to associate data points with mixture components, the posterior distribution yields a
+probability distribution on partitions of the data. A number of authors have studied such Dirichlet
+process mixture models (Antoniak 1974; Escobar and West 1995; MacEachern and M uller 1998).
+These models provide an alternative to methods that attempt to select a particular number of mixture
+components, or methods that place an explicit parametric prior on the number of components.
+
+Let us now consider the setting in which the data are subdivided into a number of groups. Given
+our goal of solving a clustering problem within each group, we consider a set of random measures
+Gj, one for each group j, where Gj is distributed according to a group-specic Dirichlet process
+DP((cid:11)0j; G0j). To link these clustering problems, we link the group-specic DPs. Many authors
+have considered ways to induce dependencies among multiple DPs via links among the parameters
+G0j and/or (cid:11)0j (Cifarelli and Regazzini 1978; MacEachern 1999; Tomlinson 1998; M uller et al.
+2004; De Iorio et al. 2004; Kleinman and Ibrahim 1998; Mallick and Walker 1997; Ishwaran and
+James 2004). Focusing on the G0j, one natural proposal is a hierarchy in which the measures Gj are
+conditionally independent draws from a single underlying Dirichlet process DP((cid:11)0; G0((cid:28) )), where
+G0((cid:28) ) is a parametric distribution with random parameter (cid:28) (Carota and Parmigiani 2002; Fong
+et al. 2002; Muliere and Petrone 1993). Integrating over (cid:28) induces dependencies among the DPs.
+
+That this simple hierarchical approach will not solve our problem can be observed by consider-
+ing the case in which G0((cid:28) ) is absolutely continuous with respect to Lebesgue measure for almost
+all (cid:28) (e.g., G0 is Gaussian with mean (cid:28) ). In this case, given that the draws Gj arise as conditionally
+independent draws from G0((cid:28) ), they necessarily have no atoms in common (with probability one).
+Thus, although clusters arise within each group via the discreteness of draws from a DP, the atoms
+associated with the different groups are different and there is no sharing of clusters between groups.
+This problem can be skirted by assuming that G0 lies in a discrete parametric family, but such an
+assumption would be overly restrictive.
+
+Our proposed solution to the problem is straightforward: to force G0 to be discrete and yet
+have broad support, we consider a nonparametric hierarchical model in which G0 is itself a draw
+from a Dirichlet process DP((cid:13); H). This restores exibility in that the modeler can choose H to be
+continuous or discrete. In either case, with probability one, G0 is discrete and has a stick-breaking
+representation as in (1). The atoms (cid:30)k are shared among the multiple DPs, yielding the desired
+sharing of atoms among groups. In summary, we consider the hierarchical specication:
+
+G0 j (cid:13); H (cid:24) DP((cid:13); H)
+
+Gj j (cid:11)0; G0 (cid:24) DP((cid:11)0; G0)
+
+for each j,
+
+(2)
+
+which we refer to as a hierarchical Dirichlet process. The immediate extension to hierarchical
+Dirichlet process mixture models yields our proposed formalism for sharing clusters among related
+clustering problems.
+
+3
+
+Related nonparametric approaches to linking multiple DPs have been discussed by a number of
+authors. Our approach is a special case of a general framework for dependent Dirichlet processes
+due to MacEachern (1999) and MacEachern et al. (2001). In this framework the random variables
+(cid:12)k and (cid:30)k in (1) are general stochastic processes (i.e., indexed collections of random variables);
+this allows very general forms of dependency among DPs. Our hierarchical approach ts into this
+framework; we endow the stick-breaking weights (cid:12)k in (1) with a second subscript indexing the
+groups j, and view the weights (cid:12)jk as dependent for each xed value of k. Indeed, as we show in
+Section 4, the denition in (2) yields a specic, canonical form of dependence among the weights
+(cid:12)jk.
+
+Our approach is also a special case of a framework referred to as analysis of densities (AnDe)
+by Tomlinson (1998) and Tomlinson and Escobar (2003). The AnDe model is a hierarchical model
+for multiple DPs in which the common base measure G0 is random, but rather than treating G0 as
+a draw from a DP, as in our case, it is treated as a draw from a mixture of DPs. The resulting G0
+is continuous in general (Antoniak 1974), which, as we have discussed, is ruinous for our problem
+of sharing clusters. It is an appropriate choice, however, for the problem addressed by Tomlin-
+son (1998), which is that of sharing statistical strength among multiple sets of density estimation
+problems. Thus, while the AnDe framework and our hierarchical DP framework are closely related
+formally, the inferential goal is rather different. Moreover, as we will see, our restriction to discrete
+G0 has important implications for the design of efcient MCMC inference algorithms.
+
+The terminology of hierarchical Dirichlet process has also been used by M uller et al. (2004)
+to describe a different notion of hierarchy than the one discussed here. These authors consider a
+model in which a coupled set of random measures Gj are dened as Gj = (cid:15)F0 + (1 (cid:0) (cid:15))Fj, where
+F0 and the Fj are draws from DPs. This model provides an alternative approach to sharing clusters,
+one in which the shared clusters are given the same stick-breaking weights (those associated with
+F0) in each of the groups. By contrast, in our hierarchical model, the draws Gj are based on the
+same underlying base measure G0, but each draw assigns different stick-breaking weights to the
+shared atoms associated with G0. Thus, atoms can be partially shared.
+
+Finally, the terminology of hierarchical Dirichlet process has been used in yet a third way by
+Beal et al. (2002) in the context of a model known as the innite hidden Markov model, a hidden
+Markov model with a countably innite state space. The hierarchical Dirichlet process of Beal
+et al. (2002) is, however, not a hierarchy in the Bayesian sense; rather, it is an algorithmic description
+of a coupled set of urn models. We discuss this model in more detail in Section 7, where we show
+that the notion of hierarchical DP presented here yields an elegant treatment of the innite hidden
+Markov model.
+
+In summary, the notion of hierarchical Dirichlet process that we explore is a specic example
+of a dependency model for multiple Dirichlet processes, one specically aimed at the problem of
+sharing clusters among related groups of data. It involves a simple Bayesian hierarchy where the
+base measure for a set of Dirichlet processes is itself distributed according to a Dirichlet process.
+While there are many ways to couple Dirichlet processes, we view this simple, canonical Bayesian
+hierarchy as particularly worthy of study. Note in particular the appealing recursiveness of the
+denition; a hierarchical Dirichlet process can be readily extended to multiple hierarchical levels.
+This is natural in applications. For example, in our application to document modeling, one level
+of hierarchy is needed to share clusters among multiple documents within a corpus, and second
+level of hierarchy is needed to share clusters among multiple corpora. Similarly, in the genetics
+example, it is of interest to consider nested subdivisions of populations according to various criteria
+(geographic, cultural, economic), and to consider the ow of haplotypes on the resulting tree.
+
+As is the case with other nonparametric Bayesian methods, a signicant component of the chal-
+
+4
+
+lenge in working with the hierarchical Dirichlet process is computational. To provide a general
+framework for designing procedures for posterior inference in the hierarchical Dirichlet process
+that parallel those available for the Dirichlet process, it is necessary to develop analogs for the hi-
+erarchical Dirichlet process of some of the representations that have proved useful in the Dirichlet
+process setting. We provide these analogs in Section 4 where we discuss a stick-breaking repre-
+sentation of the hierarchical Dirichlet process, an analog of the P olya urn model that we refer to
+as the Chinese restaurant franchise, and a representation of the hierarchical Dirichlet process in
+terms of an innite limit of nite mixture models. With these representations as background, we
+present MCMC algorithms for posterior inference under hierarchical Dirichlet process mixtures in
+Section 5. We present experimental results in Section 6 and present our conclusions in Section 8.
+
+2 SETTING
+
+We are interested in problems where the observations are organized into groups, and assumed ex-
+changeable both within each group and across groups. To be precise, letting j index the groups and
+i index the observations within each group, we assume that xj1; xj2; : : : are exchangeable within
+each group j. We also assume that the observations are exchangeable at the group level, that is, if
+xj = (xj1; xj2; : : :) denote all observations in group j, then x1; x2; : : : are exchangeable.
+
+Assuming each observation is drawn independently from a mixture model, there is a mixture
+component associated with each observation. Let (cid:18)ji denote a parameter specifying the mixture
+component associated with the observation xji. We will refer to the variables (cid:18)ji as factors. Note
+that these variables are not generally distinct; we will develop a different notation for the distinct
+values of factors. Let F ((cid:18)ji) denote the distribution of xji given the factor (cid:18)ji. Let Gj denote a
+prior distribution for the factors (cid:18)j = ((cid:18)j1; (cid:18)j2; : : :) associated with group j. We assume that the
+factors are conditionally independent given Gj. Thus we have the following probability model:
+
+(cid:18)ji j Gj (cid:24) Gj
+xji j (cid:18)ji (cid:24) F ((cid:18)ji)
+
+for each j and i,
+for each j and i,
+
+(3)
+
+to augment the specication given in (2).
+
+3 DIRICHLET PROCESSES
+
+In this section, we provide a brief overview of Dirichlet processes. After a discussion of basic
+denitions, we present three different perspectives on the Dirichlet process: one based on the stick-
+breaking construction, one based on a Polya urn model, and one based on a limit of nite mixture
+models. Each of these perspectives has an analog in the hierarchical Dirichlet process, which is
+described in Section 4.
+
+Let ((cid:2); B) be a measurable space, with G0 a probability measure on the space. Let (cid:11)0 be a
+positive real number. A Dirichlet process DP((cid:11)0; G0) is dened to be the distribution of a random
+probability measure G over ((cid:2); B) such that, for any nite measurable partition (A1; A2; : : : ; Ar)
+of (cid:2), the random vector (G(A1); : : : ; G(Ar)) is distributed as a nite-dimensional Dirichlet distri-
+bution with parameters ((cid:11)0G0(A1); : : : ; (cid:11)0G0(Ar)):
+
+(G(A1); : : : ; G(Ar)) (cid:24) Dir((cid:11)0G0(A1); : : : ; (cid:11)0G0(Ar)) :
+
+(4)
+
+We write G (cid:24) DP((cid:11)0; G0) if G is a random probability measure with distribution given by the
+Dirichlet process. The existence of the Dirichlet process was established by Ferguson (1973).
+
+5
+
+Yl=1
+
+Xk=1
+
+3.1 The stick-breaking construction
+
+Measures drawn from a Dirichlet process are discrete with probability one (Ferguson 1973). This
+property is made explicit in the stick-breaking construction due to Sethuraman (1994). The stick-
+breaking construction is based on independent sequences of i.i.d. random variables ((cid:25) 0
+k=1 and
+((cid:30)k)1
+
+k)1
+
+k=1:
+
+(cid:25)0
+k j (cid:11)0; G0 (cid:24) Beta(1; (cid:11)0)
+
+(cid:30)k j (cid:11)0; G0 (cid:24) G0 :
+
+Now dene a random measure G as
+
+k(cid:0)1
+
+1
+
+(cid:25)k = (cid:25)0
+k
+
+(1 (cid:0) (cid:25)0
+l)
+
+G =
+
+(cid:25)k(cid:14)(cid:30)k ;
+
+(5)
+
+(6)
+
+where (cid:14)(cid:30) is a probability measure concentrated at (cid:30). Sethuraman (1994) showed that G as dened
+in this way is a random probability measure distributed according to DP((cid:11)0; G0).
+
+P1
+
+k=1 constructed by (5) and (6) satises
+It is important to note that the sequence (cid:25) = ((cid:25)k)1
+k=1 (cid:25)k = 1 with probability one. Thus we may interpret (cid:25) as a random probability measure on
+the positive integers. For convenience, we shall write (cid:25) (cid:24) GEM((cid:11)0) if (cid:25) is a random probability
+measure dened by (5) and (6) (GEM stands for Grifths, Engen and McCloskey; e.g. see Pitman
+2002b).
+
+3.2 The Chinese restaurant process
+
+A second perspective on the Dirichlet process is provided by the P olya urn scheme (Blackwell and
+MacQueen 1973). The Polya urn scheme shows that draws from the Dirichlet process are both
+discrete and exhibit a clustering property.
+
+The Polya urn scheme does not refer to G directly; it refers to draws from G. Thus, let (cid:18)1; (cid:18)2; : : :
+be a sequence of i.i.d. random variables distributed according to G. That is, the variables (cid:18)1; (cid:18)2; : : :
+are conditionally independent given G, and hence exchangeable. Let us consider the successive
+conditional distributions of (cid:18)i given (cid:18)1; : : : ; (cid:18)i(cid:0)1, where G has been integrated out. Blackwell and
+MacQueen (1973) showed that these conditional distributions have the following form:
+
+(cid:18)i j (cid:18)1; : : : ; (cid:18)i(cid:0)1; (cid:11)0; G0 (cid:24)
+
+1
+
+i (cid:0) 1 + (cid:11)0
+
+(cid:14)(cid:18) +
+
+(cid:11)0
+
+i (cid:0) 1 + (cid:11)0
+
+G0 :
+
+(7)
+
+i(cid:0)1
+
+X=1
+
+We can interpret the conditional distributions in terms of a simple urn model in which a ball of a
+distinct color is associated with each atom. The balls are drawn equiprobably; when a ball is drawn
+it is placed back in the urn together with another ball of the same color. In addition, with probability
+proportional to (cid:11)0 a new atom is created by drawing from G0 and a ball of a new color is added to
+the urn.
+
+Expression (7) shows that (cid:18)i has positive probability of being equal to one of the previous draws.
+Moreover, there is a positive reinforcement effect; the more often a point is drawn, the more likely
+it is to be drawn in the future. To make the clustering property explicit, it is helpful to introduce a
+new set of variables that represent distinct values of the atoms. Dene (cid:30)1; : : : ; (cid:30)K to be the distinct
+values taken on by (cid:18)1; : : : ; (cid:18)i(cid:0)1, and let mk be the number of values (cid:18)i0 that are equal to (cid:30)k for
+1 (cid:20) i0 < i. We can re-express (7) as
+
+(cid:18)i j (cid:18)1; : : : ; (cid:18)i(cid:0)1; (cid:11)0; G0 (cid:24)
+
+mk
+
+i (cid:0) 1 + (cid:11)0
+
+(cid:14)(cid:30)k +
+
+(cid:11)0
+
+i (cid:0) 1 + (cid:11)0
+
+G0 :
+
+(8)
+
+K
+
+Xk=1
+
+6
+
+0a
+
+0G
+
+G
+
+i
+
+xi
+
+0a
+
+H
+
+G0
+
+Gj
+
+ji
+
+xji
+
+Figure 1: (Left) A representation of a Dirichlet process mixture model as a graphical model. (Right)
+A hierarchical Dirichlet process mixture model. In the graphical model formalism, each node in the
+graph is associated with a random variable, where shading denotes an observed variable. Rectangles
+denote replication of the model within the rectangle. Sometimes the number of replicates is given
+in the bottom right corner of the rectangle.
+
+Using a somewhat different metaphor, the Polya urn scheme is closely related to a distribution
+on partitions known as the Chinese restaurant process (Aldous 1985). This metaphor has turned
+out to be useful in considering various generalizations of the Dirichlet process (Pitman 2002a), and
+it will be useful in this paper. The metaphor is as follows. Consider a Chinese restaurant with an
+unbounded number of tables. Each (cid:18)i corresponds to a customer who enters the restaurant, while
+the distinct values (cid:30)k correspond to the tables at which the customers sit. The ith customer sits at the
+table indexed by (cid:30)k, with probability proportional to the number of customers mk already seated
+there (in which case we set (cid:18)i = (cid:30)k), and sits at a new table with probability proportional to (cid:11)0
+(increment K, draw (cid:30)K (cid:24) G0 and set (cid:18)i = (cid:30)K).
+
+3.3 Dirichlet process mixture models
+
+One of the most important applications of the Dirichlet process is as a nonparametric prior on the
+parameters of a mixture model. In particular, suppose that observations xi arise as follows:
+
+(cid:18)i j G (cid:24) G
+xi j (cid:18)i (cid:24) F ((cid:18)i) ;
+
+(9)
+
+where F ((cid:18)i) denotes the distribution of the observation xi given (cid:18)i. The factors (cid:18)i are conditionally
+independent given G, and the observation xi is conditionally independent of the other observations
+given the factor (cid:18)i. When G is distributed according to a Dirichlet process, this model is referred
+to as a Dirichlet process mixture model. A graphical model representation of a Dirichlet process
+mixture model is shown in Figure 1 (Left).
+
+Since G can be represented using a stick-breaking construction (6), the factors (cid:18)i take on values
+(cid:30)k with probability (cid:25)k. We may denote this using an indicator variable zi which takes on positive
+integral values and is distributed according to (cid:25) (interpreting (cid:25) as a random probability measure on
+
+7
+
+q
+q
+g
+the positive integers). Hence an equivalent representation of a Dirichlet process mixture is given by
+the following conditional distributions:
+
+(cid:25) j (cid:11)0 (cid:24) GEM((cid:11)0)
+(cid:30)k j G0 (cid:24) G0
+
+zi j (cid:25) (cid:24) (cid:25)
+
+xi j zi; ((cid:30)k)1
+
+k=1 (cid:24) F ((cid:30)zi) :
+
+(10)
+
+Moreover, G =P1
+
+k=1 (cid:25)k(cid:14)(cid:30)k and (cid:18)i = (cid:30)zi.
+
+3.4 The innite limit of nite mixture models
+
+A Dirichlet process mixture model can be derived as the limit of a sequence of nite mixture mod-
+els, where the number of mixture components is taken to innity (Neal 1992; Rasmussen 2000;
+Green and Richardson 2001; Ishwaran and Zarepour 2002). This limiting process provides a third
+perspective on the Dirichlet process.
+
+Suppose we have L mixture components. Let (cid:25) = ((cid:25)1; : : : (cid:25)L) denote the mixing proportions.
+Note that we previously used the symbol (cid:25) to denote the weights associated with the atoms in G. We
+have deliberately overloaded the denition of (cid:25) here; as we shall see later, they are closely related.
+In fact, in the limit L ! 1 these vectors are equivalent up to a random size-biased permutation of
+their entries (Pitman 1996).
+
+We place a Dirichlet prior on (cid:25) with symmetric parameters ((cid:11)0=L; : : : ; (cid:11)0=L). Let (cid:30)k denote
+the parameter vector associated with mixture component k, and let (cid:30)k have prior distribution G0.
+Drawing an observation xi from the mixture model involves picking a specic mixture component
+with probability given by the mixing proportions; let zi denote that component. We thus have the
+following model:
+
+(cid:25) j (cid:11)0 (cid:24) Dir((cid:11)0=L; : : : ; (cid:11)0=L)
+
+zi j (cid:25) (cid:24) (cid:25)
+
+(cid:30)k j G0 (cid:24) G0
+
+xi j zi; ((cid:30)k)L
+
+k=1 (cid:24) F ((cid:30)zi) :
+
+(11)
+
+Let GL = PL
+
+integrable with respect to G0, we have, as L ! 1:
+
+k=1 (cid:25)k(cid:14)(cid:30)k. Ishwaran and Zarepour (2002) show that for every measurable function f
+
+Z f ((cid:18)) dGL((cid:18)) D(cid:0)!Z f ((cid:18)) dG((cid:18)) :
+
+(12)
+
+A consequence of this is that the marginal distribution induced on the observations x1; : : : ; xn ap-
+proaches that of a Dirichlet process mixture model.
+
+4 HIERARCHICAL DIRICHLET PROCESSES
+
+We propose a nonparametric Bayesian approach to the modeling of grouped data, where each group
+is associated with a mixture model, and where we wish to link these mixture models. By analogy
+with Dirichlet process mixture models, we rst dene the appropriate nonparametric prior, which
+we refer to as the hierarchical Dirichlet process. We then show how this prior can be used in the
+grouped mixture model setting. We present analogs of the three perspectives presented earlier for
+the Dirichlet processa stick-breaking construction, a Chinese restaurant process representation,
+and a representation in terms of a limit of nite mixture models.
+
+A hierarchical Dirichlet process is a distribution over a set of random probability measures over
+((cid:2); B). The process denes a set of random probability measures Gj, one for each group, and a
+
+8
+
+global random probability measure G0. The global measure G0 is distributed as a Dirichlet process
+with concentration parameter (cid:13) and base probability measure H:
+
+G0 j (cid:13); H (cid:24) DP((cid:13); H) ;
+
+(13)
+
+and the random measures Gj are conditionally independent given G0, with distributions given by a
+Dirichlet process with base probability measure G0:
+
+Gj j (cid:11)0; G0 (cid:24) DP((cid:11)0; G0) :
+
+(14)
+
+The hyperparameters of the hierarchical Dirichlet process consist of the baseline probability
+measure H, and the concentration parameters (cid:13) and (cid:11)0. The baseline H provides the prior distribu-
+tion for the factors (cid:18)ji. The distribution G0 varies around the prior H, with the amount of variability
+governed by (cid:13). The actual distribution Gj over the factors in the jth group deviates from G0, with
+the amount of variability governed by (cid:11)0. If we expect the variability in different groups to be dif-
+ferent, we can use a separate concentration parameter (cid:11)j for each group j. In this paper, following
+Escobar and West (1995), we put vague gamma priors on (cid:13) and (cid:11)0.
+
+A hierarchical Dirichlet process can be used as the prior distribution over the factors for grouped
+data. For each j let (cid:18)j1; (cid:18)j2; : : : be i.i.d. random variables distributed as Gj. Each (cid:18)ji is a factor
+corresponding to a single observation xji. The likelihood is given by:
+
+(cid:18)ji j Gj (cid:24) Gj
+xji j (cid:18)ji (cid:24) F ((cid:18)ji) :
+
+(15)
+
+This completes the denition of a hierarchical Dirichlet process mixture model. The corresponding
+graphical model is shown in Figure 1 (Right).
+
+The hierarchical Dirichlet process can readily be extended to more than two levels. That is, the
+base measure H can itself be a draw from a DP, and the hierarchy can be extended for as many
+levels as are deemed useful. In general, we obtain a tree in which a DP is associated with each node,
+in which the children of a given node are conditionally independent given their parent, and in which
+the draw from the DP at a given node serves as a base measure for its children. The atoms in the
+stick-breaking representation at a given node are thus shared among all descendant nodes, providing
+a notion of shared clusters at multiple levels of resolution.
+
+4.1 The stick-breaking construction
+
+Given that the global measure G0 is distributed as a Dirichlet process, it can be expressed using a
+stick-breaking representation:
+
+G0 =
+
+1
+
+Xk=1
+
+(cid:12)k(cid:14)(cid:30)k ;
+
+(16)
+
+where (cid:30)k (cid:24) H independently and (cid:12) = ((cid:12)k)1
+has support at the points (cid:30) = ((cid:30)k)1
+can thus be written as:
+
+k=1 (cid:24) GEM((cid:13)) are mutually independent. Since G0
+k=1, each Gj necessarily has support at these points as well, and
+
+(cid:25)jk(cid:14)(cid:30)k :
+
+Gj =
+
+1
+
+Xk=1
+
+9
+
+(17)
+
+Let (cid:25)j = ((cid:25)jk)1
+given G0). We now describe how the weights (cid:25)j are related to the global weights (cid:12).
+
+k=1. Note that the weights (cid:25)j are independent given (cid:12) (since the Gj are independent
+
+Let (A1; : : : ; Ar) be a measurable partition of (cid:2) and let Kl = fk : (cid:30)k 2 Alg for l = 1; : : : ; r.
+Note that (K1; : : : ; Kr) is a nite partition of the positive integers. Further, assuming that H is
+non-atomic, the (cid:30)ks are distinct with probability one, so any partition of the positive integers cor-
+responds to some partition of (cid:2). Thus, for each j we have:
+
+(Gj(A1); : : : ; Gj(Ar)) (cid:24) Dir((cid:11)0G0(A1); : : : ; (cid:11)0G0(Ar))
+
+(18)
+
+)0
+@Xk2K1
+
+(cid:25)jk; : : : ; Xk2Kr
+
+A (cid:24) Dir0
+(cid:25)jk1
+
+@(cid:11)0 Xk2K1
+
+(cid:12)k; : : : ; (cid:11)0 Xk2Kr
+
+(cid:12)k1
+A ;
+
+for every nite partition of the positive integers. Hence each (cid:25) j is independently distributed accord-
+ing to DP((cid:11)0; (cid:12)), where we interpret (cid:12) and (cid:25)j as probability measures on the positive integers. If
+H is non-atomic then a weaker result still holds: if (cid:25)j (cid:24) DP((cid:11)0; (cid:12)) then Gj as given in (17) is still
+DP((cid:11)0; G0) distributed.
+
+As in the Dirichlet process mixture model, since each factor (cid:18)ji is distributed according to Gj, it
+takes on the value (cid:30)k with probability (cid:25)jk. Again let zji be an indicator variable such that (cid:18)ji = (cid:30)zji.
+Given zji we have xji (cid:24) F ((cid:30)zji). Thus we obtain an equivalent representation of the hierarchical
+Dirichlet process mixture via the following conditional distributions:
+
+(cid:12) j (cid:13) (cid:24) GEM((cid:13))
+
+(cid:25)j j (cid:11)0; (cid:12) (cid:24) DP((cid:11)0; (cid:12))
+
+(cid:30)k j H (cid:24) H
+
+zji j (cid:25)j (cid:24) (cid:25)j
+
+xji j zji; ((cid:30)k)1
+
+k=1 (cid:24) F ((cid:30)zji) :
+
+(19)
+
+We now derive an explicit relationship between the elements of (cid:12) and (cid:25) j. Recall that the stick-
+
+breaking construction for Dirichlet processes denes the variables (cid:12)k in (16) as follows:
+
+(cid:12)0
+k (cid:24) Beta(1; (cid:13))
+
+(cid:12)k = (cid:12)0
+k
+
+k(cid:0)1
+
+Yl=1
+
+(1 (cid:0) (cid:12)0
+
+l) :
+
+(20)
+
+Using (18), we show that the following stick-breaking construction produces a random probability
+measure (cid:25)j (cid:24) DP((cid:11)0; (cid:12)):
+
+(cid:25)0
+
+jk (cid:24) Beta (cid:11)0(cid:12)k; (cid:11)0 1 (cid:0)
+
+(cid:12)l!!
+
+(cid:25)jk = (cid:25)0
+jk
+
+k
+
+Xl=1
+
+k(cid:0)1
+
+Yl=1
+
+(1 (cid:0) (cid:25)0
+
+jl) :
+
+(21)
+
+To derive (21), rst notice that for a partition (f1; : : : ; k (cid:0) 1g; fkg; fk + 1; k + 2; : : :g), (18) gives:
+
+k(cid:0)1
+Xl=1
+
+(cid:25)jl; (cid:25)jk;
+
+1
+
+Xl=k+1
+
+(cid:25)jl! (cid:24) Dir (cid:11)0
+
+Xl=1
+
+k(cid:0)1
+
+1
+
+(cid:12)l; (cid:11)0(cid:12)k; (cid:11)0
+
+(cid:12)l! :
+
+(22)
+
+Xl=k+1
+
+Removing the rst element, and using standard properties of the Dirichlet distribution, we have:
+
+1
+
+l=1 (cid:25)jl  (cid:25)jk;
+
+1 (cid:0)Pk(cid:0)1
+1(cid:0)Pk(cid:0)1
+
+(cid:25)jk
+l=1 (cid:25)jl
+
+1
+
+1
+
+(cid:25)jl! (cid:24) Dir (cid:11)0(cid:12)k; (cid:11)0
+
+Xl=k+1
+and observe that 1 (cid:0) Pk
+
+Xl=k+1
+l=1 (cid:12)l = P1
+
+jk =
+
+l=k+1 (cid:12)l to obtain (21).
+Finally, dene (cid:25)0
+Together with (20), (16) and (17), this completes the description of the stick-breaking construction
+for hierarchical Dirichlet processes.
+
+(cid:12)l! :
+
+(23)
+
+10
+
+18
+
+14
+
+13
+
+11
+
+=
+11
+
+1
+
+16
+
+15
+
+12
+
+=y
+
+12
+
+=y
+
+13
+
+1
+
+2
+
+17
+
+22
+
+21
+
+=y
+
+21
+
+3
+
+26
+
+24
+
+23
+
+=y
+
+22
+
+=y
+
+23
+
+3
+
+28
+
+27
+
+=y
+
+24
+
+1
+
+1
+
+25
+
+36
+
+35
+
+32
+
+31
+
+=y
+
+31
+
+1
+
+34
+
+33
+
+=y
+
+32
+
+2
+
+Figure 2: A depiction of a Chinese restaurant franchise. Each restaurant is represented by a rectan-
+gle. Customers ((cid:18)jis) are seated at tables (circles) in the restaurants. At each table a dish is served.
+The dish is served from a global menu ((cid:30)k), whereas the parameter  jt is a table-specic indicator
+that serves to index items on the global menu. The customer (cid:18)ji sits at the table to which it has been
+assigned in (24).
+
+4.2 The Chinese restaurant franchise
+
+In this section we describe an analog of the Chinese restaurant process for hierarchical Dirichlet
+processes that we refer to as the Chinese restaurant franchise. In the Chinese restaurant franchise,
+the metaphor of the Chinese restaurant process is extended to allow multiple restaurants which share
+a set of dishes.
+
+The metaphor is as follows (see Figure 2). We have a restaurant franchise with a shared menu
+across the restaurants. At each table of each restaurant one dish is ordered from the menu by the
+rst customer who sits there, and it is shared among all customers who sit at that table. Multiple
+tables in multiple restaurants can serve the same dish.
+
+In this setup, the restaurants correspond to groups and the customers correspond to the factors
+(cid:18)ji. We also let (cid:30)1; : : : ; (cid:30)K denote K i.i.d. random variables distributed according to H; this is the
+global menu of dishes. We also introduce variables  jt which represent the table-specic choice of
+dishes; in particular,  jt is the dish served at table t in restaurant j.
+
+Note that each (cid:18)ji is associated with one  jt, while each  jt is associated with one (cid:30)k. We
+introduce indicators to denote these associations. In particular, let tji be the index of the  jt associ-
+ated with (cid:18)ji, and let kjt be the index of (cid:30)k associated with  jt. In the Chinese restaurant franchise
+metaphor, customer i in restaurant j sat at table tji while table t in restaurant j serves dish kjt.
+
+We also need a notation for counts. In particular, we need to maintain counts of customers and
+counts of tables. We use the notation njtk to denote the number of customers in restaurant j at
+table t eating dish k. Marginal counts are represented with dots. Thus, njt(cid:1) represents the number
+of customers in restaurant j at table t and nj(cid:1)k represents the number of customers in restaurant j
+eating dish k. The notation mjk denotes the number of tables in restaurant j serving dish k. Thus,
+mj(cid:1) represents the number of tables in restaurant j, m(cid:1)k represents the number of tables serving dish
+k, and m(cid:1)(cid:1) the total number of tables occupied.
+
+Let us now compute marginals under a hierarchical Dirichlet process when G0 and Gj are
+
+11
+
+f
+f
+f
+y
+q
+q
+q
+q
+q
+q
+q
+q
+q
+q
+q
+q
+q
+q
+q
+q
+q
+q
+q
+q
+f
+f
+f
+f
+f
+f
+f
+f
+integrated out. First consider the conditional distribution for (cid:18)ji given (cid:18)j1; : : : ; (cid:18)j;i(cid:0)1 and G0, where
+Gj is integrated out. From (8):
+
+(cid:18)ji j (cid:18)j1; : : : ; (cid:18)j;i(cid:0)1; (cid:11)0; G0 (cid:24)
+
+mj (cid:1)
+
+Xt=1
+
+njt(cid:1)
+
+i (cid:0) 1 + (cid:11)0
+
+(cid:14) jt +
+
+(cid:11)0
+
+i (cid:0) 1 + (cid:11)0
+
+G0 ;
+
+(24)
+
+This is a mixture, and a draw from this mixture can be obtained by drawing from the terms on the
+right-hand side with probabilities given by the corresponding mixing proportions. If a term in the
+rst summation is chosen then we set (cid:18)ji =  jt and let tji = t for the chosen t. If the second term
+is chosen then we increment mj(cid:1) by one, draw  jmj (cid:1) (cid:24) G0 and set (cid:18)ji =  jmj (cid:1) and tji = mj(cid:1).
+
+Now we proceed to integrate out G0. Notice that G0 appears only in its role as the distribution
+of the variables  jt. Since G0 is distributed according to a Dirichlet process, we can integrate it out
+by using (8) again and write the conditional distribution of  jt as:
+
+jt j  11;  12; : : : ;  21; : : : ;  j t(cid:0)1; (cid:13); H (cid:24)
+
+m(cid:1)k
+
+m(cid:1)(cid:1) + (cid:13)
+
+(cid:14)(cid:30)k +
+
+(cid:13)
+
+m(cid:1)(cid:1) + (cid:13)
+
+H :
+
+(25)
+
+K
+
+Xk=1
+
+If we draw  jt via choosing a term in the summation on the right-hand side of this equation, we set
+jt = (cid:30)k and let kjt = k for the chosen k. If the second term is chosen then we increment K by
+one, draw (cid:30)K (cid:24) H and set  jt = (cid:30)K and kjt = K.
+
+This completes the description of the conditional distributions of the (cid:18)ji variables. To use these
+equations to obtain samples of (cid:18)ji, we proceed as follows. For each j and i, rst sample (cid:18)ji using
+(24). If a new sample from G0 is needed, we use (25) to obtain a new sample  jt and set (cid:18)ji =  jt.
+Note that in the hierarchical Dirichlet process the values of the factors are shared between the
+
+groups, as well as within the groups. This is a key property of hierarchical Dirichlet processes.
+
+4.3 The innite limit of nite mixture models
+
+As in the case of a Dirichlet process mixture model, the hierarchical Dirichlet process mixture model
+can be derived as the innite limit of nite mixtures. In this section, we present two apparently
+different nite models that both yield the hierarchical Dirichlet process mixture in the innite limit,
+each emphasizing a different aspect of the model.
+
+Consider the following collection of nite mixture models, where (cid:12) is a global vector of mixing
+
+proportions and (cid:25)j is a group-specic vector of mixing proportions:
+
+(cid:12) j (cid:13) (cid:24) Dir((cid:13)=L; : : : ; (cid:13)=L)
+
+(cid:25)j j (cid:11)0; (cid:12) (cid:24) Dir((cid:11)0(cid:12))
+
+(cid:30)k j H (cid:24) H
+
+zji j (cid:25)j (cid:24) (cid:25)j
+
+xji j zji; ((cid:30)k)L
+
+k=1 (cid:24) F ((cid:30)zji) :
+
+(26)
+
+The parametric hierarchical prior for (cid:12) and (cid:25) in (26) has been discussed by MacKay and Peto
+(1994) as a model for natural languages. We will show that the limit of this model as L ! 1 is the
+hierarchical Dirichlet process. Let us consider the random probability measures GL
+k=1 (cid:12)k(cid:14)(cid:30)k
+k=1 (cid:25)jk(cid:14)(cid:30)k. As in Section 3.4, for every measurable function f integrable with respect
+and GL
+to H we have
+
+0 =PL
+
+j =PL
+
+Z f ((cid:18)) dGL
+
+0 ((cid:18)) D(cid:0)!Z f ((cid:18)) dG0((cid:18)) ;
+
+(27)
+
+12
+
+as L ! 1. Further, using standard properties of the Dirichlet distribution, we see that (18) still
+holds for the nite case for partitions of f1; : : : ; Lg; hence we have:
+
+GL
+
+j (cid:24) DP((cid:11)0; GL
+
+0 ) :
+
+(28)
+
+It is now clear that as L ! 1 the marginal distribution this nite model induces on x approaches
+the hierarchical Dirichlet process mixture model.
+
+There is an alternative nite model whose limit is also the hierarchical Dirichlet process mixture
+model. Instead of introducing dependencies between the groups by placing a prior on (cid:12) (as in the
+rst nite model), each group can instead choose a subset of T mixture components from a model-
+wide set of L mixture components. In particular consider the following model:
+
+(cid:12) j (cid:13) (cid:24) Dir((cid:13)=L; : : : ; (cid:13)=L)
+
+(cid:25)j j (cid:11)0 (cid:24) Dir((cid:11)0=T; : : : ; (cid:11)0=T )
+
+(cid:30)k j H (cid:24) H
+
+kjt j (cid:12) (cid:24) (cid:12)
+tji j (cid:25)j (cid:24) (cid:25)j
+
+xji j tji; (kjt)T
+
+t=1; ((cid:30)k)L
+
+k=1 (cid:24) F ((cid:30)kjtji
+
+) :
+
+(29)
+
+As T ! 1 and L ! 1, the limit of this model is the Chinese restaurant franchise process; hence
+the innite limit of this model is also the hierarchical Dirichlet process mixture model.
+
+5 INFERENCE
+
+In this section we describe three related Markov chain Monte Carlo sampling schemes for the hi-
+erarchical Dirichlet process mixture model. The rst is a straightforward Gibbs sampler based on
+the Chinese restaurant franchise, the second is based upon an augmented representation involving
+both the Chinese restaurant franchise and the posterior for G0, while the third is a variation on the
+second sampling scheme with streamlined bookkeeping. To simplify the discussion we assume that
+the base distribution H is conjugate to the data distribution F ; this allows us to focus on the issues
+specic to the hierarchical Dirichlet process. The nonconjugate case can be approached by adapt-
+ing to the hierarchical Dirichlet process techniques developed for nonconjugate DP mixtures (Neal
+2000). Moreover, in this section we assume xed values for the concentration parameters (cid:11)0 and (cid:13);
+we present a sampler for these parameters in the appendix.
+
+We recall the random variables of interest. The variables xji are the observed data. Each xji
+is assumed to arise as a draw from a distribution F ((cid:18)ji). Let the factor (cid:18)ji be associated with
+the table tji in the restaurant representation; i.e., let (cid:18)ji =  jtji. The random variable  jt is an
+instance of mixture component kjt; i.e.,  jt = (cid:30)kjt. The prior over the parameters (cid:30)k is H. Let
+zji = kjtji denote the mixture component associated with the observation xji. We use the notation
+njtk to denote the number of customers in restaurant j at table t eating dish k, while mjk denotes
+the number of tables in restaurant j serving dish k. Marginal counts are represented with dots.
+
+Let x = (xji : all j; i), xjt = (xji : all i with tji = t), t = (tji : all j; i), k = (kjt : all j; t),
+z = (zji : all j; i), m = (mjk : all j; k) and (cid:30) = ((cid:30)1; : : : ; (cid:30)K). When a superscript is attached
+to a set of variables or a count, e.g., x(cid:0)ji, k(cid:0)jt or n(cid:0)ji
+jt(cid:1) , this means that the variable corresponding
+to the superscripted index is removed from the set or from the calculation of the count.
+In the
+examples, x(cid:0)ji = xnxji, k(cid:0)jt = knkjt and n(cid:0)ji
+is the number of observations in group j whose
+jt(cid:1)
+factor is associated with  jt, leaving out item xji.
+
+Let F ((cid:18)) have density f ((cid:1)j(cid:18)) and H have density h((cid:1)). Since H is conjugate to F we integrate
+out the mixture component parameters (cid:30) in the sampling schemes. Denote the conditional density
+
+13
+
+of xji under mixture component k given all data items except xji as
+
+f (cid:0)xji
+k
+
+(xji) = R f (xjij(cid:30)k)Qj 0i06=ji;zj 0i0 =k f (xj 0i0j(cid:30)k)h((cid:30)k) d(cid:30)k
+
+R Qj 0i06=ji;zj 0i0 =k f (xj 0i0j(cid:30)k)h((cid:30)k) d(cid:30)k
+
+:
+
+(30)
+
+Similarly denote f (cid:0)xjt
+mixture component k leaving out xjt.
+
+k
+
+(xjt) as the conditional density of xjt given all data items associated with
+

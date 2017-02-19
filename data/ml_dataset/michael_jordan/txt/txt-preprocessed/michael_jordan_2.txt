@@ -1,0 +1,2620 @@
+An Introduction to MCMC for Machine Learning
+
+CHRISTOPHE ANDRIEU
+Department of Mathematics, Statistics Group, University of Bristol, University Walk, Bristol BS8 1TW, UK
+
+C.Andrieu@bristol.ac.uk
+
+NANDO DE FREITAS
+Department of Computer Science, University of British Columbia, 2366 Main Mall, Vancouver,
+BC V6T 1Z4, Canada
+
+nando@cs.ubc.ca
+
+ARNAUD DOUCET
+doucet@ee.mu.oz.au
+Department of Electrical and Electronic Engineering, University of Melbourne, Parkville, Victoria 3052, Australia
+
+jordan@cs.berkeley.edu
+MICHAEL I. JORDAN
+Departments of Computer Science and Statistics, University of California at Berkeley, 387 Soda Hall, Berkeley,
+CA 94720-1776, USA
+
+Abstract. This purpose of this introductory paper is threefold. First, it introduces the Monte Carlo method with
+emphasis on probabilistic machine learning. Second, it reviews the main building blocks of modern Markov chain
+Monte Carlo simulation, thereby providing and introduction to the remaining papers of this special issue. Lastly,
+it discusses new interesting research horizons.
+
+Keywords: Markov chain Monte Carlo, MCMC, sampling, stochastic algorithms
+
+1.
+
+Introduction
+
+A recent survey places the Metropolis algorithm among the ten algorithms that have had the
+greatest inuence on the development and practice of science and engineering in the 20th
+century (Beichl & Sullivan, 2000). This algorithm is an instance of a large class of sampling
+algorithms, known as Markov chain Monte Carlo (MCMC). These algorithms have played
+a signicant role in statistics, econometrics, physics and computing science over the last
+two decades. There are several high-dimensional problems, such as computing the volume
+of a convex body in d dimensions, for which MCMC simulation is the only known general
+approach for providing a solution within a reasonable time (polynomial in d) (Dyer, Frieze,
+& Kannan, 1991; Jerrum & Sinclair, 1996).
+
+While convalescing from an illness in 1946, Stan Ulam was playing solitaire. It, then,
+occurred to him to try to compute the chances that a particular solitaire laid out with 52 cards
+would come out successfully (Eckhard, 1987). After attempting exhaustive combinatorial
+calculations, he decided to go for the more practical approach of laying out several solitaires
+at random and then observing and counting the number of successful plays. This idea of
+selecting a statistical sample to approximate a hard combinatorial problem by a much
+simpler problem is at the heart of modern Monte Carlo simulation.
+
+6
+
+C. ANDRIEU ET AL.
+
+Stan Ulam soon realised that computers could be used in this fashion to answer ques-
+tions of neutron diffusion and mathematical physics. He contacted John Von Neumann,
+who understood the great potential of this idea. Over the next few years, Ulam and Von
+Neumann developed many Monte Carlo algorithms, including importance sampling and
+rejection sampling. Enrico Fermi in the 1930s also used Monte Carlo in the calculation of
+neutron diffusion, and later designed the FERMIAC, a Monte Carlo mechanical device that
+performed calculations (Anderson, 1986). In the 1940s Nick Metropolis, a young physicist,
+designed new controls for the state-of-the-art computer (ENIAC) with Klari Von Neumann,
+Johns wife. He was fascinated with Monte Carlo methods and this new computing device.
+Soon he designed an improved computer, which he named the MANIAC in the hope that
+computer scientists would stop using acronyms. During the time he spent working on the
+computing machines, many mathematicians and physicists (Fermi, Von Neumann, Ulam,
+Teller, Richtmyer, Bethe, Feynman, & Gamow) would go to him with their work problems.
+Eventually in 1949, he published the rst public document on Monte Carlo simulation with
+Stan Ulam (Metropolis & Ulam, 1949). This paper introduces, among other ideas, Monte
+Carlo particle methods, which form the basis of modern sequential Monte Carlo methods
+such as bootstrap lters, condensation, and survival of the ttest algorithms (Doucet, de
+Freitas, & Gordon, 2001). Soon after, he proposed the Metropolis algorithm with the Tellers
+and the Rosenbluths (Metropolis et al., 1953).
+
+Many papers on Monte Carlo simulation appeared in the physics literature after 1953.
+From an inference perspective, the most signicant contribution was the generalisation of
+the Metropolis algorithm by Hastings in 1970. Hastings and his student Peskun showed that
+Metropolis and the more general Metropolis-Hastings algorithms are particular instances
+of a large family of algorithms, which also includes the Boltzmann algorithm (Hastings,
+1970; Peskun, 1973). They studied the optimality of these algorithms and introduced the
+formulation of the Metropolis-Hastings algorithm that we adopt in this paper. In the 1980s,
+two important MCMC papers appeared in the elds of computer vision and articial in-
+telligence (Geman & Geman, 1984; Pearl, 1987). Despite the existence of a few MCMC
+publications in the statistics literature at this time, it is generally accepted that it was only in
+1990 that MCMC made the rst signicant impact in statistics (Gelfand & Smith, 1990). In
+the neural networks literature, the publication of Neal (1996) was particularly inuential.
+In the introduction to this special issue, we focus on describing algorithms that we feel
+are the main building blocks in modern MCMC programs. We should emphasize that in
+order to obtain the best results out of this class of algorithms, it is important that we do not
+treat them as black boxes, but instead try to incorporate as much domain specic knowledge
+as possible into their design. MCMC algorithms typically require the design of proposal
+mechanisms to generate candidate hypotheses. Many existing machine learning algorithms
+can be adapted to become proposal mechanisms (de Freitas et al., 2001). This is often
+essential to obtain MCMC algorithms that converge quickly. In addition to this, we believe
+that the machine learning community can contribute signicantly to the solution of many
+open problems in the MCMC eld. For this purpose, we have outlined several hot research
+directions at the end of this paper. Finally, readers are encouraged to consult the excellent
+texts of Chen, Shao, and Ibrahim (2001), Gilks, Richardson, and Spiegelhalter (1996), Liu
+(2001), Meyn and Tweedie (1993), Robert and Casella (1999) and review papers by Besag
+
+INTRODUCTION
+
+7
+
+et al. (1995), Brooks (1998), Diaconis and Saloff-Coste (1998), Jerrum and Sinclair (1996),
+Neal (1993), and Tierney (1994) for more information on MCMC.
+
+The remainder of this paper is organised as follows. In Part 2, we outline the general
+problems and introduce simple Monte Carlo simulation, rejection sampling and importance
+sampling. Part 3 deals with the introduction of MCMC and the presentation of the most
+popular MCMC algorithms. In Part 4, we describe some important research frontiers. To
+make the paper more accessible, we make no notational distinction between distributions
+and densities until the section on reversible jump MCMC.
+
+2. MCMC motivation
+
+MCMC techniques are often applied to solve integration and optimisation problems in
+large dimensional spaces. These two types of problem play a fundamental role in machine
+learning, physics, statistics, econometrics and decision analysis. The following are just some
+examples.
+1. Bayesian inference and learning. Given some unknown variables x  X and data y  Y,
+the following typically intractable integration problems are central to Bayesian statistics
+(a) Normalisation. To obtain the posterior p(x | y) given the prior p(x) and likelihood
+
+p(y | x), the normalising factor in Bayes theorem needs to be computed
+
+(b) Marginalisation. Given the joint posterior of (x, z)  X  Z, we may often be
+
+(cid:2)
+(cid:3)
+
+p(x | y) =
+
+p(y | x) p(x)
+
+X p(y | x(cid:5)) p(x(cid:5)) dx(cid:5) .
+
+p(x | y) =
+
+interested in the marginal posterior
+p(x, z | y) dz.
+(cid:3)
+
+the form
+
+Z
+
+E p(x|y)( f (x)) =
+
+f (x) p(x | y) dx
+
+X
+
+(c) Expectation. The objective of the analysis is often to obtain summary statistics of
+
+: X  Rn f integrable with respect to p(x | y).
+for some function of interest
+Examples of appropriate functions include the conditional mean, in which case
+f (x) = x, or the conditional covariance of x where f (x) = xx
+(cid:5)E p(x|y)(x)E
+(cid:5)
+p(x|y)(x).
+2. Statistical mechanics. Here, one needs to compute the partition function Z of a system
+
+f
+
+with states s and Hamiltonian E(s)
+
+(cid:4)
+
+(cid:5)
+
+Z =
+
+ E(s)
+kT
+
+exp
+
+s
+
+(cid:6)
+
+,
+
+where k is the Boltzmanns constant and T denotes the temperature of the system.
+Summing over the large number of possible congurations is prohibitively expensive
+(Baxter, 1982). Note that the problems of computing the partition function and the
+normalising constant in statistical inference are analogous.
+
+8
+
+C. ANDRIEU ET AL.
+
+3. Optimisation. The goal of optimisation is to extract the solution that minimises some
+objective function from a large set of feasible solutions. In fact, this set can be contin-
+uous and unbounded. In general, it is too computationally expensive to compare all the
+solutions to nd out which one is optimal.
+
+4. Penalised likelihood model selection. This task typically involves two steps. First, one
+nds the maximum likelihood (ML) estimates for each model separately. Then one uses
+a penalisation term (for example MDL, BIC or AIC) to select one of the models. The
+problem with this approach is that the initial set of models can be very large. Moreover,
+many of those models are of not interest and, therefore, computing resources are wasted.
+
+Although we have emphasized integration and optimisation, MCMC also plays a funda-
+mental role in the simulation of physical systems. This is of great relevance in nuclear
+physics and computer graphics (Chenney & Forsyth, 2000; Kalos & Whitlock, 1986; Veach
+& Guibas, 1997).
+
+2.1. The Monte Carlo principle
+The idea of Monte Carlo simulation is to draw an i.i.d. set of samples {x (i)}N
+i=1 from a target
+density p(x) dened on a high-dimensional space X (e.g. the set of possible congurations
+of a system, the space on which the posterior is dened, or the combinatorial set of feasible
+solutions). These N samples can be used to approximate the target density with the following
+empirical point-mass function
+
+N(cid:4)
+
+pN (x) = 1
+N
+
+x (i)(x),
+
+i=1
+
+where x (i)(x) denotes the delta-Dirac mass located at x (i). Consequently, one can approx-
+imate the integrals (or very large sums) I ( f ) with tractable sums IN ( f ) that converge as
+follows
+
+(cid:8)
+
+(cid:7)
+
+N(cid:4)
+
+f
+
+i=1
+
+IN ( f ) = 1
+N
+
+x (i)
+
+a.s.
+N I ( f ) =
+
+f (x) p(x) dx.
+
+X
+
+(cid:3)
+
+That is, the estimate IN ( f ) is unbiased and by the strong law of large numbers, it will
+almost surely (a.s.) converge to I ( f ). If the variance (in the univariate case for simplicity)
+(cid:1) E p(x)( f 2(x))  I 2( f ) < , then the variance of the estimator
+of f (x) satises  2
+f
+IN ( f ) is equal to var(IN ( f )) =  2
+N and a central limit theorem yields convergence in
+N(cid:7)
+distribution of the error
+
+
+
+(cid:8)
+
+f
+
+N (IN ( f )  I ( f )) =
+N
+
+0,  2
+f
+
+,
+
+where = denotes convergence in distribution (Robert & Casella, 1999; Section 3.2).
+The advantage of Monte Carlo integration over deterministic integration arises from the
+fact that the former positions the integration grid (samples) in regions of high probability.
+
+INTRODUCTION
+
+9
+
+The N samples can also be used to obtain a maximum of the objective function p(x) as
+follows
+
+(cid:7)
+
+(cid:8)
+
+x = arg max
+x (i);i=1,...,N
+
+p
+
+x (i)
+
+However, we will show later that it is possible to construct simulated annealing algorithms
+that allow us to sample approximately from a distribution whose support is the set of global
+maxima.
+
+When p(x) has standard form, e.g. Gaussian, it is straightforward to sample from it using
+easily available routines. However, when this is not the case, we need to introduce more
+sophisticated techniques based on rejection sampling, importance sampling and MCMC.
+
+2.2. Rejection sampling
+
+We can sample from a distribution p(x), which is known up to a proportionality constant,
+by sampling from another easy-to-sample proposal distribution q(x) that satises p(x) 
+Mq(x), M < , using the accept/reject procedure describe in gure 1 (see also gure 2).
+The accepted x (i) can be easily shown to be sampled with probability p(x) (Robert &
+
+Figure 1. Rejection sampling algorithm. Here, u  U(0,1) denotes the operation of sampling a uniform random
+variable on the interval (0, 1).
+
+Figure 2. Rejection sampling: Sample a candidate x (i) and a uniform variable u. Accept the candidate sample if
+u Mq(x (i)) < p(x (i)), otherwise reject it.
+
+10
+
+C. ANDRIEU ET AL.
+
+Casella, 1999, p. 49). This simple method suffers from severe limitations. It is not always
+possible to bound p(x)/q(x) with a reasonable constant M over the whole space X . If M
+is too large, the acceptance probability
+
+(cid:9)
+
+(cid:10)
+
+Pr(x accepted) = Pr
+
+u <
+
+p(x)
+Mq(x)
+
+= 1
+M
+
+will be too small. This makes the method impractical in high-dimensional scenarios.
+
+2.3.
+
+Importance sampling
+
+Importance sampling is an alternative classical solution that goes back to the 1940s;
+see for example (Geweke, 1989; Rubinstein, 1981). Let us introduce, again, an arbitrary
+importance proposal distribution q(x) such that its support includes the support of p(x).
+Then we can rewrite I ( f ) as follows
+
+(cid:3)
+
+I ( f ) =
+
+f (x) w(x) q(x) dx
+
+q(x) is known as the importance weight. Consequently, if one can simulate
+i=1 according to q(x) and evaluate w(x (i)), a possible Monte Carlo
+
+where w(x) (cid:1) p(x)
+N i.i.d. samples {x (i)}N
+estimate of I ( f ) is
+(cid:7)
+
+I N ( f ) = N(cid:4)
+
+f
+
+i=1
+
+(cid:8)
+
+(cid:7)
+
+(cid:8)
+
+w
+
+x (i)
+
+x (i)
+
+This estimator is unbiased and, under weak assumptions, the strong law of large num-
+a.s.
+bers applies, that is I N( f )
+N I ( f ). It is clear that this integration method can also be
+interpreted as a sampling method where the posterior density p(x) is approximated by
+
+p N (x) = N(cid:4)
+
+i=1
+
+(cid:7)
+
+(cid:8)
+
+w
+
+x (i)
+
+x (i)(x)
+
+and I N ( f ) is nothing but the function f (x) integrated with respect to the empirical measure
+p N (x).
+
+Some proposal distributions q(x) will obviously be preferable to others. An important
+criterion for choosing an optimal proposal distribution is to nd one that minimises the
+variance of the estimator I N ( f ). The variance of f (x)w(x) with respect to q(x) is given by
+
+varq(x)( f (x)w(x)) = Eq(x)( f 2(x)w2(x))  I 2( f )
+
+(8)
+
+The second term on the right hand side does not depend on q(x) and hence we only need
+to minimise the rst term, which according to Jensens inequality has the following lower
+
+INTRODUCTION
+
+11
+
+bound
+
+Eq(x)( f 2(x)w2(x)) (cid:7)
+
+Eq(x)(| f (x)|w(x))
+
+(cid:9)(cid:3)
+
+(cid:8)2 =
+
+(cid:10)2
+
+| f (x)| p(x) dx
+
+This lower bound is attained when we adopt the following optimal importance distribution
+
+(cid:2) | f (x)| p(x) dx
+q (cid:9)(x) = | f (x)| p(x)
+
+The optimal proposal is not very useful in the sense that it is not easy to sample from
+| f (x)| p(x). However, it tells us that high sampling efciency is achieved when we focus
+on sampling from p(x) in the important regions where | f (x)| p(x) is relatively large; hence
+the name importance sampling.
+
+This result implies that importance sampling estimates can be super-efcient. That is,
+for a a given function f (x), it is possible to nd a distribution q(x) that yields an estimate
+with a lower variance than when using a perfect Monte Carlo method, i.e. with q(x)= p(x).
+This property is often exploited to evaluate the probability of rare events in communication
+networks (Smith, Sha, & Gao, 1997). There the quantity of interest is a tail probability
+(bit error rate) and hence f (x)= IE (x) where IE (x)= 1 if x  E and 0 otherwise (see
+gure 3). One could estimate the bit error rate more efciently by sampling according to
+q(x) IE (x) p(x) than according to q(x)= p(x). That is, it is wasteful to propose candidates
+in regions of no utility. In many applications, the aim is usually different in the sense that
+
+Figure 3.
+Importance sampling: one should place more importance on sampling from the state space regions that
+matter. In this particular example one is interested in computing a tail probability of error (detecting infrequent
+abnormalities).
+
+12
+
+C. ANDRIEU ET AL.
+
+one wants to have a good approximation of p(x) and not of a particular integral with respect
+to p(x), so we often seek to have q(x) (cid:18) p(x).
+
+As the dimension of the x increases, it becomes harder to obtain a suitable q(x) from
+which to draw samples. A sensible strategy is to adopt a parameterised q(x, ) and to
+adapt  during the simulation. Adaptive importance sampling appears to have originated
+in the structural safety literature (Bucher, 1988), and has been extensively applied in the
+communications literature (Al-Qaq, Devetsikiotis, & Townsend, 1995; Remondo et al.,
+2000). This technique has also been exploited recently in the machine learning community
+(de Freitas et al., 2000; Cheng & Druzdzel, 2000; Ortiz & Kaelbling, 2000; Schuurmans &
+Southey, 2000). A popular adaptive strategy involves computing the derivative of the rst
+term on the right hand side of Eq. (8)
+
+D() = Eq(x,)
+
+f 2(x)w(x, )
+
+w(x, )
+
+
+
+(cid:9)
+
+(cid:10)
+
+and then updating the parameters as follows
+
+(cid:7)
+
+(cid:8)
+
+(cid:7)
+
+f 2
+
+x (i)
+
+w
+
+x (i), t
+
+N(cid:4)
+
+i=1
+
+(cid:8) w
+
+(cid:8)
+
+(cid:7)
+
+x (i), t
+t
+
+t+1 = t  
+
+1
+N
+
+where  is a learning rate and x (i)  q(x, ). Other optimisation approaches that make use
+of the Hessian are also possible.
+
+When the normalising constant of p(x) is unknown, it is still possible to apply the
+
+importance sampling method by rewriting I ( f ) as follows:
+
+(cid:2)
+
+(cid:2)
+
+I ( f ) =
+
+f (x)w(x)q(x) dx
+
+w(x)q(x) dx
+
+q(x) is now only known up to a normalising constant. The Monte Carlo
+
+where w(x)  p(x)
+(cid:11)
+estimate of I ( f ) becomes
+
+(cid:7)
+
+I N ( f ) = 1
+
+N
+
+(cid:8)
+
+(cid:8)
+(cid:7)
+
+(cid:7)
+(cid:8)
+
+w
+
+x (i)
+
+x (i)
+
+(cid:11)
+
+N
+i=1 f
+N
+j=1
+
+x (i)
+w
+
+1
+N
+
+= N(cid:4)
+
+i=1
+
+(cid:7)
+
+f
+
+(cid:8)
+
+(cid:7)
+
+(cid:8)
+
+w
+
+x (i)
+
+x (i)
+
+where w(x (i)) is a normalised importance weight. For N nite, I N ( f ) is biased (ratio of two
+estimates) but asymptotically, under weak assumptions, the strong law of large numbers
+a.s.
+applies, that is I N ( f )
+N I ( f ). Under additional assumptions a central limit theorem can
+be obtained (Geweke, 1989). The estimator I N ( f ) has been shown to perform better than
+I N ( f ) in some setups under squared error loss (Robert & Casella, 1999).
+If one is interested in obtaining M i.i.d. samples from p N (x), then an asymptotically
+(N /M ) valid method consists of resampling M times according to the discrete distri-
+bution p N (x). This procedure results in M samples x (i) with the possibility that x (i) = x ( j)
+
+INTRODUCTION
+
+13
+
+for i (cid:20)= j. This method is known as sampling importance resampling (SIR) (Rubin, 1988).
+After resampling, the approximation of the target density is
+
+M(cid:4)
+
+pM(x) = 1
+M
+
+ x (i)(x)
+
+i=1
+
+(13)
+
+The resampling scheme introduces some additional Monte Carlo variation. It is, therefore,
+not clear whether the SIR procedure can lead to practical gains in general. However, in
+the sequential Monte Carlo setting described in Section 4.3, it is essential to carry out this
+resampling step.
+
+We conclude this section by stating that even with adaptation, it is often impossible to
+obtain proposal distributions that are easy to sample from and good approximations at the
+same time. For this reason, we need to introduce more sophisticated sampling algorithms
+based on Markov chains.
+
+3. MCMC algorithms
+MCMC is a strategy for generating samples x (i) while exploring the state space X using a
+Markov chain mechanism. This mechanism is constructed so that the chain spends more
+time in the most important regions. In particular, it is constructed so that the samples x (i)
+mimic samples drawn from the target distribution p(x). (We reiterate that we use MCMC
+when we cannot draw samples from p(x) directly, but can evaluate p(x) up to a normalising
+constant.)
+It is intuitive to introduce Markov chains on nite state spaces, where x (i) can only take
+s discrete values x (i) X = {x1, x2, . . . , xs}. The stochastic process x (i) is called a Markov
+chain if
+
+(cid:7)
+
+p
+
+x (i)
+
+(cid:12)(cid:12) x (i1), . . . , x (1)
+
+(cid:8) = T
+
+(cid:7)
+
+x (i)
+
+(cid:8)
+
+(cid:12)(cid:12) x (i1)
+
+,
+
+The chain is homogeneous if T (cid:1) T (x (i) | x (i1)) remains invariant for all i, with
+x (i) T (x (i) |
+x (i1)) = 1 for any i. That is, the evolution of the chain in a space X depends solely on the
+current state of the chain and a xed transition matrix.
+As an example, consider a Markov chain with three states (s = 3) and a transition graph
+
+as illustrated in gure 4. The transition matrix for this example is
+
+(cid:11)
+
+
+ 0
+
+T =
+
+1
+0
+0.1
+0.6 0.4
+
+0
+0.9
+0
+
+
+
+
+If the probability vector for the initial state is (x (1)) = (0.5, 0.2, 0.3), it follows that
+(x (1))T = (0.2, 0.6, 0.2) and, after several iterations (multiplications by T ), the product
+(x (1))T t converges to p(x) = (0.2, 0.4, 0.4). No matter what initial distribution (x (1))
+we use, the chain will stabilise at p(x)= (0.2, 0.4, 0.4). This stability result plays a funda-
+mental role in MCMC simulation. For any starting point, the chain will convergence to the
+
+14
+
+C. ANDRIEU ET AL.
+
+x
+
+2
+
+0.1
+
+0.4
+
+0.6
+
+0.9
+
+x
+
+3
+
+1
+
+x
+
+1
+
+Figure 4. Transition graph for the Markov chain example with X = {x1, x2, x3}.
+
+invariant distribution p(x), as long as T is a stochastic transition matrix that obeys the
+following properties:
+
+1. Irreducibility. For any state of the Markov chain, there is a positive probability of visiting
+all other states. That is, the matrix T cannot be reduced to separate smaller matrices,
+which is also the same as stating that the transition graph is connected.
+
+2. Aperiodicity. The chain should not get trapped in cycles.
+
+A sufcient, but not necessary, condition to ensure that a particular p(x) is the desired
+invariant distribution is the following reversibility (detailed balance) condition
+
+(cid:7)
+
+(cid:7)
+
+p
+
+x (i)
+
+p
+
+x (i)
+
+x (i1)
+T
+Summing both sides over x (i1), gives us
+
+T
+
+(cid:8)
+(cid:7)
+(cid:8) =
+
+x (i1)
+(cid:4)
+
+x (i1)
+
+(cid:7)
+
+(cid:12)(cid:12) x (i)
+(cid:7)
+
+(cid:8) = p
+(cid:7)
+(cid:8)
+
+x (i1)
+
+T
+
+p
+
+(cid:8)
+
+(cid:7)
+
+(cid:8)
+
+(cid:12)(cid:12) x (i1)
+
+.
+
+x (i)
+
+(cid:8)
+
+.
+
+x (i) | x (i1)
+
+MCMC samplers are irreducible and aperiodic Markov chains that have the target distribu-
+tion as the invariant distribution. One way to design these samplers is to ensure that detailed
+balance is satised. However, it is also important to design samplers that converge quickly.
+Indeed, most of our efforts will be devoted to increasing the convergence speed.
+
+Spectral theory gives us useful insights into the problem. Notice that p(x) is the left
+eigenvector of the matrix T with corresponding eigenvalue 1. In fact, the Perron-Frobenius
+theorem from linear algebra tells us that the remaining eigenvalues have absolute value less
+than 1. The second largest eigenvalue, therefore, determines the rate of convergence of the
+chain, and should be as small as possible.
+
+The concepts of irreducibility, aperiodicity and invariance can be better appreciated once
+we realise the important role that they play in our lives. When we search for information on
+
+INTRODUCTION
+
+15
+
+the World-Wide Web, we typically follow a set of links (Berners-Lee et al., 1994). We can
+interpret the webpages and links, respectively, as the nodes and directed connections in a
+Markov chain transition graph. Clearly, we (say, the random walkers on the Web) want to
+avoid getting trapped in cycles (aperiodicity) and want to be able to access all the existing
+webpages (irreducibility). Let us consider, now, the popular information retrieval algorithm
+used by the search engine Google, namely PageRank (Page et al., 1998). PageRank requires
+the denition of a transition matrix with two components T = L+ E. L is a large link matrix
+with rows and columns corresponding to web pages, such that the entry Li, j represents the
+normalised number of links from web page i to web page j. E is a uniform random matrix
+of small magnitude that is added to L to ensure irreducibility and aperiodicity. That is, the
+addition of noise prevents us from getting trapped in loops, as it ensures that there is always
+some probability of jumping to anywhere on the Web. From our previous discussion, we
+have
+
+(cid:7)
+
+p
+
+(cid:8)
+
+x (i+1)
+
+[L + E] = p(x i )
+
+where, in this case, the invariant distribution (eigenvector) p(x) represents the rank of a
+webpage x. Note that it is possible to design more interesting transition matrices in this
+setting. As long as one satises irreducibility and aperiodicity, one can incorporate terms
+into the transition matrix that favour particular webpages or that bias the search in useful
+ways.
+
+In continuous state spaces, the transition matrix T becomes an integral kernel K and
+
+p(x) becomes the corresponding eigenfunction
+
+(cid:3)
+
+(cid:7)
+
+(cid:8)
+
+(cid:7)
+
+p
+
+x (i)
+
+K
+
+x (i+1)
+
+(cid:8)
+
+(cid:12)(cid:12) x (i)
+
+(cid:7)
+
+(cid:8)
+
+.
+
+dx (i) = p
+
+x (i+1)
+
+The kernel K is the conditional density of x (i+1) given the value x (i). It is a mathematical
+representation of a Markov chain algorithm. In the following subsections we describe
+various of these algorithms.
+
+3.1. The Metropolis-Hastings algorithm
+
+The Metropolis-Hastings (MH) algorithm is the most popular MCMC method (Hastings,
+1970; Metropolis et al., 1953). In later sections, we will see that most practical MCMC
+algorithms can be interpreted as special cases or extensions of this algorithm.
+An MH step of invariant distribution p(x) and proposal distribution q(x (cid:9) | x) involves
+sampling a candidate value x (cid:9) given the current value x according to q(x (cid:9) | x). The Markov
+chain then moves towards x (cid:9) with acceptance probability A(x, x (cid:9)) = min{1, [ p(x)q(x (cid:9) |
+1 p(x (cid:9))q(x | x (cid:9))}, otherwise it remains at x. The pseudo-code is shown in gure 5, while
+x)]
+gure 6 shows the results of running the MH algorithm with a Gaussian proposal distribution
+q(x (cid:9) | x (i)) = N (x (i), 100) and a bimodal target distribution p(x)  0.3 exp(0.2x 2) +
+0.7 exp(0.2(x  10)2) for 5000 iterations. As expected, the histogram of the samples
+approximates the target distribution.
+
+16
+
+C. ANDRIEU ET AL.
+
+Figure 5. Metropolis-Hastings algorithm.
+
+0.15
+
+0.1
+
+0.05
+
+0
+10
+
+0.15
+
+0.1
+
+0.05
+
+0
+10
+
+0.15
+
+i=100
+
+0.1
+
+i=500
+
+0
+
+10
+
+20
+
+0.05
+
+0
+10
+
+0.15
+
+0
+
+10
+
+20
+
+i=1000
+
+0.1
+
+i=5000
+
+0
+
+10
+
+20
+
+0.05
+
+0
+10
+
+0
+
+10
+
+20
+
+Figure 6. Target distribution and histogram of the MCMC samples at different iteration points.
+
+The MH algorithm is very simple, but it requires careful design of the proposal distri-
+bution q(x (cid:9) | x). In subsequent sections, we will see that many MCMC algorithms arise by
+considering specic choices of this distribution. In general, it is possible to use suboptimal
+inference and learning algorithms to generate data-driven proposal distributions.
+
+The transition kernel for the MH algorithm is
+
+(cid:7)
+
+x (i+1)
+
+KMH
+
+(cid:12)(cid:12) x (i)
+
+(cid:8) = q
+
+(cid:7)
+
+x (i+1)
+
+(cid:12)(cid:12) x (i)
+
+(cid:8)A(cid:7)
+
+(cid:7)
+
+(cid:8) + x (i)
+
+(cid:7)
+
+(cid:8)
+
+r
+
+x (i)
+
+(cid:8)
+
+,
+
+x (i+1)
+
+x (i), x (i+1)
+
+INTRODUCTION
+
+17
+
+where r(x (i)) is the term associated with rejection
+
+(cid:3)
+
+(cid:8) =
+
+(cid:7)
+
+(cid:12)(cid:12) x (i)
+
+(cid:8)(cid:7)
+1  A(cid:7)
+
+r
+
+x (i)
+
+x (cid:9)
+
+q
+
+X
+
+(cid:8)(cid:8)
+
+x (i), x (cid:9)
+
+dx (cid:9).
+
+(cid:7)
+
+(cid:7)
+
+It is fairly easy to prove that the samples generated by MH algorithm will mimic samples
+drawn from the target distribution asymptotically. By construction, KMH satises the detailed
+balance condition
+
+(cid:8)
+
+(cid:7)
+
+p
+
+x (i)
+
+KMH
+
+x (i+1)
+
+(cid:12)(cid:12) x (i)
+
+(cid:8) = p
+
+(cid:7)
+
+(cid:8)
+
+(cid:7)
+
+x (i+1)
+
+KMH
+
+x (i)
+
+(cid:8)
+
+(cid:12)(cid:12) x (i+1)
+
+and, consequently, the MH algorithm admits p(x) as invariant distribution. To show that
+the MH algorithm converges, we need to ensure that there are no cycles (aperiodicity)
+and that every state that has positive probability can be reached in a nite number of steps
+(irreducibility). Since the algorithm always allows for rejection, it follows that it is aperiodic.
+To ensure irreducibility, we simply need to make sure that the support of q() includes the
+support of p(). Under these conditions, we obtain asymptotic convergence (Tierney, 1994,
+Theorem 3, p. 1717). If the space X is small (for example, bounded in Rn), then it is
+possible to use minorisation conditions to prove uniform (geometric) ergodicity (Meyn &
+Tweedie, 1993). It is also possible to prove geometric ergodicity using Foster-Lyapunov
+drift conditions (Meyn & Tweedie, 1993; Roberts & Tweedie, 1996).
+
+The independent sampler and the Metropolis algorithm are two simple instances of the
+MH algorithm. In the independent sampler the proposal is independent of the current state,
+q(x (cid:9) | x (i)) = q(x (cid:9)). Hence, the acceptance probability is
+(cid:7)
+
+(cid:8)(cid:20)
+
+(cid:8) = min
+
+= min
+
+A(cid:7)
+
+x (i), x (cid:9)
+
+(cid:8)
+
+(cid:20)
+
+(cid:19)
+
+(cid:19)
+
+(cid:7)
+
+(cid:7)
+
+(cid:8)
+
+1,
+
+1,
+
+.
+
+p(x (cid:9))q
+x (i)
+p
+
+x (i)
+q(x (cid:9))
+
+w(x (cid:9))
+x (i)
+w
+
+This algorithm is close to importance sampling, but now the samples are correlated since
+they result from comparing one sample to the other. The Metropolis algorithm assumes a
+symmetric random walk proposal q(x (cid:9) | x (i)) = q(x (i) | x (cid:9)) and, hence, the acceptance ratio
+simplies to
+
+A(cid:7)
+
+x (i), x (cid:9)
+
+(cid:19)
+
+(cid:8) = min
+
+1,
+
+(cid:8)(cid:20)
+
+.
+
+(cid:7)
+
+p(x (cid:9))
+x (i)
+p
+
+Some properties of the MH algorithm are worth highlighting. Firstly, the normalising
+constant of the target distribution is not required. We only need to know the target distribution
+up to a constant of proportionality. Secondly, although the pseudo-code makes use of a single
+chain, it is easy to simulate several independent chains in parallel. Lastly, the success or
+failure of the algorithm often hinges on the choice of proposal distribution. This is illustrated
+in gure 7. Different choices of the proposal standard deviation  (cid:9) lead to very different
+results. If the proposal is too narrow, only one mode of p(x) might be visited. On the other
+hand, if it is too wide, the rejection rate can be very high, resulting in high correlations. If all
+the modes are visited while the acceptance probability is high, the chain is said to mix well.
+
+18
+
+C. ANDRIEU ET AL.
+
+Figure 7. Approximations obtained using the MH algorithm with three Gaussian proposal distributions of dif-
+ferent variances.
+
+3.2.
+
+Simulated annealing for global optimization
+
+Let us assume that instead of wanting to approximate p(x), we want to nd its global
+maximum. For example, if p(x) is the likelihood or posterior distribution, we often want
+to compute the ML and maximum a posteriori (MAP) estimates. As mentioned earlier, we
+could run a Markov chain of invariant distribution p(x) and estimate the global mode by
+
+(cid:7)
+
+(cid:8)
+
+x = arg max
+x (i);i=1,...,N
+
+p
+
+x (i)
+
+.
+
+This method is inefcient because the random samples only rarely come from the vicinity
+of the mode. Unless the distribution has large probability mass around the mode, computing
+resources will be wasted exploring areas of no interest. A more principled strategy is to
+adopt simulated annealing (Geman & Geman, 1984; Kirkpatrick, Gelatt, & Vecchi, 1983;
+Van Laarhoven & Arts, 1987). This technique involves simulating a non-homogeneous
+Markov chain whose invariant distribution at iteration i is no longer equal to p(x), but to
+
+pi (x)  p1/Ti (x),
+
+INTRODUCTION
+
+19
+
+Figure 8. General simulated annealing algorithm.
+
+0.2
+
+0.1
+
+0
+10
+
+0.2
+
+0.1
+
+0
+10
+
+0.2
+
+i=100
+
+0.1
+
+i=500
+
+0
+
+10
+
+20
+
+0
+10
+
+0.2
+
+0
+
+10
+
+20
+
+i=1000
+
+0.1
+
+i=5000
+
+0
+
+10
+
+20
+
+0
+10
+
+0
+
+10
+
+20
+
+Figure 9. Discovering the modes of the target distribution with the simulated annealing algorithm.
+
+where Ti is a decreasing cooling schedule with limi Ti = 0. The reason for doing this
+(x) is a probability density that
+is that, under weak regularity assumptions on p(x), p
+concentrates itself on the set of global maxima of p(x). The simulated annealing involves,
+therefore, just a minor modication of standard MCMC algorithms as shown in gure 8. The
+results of applying annealing to the example of the previous section are shown in gure 9.
+To obtain efcient annealed algorithms, it is again important to choose suitable proposal
+distributions and an appropriate cooling schedule. Many of the negative simulated annealing
+
+
+
+20
+
+C. ANDRIEU ET AL.
+
+results reported in the literature often stem from poor proposal distribution design. In some
+complex variable and model selection scenarios arising in machine learning, one can even
+propose from complex reversible jump MCMC kernels (Section 3.7) within the annealing
+algorithm (Andrieu, de Freitas, & Doucet, 2000a). If one denes a joint distribution over
+the parameter and model spaces, this technique can be used to search for the best model
+(according to MDL or AIC criteria) and ML parameter estimates simultaneously.
+
+Most convergence results for simulated annealing typically state that if for a given Ti ,
+the homogeneous Markov transition kernel mixes quickly enough, then convergence to the
+set of global maxima of p(x) is ensured for a sequence Ti = (C ln(i + T0))
+1, where C and
+T0 are problem-dependent. Most of the results have been obtained for nite spaces (Geman
+& Geman, 1984; Van Laarhoven & Arts, 1987) or compact continuous spaces (Haario &
+Sacksman, 1991). Some results for non-compact spaces can be found in Andrieu, Breyer,
+and Doucet (1999).
+
+3.3. Mixtures and cycles of MCMC kernels
+
+A very powerful property of MCMC is that it is possible to combine several samplers into
+mixtures and cycles of the individual samplers (Tierney, 1994). If the transition kernels K1
+and K2 have invariant distribution p() each, then the cycle hybrid kernel K1 K2 and the
+mixture hybrid kernel  K1 + (1  )K2, for 0    1, are also transition kernels with
+invariant distribution p().
+
+Mixtures of kernels can incorporate global proposals to explore vast regions of the
+state space and local proposals to discover ner details of the target distribution (Andrieu,
+de Freitas, & Doucet, 2000b; Andrieu & Doucet, 1999; Robert & Casella, 1999). This will
+be useful, for example, when the target distribution has many narrow peaks. Here, a global
+proposal locks into the peaks while a local proposal allows one to explore the space around
+each peak. For example, if we require a high-precision frequency detector, one can use
+the fast Fourier transform (FFT) as a global proposal and a random walk as local proposal
+(Andrieu & Doucet, 1999). Similarly, in kernel regression and classication, one might want
+to have a global proposal that places the bases (kernels) at the locations of the input data and
+a local random walk proposal that perturbs these in order to obtain better ts (Andrieu, de
+Freitas, & Doucet, 2000b). However, mixtures of kernels also play a big role in many other
+samplers, including the reversible jump MCMC algorithm (Section 3.7). The pseudo-code
+for a typical mixture of kernels is shown in gure 10.
+
+Cycles allow us to split a multivariate state vector into components (blocks) that can be
+updated separately. Typically the samplers will mix more quickly by blocking highly cor-
+related variables. A block MCMC sampler, using b j to indicate the j-th block, nb to denote
+}, is shown in
+the number of blocks and x (i+1)[b j ]
+(cid:8) = nb(cid:21)
+gure 11. The transition kernel for this algorithm is given by the following expression
+(cid:12)(cid:12) x (i)
+
+(cid:1) {x (i+1)
+, x (i+1)
+(cid:22)
+
+, . . . , x (i+1)
+b j1
+
+, . . . , x (i)
+bnb
+
+x (i+1)
+
+, x (i)
+b j+1
+
+b1
+
+b2
+
+(cid:23)
+
+(cid:12)(cid:12)(cid:12) x (i)
+
+b j
+
+x (i+1)
+
+b j
+
+, x (i+1)[b j ]
+
+(cid:7)
+
+KMH-Cycle
+
+KMH(j)
+
+j=1
+
+where KMH(j) denotes the j-th MH algorithm in the cycle.
+
+INTRODUCTION
+
+21
+
+Figure 10. Typical mixture of MCMC kernels.
+
+Figure 11. Cycle of MCMC kernelsblock MH algorithm.
+
+Obviously, choosing the size of the blocks poses some trade-offs. If one samples the
+components of a multi-dimensional vector one-at-a-time, the chain may take a very long
+time to explore the target distribution. This problem gets worse as the correlation between
+the components increases. Alternatively, if one samples all the components together, then
+the probability of accepting this large move tends to be very low.
+A popular cycle of MH kernels, known as Gibbs sampling (Geman & Geman, 1984), is
+obtained when we adopt the full conditional distributions p(x j | x j ) = p(x j | x1, . . . , x j1,
+x j+1, . . . , xn) as proposal distributions (for notational simplicity, we have replaced the index
+notation b j with j). The following section describes it in more detail.
+
+3.4. The Gibbs sampler
+
+Suppose we have an n-dimensional vector x and the expressions for the full conditionals
+p(x j | x1, . . . , x j1, x j+1, . . . , xn). In this case, it is often advantageous to use the following
+
+22
+
+C. ANDRIEU ET AL.
+
+proposal distribution for j = 1, . . . , n
+
+(cid:7)
+
+q
+
+x (cid:9)
+
+(cid:12)(cid:12) x (i)
+
+(cid:8) =
+
+(cid:8)
+
+(cid:12)(cid:12) x (i) j
+
+x (cid:9)
+j
+
+(cid:19)
+
+(cid:7)
+
+p
+0
+
+= x (i) j
+If x (cid:9) j
+Otherwise.
+
+The corresponding acceptance probability is:
+
+A(cid:7)
+
+x (i), x (cid:9)
+
+(cid:24)
+(cid:8) = min
+(cid:24)
+= min
+(cid:24)
+= min
+
+1,
+
+1,
+
+1,
+
+(cid:7)
+
+(cid:7)
+(cid:8)
+(cid:7)
+(cid:8)
+(cid:25)
+(cid:8)
+(cid:8)
+
+(cid:25)
+(cid:12)(cid:12) x (cid:9)
+(cid:8)
+(cid:8)
+x (i)
+(cid:25)
+(cid:12)(cid:12) x (i) j
+(cid:8)
+x (cid:9)|x (i)
+x (i)
+j
+|x (cid:9) j )
+p(x (cid:9)
+j
+= 1.
+
+(cid:7)
+(cid:7)
+(cid:7)
+(cid:7)
+
+p(x (cid:9))q
+x (i)
+q
+p
+
+p(x (cid:9)) p
+x (i)
+p
+x (cid:9) j
+x (i) j
+
+p
+
+p
+
+That is, the acceptance probability for each proposal is one and, hence, the deterministic
+scan Gibbs sampler algorithm is often presented as shown in gure 12.
+
+Since the Gibbs sampler can be viewed as a special case of the MH algorithm, it is
+possible to introduce MH steps into the Gibbs sampler. That is, when the full conditionals
+are available and belong to the family of standard distributions (Gamma, Gaussian, etc.),
+we will draw the new samples directly. Otherwise, we can draw samples with MH steps
+embedded within the Gibbs algorithm. For n = 2, the Gibbs sampler is also known as the
+data augmentation algorithm, which is closely related to the expectation maximisation (EM)
+algorithm (Dempster, Laird, & Rubin, 1977; Tanner & Wong, 1987).
+
+Directed acyclic graphs (DAGS) are one of the best known application areas for Gibbs
+sampling (Pearl, 1987). Here, a large-dimensional joint distribution is factored into a directed
+graph that encodes the conditional independencies in the model. In particular, if x pa( j)
+
+Figure 12. Gibbs sampler.
+
+INTRODUCTION
+
+23
+
+denotes the parent nodes of node x j , we have
+
+(cid:21)
+
+(cid:7)
+
+x j
+
+p
+
+j
+
+p(x) =
+
+(cid:7)
+
+p
+
+x j
+
+(cid:12)(cid:12) x j
+
+(cid:8) = p
+
+.
+
+(cid:8)
+
+(cid:12)(cid:12) x pa( j)
+(cid:12)(cid:12) x pa( j)
+(cid:7)
+
+x j
+
+It follows that the full conditionals simplify as follows
+
+(cid:8) (cid:21)
+
+kch( j)
+
+(cid:7)
+
+p
+
+xk
+
+(cid:8)
+
+(cid:12)(cid:12) x pa(k)
+
+where ch( j) denotes the children nodes of x j . That is, we only need to take into account
+the parents, the children and the childrens parents. This set of variables is known as the
+Markov blanket of x j . This technique forms the basis of the popular software package for
+Bayesian updating with Gibbs sampling (BUGS) (Gilks, Thomas, & Spiegelhalter, 1994).
+Sampling from the full conditionals, with the Gibbs sampler, lends itself naturally to the
+construction of general purpose MCMC software. It is sometimes convenient to block some
+of the variables to improve mixing (Jensen, Kong, & Kjrulff, 1995; Wilkinson & Yeung,
+2002).
+
+3.5. Monte Carlo EM
+
+The EM algorithm (Baum et al., 1970; Dempster, Laird, & Rubin, 1977) is a standard
+algorithm for ML and MAP point estimation. If X contains visible and hidden variables
+x = {xv, xh}, then a local maximum of the likelihood p(xv | ) given the parameters  can
+be found by iterating the following two steps:
+
+1. E step. Compute the expected value of the complete log-likelihood function with respect
+
+to the distribution of the hidden variables
+
+Q() =
+
+log( p(xh, xv | )) p
+
+xh
+
+(cid:7)
+
+(cid:12)(cid:12) xv,  (old)
+
+(cid:8)
+
+dxh,
+
+(cid:3)
+
+Xh
+
+where  (old) refers to the value of the parameters at the previous time step.
+
+2. M step. Perform the following maximisation  (new) = arg max Q().
+
+In many practical situations, the expectation in the E step is either a sum with an exponen-
+tially large number of summands or an intractable integral (Ghahramani, 1995; Ghahramani
+& Jordan, 1995; McCulloch, 1994; Pasula et al., 1999; Utsugi, 2001); see also Dellaert et al.
+(this issue). A solution is to introduce MCMC to sample from p(xh | xv,  (old)) and replace
+the expectation in the E step with a small sum over the samples, as shown in gure 13.
+Convergence of this algorithm is discussed in Sherman, Ho, and Dalal (1999), while Levine
+and Casella (2001) is a good recent review.
+
+To improve the convergence behaviour of EM, namely to escape low local minima and
+saddle points, various authors have proposed stochastic approaches that rely on sampling
+from p(xh | xv,  (old)) in the E step and then performing the M step using these samples.
+
+24
+
+C. ANDRIEU ET AL.
+
+Figure 13. MCMC-EM algorithm.
+
+The method is known as stochastic EM (SEM) when we draw only one sample (Celeux
+& Diebolt, 1985) and Monte Carlo EM (MCEM) when several samples are drawn (Wei
+& Tanner, 1990). There are several annealed variants (such as SAEM) that become more
+deterministic as the number of iterations increases (Celeux & Diebolt, 1992). The are also
+very efcient algorithms for marginal MAP estimation (SAME) (Doucet, Godsill, & Robert,
+2000). One wishes sometimes that Metropolis had succeeded in stopping the proliferation
+of acronyms!
+
+3.6. Auxiliary variable samplers
+
+It is often easier to sample from an augmented distribution p(x, u), where u is an auxiliary
+variable, than from p(x). Then, it is possible to obtain marginal samples x (i) by sampling
+(x (i), u(i)) according to p(x, u) and, subsequently, ignoring the samples u(i). This very useful
+idea was proposed in the physics literature (Swendsen & Wang, 1987). Here, we will focus
+on two well-known examples of auxiliary variable methods, namely hybrid Monte Carlo
+and slice sampling.
+
+3.6.1. Hybrid Monte Carlo. Hybrid Monte Carlo (HMC) is an MCMC algorithm that
+incorporates information about the gradient of the target distribution to improve mixing
+in high dimensions. We describe here the leapfrog HMC algorithm outlined in Duane
+et al. (1987) and Neal (1996) focusing on the algorithmic details and not on the statistical
+mechanics motivation. Assume that p(x) is differentiable and everywhere strictly positive.
+At each iteration of the HMC algorithm, one takes a predetermined number (L) of deter-
+ministic steps using information about the gradient of p(x). To explain this in more detail,
+we rst need to introduce a set of auxiliary momentum variables u  Rnx and dene the
+
+INTRODUCTION
+
+25
+
+Figure 14. Hybrid Monte Carlo.
+
+extended target density
+
+p(x, u) = p(x)N(cid:7)
+
+(cid:8)
+
+.
+
+u; 0, Inx
+
+Next, we need to introduce the nx -dimensional gradient vector (x) (cid:1)  log p(x)/x and
+a xed step-size parameter  > 0.
+
+In the HMC algorithm, we draw a new sample according to p(x, u) by starting with
+the previous value of x and generating a Gaussian random variable u. We then take L
+frog leaps in u and x. The values of u and x at the last leap are the proposal candidates
+in the MH algorithm with target density p(x, u). Marginal samples from p(x) are ob-
+tained by simply ignoring u. Given (x (i1), u(i1)), the algorithm proceeds as illustrated in
+gure 14.
+When only one deterministic step is used, i.e. L = 1, one obtains the Langevin algorithm,
+which is a discrete time approximation of a Langevin diffusion process. The Langevin
+algorithm is a special case of MH where the candidate satises
+
+(cid:7)
+
+(cid:8)
+
+(cid:8)
+
+/2
+
+x (cid:9) = x0 + u0 = x (i1) + 
+
+u(cid:9) + 
+
+x (i1)
+
+(cid:7)
+
+with u(cid:9)  N (0, Inx ).
+The choice of the parameters L and  poses simulation tradeoffs. Large values of 
+result in low acceptance rates, while small values require many leapfrog steps (expensive
+computations of the gradient) to move between two nearby states. Choosing L is equally
+problematic as we want it to be large to generate candidates far from the initial state, but
+this can result in many expensive computations. HMC, therefore, requires careful tuning of
+the proposal distribution. It is more efcient, in practice, to allow a different step size  for
+each of the coordinates of x (Ishwaran, 1999).
+
+26
+
+C. ANDRIEU ET AL.
+
+3.6.2. The slice sampler. The slice sampler (Damien, Wakeeld, & Walker, 1999; Higdon,
+1998; Wakeeld, Gelfand, & Smith, 1991) is a general version of the Gibbs sampler. The
+basic idea of the slice sampler is to introduce an auxiliary variable u  R and construct an
+extended target distribution p(cid:9)(x, u), such that
+
+(cid:19)
+
+if 0  u  p(x)
+
+1
+0 otherwise.
+
+p(cid:9)(x, u) =
+(cid:3)
+
+(cid:3)
+
+It is then straightforward to check that
+
+p(cid:9)(x, u) du =
+
+p(x)
+
+du = p(x).
+
+0
+
+Hence, to sample from p(x) one can sample from p(cid:9)(x, u) and then ignore u. The full
+conditionals are of this augmented model are
+
+p(u | x) = U[0, p(x)](u)
+p(x | u) = UA(x)
+
+where A = {x; p(x)  u}. If A is easy to identify then the algorithm is straightforward to
+implement, as shown in gure 15.
+
+It can be difcult to identify A. It is then worth introducing several auxiliary variables
+
+(Damien, Wakeeld, & Walker, 1999; Higdon, 1998). For example assume that
+
+p(x)  L(cid:21)
+
+l=1
+
+fl(x),
+
+where the fl()s are positive functions, not necessarily densities. Let us introduce L auxiliary
+variables (u1, . . . , u L) and dene
+
+p(cid:9)(x, u1, . . . , u L)  L(cid:21)
+
+I[0, fl (x)](ul).
+
+l=1
+
+f(x  )(i)
+
+(i+1)
+
+u
+
+(i+1)
+
+x
+
+(i)
+
+x
+
+x
+
+Figure 15. Slice sampling: given a previous sample, we sample a uniform variable u(i+1) between 0 and f (x (i)).
+One then samples x (i+1) in the interval where f (x)  u(i+1).
+
+INTRODUCTION
+
+27
+
+Figure 16. Slice sampler.
+
+(cid:2)
+
+Then one can also check that
+
+p(cid:9)(x, u1, . . . , u L) du1 . . . du L = p(x) as
+
+(cid:3)
+
+L(cid:21)
+
+l=1
+
+I[0, fl (x)](ul) du1 . . . du L = L(cid:21)
+
+fl(x).
+
+l=1
+
+(cid:3)
+
+p(cid:9)(x, u1, . . . , u L)du1 . . . du L 
+
+The slice sampler to sample from p(cid:9)(x, u1, . . . , u L) proceeds as shown in gure 16. Al-
+gorithmic improvements and convergence results are presented in Mira (1999) and Neal
+(2000).
+
+3.7. Reversible jump MCMC
+
+In this section, we attack the more complex problem of model selection. Typical exam-
+ples include estimating the number of neurons in a neural network (Andrieu, de Freitas,
+& Doucet, 2001a; Holmes & Mallick, 1998; Rios Insua & Muller, 1998), the number of
+splines in a multivariate adaptive splines regression (MARS) model (Holmes & Denison,
+this issue), the number of sinusoids in a noisy signal (Andrieu & Doucet, 1999), the number
+of lags in an autoregressive process (Troughton & Godsill, 1998), the number of com-
+ponents in a mixture (Richardson & Green, 1997), the number of levels in a change-
+point process (Green, 1995), the number of components in a mixture of factor analy-
+sers (Fokoue & Titterington, this issue), the appropriate structure of a graphical model
+(Friedman & Koller, 2001; Giudici & Castelo, this issue) or the best set of input variables
+(Lee, this issue).
+Given a family of M models{Mm; m = 1, . . . , N}, we will focus on constructing ergodic
+Markov chains admitting p(m, xm) as the invariant distribution. For simplicity, we avoid
+the treatment of nonparametric model averaging techniques; see for example (Escobar &
+West, 1995; Green & Richardson, 2000).
+
+Up to this section, we have been comparing densities in the acceptance ratio. However,
+if we are carrying out model selection, then comparing the densities of objects in different
+dimensions has no meaning. It is like trying to compare spheres with circles. Instead, we
+have to be more formal and compare distributions P(dx) = Pr(x  dx) under a common
+measure of volume. The distribution P(dx) will be assumed to admit a density p(x) with
+respect to a measure of interest, e.g. Lebesgue in the continuous case: P( dx) = p(x) dx.
+The acceptance ratio will now include the ratio of the densities and the ratio of the measures
+(Radon Nikodym derivative). The latter gives rise to a Jacobian term. To compare densities
+point-wise, we need, therefore, to map the two models to a common dimension as illustrated
+in gure 17.
+
+28
+
+C. ANDRIEU ET AL.
+
+Bivariate density
+
+x
+
+2
+
+p(x  ,x   )
+2
+
+1
+
+Univariate density
+
+Uniformly expanded density
+
+p(x )
+1
+
+*
+p(x  ,x  )
+
+1
+
+*
+
+x
+
+1x
+
+Compare both
+densities
+point-wise
+
+x
+
+1
+
+*
+Proposex
+uniformly
+
+x
+
+1
+
+Figure 17. To compare a 1D model against a 2D model, we rst have to map the rst model so that both models
+have common measure (area in this case).
+
+The parameters xm  Xm (e.g. Xm = Rnm ) are model dependent. Hence, to nd the right
+(cid:26)
+model and parameters we could sample over the model indicator and the product space
+Xm (Carlin & Chib, 1995). Recently, Green introduced a strategy that avoids this
+M
+m=1
+expensive search over the full product space (Green, 1995). In particular one samples on a
+{m}  Xm. The full target distribution dened in this
+much smaller union space X (cid:1)
+space is given by
+
+(cid:27)
+
+M
+m=1
+
+p(k, dx) = M(cid:4)
+
+m=1
+
+p(m, dxm)I{m}Xm (k, x).
+
+That is, the probability of k being equal to m and x belonging to an innitesimal set centred
+around xm is p(m, dxm). By marginalisation, we obtain the probability of being in subspace
+Xm.
+Greens method allows the sampler to jump between the different subspaces. To ensure
+a common measure, it requires the extension of each pair of communicating spaces, Xm
+and Xn, to Xm,n (cid:1) Xm  Um,n and Xn,m (cid:1) Xn  Un,m. It also requires the denition of a
+deterministic, differentiable, invertible dimension matching function fnm between Xm,n
+and Xn,m,
+
+(xm , um,n) = fnm(xn, un,m) =(cid:7)
+
+f x
+nm(xn, un,m), f u
+
+nm(xn, un,m)
+
+.
+
+(cid:8)
+
+INTRODUCTION
+
+29
+
+We dene fmn such that fmn( fnm(xn, un,m)) = (xn, un,m). The choice of the extended
+spaces, deterministic transformation fmn and proposal distributions for qnm(| n, xn) and
+qmn(| m, xm) is problem dependent and needs to be addressed on a case by case basis.
+If the current state of the chain is (n, xn), we move to (m, xm) by generating un,m 
+qnm(| n, xn), ensuring that we have reversibility (xm , um,n) = fnm(xn, un,m), and ac-
+cepting the move according to the probability ratio
+
+Anm = min
+
+1,
+
+p(m, x (cid:9)
+m)
+p(n, xn)
+
+ qmn(um,n | m, x (cid:9)
+m)
+qnm(un,m | n, xn)
+
+ J fnm
+
+where x (cid:9)
+m
+only continuous variables are involved in the transformation)
+
+nm(xn, un,m) and J fnm is the Jacobian of the transformation fnm (when
+
+= f x
+
+(cid:20)
+
+,
+
+J fmn
+
+=
+
+ fnm(xm , um,n)
+
+(xm , um,n)
+
+(cid:19)
+
+(cid:12)(cid:12)(cid:12)(cid:12)det
+
+ q(n | m)
+q(m | n)
+(cid:12)(cid:12)(cid:12)(cid:12).
+
+To illustrate this, assume that we are concerned with sampling the locations  and number
+k of components of a mixture. For example we might want to estimate the locations and
+number of basis functions in kernel regression and classication, the number of mixture
+components in a nite mixture model, or the location and number of segments in a segmen-
+tation problem. Here, we could dene a merge move that combines two nearby components
+and a split move that breaks a component into two nearby ones. The merge move involves
+randomly selecting a component (1) and then combining it with its closest neighbour (2)
+into a single component , whose new location is
+
+ = 1 + 2
+
+2
+
+The corresponding split move that guarantees reversibility, involves splitting a randomly
+chosen component as follows
+
+1 =   un,m 
+2 =  + un,m 
+
+where  is a simulation parameter and, for example, un,m  U[0,1]. Note that to ensure
+reversibility, we only perform the merge move if (cid:22)1  2(cid:22) < 2. The acceptance ratio
+for the split move is
+
+(cid:24)
+Asplit = min
+
+p(k + 1, k+1)
+
+p(k, k)
+
+1,
+
+
+
+ 1
+k+1
+1
+k
+
+1
+
+p(un,m)
+
+ Jsplit
+
+(cid:25)
+
+,
+
+where 1/k denotes the probability of choosing, uniformly at random, one of the k compo-
+nents. The Jacobian is
+
+(cid:12)(cid:12)(cid:12)(cid:12) (1, 2)
+
+(, un,m)
+
+(cid:12)(cid:12)(cid:12)(cid:12) =
+
+(cid:12)(cid:12)(cid:12)(cid:12) 1
+
+1
+ 
+
+(cid:12)(cid:12)(cid:12)(cid:12) = 2.
+
+Jsplit =
+
+30
+
+C. ANDRIEU ET AL.
+
+Figure 18. Generic reversible jump MCMC.
+
+Similarly, for the merge move, we have
+p(k  1, k1)
+
+(cid:24)
+Amerge = min
+
+1,
+
+p(k, k)
+
+(cid:25)
+
+,
+
+ 1
+k1
+1
+k
+
+ Jmerge
+
+where Jmerge = 1/2.
+Reversible jump is a mixture of MCMC kernels (moves). In addition, to the split and
+merge moves, we could have other moves such as birth of a component, death of a component
+and a simple update of the locations. The various moves are carried out according to the
+mixture probabilities (bk , dk , mk , sk , uk), as shown in gure 18. In fact, it is the exibility
+of including so many possible moves that can make reversible jump a more powerful
+model selection strategy than schemes based on model selection using a mixture indicator
+or diffusion processes using only birth and death moves (Stephens, 1997). However, the
+problem with reversible jump MCMC is that engineering reversible moves is a very tricky,
+time-consuming task.
+
+4. The MCMC frontiers
+
+4.1. Convergence and perfect sampling
+
+Determining the length of the Markov chain is a difcult task. In practice, one often dis-
+cards an initial set of samples (burn-in) to avoid starting biases. In addition, one can ap-
+ply several graphical and statistical tests to assess, roughly, if the chain has stabilised
+(Robert & Casella, 1999, ch. 8). In general, none of these tests provide entirely satisfactory
+diagnostics.
+
+Several theoreticians have tried to bound the mixing time; that is, the minimum number
+of steps required for the distribution of the Markov chain K to be close to the target p(x).
+(Here, we present a, by no means exhaustive, summary of some of the available results.) If
+
+INTRODUCTION
+
+31
+
+we measure closeness with the total variation norm x (t), where
+K (t)(y | x)  p(y)
+
+x (t) =(cid:28)(cid:28)K (t)( | x)  p()
+
+(cid:28)(cid:28) = 1
+
+(cid:8)
+
+dy,
+
+(cid:3) (cid:7)
+
+2
+
+then the mixing time is
+
+x () = min{t : x (t
+
+(cid:5)
+
+)   for all t
+
+(cid:5)  t}.
+
+K (K f (x) =(cid:11)
+
+If the state space X is nite and reversibility holds true, then the transition operator
+
+K (y | x) f (y)) is self adjoint on L2( p). That is,
+
+(cid:23)K f | g(cid:24) = (cid:23) f | K g(cid:24),
+
+(cid:23) f | g(cid:24) =(cid:11)
+
+where f and g are real functions and we have used the bra-ket notation for the inner product
+
+f (x)g(x) p(x). This implies that K has real eigenvalues
+
+1 = 1 > 2  3    |X| > 1
+
+and an orthonormal basis of real eigenfunctions fi , such that K fi = i fi . This spectral
+decomposition and the Cauchy-Schwartz inequality allow us to obtain a bound on the total
+variation norm
+x (t) 
+
+t
+(cid:9),
+
+
+
+1
+p(x)
+
+2
+
+where (cid:9) = max(2,||X||) (Diaconis & Saloff-Coste, 1998; Jerrum & Sinclair, 1996). This
+classical result give us a geometric convergence rate in terms of eigenvalues. Geometric
+bounds have also been obtained in general state spaces using the tools of regeneration and
+Lyapunov-Foster conditions (Meyn & Tweedie, 1993).
+
+The next logical step is to bound the second eigenvalue. There are several inequalities
+(Cheeger, Poincare, Nash) from differential geometry that allows us to obtain these bounds
+(Diaconis & Saloff-Coste, 1998). For example, one could use Cheegers inequality to obtain
+the following bound
+
+1  2  2  1  2
+2
+(cid:11)
+
+,
+
+where  is the conductance of the Markov chain
+xS,ySc p(x)K (y | x)
+
+ =
+
+min
+
+0< p(S)<1/2;SX
+
+p(S)
+
+Intuitively, one can interpret this quantity as the readiness of the chain to escape from any
+small region S of the state space and, hence, make rapid progress towards equilibrium
+(Jerrum & Sinclair, 1996).
+
+32
+
+C. ANDRIEU ET AL.
+
+These mathematical tools have been applied to show that simple MCMC algorithms
+(mostly Metropolis) run in time that is polynomial in the dimension d of the state space,
+thereby escaping the exponential curse of dimensionality. Polynomial time sampling algo-
+rithms have been obtained in the following important scenarios:
+
+1. Computing the volume of a convex body in d dimensions, where d is large (Dyer, Frieze,
+
+& Kannan, 1991).
+
+2. Sampling from log-concave distributions (Applegate & Kannan, 1991).
+3. Sampling from truncated multivariate Gaussians (Kannan & Li, 1996).
+4. Computing the permanent of a matrix (Jerrum, Sinclair, & Vigoda, 2000).
+
+The last problem is equivalent to sampling matchings from a bipartite graph; a problem
+that manifests itself in many ways in machine learning (e.g., stereo matching and data
+association).
+
+Although the theoretical results are still far from the practice of MCMC, they will even-
+tually provide better guidelines on how to design and choose algorithms. Already, some
+results tell us, for example, that it is not wise to use the independent Metropolis sampler in
+high dimensions (Mengersen & Tweedie, 1996).
+
+A remarkable recent breakthrough was the development of algorithms for perfect sam-
+pling. These algorithms are guaranteed to give us an independent sample from p(x) under
+certain restrictions. The two major players are coupling from the past (Propp & Wilson,
+1998) and Fills algorithm (Fill, 1998). From a practical point of view, these algorithms are
+still limited and, in many cases, computationally inefcient. However, some steps are being
+taken towards obtaining more general perfect samplers; for example perfect slice samplers
+(Casella et al., 1999).
+
+4.2. Adaptive MCMC
+
+If we look at the chain on the top right of gure 7, we notice that the chain stays at each state
+for a long time. This tells us that we should reduce the variance of the proposal distribution.
+Ideally, one would like to automate this process of choosing the proposal distribution as much
+as possible. That is, one should use the information in the samples to update the parameters of
+the proposal distribution so as to obtain a distribution that is either closer to the target distri-
+bution, that ensures a suitable acceptance rate, or that minimises the variance of the estimator
+of interest. However, one should not allow adaptation to take place innitely often in a naive
+way because this can disturb the stationary distribution. This problem arises because by using
+the past information innitely often, we violate the Markov property of the transition kernel.
+That is, p(x (i) | x (0), x (1), . . . , x (i1)) no longer simplies to p(x (i) | x (i1)). In particular,
+Gelfand and Sahu (1994) present a pathological example, where the stationary distribution is
+disturbed despite the fact that each participating kernel has the same stationary distribution.
+To avoid this problem, one could carry out adaptation only during an initial xed number
+of steps, and then use standard MCMC simulation to ensure convergence to the right distribu-
+tion. Two methods for doing this are presented in Gelfand and Sahu (1994). The rst is based
+on the idea of running several chains in parallel and using sampling-importance resampling
+
+INTRODUCTION
+
+33
+
+(Rubin, 1988) to multiply the kernels that are doing well and suppress the others. In this
+approach, one uses an approximation to the marginal density of the chain as proposal. The
+second method simply involves monitoring the transition kernel and changing one of its com-
+ponents (for example the proposal distribution) so as to improve mixing. A similar method
+that guarantees a particular acceptance rate is discussed in Browne and Draper (2000).
+
+There are, however, a few adaptive MCMC methods that allow one to perform adaptation
+continuously without disturbing the Markov property, including delayed rejection (Tierney
+& Mira, 1999), parallel chains (Gilks & Roberts, 1996) and regeneration (Gilks, Roberts, &
+Sahu, 1998; Mykland, Tierney, & Yu, 1995). These methods are, unfortunately, inefcient
+in many ways and much more research is required in this exciting area.
+
+4.3.
+
+Sequential Monte Carlo and particle lters
+
+Sequential Monte Carlo (SMC) methods allow us to carry out on-line approximation of
+probability distributions using samples (particles). They are very useful in scenarios involv-
+ing real-time signal processing, where data arrival is inherently sequential. Furthermore,
+one might wish to adopt a sequential processing strategy to deal with non-stationarity in
+signals, so that information from the recent past is given greater weighting than information
+from the distant past. Computational simplicity in the form of not having to store all the
+data might also constitute an additional motivating factor for these methods.
+
+In the SMC setting, we assume that we have an initial distribution, a dynamic model and
+
+measurement model
+
+p(x0)
+p(xt | x0:t1, y1:t1)
+p(yt | x0:t , y1:t1)
+
+for t  1
+for t  1
+
+We denote by x0:t (cid:1){x0, . . . , xt} and y1:t (cid:1) {y1, . . . , yt}, respectively, the states and the ob-
+servations up to time t. Note that we could assume Markov transitions and conditional inde-
+pendence to simplify the model; p(xt | x0:t1, y1:t1) = p(xt | xt1) and p(yt | x0:t , y1:t1) =
+p(yt | xt ). However, this assumption is not necessary in the SMC framework.
+Our aim is to estimate recursively in time the posterior p(x0:t | y1:t ) and its associated
+features including the marginal distribution p(xt | y1:t ), known as the ltering distribution,
+and the expectations
+
+I ( ft ) = E p(x0:t|y1:t ) [ ft (x0:t )]
+
+A generic SMC algorithm is depicted in gure 19. Given N particles {x (i)
+}N
+0:t1
+i=1 at
+time t  1, approximately distributed according to the distribution p(x0:t1 | y1:t1), SMC
+methods allow us to compute N particles {x (i)
+}N
+i=1 approximately distributed according to
+the posterior p(x0:t|y1:t ), at time t. Since we cannot sample from the posterior directly,
+the SMC update is accomplished by introducing an appropriate importance proposal dis-
+tribution q(x0:t ) from which we can obtain samples. The samples are then appropriately
+weighted.
+
+0:t
+
+34
+
+C. ANDRIEU ET AL.
+
+In this example, the bootstrap lter starts at time t  1 with an unweighted measure {x(i)
+t1
+
+1},
+Figure 19.
+which provides an approximation of p(xt1 | y1:t2). For each particle we compute the importance weights using
+the information at time t  1. This results in the weighted measure {x(i)
+}, which yields an approximation
+t1
+p(xt1 | y1:t1). Subsequently, the resampling step selects only the ttest particles to obtain the unweighted
+measure {x(i)
+1}, which is still an approximation of p(xt1 | y1:t1). Finally, the sampling (prediction) step
+t1
+introduces variety, resulting in the measure {x(i)
+
+, w(i)
+t1
+
+, N
+
+, N
+
+1}, which is an approximation of p(xt | y1:t1).
+
+t , N
+
+Figure 20. Simple SMC algorithm at time t. For ltering purposes, there is no need for storing or resampling
+the past trajectories.
+
+INTRODUCTION
+
+new paths { x (i)
+
+0:t
+
+In generic SMC simulation, one needs to extend the current paths {x (i)
+0:t1
+
+(cid:3)
+
+}N
+i=1 using the proposal distribution q( x0:t|y1:t ) given by
+q( x0:t | x0:t1, y1:t ) p(x0:t1 | y1:t1) dx0:t1.
+
+q( x0:t | y1:t )} =
+
+35
+
+}N
+i=1 to obtain
+
+To make this integral tractable, we only propose to modify the particles at time t, and leave
+the past trajectories intact. Consequently
+
+q( x0:t | y1:t ) = p(x0:t1 | y1:t1)q( xt | x0:t1, y1:t )
+
+The samples from q(), must be weighted by the importance weights
+
+= p(x0:t1 | y1:t )
+wt = p( x0:t | y1:t )
+p(x0:t1 | y1:t1)
+q( x0:t | y1:t )
+ p (yt | xt ) p ( xt | x0:t1, y1:t1)
+
+.
+
+qt ( xt | x0:t1, y1:t )
+
+p( xt | x0:t1, y1:t )
+q( xt | x0:t1, y1:t )
+
+(22)
+
+From Eq. (22), we note that the optimal importance distribution is
+
+q( xt | x0:t1, y1:t ) = p( xt | x0:t1, y1:t ).
+
+(When using this proposal, one might still encounter difculties if the ratio of the rst two
+terms of Eq. (22) differs signicantly from 1 (Andrieu, Doucet, & Punskaya, 2001; Pitt &
+Shephard, 1999).) The optimal importance distribution can be difcult to evaluate. One can
+adopt, instead, the transition prior as proposal distribution
+
+q( xt | x0:t1, y1:t ) = p ( xt | x0:t1, y1:t1)
+
+in which case the importance weights are given by the likelihood function
+
+wt  p (yt | xt ) .
+
+This simplied version of SMC has appeared under many names, including condensation
+(Isard & Blake, 1996), survival of the ttest (Kanazawa, Koller, & Russell, 1995) and the
+bootstrap lter (Gordon, Salmond, & Smith, 1993). The importance sampling framework
+allows us to design more principled and clever proposal distributions. For instance, one can
+adopt suboptimal lters and other approximation methods that make use of the information
+available at time t to generate the proposal distribution (Doucet, Godsill, & Andrieu, 2000; de
+Freitas et al., 2000; Pitt & Shephard, 1999; van der Merwe et al., 2000). In fact, in some
+restricted situations, one may interpret the likelihood as a distribution in terms of the states
+and sample from it directly. In doing so, the importance weights become equal to the
+(cid:11)
+transition prior (Fox et al., 2001).
+After the importance sampling step, a selection scheme associates to each particle x (i)
+a number of children, say Ni  N, such that
+i=1 Ni = N . This selection step is what
+0:t
+
+N
+
+36
+
+C. ANDRIEU ET AL.
+
+allows us to track moving target distributions efciently by choosing the ttest particles.
+There are various selection schemes in the literature, but their performance varies in terms
+of var[Ni ] (Doucet, de Freitas, & Gordon, 2001).
+
+An important feature of the selection routine is that its interface only depends on particle
+indices and weights. That is, it can be treated as a black-box routine that does not require
+any knowledge of what a particle represents (e.g., variables, parameters, models). This
+enables one to implement variable and model selection schemes straightforwardly. The
+simplicity of the coding of complex models is, indeed, one of the major advantages of these
+algorithms.
+It is also possible to introduce MCMC steps of invariant distribution p(x0:t | y1:t ) on each
+particle (Andrieu, de Freitas, & Doucet, 1999; Gilks & Berzuini, 1998; MacEachern, Clyde,
+& Liu, 1999). The basic idea is that if the particles are distributed according to the poste-
+rior distribution p(x0:t | y1:t ), then applying a Markov chain transition kernel K (x (cid:9)
+| x0:t ),
+with invariant distribution p(| y1:t ) such that
+| y1:t ), still
+results in a set of particles distributed according to the posterior of interest. However, the
+new particles might have been moved to more interesting areas of the state-space. In fact,
+by applying a Markov transition kernel, the total variation of the current distribution with
+respect to the invariant distribution can only decrease. Note that we can incorporate any
+of the standard MCMC methods, such as the Gibbs sampler, MH algorithm and reversible
+jump MCMC, into the ltering framework, but we no longer require the kernel to be
+ergodic.
+
+| x0:t ) p(x0:t | y1:t )= p(x (cid:9)
+
+K (x (cid:9)
+0:t
+
+(cid:2)
+
+0:t
+
+0:t
+
+4.4. The machine learning frontier
+
+The machine learning frontier is characterised by large dimensional models, massive datasets
+and many and varied applications. Massive datasets pose no problem in the SMC context.
+However, in batch MCMC simulation it is often not possible to load the entire dataset
+into memory. A few solutions based on importance sampling have been proposed recently
+(Ridgeway, 1999), but there is still great room for innovation in this area.
+
+Despite the auspicious polynomial bounds on the mixing time, it is an arduous task
+to design efcient samplers in high dimensions. The combination of sampling algorithms
+with either gradient optimisation or exact methods has proved to be very useful. Gradient
+optimisation is inherent to Langevin algorithms and hybrid Monte Carlo. These algorithms
+have been shown to work with large dimensional models such as neural networks (Neal,
+1996) and Gaussian processes (Barber & Williams, 1997). Information about derivatives of
+the target distribution also forms an integral part of many adaptive schemes, as discussed
+in Section 2.3. Recently, it has been argued that the combination of MCMC and variational
+optimisation techniques can also lead to more efcient sampling (de Freitas et al., 2001).
+The combination of exact inference with sampling methods within the framework of Rao-
+Blackwellisation (Casella & Robert, 1996) can also result in great improvements. Suppose
+we can divide the hidden variables x into two groups, u and v, such that p(x) = p(v | u) p(u)
+and, conditional on u, the conditional posterior distribution p(v | u) is analytically tractable.
+Then we can easily marginalise out v from the posterior, and only need to focus on sampling
+from p(u), which lies in a space of reduced dimension. That is, we sample u(i)  p(u) and
+
+INTRODUCTION
+
+37
+
+then use exact inference to compute
+
+p(v) = 1
+N
+
+v
+
+p
+
+i=1
+
+N(cid:4)
+
+(cid:7)
+
+(cid:8)
+
+(cid:12)(cid:12) u(i)
+
+By identifying troublesome variables and sampling them, the rest of the problem can
+often be solved easily using exact algorithms such as Kalman lters, HMMs or junction
+trees. For example, one can apply this technique to sample variables that eliminate loops in
+graphical models and then compute the remaining variables with efcient analytical algo-
+rithms (Jensen, Kong, & Kjrulff, 1995; Wilkinson & Yeung, 2002). Other application areas
+include dynamic Bayesian networks (Doucet et al., 2000), conditionally Gaussian models
+(Carter & Kohn, 1994; De Jong & Shephard, 1995; Doucet, 1998) and model averaging
+for graphical models (Friedman & Koller, this issue). The problem of how to automatically
+identify which variables should be sampled, and which can be handled analytically is still
+open. An interesting development is the augmentation of high dimensional models with
+low dimensional articial variables. By sampling only the articial variables, the original
+model decouples into simpler, more tractable submodels (Albert & Chib, 1993; Andrieu, de
+Freitas, & Doucet, 2001b; Wood & Kohn, 1998); see also Holmes and Denison (this issue).
+This strategy allows one to map probabilistic classication problems to simpler regression
+problems.
+
+The design of efcient sampling methods most of the times hinges on awareness of
+the basic building blocks of MCMC (mixtures of kernels, augmentation strategies and
+blocking) and on careful design of the proposal mechanisms. The latter requires domain
+specic knowledge and heuristics. There are great opportunities for combining existing
+sub-optimal algorithms with MCMC in many machine learning problems. Some areas that
+are already beneting from sampling methods include:
+
+1. Computer vision. Tracking (Isard & Blake, 1996; Ormoneit, Lemieux, & Fleet, 2001),
+stereo matching (Dellaert et al., this issue), colour constancy (Forsyth, 1999), restoration
+of old movies (Morris, Fitzgerald, & Kokaram, 1996) and segmentation (Clark & Quinn,
+1999; Kam, 2000; Tu & Zhu, 2001).
+
+2. Web statistics. Estimating coverage of search engines, proportions belonging to specic
+
+domains and the average size of web pages (Bar-Yossef et al., 2000).
+
+3. Speech and audio processing. Signal enhancement (Godsill & Rayner, 1998; Vermaak
+
+et al., 1999).
+
+4. Probabilistic graphical models. For example (Gilks, Thomas, & Spiegelhalter, 1994;
+
+Wilkinson & Yeung, 2002) and several papers in this issue.
+
+5. Regression and classication. Neural networks and kernel machines (Andrieu, de
+Freitas, & Doucet, 2001a; Holmes & Mallick, 1998; Neal, 1996; Muller & Rios
+Insua, 1998), Gaussian processes (Barber & Williams, 1997), CART (Denison, Mallick,
+& Smith, 1998) and MARS (Holmes & Denison, this issue).
+
+6. Computer graphics. Light transport (Veach & Guibas, 1997) and sampling plausible
+
+solutions to multi-body constraint problems (Chenney & Forsyth, 2000).
+
+38
+
+C. ANDRIEU ET AL.
+
+7. Data association. Vehicle matching in highway systems (Pasula et al., 1999) and mul-
+
+titarget tracking (Bergman, 1999).
+
+8. Decision theory. Partially observable Markov decision Processes (POMDPs) (Thrun,
+2000; Salmond & Gordon, 2001), abstract Markov policies (Bui, Venkatesh, & West,
+1999) and inuence diagrams (Bielza, Muller, & Rios Insua, 1999).
+
+9. First order probabilistic logic. (Pasula & Russell, 2001).
+10. Genetics and molecular biology. DNA microarray data (West et al., 2001), cancer gene
+mapping (Newton & Lee, 2000), protein alignment (Neuwald et al., 1997) and linkage
+analysis (Jensen, Kong, & Kjrulff, 1995).
+
+11. Robotics. Robot localisation and map building (Fox et al., 2001).
+12. Classical mixture models. Mixtures of independent factor analysers (Utsugi, 2001) and
+
+mixtures of factor analysers (Fokoue & Titterington, this issue).
+
+We hope that this review will be a useful resource to people wishing to carry out further
+research at the interface between MCMC and machine learning. For conciseness, we have
+skipped many interesting ideas, including tempering and coupling. For more details, we

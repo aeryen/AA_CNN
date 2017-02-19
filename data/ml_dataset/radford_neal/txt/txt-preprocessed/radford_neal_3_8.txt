@@ -1,0 +1,1883 @@
+Abstract
+
+We propose a new scheme for selecting pool states for the embedded Hidden Markov
+Model (HMM) Markov Chain Monte Carlo (MCMC) method. This new scheme allows the
+embedded HMM method to be used for ecient sampling in state space models where the
+state can be high-dimensional. Previously, embedded HMM methods were only applied to
+models with a one-dimensional state space. We demonstrate that using our proposed pool
+state selection scheme, an embedded HMM sampler can have similar performance to a well-
+tuned sampler that uses a combination of Particle Gibbs with Backward Sampling (PGBS)
+and Metropolis updates. The scaling to higher dimensions is made possible by selecting
+pool states locally near the current value of the state sequence. The proposed pool state
+selection scheme also allows each iteration of the embedded HMM sampler to take time
+linear in the number of the pool states, as opposed to quadratic as in the original embedded
+HMM sampler. We also consider a model with a multimodal posterior, and show how a
+technique we term mirroring can be used to eciently move between the modes.
+
+1
+
+Introduction
+
+Consider a non-linear, non-Gaussian state space model for an observed sequence y = (y1, . . . , yn).
+This model, with parameters , assumes that the Yi are drawn from an observation density
+p(yi|xi, ), where Xi is an unobserved Markov process with initial density p(x1|) and transition
+density p(xi|xi1, ). Here, the xi might be either continuous or discrete. We may be interested in
+inferring both the realized values of the Markov process x = (x1, . . . , xn) and the model parameters
+. In a Bayesian approach to this problem, this can be done by drawing a sample of values for x
+and  using a Markov chain that alternately samples from the conditional posterior distributions
+p(x|, y) and p(|x, y).
+In this paper, we will only consider inference for x by sampling from
+
+1
+
+p(x|, y), taking the parameters  to be known. As a result, we will omit  in model densities for
+the rest of the paper. Except for linear Gaussian models and models with a nite state space, this
+sampling problem has no exact solution and hence approximate methods such as MCMC must
+be used.
+
+One method for sampling state sequences in non-linear, non-Gaussian state space models is
+the embedded HMM method (Neal, 2003; Neal, Beal and Roweis, 2004). An embedded HMM
+update proceeds as follows. First, at each time i, a set of L pool states in the latent space
+is constructed. In this set, L  1 of the pool states are drawn from a chosen pool state density
+and one is the current value of xi. This step can be thought of as temporarily reducing the state
+space model to an HMM with a nite set of L states, hence the name of the method. Then, using
+ecient forward-backward computations, which take time proportional to L2n, a new sequence
+x(cid:48) is selected from the ensemble of Ln sequences passing through the set of pool states, with
+the probability of choosing each sequence proportional to its posterior density divided by the
+probability of the sequence under the pool state density. At the next iteration of the sampler, a
+new set of pool states is constructed, so that the chain can sample all possible xi, even when the
+set of possible values is innite.
+
+Another method is the Particle Gibbs with Backward Sampling (PGBS) method. The Particle
+Gibbs (PG) method was rst introduced in Andrieu, Doucet and Holenstein (2010); Whiteley
+suggested the backward sampling modication in the discussion following this paper. Lindsten
+and Schon (2012) implemented backward sampling and showed that it improves the eciency
+of PG. Starting with a current sequence x, PGBS rst uses conditional Sequential Monte Carlo
+(SMC) to construct a set of candidate sequences and then uses backward sampling to select a
+new sequence from the set of candidate ones. Here, conditional SMC works in the same way as
+ordinary SMC when generating a set of particles, except that one of the particles at time i is
+always set to the current xi, similar to what is done in the embedded HMM method, which allows
+the sampler to remain at xi if xi lies in a high-density region. While this method works well
+for problems with low-dimensional state spaces, the reliance of the SMC procedure on choosing
+an appropriate importance density can make it challenging to make the method work in high
+dimensions. An important advantage of Particle Gibbs, however, is that each iteration takes time
+that is only linear in the number of particles.
+
+Both the PGBS and embedded HMM methods can facilitate sampling of a latent state se-
+quence, x, when there are strong temporal dependencies amongst the xi. In this case, using a
+method that samples xi conditional on xed values of xi1 and xi+1 can be an inecient way of
+producing a sample from p(x|y, ), because the conditional density of xi given xi1 and xi+1 can be
+highly concentrated relative to the marginal density of xi. In contrast, with the embedded HMM
+and PGBS methods it is possible to make changes to blocks of xis at once. This allows larger
+changes to the state in each iteration of the sampler, making updates more ecient. However,
+good performance of the embedded HMM and PGBS methods relies on appropriately choosing
+the set of pool states or particles at each time i.
+
+In this paper, our focus will be on techniques for choosing pool states for the embedded
+HMM method. When the latent state space is one-dimensional, embedded HMMs work well
+when choosing pool states in a variety of ways. For example, in Shestopalo and Neal (2013), we
+
+2
+
+choose pool states at each time i by constructing a pseudo-posterior for each latent variable
+by taking the product of a pseudo-prior and the observation density, the latter treated as a
+pseudo-likelihood for the latent variable. In Shestopalo and Neal (2014), we choose pool states
+at each time i by sampling from the marginal prior density of the latent process.
+
+Ways of choosing pool states that work well in one dimension begin to exhibit problems when
+applied to models with higher-dimensional state spaces. This is true even for dimensions as
+small as three. Since these schemes are global, designed to produce sets of pool states without
+reference to the current point, as the dimension of the latent space grows, a higher proportion of
+the sequences in the ensemble ends up having low posterior density. Ensuring that performance
+doesnt degrade in higher dimensions thus requires a signicant increase in the number of pool
+states. As a result, computation time may grow so large that any advantage that comes from
+using embedded HMMs is eliminated. One advantage of the embedded HMM method over PGBS
+is that the embedded HMM construction allows placing pool states locally near the current value
+of xi, potentially allowing the method to scale better with the dimensionality of the state space.
+Switching to such a local scheme xes the problem to some extent. However, local pool state
+schemes come with their own problems, such as making it dicult to handle models with multiple
+posterior modes that are well-separated  the pool states might end up being placed near only
+some of the modes.
+
+In this paper, we propose an embedded HMM sampler suitable for models where the state space
+is high dimensional. This sampler uses a sequential approximation to the density p(xi|y1, . . . yi)
+or to the density p(xi|yi+1, . . . , yn) as the pool state density. We show that by using this pool
+state density, together with an ecient MCMC scheme for sampling from it, we can reduce the
+cost per iteration of the embedded HMM sampler to be proportional to nL, as with PGBS. At
+the same time, we retain the ability to generate pool states locally, allowing better scaling for
+high-dimensional state spaces. Our proposed scheme can thus be thought of as combining the best
+features of the PGBS and the embedded HMM methods, while overcoming the deciencies of both.
+We use two sample state space models as examples. Both have Gaussian latent processes and
+Poisson observations, with one model having a unimodal posterior and the second a multimodal
+one. For the multimodal example, we introduce a mirroring technique that allows ecient
+movement between the dierent posterior modes. For these models, we show how our proposed
+embedded HMM method compares to a simple Metropolis sampler, a PGBS sampler, as well
+as a sampler that combines PGBS and simple Metropolis updates. Further details on ensemble
+methods are available in the PhD thesis of Shestopalo (2016).
+
+2 Embedded HMM MCMC
+
+We review the embedded HMM method (Neal, 2003; Neal, Beal and Roweis, 2004) here. We take
+the model parameters, , to be xed, so we do not write them explicitly. Let p(x) be the density
+from which the state at time 1 is drawn, let p(xi|xi1) be the transition density between states
+at times i and i  1, and let p(yi|xi) be the density of the observation yi given xi.
+
+Suppose our current sequence is x = (x1, . . . , xn). The embedded HMM sampler updates x to
+
+3
+
+x(cid:48) as follows.
+
+i
+
+First, at each time i = 1, . . . , n, we generate a set of L pool states, denoted by Pi =
+{x[1]
+i }. The pool states are sampled independently across the dierent times i. We
+, . . . , x[L]
+choose li  {1, . . . , L} uniformly at random and set x[li]
+to xi. We sample the remaining L  1
+pool states x[1]
+n using a Markov chain that leaves a pool density i invari-
+ant, as follows. Let Ri(x(cid:48)|x) be the transitions of this Markov chain with Ri(x|x(cid:48)) the transitions
+i
+for this Markov chain reversed (i.e. Ri(x|x(cid:48)) = Ri(x(cid:48)|x)i(x)/i(x)), so that
+
+, . . . , x[li1]
+
+, . . . , x[L]
+
+, x[li+1]
+
+i
+
+i
+
+i
+
+i(x)Ri(x(cid:48)|x) = i(x(cid:48)) Ri(x|x(cid:48))
+
+(1)
+
+for all x and x(cid:48). Then, starting at j = li  1, use reverse transitions Ri(x[j]
+ate x[li1]
+i
+, . . . , x[L]
+x[li+1]
+n .
+i
+
+i and starting at j = li + 1 use forward transitions Ri(x[j]
+
+, . . . , x[1]
+
+i |x[j+1]
+i |x[j1]
+
+i
+
+i
+
+) to gener-
+) to generate
+
+At each i = 1, . . . , n, we then compute the forward probabilities i(x), with x taking values
+
+in Pi. At time i = 1, we have
+
+1(x) =
+
+p(x)p(y1|x)
+
+1(x)
+
+and at times i = 2, . . . , n, we have
+
+i(x) =
+
+L(cid:88)
+
+l=1
+
+p(yi|x)
+i(x)
+
+p(x|x[l]
+
+i1)i1(x[l]
+
+i1)
+
+(2)
+
+(3)
+
+Finally, we sample a new state sequence x(cid:48) using a stochastic backwards pass. This is done
+n amongst the set, Pn, of pool states at time n, with probabilities proportional to
+i1 from the set Pi1, with probabilities proportional
+i|x). Note that only the relative values of the i(x) will be required, so the i may
+
+by selecting x(cid:48)
+n(x), and then going backwards, sampling x(cid:48)
+to i1(x)p(x(cid:48)
+be computed up to some constant factor.
+
+Alternatively, given a set of pool states, embedded HMM updates can be done by rst comput-
+ing the backward probabilities. We will see later on that the backward probability formulation
+of the embedded HMM method allows us to introduce a variation of our proposed pool state
+selection scheme. Setting n(x) = 1 for all x  Pn, we compute for i < n
+
+L(cid:88)
+
+1
+
+i(x)
+
+l=1
+
+i(x) =
+
+p(yi+1|x[l]
+
+i+1)p(x[l]
+
+i+1|x)i+1(x[l]
+i+1)
+
+(4)
+
+1 to one of the
+x in the pool P1 with probabilities proportional to 1(x)p(x)p(y1|x) and then choosing subsequent
+states x(cid:48)
+
+A new state sequence is then sampled using a stochastic forward pass, setting x(cid:48)
+i1)p(yi|x).
+
+i from the pools Pi with probabilities proportional to i(x)p(x|x(cid:48)
+
+Computing the i or i at each time i > 1 takes time proportional to L2, since for each of
+the L pool states it takes time proportional to L to compute the sums in (3) or (4). Hence each
+iteration of the embedded HMM sampler takes time proportional to L2n.
+
+4
+
+3 Particle Gibbs with Backward Sampling MCMC
+
+We review the Particle Gibbs with Backward Sampling (PGBS) sampler here. For full details,
+see the articles by Andrieu, Doucet and Holenstein (2010) and Lindsten and Schon (2012).
+
+Let q1(x|y1) be the importance density from which we sample particles at time 1, and let
+qi(x|yi, xi1) be the importance density for sampling particles at times i > 1. These may depend
+on the current value of the parameters, , which we suppressed in this notation. Suppose we start
+with a current sequence x. We set the rst particle x[1]
+to the current state x1. We then sample
+1
+L  1 particles x[2]
+
+from q1 and compute and normalize the weights of the particles:
+
+1 , . . . , x[L]
+
+1
+
+w[l]
+
+1 =
+
+W [l]
+
+1 =
+
+p(x[l]
+
+1 )p(y1|x[l]
+1 )
+1 |y1)
+q1(x[l]
+1(cid:80)L
+w[l]
+m=1 w[m]
+
+1
+
+(5)
+
+(6)
+
+for l = 1, . . . , L.
+
+For i > 1, we proceed sequentially. We rst set x[1]
+ancestor indices for particles at time i, dened by A[l]
+probabilities proportional to W [l]
+sample each of the L1 particles, x[l]
+and normalize the weights at time i
+
+i = xi. We then sample a set of L  1
+i1  {1, . . . , L}, for l = 2, . . . , L, with
+i1. The ancestor index for the rst state, A[1]
+i1, is 1. We then
+i , at time i, for l = 2, . . . , L, from qi(x|yi, x
+[A[l]
+i1]
+) and compute
+i1
+
+w[l]
+
+i =
+
+W [l]
+
+i =
+
+)p(yi|x[l]
+i )
+)
+
+[A[l]
+i1
+
+i1]
+
+i1]
+
+[A[l]
+i1
+i |yi, x
+
+i |x
+p(x[l]
+qi(x[l]
+i(cid:80)L
+w[l]
+m=1 w[m]
+
+i
+
+(7)
+
+(8)
+
+A new sequence taking values in the set of particles at each time is then selected using a back-
+wards sampling pass. This is done by rst selecting x(cid:48)
+n from the set of particles at time n with
+probabilities W [l]
+n and then selecting the rest of the sequence going backward in time to time 1,
+setting x(cid:48)
+i to x[l]
+i with probability
+
+(cid:80)L
+
+i p(x(cid:48)
+w[l]
+m=1 w[m]
+
+i+1|x[l]
+i )
+i+1|x[m]
+
+i p(x(cid:48)
+
+)
+
+(9)
+
+i
+
+A common choice for q is the models transition density, which is what is compared to in this
+paper.
+
+Note that each iteration of the PGBS sampler takes time proportional to Ln, since it takes
+time proportional to L to create the set of particles at each time i, and to do one step of backward
+sampling.
+
+5
+
+4 An embedded HMM sampler for high dimensions
+
+We propose two new ways, denoted f and b, of generating pool states for the embedded HMM
+sampler. Unlike previously-used pool state selection schemes, where pool states are selected
+independently at each time, our new schemes select pool states sequentially, with pool states at
+time i selected conditional on pool states at time i  1, or alternatively at time i + 1.
+
+4.1 Pool state distributions
+
+The rst way to generate pool states is to use a forward pool state selection scheme, with a
+sequential approximation to p(xi|y1, . . . , yi) as the pool state density. In particular, at time 1, we
+set the pool state distribution of our proposed embedded HMM sampler to
+
+As a result of equation (2), 1(x) is constant. At time i > 1, we set the pool state distribution to
+
+1 (x)  p(x)p(y1|x)
+f
+L(cid:88)
+
+i (x|Pi1)  p(yi|x)
+f
+
+p(x|x[(cid:96)]
+
+i1)
+
+(10)
+
+(11)
+
+which makes i(x) constant for i > 1 as well (see equation (3)).
+
+(cid:96)=1
+
+We then draw a sequence composed of these pool states with the forward probability imple-
+
+mentation of the embedded HMM method, with the i(x)s all set to 1.
+
+The second way is to instead use a backward pool state selection scheme, with a sequential
+approximation of p(xi|yi+1, . . . , yn) as the pool state density. We begin by creating the pool Pn,
+consisting of the current state xn and the remaining L  1 pool states sampled from pn(x), the
+marginal density at time n, which is the same as p(x) if the latent process is stationary. The
+backward probabilities n(x), for x in Pn, are then set to 1. At time i < n we set the pool state
+densities to
+
+i (x|Pi+1)  L(cid:88)
+
+b
+
+p(yi+1|x[(cid:96)]
+
+i+1)p(x[(cid:96)]
+
+i+1|x)
+
+(12)
+
+so that i(x) is constant for all i = 1, . . . , n (see equation 4).
+
+(cid:96)=1
+
+We then draw a sequence composed of these pool states as in the backward probability im-
+
+plementation of the embedded HMM method, with the i(x)s all set to 1.
+
+If the latent process is Gaussian, and the latent state at time 1 is sampled from the stationary
+distribution of the latent process, it is possible to update the latent variables by applying the
+forward scheme to the reversed sequence (yn, . . . , y1) by making use of time reversibility, since Xn
+is also sampled from the stationary distribution, and the latent process evolves backward in time
+according to the same transition density as it would going forward. We then use the forward pool
+state selection scheme along with a stochastic backward pass to sample a sequence (xn, . . . , x1),
+starting with x1 and going to xn.
+
+6
+
+It can sometimes be advantageous to alternate between using forward and backward (or,
+alternatively, forward applied to the reversed sequence) embedded HMM updates, since this can
+improve sampling of certain xi. The sequential pool state selection schemes use only part of the
+observed sequence in generating the pool states. By alternating update directions, the pool states
+can depend on dierent parts of the observed data, potentially allowing us to better cover the
+region where xi has high posterior density. For example, at time 1, the pool state density may
+disperse the pool states too widely, leading to poor sampling for x1, but sampling x1 using a
+backwards scheme can be much better, since we are now using all of the data in the sequence
+when sampling pool states at time 1.
+
+4.2 Sampling pool states
+
+To sample from f
+i , we can use any Markov transitions Ri that leave this distribution
+invariant. The validity of the method does not depend on the Markov transitions for sampling
+from f
+
+i reaching equilibrium or even on them being ergodic.
+
+i or b
+
+i or b
+
+Directly using these pool state densities in an MCMC routine leads to a computational cost
+per iteration that is proportional to L2n, like in the original embedded HMM method, since at
+times i > 1 we need at least L updates to produce L pool states, and the cost of computing an
+acceptance probability is proportional to L.
+
+However, it is possible to reduce the cost per iteration of the embedded HMM method to be
+proportional to nL when we use f
+i as the pool state densities. To do this, we start by
+thinking of the pool state densities at each time i > 1 as marginal densities summing over the
+variable (cid:96) = 1, . . . , L that indexes a pool state at the previous time. Specically, f
+i can be viewed
+as a marginal of the density
+
+i or b
+
+i(x, (cid:96))  p(yi|x)p(x|x[(cid:96)]
+i1)
+
+(13)
+
+while b
+
+i is a marginal of the density
+
+i(x, (cid:96))  p(yi+1|x[(cid:96)]
+
+i+1)p(x[(cid:96)]
+
+i+1|x)
+
+(14)
+Both of these densities are dened given a pool Pi1 at time i 1 or pool Pi+1 at time i + 1. This
+technique is reminiscent of the auxiliary particle lter of Pitt and Shephard (1999). We then use
+Markov transitions, Ri, to sample a set of values of x and (cid:96), with probabilities proportional to i
+for the forward scheme, or probabilities proportional to i for the backward scheme.
+
+The chain is started at x set to the current xi, and the initial value of (cid:96) is chosen randomly
+with probabilities proportional to p(xi|x[(cid:96)]
+i+1|xi) for
+the backward scheme. This stochastic initialization of (cid:96) is needed to make the algorithm valid
+when we use i or i to generate the pool states.
+
+i1) for the forward scheme or p(yi+1|x[(cid:96)]
+
+i+1)p(x[(cid:96)]
+
+Sampling values of x and (cid:96) from i or i can be done by updating each of x and (cid:96) separately,
+alternately sampling values of x conditional on (cid:96), and values of (cid:96) conditional on x, or by updating
+x and (cid:96) jointly, or by a combination of these.
+
+7
+
+Updating x given (cid:96) can be done with any appropriate sampler, such as Metropolis, or for a
+Gaussian latent process we can use autoregressive updates, which we describe below. To update (cid:96)
+given x, we can also use Metropolis updates, proposing (cid:96)(cid:48) = (cid:96)+k, with k drawn from some proposal
+distribution on {K, . . . ,1, 1, . . . , K}. Alternatively, we can simply propose (cid:96)(cid:48) uniformly at
+random from {1, . . . , L}.
+
+To jointly update x and (cid:96), we propose two novel updates, a shift update and a ip update.
+Since these are also Metropolis updates, using them together with Metropolis or autoregressive
+updates, for each of x and (cid:96) separately, allows embedded HMM updates to be performed in time
+proportional to nL.
+
+4.3 Autoregressive updates
+
+For sampling pool states in our embedded HMM MCMC schemes, as well as for comparison
+MCMC schemes, we will make use of Neals (1998) autoregressive Metropolis-Hastings update,
+which we review here. This update is designed to draw samples from a distribution of the form
+p(w)p(y|w) where p(w) is multivariate Gaussian with mean  and covariance  and p(y|w) is
+typically a density for some observed data.
+
+This autoregressive update proceeds as follows. Let L be the lower triangular Cholesky de-
+composition of , so  = LLT , and n be a vector of i.i.d. normal random variables with zero
+mean and identity covariance. Let   [1, 1] be a tuning parameter that determines the scale of
+the proposal. Starting at w, we propose
+
+w(cid:48) =  +
+
+1  2(w  ) + Ln
+
+(15)
+
+Because these autoregressive proposals are reversible with respect to p(w), the proposal density
+and p(w) cancel in the Metropolis-Hastings acceptance ratio. This update is therefore accepted
+with probability
+
+(16)
+
+(cid:18)
+
+(cid:19)
+
+min
+
+1,
+
+p(y|w(cid:48))
+p(y|w)
+
+Note that for this update, the same value of  is used for scaling along every dimension. It would
+be of independent interest to develop a version of this update where  can be dierent for each
+dimension of w.
+
+4.4 Shift updates
+
+We can simultaneously update (cid:96) and x at time i > 1 by proposing to update (x, (cid:96)) to (x(cid:48), (cid:96)(cid:48))
+where (cid:96)(cid:48) is proposed in any valid way while x(cid:48) is chosen in a way such that x(cid:48) and x[(cid:96)(cid:48)]
+i1 are linked
+in the same way as x and x[(cid:96)]
+i1. The shift update makes it easier to generate a set of pool states
+at time i with dierent predecessor states at time i 1, helping to ensure that the pool states are
+well-dispersed. This update is accepted with the usual Metropolis probability.
+
+8
+
+For a concrete example we use later, suppose that the latent process is an autoregressive
+In this case,
+
+Gaussian process of order 1, with the model being that Xi|xi1  N (xi1, ).
+given (cid:96)(cid:48), we propose x(cid:48)
+
+i1). This update is accepted with probability
+
+i = xi + (x[(cid:96)(cid:48)]
+
+(cid:18)
+i1  x[(cid:96)]
+
+min
+
+1,
+
+(cid:19)
+
+p(yi|x(cid:48)
+i)
+p(yi|xi)
+
+(17)
+
+(18)
+
+(19)
+
+as a result of the transition densities in the acceptance ratio cancelling out, since
+
+i  x[(cid:96)(cid:48)]
+x(cid:48)
+
+i1  x[(cid:96)]
+i1 = xi + (x[(cid:96)(cid:48)]
+= xi  x[(cid:96)]
+i1
+
+i1)  x[(cid:96)(cid:48)]
+i1
+
+To be useful, shift updates normally need to be combined with other updates for generating
+pool states. When combining shift updates with other updates, tuning of acceptance rates for
+both updates needs to be done carefully in order to ensure that the shift updates actually improve
+sampling performance. In particular, if the pool states at time i  1 are spread out too widely,
+then the shift updates may have a low acceptance rate and not be very useful. Therefore, jointly
+optimizing proposals for x and for x and (cid:96) may lead to a relatively high acceptance rate on
+updates of x, in order to ensure that the acceptance rate for the shift updates isnt low.
+
+4.5 Flip updates
+
+Generating pool states locally can be helpful when applying embedded HMMs to models with
+high-dimensional state spaces but it also makes sampling dicult if the posterior is multimodal.
+Consider the case when the observation probability depends on |xi| instead of xi, so that many
+modes with dierent signs for some xi exist. We propose to handle this problem by adding an
+additional ip update that creates a mirror set of pool states, in which xi will be in the pool
+if xi is. By having a mirror set of pool states, we are able to ip large segments of the sequence
+in a single update, allowing ecient exploration of dierent posterior modes.
+
+To generate a mirror set of pool states, we must correctly use the ip updates when sampling
+the pool states. Since we want each pool state to have a negative counterpart, we choose the
+number of pool states L to be even. The chain used to sample pool states then alternates two
+types of updates, a usual update to generate a pool state and a ip update to generate its negated
+version. The usual update can be a combination of any updates, such as those we consider above.
+So that each state will have a ipped version, we start with a ip transition between x[1] and x[2],
+a usual transition between x[2] and x[3], and so on up to a ip transition between x[L1] to x[L].
+
+At time 1, we start with the current state x1 and randomly assign it to some index l1 in the
+chain used to generate pool states. Then, starting at x1 we generate pool states by reversing
+the Markov chain transitions back to 1 and going forward up to L. Each ip update is then a
+Metropolis update proposing to generate a pool state x1 given that the chain is at some pool
+state x1. Note that if the observation probability depends on x1 only through |x1| and p(x) is
+symmetric around zero then this update is always accepted.
+
+9
+
+At time i > 1, a ip update proposes to update a pool state (x, (cid:96)) to (x, (cid:96)(cid:48)) such that
+i1 = x[(cid:96)]
+x[(cid:96)(cid:48)]
+i1. Here, since the pool states at each time are generated by alternating ip and
+, the proposal to move from (cid:96) to (cid:96)(cid:48) can be viewed
+usual updates, starting with a ip update to x[1]
+i
+as follows. Suppose that instead of labelling our pool states from 1 to L we instead label them
+0 to L  1. The pool states at times 0 and 1, then 2 and 3, and so on will then be ipped
+pairs, and the proposal to change (cid:96) to (cid:96)(cid:48) can be seen as proposing to ip the lower order bit in
+a binary representation of (cid:96)(cid:48). For example, a proposal to move from (cid:96) = 3 to (cid:96) = 2 can be seen
+as proposing to change (cid:96) from 11 to 10 (in binary). Such a proposal will always be accepted
+assuming a transition density for which p(xi|xi1) = p(xi|xi1) and an observation probability
+which depends on xi only via |xi|.
+
+4.6 Relation to PGBS
+
+The forward pool state selection scheme can be used to construct a sampler with properties similar
+to PGBS. This is done by using independence Metropolis to sample values of x and (cid:96) from i.
+
+At time 1, we propose our pool states from p(x). At times i > 2, we propose (cid:96)(cid:48) by selecting
+i1). The
+
+it uniformly at random from {1, . . . , L} and we propose x(cid:48) by sampling from p(x|x[(cid:96)(cid:48)]
+proposals at all times i are accepted with probability
+p(yi|x(cid:48)
+i)
+p(yi|xi)
+
+(cid:18)
+
+(cid:19)
+
+min
+
+1,
+
+(20)
+
+This sampler has computational cost proportional to Ln per iteration, like PGBS. It is analogous
+to a PGBS sampler with importance densities
+
+and
+
+q1(x|y1) = p(x)
+
+qi(x|xi1, yi) = p(x|xi1),
+
+i > 2
+
+(21)
+
+(22)
+
+with the key dierence between these two samplers being that PGBS uses importance weights
+p(yi|xi) on each particle, instead of an independence Metropolis accept-reject step.
+
+5 Proof of correctness
+
+We modify the original proof of Neal (2003), which assumes that the sets of pool states P1, . . . ,Pn
+are selected independently at each time, to show the validity of our new sequential pool state
+selection scheme. Another change in the proof is to account for generating the pool states by
+sampling them from i or i instead of f
+
+i or b
+i .
+
+This proof shows that the probability of starting at x and moving to x(cid:48) with given sets of pool
+i of x(cid:48)
+
+states Pi (consisting of values of x at each time i), pool indices li of xi, and pool indices l(cid:48)
+
+i
+
+10
+
+is the same as the probability of starting at x(cid:48) and moving to x with the same set of pool states
+Pi, pool indices l(cid:48)
+i, and pool indices li of xi. This in turn implies, by summing/integrating
+over Pi and li, that the embedded HMM method with the sequential pool state scheme satises
+detailed balance with respect to p(x|y), and hence leaves p(x|y) invariant.
+
+i of x(cid:48)
+
+Suppose we use the sequential forward scheme. The probability of starting at x and moving to
+x(cid:48) decomposes into the product of the probability of starting at x, which is p(x|y), the probability
+of choosing a set of pool state indices li, which is 1
+Ln , the probability of selecting the initial values
+of (cid:96)i for the stochastic initialization step, the probability of selecting the sets of pool states Pi,
+P (P1, . . . ,Pn), and nally the probability of choosing x(cid:48).
+
+The probability of selecting given initial values for the links to previous states (cid:96)2, . . . , (cid:96)n is
+
+(23)
+
+(24)
+At time 1, we use a Markov chain with invariant density 1 to select pool states in P1. Therefore
+
+i=2
+
+P (Pi|Pi1)
+
+n(cid:89)
+
+i=2
+
+P (P1, . . . ,Pn) = P (P1)
+
+(cid:80)L
+p(xi|x[(cid:96)i]
+i1)
+m=1 p(xi|x[m]
+i1)
+n(cid:89)
+The probability of choosing a given set of pool states is
+1(cid:89)
+1(cid:89)
+1(cid:89)
+
+L(cid:89)
+L(cid:89)
+L1(cid:89)
+
+P (P1) =
+
+1 |x[j1]
+
+1 |x[j1]
+
+R1(x[j]
+
+R1(x[j]
+
+j=l11
+
+j=l11
+
+j=l1+1
+
+j=l1+1
+
+=
+
+)
+
+)
+
+1
+
+1
+
+R1(x[j]
+
+1 |x[j+1]
+
+1
+
+)
+
+R1(x[j+1]
+
+1
+
+|x[j]
+1 )
+
+1(x[j]
+1 )
+1(x[j+1]
+1
+1(x[j]
+1 )
+1(x[j+1]
+
+)
+
+1
+
+)
+
+(25)
+
+R1(x[j+1]
+
+|x[j]
+1 )
+
+R1(x[j+1]
+
+1
+
+|x[j]
+1 )
+
+=
+
+j=l1
+1(x[1]
+1 )
+1(x[l1]
+1 )
+
+=
+
+1
+
+L1(cid:89)
+
+j=1
+
+j=l11
+|x[j]
+1 )
+
+R1(x[j+1]
+
+1
+
+For times i > 1 we use a Markov chain with invariant density i to sample a set of pool states,
+given Pi1. The chain is started at x[li]
+
+i = xi and (cid:96)[li]
+
+i = (cid:96)i. Therefore
+
+j=l1+1
+
+L(cid:89)
+L(cid:89)
+L1(cid:89)
+
+j=li+1
+
+P (Pi|Pi1) =
+
+=
+
+=
+
+=
+
+j=li1
+
+1(cid:89)
+1(cid:89)
+1(cid:89)
+
+j=li1
+
+Ri(x[j]
+
+i , (cid:96)[j]
+
+i |x[j1]
+
+i
+
+, (cid:96)[j1]
+
+i
+
+)
+
+Ri(x[j]
+
+i , (cid:96)[j]
+
+i |x[j+1]
+
+i
+
+, (cid:96)[j+1]
+
+i
+
+)
+
+Ri(x[j]
+
+i , (cid:96)[j]
+
+i |x[j1]
+
+i
+
+, (cid:96)[j1]
+
+i
+
+)
+
+Ri(x[j+1]
+
+1
+
+, (cid:96)[j+1]
+
+i
+
+|x[j]
+i , (cid:96)[j]
+i )
+
+Ri(x[j+1]
+
+i
+
+, (cid:96)[j+1]
+
+|x[j]
+i , (cid:96)[j]
+i )
+
+Ri(x[j+1]
+
+i
+
+, (cid:96)[j+1]
+
+i
+
+|x[j]
+i , (cid:96)[j]
+i )
+
+i
+
+L1(cid:89)
+
+j=li
+i(x[1]
+i
+i(x[li]
+i
+
+, (cid:96)[1]
+i )
+, (cid:96)[li]
+i )
+
+j=li1
+|x[j]
+i , (cid:96)[j]
+i )
+
+Ri(x[j+1]
+
+i
+
+, (cid:96)[j+1]
+
+i
+
+j=1
+
+11
+
+i , (cid:96)[j]
+i )
+, (cid:96)[j+1]
+
+i
+
+)
+
+i(x[j]
+i(x[j+1]
+1
+i(x[j]
+i(x[j+1]
+
+i
+
+i , (cid:96)[j]
+i )
+, (cid:96)[j+1]
+
+i
+
+)
+
+(26)
+
+Finally, we choose a new sequence x(cid:48) amongst the collection of sequences consisting of the pool
+n uniformly at random
+
+states with a backward pass. This is done by rst choosing a pool state x(cid:48)
+from Pn. We then select the remaining states x[l(cid:48)
+i by selecting l(cid:48)
+[l(cid:48)
+i|x
+p(x(cid:48)
+i1]
+i1 )
+i|x[m]
+m=1 p(x(cid:48)
+i1)
+
+(cid:80)L
+
+1, . . . , l(cid:48)
+
+n(cid:89)
+
+i=2
+
+i]
+
+n1 with probability
+
+(27)
+
+Thus, the probability of starting at x and going to x(cid:48), with given P1, . . . ,Pn, l1, . . . , ln and
+
+1, . . . , l(cid:48)
+l(cid:48)
+
+n is
+
+R1(x[j+1]
+
+|x[j]
+1 )
+
+(28)
+
+j=1
+
+L1(cid:89)
+(cid:21)
+L1(cid:89)
+
+i
+
+i
+
+i=2
+
+j=1
+
+p(x|y)  1
+
+, (cid:96)[j+1]
+
+Ri(x[j+1]
+
+i
+i(x[li]
+i
+
+i=2
+, (cid:96)[1]
+i )
+, (cid:96)[li]
+i )
+
+ n(cid:89)
+
+ 1(x[1]
+1 )
+1(x[l1]
+1 )
+|x[j]
+i , (cid:96)[j]
+i )
+
+(cid:80)L
+p(xi|x[(cid:96)i]
+i1)
+m=1 p(xi|x[m]
+L1(cid:89)
+i1)
+
+Ln  n(cid:89)
+(cid:20) i(x[1]
+L1(cid:89)
+1(x1)(cid:81)n
+ 1
+Ln+1 
+i1. Also 1(x1) = p(x1)p(y1|x1)/(cid:80)
+[l(cid:48)
+i1 = x(cid:48)
+i1]
+n(cid:89)
+
+(cid:20)
+1 )  n(cid:89)
+ n(cid:89)
+
+p(x|y)
+i=2 i(xi, (cid:96)i)
+
+R1(x[j+1]
+
+i(x[1]
+i
+
+|x[j]
+
+= 1(x[1]
+1 )
+
+j=1
+
+i=2
+
+i=2
+
+1
+
+i(xi, (cid:96)i) =
+
+1
+
+ n(cid:89)
+
+(cid:80)L
+
+i=2
+
+, (cid:96)[1]
+i )
+
+ 1
+L
+
+Ri(x[j+1]
+
+[l(cid:48)
+i|x
+p(x(cid:48)
+i1]
+i1 )
+(cid:21)
+i|x[m]
+m=1 p(x(cid:48)
+i1)
+|x[j]
+i , (cid:96)[j]
+i )
+(cid:80)L
+[l(cid:48)
+i|x
+p(xi|x[(cid:96)i]
+p(x(cid:48)
+i1]
+i1 )
+i1)
+i|x[m]
+m=1 p(xi|x[m]
+m=1 p(x(cid:48)
+i1)
+i1)
+p(x1)p(y1|x1) and
+
+(cid:80)L
+
+n(cid:89)
+
+, (cid:96)[j+1]
+
+j=1
+
+i=2
+
+i
+
+i
+
+Here, we have x
+
+and
+
+i=2
+
+p(x|y) =
+
+Therefore (28) can be simplied to
+
+L1(cid:89)
+
+1
+
+1
+
+j=1
+
+1(x[1]
+1 )
+
+p(y)
+
+ n(cid:89)
+ (cid:88)
+
+R1(x[j+1]
+
+p(xi|xi1)  n(cid:89)
+n(cid:89)
+
+p(x1)p(y1|x1)
+
+i=2
+
+i=2
+
+p(x(cid:48)
+
+i=2
+
+p(y)
+
+xiPi
+
+x1P1
+
+(cid:80)L
+m=1 p(yi|xi)p(xi|x[m]
+i1)
+
+p(yi|xi)p(xi|x[(cid:96)i]
+i1)
+
+n(cid:89)
+(cid:80)
+i=2 p(xi|xi1)(cid:81)n
+p(x1)(cid:81)n
+i=1 p(yi|xi)
+(cid:20)
+L1(cid:89)
+1 )  n(cid:89)
+i1)  n(cid:89)
+i|x(cid:48)
+(cid:88)
+L(cid:88)
+
+(cid:80)L
+m=1 p(xi|x[m]
+i1)
+
+ n(cid:89)
+
+Ri(x[j+1]
+
+i(x[1]
+i
+
+, (cid:96)[1]
+i )
+
+p(yi|xi)p(xi|x[m]
+i1)
+
+j=1
+
+i=2
+
+i=2
+
+i=2
+
+1
+
+i
+
+i
+
+|x[j]
+
+x1P1
+
+i=2
+
+xiPi
+
+m=1
+
+The last factor in the product only depends on the selected set of pool states. By exchanging x
+and x(cid:48) we see that the probability of starting at x(cid:48) and then going to x, with given sets of pool
+states Pi, pool indices li of xi and pool indices l(cid:48)
+
+i is the same.
+
+i of x(cid:48)
+
+12
+
+(29)
+
+(30)
+
+(31)
+
+(cid:21)
+
+|x[j]
+i , (cid:96)[j]
+i )
+
+ 1
+Ln+1
+
+, (cid:96)[j+1]
+
+(cid:80)L
+
+1
+m=1 p(x(cid:48)
+
+i|x[m]
+i1)
+
+6 Experiments
+
+6.1 Test models
+
+To demonstrate the performance of our new pool state scheme, we use two dierent state space
+models. The latent process for both models is a vector autoregressive process, with
+
+X1  N (0, init)
+
+Xi|xi1  N (xi1, ),
+
+i = 2, . . . , n
+
+where Xi = (Xi,1, . . . , Xi,P )(cid:48) and
+
+ =
+
+ =
+
+init =
+
+
+
+...
+0
+
+0
+. . .
+...
+. . .
+. . . P
+
+1
+1 . . . 
+
+
+
+...
+...
+ . . . 1
+
+1
+
+12
+...
+
+
+12
+
+. . .
+
+1
+
+
+
+12
+
+P
+
+1
+
+
+
+12
+...
+1
+12
+
+P
+
+. . .
+. . .
+. . .
+
+12
+
+1
+
+P
+
+(32)
+(33)
+
+(34)
+
+(35)
+
+(36)
+
+Note that init is the covariance of the stationary distribution for this process.
+
+For model 1, the observations are given by
+
+Yi,j|xi,j  Poisson(exp(cj + jxi,j)),
+
+i = 1, . . . , n,
+
+j = 1, . . . , P
+
+(37)
+
+For model 2, the observations are given by
+Yi,j|xi,j  Poisson(j|xi,j|),
+
+i = 1, . . . , n,
+
+j = 1, . . . , P
+
+(38)
+
+For model 1, we use a 10-dimensional latent state and a sequence length of n = 250, setting
+
+parameter values to  = 0.7, and cj = 0.4, j = 0.9, j = 0.6 for j = 1, . . . , P , with P = 10.
+
+For model 2, we increase the dimensionality of the latent space to 15 and the sequence length
+
+to 500. We set  = 0.7 and j = 0.9, j = 0.8 for j = 1, . . . , P , with P = 15.
+
+We generated one random sequence from each model to test our samplers on. These observa-
+tions from model 1 and model 2 are shown in Figure 1. Note that we are testing only sampling
+of the latent variables, with the parameters set to their true values. The code for all experiments
+in this paper is available at http://arxiv.org/abs/1602.06030.
+
+13
+
+(a) Model 1
+
+(b) Model 2
+
+Figure 1: Observations from Model 1 and Model 2 along dimension j = 1.
+
+6.2 Single-state Metropolis Sampler
+
+A simple scheme for sampling the latent state sequence is to use Metropolis-Hastings updates
+that sample each xi in sequence, conditional on xi = (x1, . . . , xi1, xi+1, . . . , xi) and the data,
+starting at time 1 and going to time n. We sample all dimensions of xi at once using autoregressive
+updates (see section 5.4.3).
+
+The conditional densities of the Xi are
+p(x1|x1, y)  p(x1|x2)p(y1|x1)  p(x1)p(x2|x1)p(y1|x1)
+p(xi|xi, y)  p(xi|xi1, xi+1)p(yi|xi)  p(xi|xi1)p(xi+1|xi)p(yi|xi),
+p(xn|xn, y)  p(xn|xn1)p(yn|xn)
+
+2  i  n  1
+
+The densities p(x1|x2), p(xi|xi1, xi+1), and p(xn|xn1) are all Gaussian. The means and co-
+variances for these densities can be derived by viewing p(x1) or p(xi|xi1) as a Gaussian prior for
+xi and p(xi+1|xi) as a Gaussian likelihood for xi. In particular, we have
+
+X1|x2  N (1, 1)
+Xi|xi, xi+1  N (i, i)
+Xn|xn1  N (n, n)
+
+14
+
+05010015020025005101520253035400501001502002503003504004505000123456789where
+
+init]1[(11)11x2]
+init]1[1(x2)]
+
+1 = [(11)1 + 1
+= [(11)1 + 1
+= [2 + 1
+init]1x2
+1 = [(11)1 + 1
+init]1
+
+= [(1) + 1
+
+init]1
+
+i = [(11)1 + 1]1[1xi1 + (11)11xi+1]
+
+= (11)1 + 1]1[1((xi1 + xi+1))]
+= [2 + I]1(xi1 + xi+1)
+i = [(11)1 + 1]1
+
+= [(1) + 1]1
+
+n = xn1
+n = 
+
+To speed up the Metropolis updates, we precompute and store the matrices [2 + 1
+[2 + I]1 as well as the Cholesky decompositions of the posterior covariances.
+
+init]1,
+
+In both of our test models, the posterior standard deviation of the latent variables xi,j varies
+depending on the value of the observed yi,j. To address this, we alternately use a larger or a
+smaller proposal scaling, , in the autoregressive update when performing an iteration of the
+Metropolis sampler.
+
+6.3 Particle Gibbs with Backward Sampling with Metropolis
+
+We implement the PGBS method as described in Section 5.3, using the initial density p(x) and
+the transition densities p(xi|xi1) as importance densities to generate particles. We combine
+PGBS updates with single-state Metropolis updates from Section 5.6.2. This way, we combine
+the strengths of the two samplers in targeting dierent parts of the posterior distribution. In
+particular, we expect the Metropolis updates to do better for the xi with highly informative yi,
+and the PGBS updates to do better for the xi where yi is not as informative.
+
+6.4 Tuning the Baseline Samplers
+
+For model 1, we compared the embedded HMM sampler to the simple single-state Metropolis
+sampler, to the PGBS sampler, and to the combination of PGBS with Metropolis. For model 2, we
+compared the embedded HMM sampler to the PGBS with Metropolis sampler. For both models
+and all samplers, we ran the sampler ve times using ve dierent random number generator
+seeds. We implemented the samplers in MATLAB on a Linux system with a 2.60 GHz Intel
+i7-3720QM CPU.
+
+15
+
+6.4.1 Model 1
+
+For the single-state Metropolis sampler, we initialized all xi,j to 0. Every iteration alternately
+used a scaling factor, , of either 0.2 or 0.8, which resulted in an average acceptance rate of
+between 30% and 90% for the dierent xi over the sampler run. We ran the sampler for 1000000
+iterations, and prior to analysis, the resulting sample was thinned by a factor of 10, to 100000.
+The thinning was done due to the diculty of working with all samples at once, and after thinning
+the samples still possessed autocorrelation times signicantly greater than 1. Each of the 100000
+samples took about 0.17 seconds to draw.
+
+For the PGBS sampler and the sampler combining PGBS and Metropolis updates, we also
+initialized all xi,j to 0. We used 250 particles for the PGBS updates. For the Metropolis updates,
+we alternated between scaling factors of 0.2 and 0.8, which also gave acceptance rates between
+30% and 90%. For the standalone PGBS sampler, we performed a total of 70000 iterations. Each
+iteration produced two samples for a total of 140000 samples and consisted of a PGBS update
+using the forward sequence and a PGBS update using the reversed sequence. Each sample took
+about 0.12 seconds to draw. For the PGBS with Metropolis sampler, we performed a total of
+30000 iterations of the sampler. Each iteration was used to produce four samples, for a total
+of 120000 samples, and consisted of a PGBS update using the forward sequence, ten Metropolis
+updates (of which only the value after the tenth update was retained), a PGBS update using the
+reversed sequence, and another ten Metropolis updates, again only keeping the value after the
+tenth update. The average time to draw each of the 120000 samples was about 0.14 seconds.
+
+6.4.2 Model 2
+
+For model 2, we were unable to make the single-state Metropolis sampler converge to anything
+resembling the actual posterior in a reasonable amount of time. In particular, we found that for
+xi,j suciently far from 0, the Metropolis sampler tended to be stuck in a single mode, never
+visiting values with the opposite sign.
+
+For the PGBS with Metropolis sampler, we set the initial values of xi,j to 1. We set the number
+of particles for PGBS to 80000, which was nearly the maximum possible for the memory capacity
+of the computer we used. For the Metropolis sampler, we alternated between scaling factors of 0.3
+and 1, which resulted in acceptance rates ranging between 29% and 72%. We performed a total
+of 250 iterations of the sampler. As for model 1, each iteration produced four samples, for a total
+of 1000 samples, and consisted of a PGBS update with the forward sequence, fty Metropolis
+updates (of which we only keep the value after the last one), a PGBS update using the reversed
+sequence, and another fty Metropolis updates (again only keeping the last value). It took about
+26 seconds to draw each sample.
+
+6.5 Embedded HMM sampling
+
+For both model 1 and model 2, we implemented the proposed embedded HMM method using the
+forward pool state selection scheme, alternating between updates that use the original and the
+
+16
+
+reversed sequence. As for the baseline samplers, we ran the embedded HMM samplers ve times
+for both models, using ve dierent random number generator seeds.
+
+We generate pool states at time 1 using autoregressive updates to sample from f
+
+1 . At times
+i  2, we sample each pool state from i(x, l) by combining an autoregressive and shift update.
+The autoregressive update proposes to only change x, keeping the current l xed. The shift
+update samples both x and l, with a new l proposed from a Uniform{1, . . . , L} distribution. For
+model 2, we also add a ip update to generate a negated version of each pool state.
+
+Note that the chain used to produce the pool states now uses a sequence of updates. Therefore,
+if our forward transition rst does an autoregressive update and then a shift update, the reverse
+transitions must rst do a shift update and then an autoregressive update.
+
+As for the single-state Metropolis updates, it is benecial to use a dierent proposal scaling, ,
+when generating each pool state at each time i. This allows generation of sets of pool states which
+are more concentrated when yi is informative and more dispersed when yi holds little information.
+
+6.5.1 Model 1
+
+For model 1, we initialized all xi,j to 0. We used 50 pool states for the embedded HMM updates.
+For each Metropolis update to sample a pool state, we used a dierent scaling , chosen at random
+from a Uniform(0.1, 0.4) distribution. The acceptance rates ranged between 55% and 95% for the
+Metropolis updates and between 20% and 70% for the shift updates. We performed a total of
+9000 iterations of the sampler, with each iteration consisting of an embedded HMM update using
+the forward sequence and an embedded HMM update using the reversed sequence, for a total of
+18000 samples. Each sample took about 0.81 seconds to draw.
+
+6.5.2 Model 2
+
+For model 2, we initialized the xi,j to 1. We used a total of 80 pool states for the embedded
+HMM sampler (i.e. 40 positive-negative pairs due to ip updates). Each Metropolis update used
+to sample a pool state used a scaling, , randomly drawn from the Uniform(0.05, 0.2) distribution.
+The acceptance rates ranged between 75% and 90% for the Metropolis updates and between 20%
+and 40% for the shift updates. We performed a total of 9000 iterations of the sampler, producing
+two samples per iteration with an embedded HMM update using the forward sequence and an
+embedded HMM update using the reversed sequence. Each of the 18000 samples took about 1.4
+seconds to draw.
+
+17
+
+6.6 Comparisons
+
+As a way of comparing the performance of the two methods, we use an estimate of autocorrelation
+time1 for each of the latent variables xi,j. Autocorrelation time is a measure of how many draws
+need to be made using the sampling chain to produce the equivalent of one independent sample.
+i=1 k, where k is the autocorrelation at lag
+
+The autocorrelation time is dened as  = 1 + 2(cid:80)
+K(cid:88)
+
+k. It is commonly estimated as
+
+ = 1 + 2
+
+k
+
+where k are estimates of lag-k autocorrelations and the cuto point K is chosen so that k is
+negligibly dierent from 0 for k > K. Here
+
+i=1
+
+(39)
+
+(40)
+
+(41)
+
+where k is an estimate of the lag-k autocovariance
+
+k =
+
+k
+0
+
+nk(cid:88)
+
+l=1
+
+k =
+
+1
+n
+
+(xl  x)(xk+l  x)
+
+When estimating autocorrelation time, we remove the rst 10% of the sample as burn-in. Then, to
+estimate k, we rst estimate autocovariances for each of the ve runs, taking x to be the overall
+mean over the ve runs. We then average these ve autocovariance estimates to produce k. To
+speed up autocovariance computations, we use the Fast Fourier Transform. The autocorrelation
+estimates are then adjusted for computation time, by multiplying the estimated autocorrelation
+time by the time it takes to draw a sample, to ensure that the samplers are compared fairly.
+
+The computation time-adjusted autocorrelation estimates for Model 1, for all the latent vari-
+ables, plotted over time, are presented in Figure 2. We found that the combination of single-state
+Metropolis and PGBS works best for the unimodal model. The other samplers work reasonably
+well too. We note that the spike in autocorrelation time for the PGBS and to a lesser extent for
+the PGBS with Metropolis sampler occurs at the point where the data is very informative. This
+in turn makes the use of the diuse transition distribution the particles are drawn from ine-
+cient and much of the sampling in that region is due to the Metropolis updates. Here, we also
+note that the computation time adjustment is sensitive to the particularities of the implementa-
+tion, in this case done in MATLAB, where performance depends a lot on how well vectorization
+
+1Technically, when we alternate updates with the forward and reversed sequence or mix PGBS and single-
+state Metropolis updates, we cannot use autocorrelation times to measure how well the chain explores the space.
+While the sampling scheme leaves the correct target distribution invariant, the ipping of the sequence makes the
+sampling chain for a given variable non-homogeneous. However, suppose that instead of deterministically ipping
+the sequence at every step, we add an auxiliary indicator variable that determines (given the current state) whether
+the forward or the reversed sequence is used, and that the probability of ipping this indicator variable is nearly
+one. With this auxiliary variable the sampling chain becomes homogeneous, with its behaviour nearly identical to
+that of our proposed scheme. Using autocorrelation time estimates to evaluate the performance of our sampler is
+therefore valid, for all practical purposes.
+
+18
+
+(a) Metropolis (0.17 seconds/sample)
+
+(b) PGBS (0.12 seconds/sample)
+
+(c) PGBS+Metropolis (0.14 seconds/sample)
+
+(d) Embedded HMM (0.81 seconds/sample)
+
+Figure 2: Estimated autocorrelation times for each latent variable for Model 1, adjusted for
+computation time
+
+can be exploited. Implementing the samplers in a dierent language might change the relative
+comparisons.
+
+We now look at how the samplers perform on the more challenging Model 2. We rst did a
+preliminary check of whether the samplers do indeed explore the dierent modes of the distribution
+by looking at variables far apart in the sequence, where we expect to see four modes (with all
+possible combinations of signs). This is indeed the case for both the PGBS with Metropolis and
+Embedded HMM samplers. Next, we look at how eciently the latent variables are sampled. Of
+particular interest are the latent variables with well-separated modes, since sampling performance
+for such variables is illustrative of how well the samplers explore the dierent posterior modes.
+Consider the variable x1,300, which has true value 1.99. Figure 3 shows how the dierent
+samplers explore the two modes for this variable, with equal computation times used to produced
+the samples for the trace plots. We can see that the embedded HMM sampler with ip updates
+performs signicantly better for sampling a variable with well-separated modes. Experiments
+showed that the performance of the embedded HMM sampler on model 2 without ip updates is
+
+19
+
+050100150200250024681012141618050100150200250024681012141618050100150200250024681012141618050100150200250024681012141618(a) Embedded HMM
+
+(b) Particle Gibbs with Metropolis
+
+Figure 3: Comparison of Samplers for Model 2, x1,300
+
+(a) Embedded HMM
+
+(b) Particle Gibbs with Metropolis
+
+Figure 4: Comparison of Samplers for Model 2, x3,208x4,208
+
+much worse.
+
+We can also look at the product of the two variables x3,208x4,208, with true value 4.45. The
+trace plot is given in Figure 4. In this case, we can see that the PGBS with Metropolis sampler
+performs better. Since the ip updates change the signs of all dimensions of xi at once, we do not
+expect them to be as useful for improving sampling of this function of state. The vastly greater
+number of particles used by PGBS, 80000, versus 80 for the embedded HMM method, works to
+the advantage of PGBS, and explains the performance dierence.
+
+Looking at these results, we might expect that we can get a good sampler for both x1,300 and
+x3,208x4,208 by alternating embedded HMM and PGBS with Metropolis updates. This is indeed
+the case, which can be seen in Figure 5. For producing these plots, we used an embedded HMM
+sampler with the same settings as in the experiment for Model 2 and a PGBS with Metropolis
+sampler with 10000 particles and Metropolis updates using the same settings as in the experiment
+
+20
+
+0100200300400500600700800900100064202460100200300400500600700800900100064202460100200300400500600700800900100010505101501002003004005006007008009001000105051015(a) Trace plot for x1,300
+
+(b) Trace plot for x3,208x4,208
+
+Figure 5: Combination of embedded HMM and PGBS with Metropolis samplers
+
+for Model 2.
+
+This example of Model 2 demonstrates another advantage of the embedded HMM viewpoint,
+which is that it allows us to design updates for sampling pool states to handle certain properties
+of the density. This is arguably easier than designing importance densities in high dimensions.
+
+7 Conclusion
+
+We have demonstrated that it is possible to use embedded HMMs to eciently sample state
+sequences in models with higher dimensional state spaces. We have also shown how embedded
+HMMs can improve sampling eciency in an example model with a multimodal posterior, by
+introducing a new pool state selection scheme. There are several directions in which this research
+can be further developed.
+
+The most obvious extension is to treat the model parameters as unknown and add a step to
+sample parameters given a value of the latent state sequence. In the unknown parameter context,
+it would also be interesting to see how the proposed sequential pool state selection schemes can
+be used together with ensemble MCMC updates of Shestopalo and Neal (2013). For example,
+one approach is to have the pool state distribution depend on the average of the current and
+proposed parameter values in an ensemble Metropolis update, as in Shestopalo and Neal (2014).
+
+One might also wonder whether it is possible to use the entire current state of x in constructing
+the pool state density at a given time. It is not obvious how (or if it is possible) to overcome this
+limitation. For example, for the forward scheme, using the current value of the state sequence at
+some time k > i to construct pool states at time i means that the pool states at time k will end
+up depending on the current value of xk, which would lead to an invalid sampler.
+
+At each time i < n, the pool state generation procedure does not depend on the data after
+time i, which may cause some diculties in scaling this method further. On one hand, this
+
+21
+
+01002003004005006007008009001000642024601002003004005006007008009001000105051015allows for greater dispersion in the pool states than if we were to impose a constraint from the
+other direction as with the single-state Metropolis method, potentially allowing us to make larger
+moves. On the other hand, the removal of this constraint also means that the pool states can
+become too dispersed. In higher dimensions, one way in which this can be controlled is by using
+a Markov chain that samples pool states close to the current xi  that is, a Markov chain that
+is deliberately slowed down in order not to overdisperse the pool states, which could lead to a
+collection of sequences with low posterior density.
+
+Acknowledgements
+
+We thank Arnaud Doucet for helpful comments. This research was supported by the Natural
+Sciences and Engineering Research Council of Canada. A. S. is in part funded by an NSERC
+Postgraduate Scholarship. R. N. holds a Canada Research Chair in Statistics and Machine Learn-
+ing.
+

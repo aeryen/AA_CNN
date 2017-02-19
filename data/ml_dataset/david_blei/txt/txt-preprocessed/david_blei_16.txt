@@ -1,0 +1,1491 @@
+Abstract
+
+Image classication and annotation are important prob-
+lems in computer vision, but rarely considered together. In-
+tuitively, annotations provide evidence for the class label,
+and the class label provides evidence for annotations. For
+example, an image of class highway is more likely anno-
+tated with words road, car, and trafc than words
+sh, boat, and scuba. In this paper, we develop a
+new probabilistic model for jointly modeling the image, its
+class label, and its annotations. Our model treats the class
+label as a global description of the image, and treats an-
+notation terms as local descriptions of parts of the image.
+Its underlying probabilistic assumptions naturally integrate
+these two sources of information. We derive an approximate
+inference and estimation algorithms based on variational
+methods, as well as efcient approximations for classifying
+and annotating new images. We examine the performance
+of our model on two real-world image data sets, illustrating
+that a single model provides competitive annotation perfor-
+mance, and superior classication performance.
+
+1. Introduction
+
+Developing automatic methods for managing large vol-
+umes of digital information is increasingly important as on-
+line resources continue to be a vital resource in everyday
+life. Among these methods, automatically organizing and
+indexing multimedia data remains an important challenge.
+We consider this problem for image data that are both la-
+beled with a category and annotated with free text. In such
+data, the class label tends to globally describe each image,
+while the annotation terms tend to describe its individual
+components. For example, an image in the outdoor cate-
+gory might be annotated with tree, ower, and sky.
+
+Image classication and image annotation are typically
+treated as two independent problems. Our motivating intu-
+ition, however, is that these two tasks should be connected.
+An image annotated with car and pedestrian is unlikely
+to be labeled as a living room scene. An image labeled as
+
+an ofce scene is unlikely to be annotated with swimming
+pool or sunbather. In this paper, we develop a proba-
+bilistic model that simultaneously learns the salient patterns
+among images that are predictive of their class labels and
+annotation terms. For new unknown images, our model pro-
+vides predictive distributions of both class and annotation.
+We build on recent machine learning and computer vi-
+sion research in probabilistic topic models, such as latent
+Dirichlet allocation (LDA) [4] and probabilistic latent se-
+mantic indexing [10] (pLSI). Probabilistic topic models nd
+a low dimensional representation of data under the assump-
+tion that each data point can exhibit multiple components or
+topics. While topic models were originally developed for
+text, they have been successfully adapted and extended to
+many computer vision problems [2, 1, 8, 9, 23, 5].
+
+Our model nds a set of image topics that are predictive
+of both class label and annotations. The two main contribu-
+tions of this work are:
+
+1. We extended supervised topic modeling [3] (sLDA) to
+classication problems. SLDA was originally devel-
+oped for predicting continuous response values, via a
+linear regression. We note that the multi-class exten-
+sion presented here is not simply a plug-and-play
+extension of [3]. As we show in Section 2.2, it re-
+quires substantial development of the underlying in-
+ference and estimation algorithms.
+
+2. We embed a probabilistic model of image annotation
+into the resulting supervised topic model. This yields
+a single coherent model of images, class labels and an-
+notation terms, allowing classication and annotation
+to be performed using the same latent topic space.
+
+We nd that a single model, t to images with class la-
+bels and annotation terms, provides state-of-the-art annota-
+tion performance and exceeds the state-of-the-art in classi-
+cation performance. This shows that image classication
+and annotation can be performed simultaneously.
+
+This paper is organized as follows. In Section 2, we de-
+scribe our model and derive variational algorithms for infer-
+ence, estimation, and prediction. In Section 3, we describe
+
+1
+
+related work. In Section 4, we study the performance of our
+models on classication and annotation for two real-world
+image datasets. We summarize our ndings in Section 5.
+
+2. Models and Algorithms
+
+In this section, we develop two models: multi-class
+sLDA and multi-class sLDA with annotations. We derive a
+variational inference algorithm for approximating the poste-
+rior distribution, and an approximate parameter estimation
+algorithm for nding maximum likelihood estimates of the
+model parameters. Finally, we derive prediction algorithms
+for using these models to label and annotate new images.
+
+2.1. Modeling images, labels and annotations
+
+The idea behind our model is that class and annotation
+are related, and we can leverage that relationship by nding
+a latent space predictive of both. Our training data are im-
+ages that are categorized and annotated. In testing, our goal
+is to predict the category and annotations of a new image.
+
+Each image is represented as a bag of codewords r1:N ,
+which are obtained by running the k-means algorithm on
+patches of the images [15, 18]. (See Section 4 for more de-
+tails about our image features.) The category c is a discrete
+class label. The annotation w1:M is a collection of words
+from a xed vocabulary.
+
+We x the number of topics K and let C denote the num-
+ber of class labels. The parameters of our model are a set
+of K image topics 1:K , a set of K annotation topics 1:K ,
+and a set of C class coefcients 1:C . Each coefcient c is
+a K-vector of real values. Each topic is a distribution over
+a vocabulary, either image codewords or annotation terms.
+Our model assumes the following generative process of an
+image, its class label, and its annotation.
+
+1. Draw topic proportions   Dir().
+2. For each image region rn, n  {1, 2, . . . , N }:
+
+(a) Draw topic assignment zn |   Mult().
+(b) Draw region codeword rn | zn  Mult(zn).
+
+3. Draw class label c | z1:N  softmax(z, ), where z =
+n=1 zn is the empirical topic frequencies and the
+softmax function provides the following distribution,
+
+1
+
+N PN
+
+p(c | z, ) = exp(cid:0)T
+
+c z(cid:1) /PC
+
+l=1 exp(cid:0)
+l z(cid:1) .
+
+4. For each annotation term wm, m  {1, 2, . . . , M }:
+
+(a) Draw region identier ym  Unif{1, 2, . . . , N }
+(b) Draw annotation term wm  Mult(zn).
+
+Figure 1(a) illustrates our model as a graphical model.
+
+We refer to this model as multi-class sLDA with annota-
+tions. It models both the image class and image annotation
+with the same latent space.
+
+Consider step 3 of the generative process. In modeling
+the class label, we use a similar set-up as supervised LDA
+(sLDA) [3]. In sLDA, a response variable for each doc-
+ument (here, an image) is assumed drawn from a gener-
+alized linear model with input given by the empirical dis-
+tribution of topics that generated the image patches. In [3],
+that response variable is real valued and drawn from a linear
+regression, which simplied inference and estimation.
+
+However, a continuous response is not appropriate for
+our goal of building a classier. Rather, we consider a class
+label response variable, drawn from a softmax regression
+for classication. This complicates the approximate infer-
+ence and parameter estimation algorithms (see Section 2.2
+and 2.3), but provides an important extension to the sLDA
+framework. We refer to this multi-class extension of sLDA
+(without the annotation portion) as multi-class sLDA. We
+note that multi-class sLDA can be used in classication
+problems outside of computer vision.
+
+We now turn to step 4 of the generative process. To
+model annotations, we use the same generative process as
+correspondence LDA (corr-LDA) [2], where each annota-
+tion word is assumed to be drawn from one of the topics
+that is associated with an image patch. For example, this
+will encourage words like blue and white to be associ-
+ated with the image topics that describe patches of sky.
+
+We emphasize that Corr-LDA and sLDA were developed
+for different purposes. Corr-LDA nds topics predictive of
+annotation words; sLDA nds topics predictive of a global
+response variable. However, both approaches employ sim-
+ilar statistical assumptions. First, generate the image from
+a topic model. Then, generate its annotation or class label
+from a model conditioned on the topics which generated the
+image. Our model uses the same latent topic space to gen-
+erate both the annotation and class label.
+
+2.2. Approximate inference
+
+In posterior inference, we compute the conditional dis-
+tribution of the latent structure given a model and a labeled
+annotated image. As for LDA, computing this posterior ex-
+actly is not possible [4]. We employ mean-eld variational
+methods for a scalable approximation algorithm.
+
+Variational methods consider a simple family of distri-
+butions over the latent variables, indexed by free variational
+parameters, and try to nd the setting of those parameters
+that minimizes the Kullback-Leibler (KL) divergence to the
+true posterior [13]. In our model, the latent variables are the
+per-image topic proportions , the per-codeword topic as-
+signment zn, and the per-annotation word region identier
+ym. Note that there are no latent variables explicitly asso-
+ciated with the class; its distribution is wholly governed by
+the per-codeword topic assignments.
+
+
+
+class: snowboarding
+
+annotations: skier, ski, tree, water,
+boat, building, sky, residential area
+
+predicted class: snowboarding
+
+predicted annotations: athlete, sky,
+tree, water, plant, ski, skier
+
+(a)
+
+(b)
+
+Figure 1. (a). A graphical model representation of our model. Nodes represent random variables; edges denote possible dependence
+between random variables; plates denote replicated structure. Note that in this model, the image class c and image annotation wm are
+dependent on the topics that generated the image codewords rn. (b). An example image with the class label and annotations from the
+UIUC-Sport dataset [17]. The italic words are the predicted class label and annotations, using our model.
+
+The mean-eld variational distribution is,
+
+The
+
+central
+
+is
+
+that
+
+exactly computing
+
+issue here
+l=1 exp(T
+
+Eqhlog(cid:16)PC
+
+address this, we lower bound this term with Jensens
+inequality. This gives:
+
+l z)(cid:17)i takes O(K N ) time.
+
+To
+
+m=1 q(ym|m),
+
+q(, z, y) = q(|)QN
+
+n=1 q(zn|n)QM
+
+(1)
+where n is a variational multinomial over the K topics, 
+is a variational Dirichlet, and m is a variational multino-
+mial over the image regions. We t these parameters with
+coordinate ascent to minimize the KL divergence between
+q and the true posterior. (This will nd a local minimum.)
+
+Let  = {, 1:K, 1:C, 1:K}. Following Jordan et
+al. [14], we bound the log-likelihood of a image-class-
+annotation triple, (r, c, w). We have:
+
+log p(r, c, w|)
+
+= logZ p(, z, y, r, c, w|)q(, z, y)
+
+q(, z, y)
+
+ddzdy
+
+Eq [log p(, z, y, r, c, w|)]  Eq [q(, z, y)]
+=L(, , ; ).
+
+(2)
+
+(3)
+
+(4)
+
+The coordinate ascent updates for  and  are the same as
+those in [2], which uses the same notation:
+
+n=1 n
+
+ =  +PN
+mn  exp(cid:16)PK
+
+i=1 ni log i,wm(cid:17) .
+
+We next turn to the update for the variational multino-
+mial . Here, the variational method derived in [3] cannot
+be used because the expectation of the log partition func-
+tion for softmax regression (i.e., multi-class classication)
+cannot be exactly computed. The terms in L containing n
+are:
+
+L[n] =
+
+K
+
+K
+
+M
+
+ni
+Xj=1
+(i)  (
+mn log i,wm! +
+
+Xi=1
+Xm=1
+Eq"log  C
+Xl=1
+
+1
+N
+
+j) + log i,rn+
+
+T
+c n
+
+exp(T
+
+l z)!# 
+
+K
+
+Xi=1
+
+ni log ni.
+
+(5)
+
+exp(T
+
+l z)!#
+Eq"log  C
+Xl=1
+l z)(cid:3)!
+  log  C
+Xl=1
+Eq(cid:2)exp(T
+
+=  log
+nj exp(cid:18) 1
+Xj=1
+Yn=1
+Xl=1
+
+
+
+K
+
+N
+
+C
+
+N
+
+lj(cid:19)
+
+ .
+
+
+(6)
+
+Plugging Equation 6 into Equation 5, we obtain a lower
+bound of L[n], which we will denote L
+
+[n].
+
+We present a xed-point iteration for maximizing this
+The idea is that given an old estimation of
+is constructed so that
+
+proxy.
+old
+n , a lower bound of L
+this lower bound is tight on old
+mizing this lower bound of L
+form and old
+
+[n]
+
+[n]
+
+n
+
+n
+
+[19].
+Then maxi-
+is solved in closed-
+
+is updated correspondingly. We note that
+
+l=1QN
+PC
+
+n=1(cid:16)PK
+
+j=1 nj exp(cid:0) 1
+
+N lj(cid:1)(cid:17) is only a linear func-
+
+thus can be written as hT n, where h =
+tion of n,
+[h1,    , hi,    , hK]T and does not contain n. For con-
+venience, dene bi as follows,
+
+K
+
+bi = (i)  (
+
+Xj=1
+
+j) + log i,rn +
+
+mn log i,wm .
+
+M
+
+Xm=1
+
+Now, the lower bound L
+
+[n] can be written as
+
+L
+
+[n] =
+
+nibi+
+
+1
+N
+
+K
+
+Xi=1
+
+K
+
+T
+c nlog(hT n)
+
+Xi=1
+
+ni log ni.
+
+Finally, suppose we have a previous value old
+
+n . For
+log(x), we know log(x)   1x + log()  1, x > 0,  >
+0, where the equality holds if and only if x = . Set
+
+x = hT n and  = hT old
+
+n . Immediately, we have:
+
+L
+
+[n] 
+
+nibi +
+
+1
+N
+
+K
+
+Xi=1
+
+c n  (hT old
+T
+
+n )1hT n
+
+K
+
+ log(hT old
+
+n ) + 1 
+
+ni log ni.
+
+(7)
+
+Xi=1
+
+This lower bound of L
+
+[n] is tight when n = old
+
+mizing Equation 7 under the constraintPK
+
+to the xed point update,
+
+n . Maxi-
+i=1 ni = 1 leads
+
+ni i,rn exp(cid:16)(i) +PM
+n )1hi(cid:19) .
+
+ci  (hT old
+
+1
+N
+
++
+
+m=1 mn log i,wm
+
+(8)
+
+Observe how the per-feature variational distribution over
+topics  depends on both class label c and annotation infor-
+mation wm. The combination of these two sources of data
+has naturally led to an inference algorithm that uses both.
+The full variational inference procedure repeats the updates
+of Equations 3, 4 and 8 until Equation 2, the lower bound
+on the log marginal probability log p(r, c, w|), converges.
+
+2.3. Parameter estimation
+
+Given a corpus of image data with class labels and anno-
+tations, D = {(rd, wd, cd)}D
+d=1, we nd the maximum like-
+lihood estimation for image topics 1:K , text topics 1:K
+and class coefcients 1:C . We use variational EM, which
+replaces the E-step of expectation-maximization with vari-
+ational inference to nd an approximate posterior for each
+data point. In the M-step, as in exact EM, we nd approxi-
+mate maximum likelihood estimates of the parameters using
+expected sufcient statistics computed from the E-step.
+
+Recall  = {, 1:K, 1:C, 1:K}. The corpus log-
+
+likelihood is,
+
+D
+
+L(D) =
+
+log p(rd, cd, wd|).
+
+(9)
+
+Xd=1
+
+(We do not optimize  in this paper.) Again, we maximize
+the lower bound of L(D) by plugging Equations 2 and 6
+into Equation 9.
+
+Let Vr denote the number of codewords, the terms con-
+
+taining 1:K (with Lagrangian multipliers) are:
+
+L[1:K ](D) =
+
+D
+
+Xd=1
+
+Nd
+
+Xn=1
+
+K
+
+Xi=1
+
+dni log i,rn +
+
+K
+
+Xi=1
+
+Setting L[1:K ](D)/if = 0 leads to
+
+Vr
+
+i
+Xf =1
+
+
+if  1
+ .
+
+if 
+
+D
+
+Xd=1
+
+Nd
+
+Xn=1
+
+1[rn = f ]dni.
+
+(10)
+
+Next, let Vw denote the number of total annotations,
+and the terms containing 1:K (with Lagrangian multipli-
+ers) are:
+
+L[1:K ](D) =
+
+M
+
+N
+
+K
+
+Xm=1
+
+Xn=1
+
+Xi=1
+
+mnni log i,wm +
+
+K
+
+Xi=1
+
+i  Vw
+Xw=1
+
+iw  1! .
+
+Setting L[1:K ](D)/iw = 0 leads to
+
+iw 
+
+D
+
+M
+
+Xd=1
+
+Xm=1
+
+1[wm = w]Xn
+
+Finally, terms containing 1:C are:
+
+dnidmn.
+
+(11)
+
+L[1:C ](D) =
+D
+
+Xd=1 T
+
+cd
+
+d  log  C
+Xc=1
+
+Nd
+
+Yn=1  K
+Xi=1
+
+dni exp(cid:18) 1
+
+Nd
+
+ci(cid:19)!!! .
+
+Setting L[1:C ](D)/ci = 0 does not lead to a closed-
+form solution. We optimize with conjugate gradient [20].
+
+Let d =PC
+
+c=1QNd
+
+n=1(cid:16)PK
+
+i=1 dni exp(cid:16) 1
+
+gate gradient only requires the derivatives:
+
+Nd
+
+ci(cid:17)(cid:17). Conju-
+
+L[1:C ](D)
+
+D
+
+d
+
+D
+
+K
+
+Nd
+
+=
+
+ci
+
+Xd=1(cid:0)1[cd = c] di(cid:1) 
+
+cj(cid:19)
+
+dnj exp(cid:18) 1
+Xj=1
+Xd=1
+Yn=1
+1
+ 
+
+dni exp(cid:16) 1
+
+
+
+Xn=1
+ .
+
+
+j=1 dnj exp(cid:16) 1
+PK
+
+ci(cid:17)
+cj(cid:17)
+
+1
+Nd
+
+Nd
+
+Nd
+
+Nd
+
+Nd
+
+(12)
+
+2.4. Classication and annotation
+
+With inference and parameter estimation algorithms in
+place, it remains to describe how to perform prediction, i.e.
+predicting both a class label and annotations from an un-
+known image. The rst step is to perform variational in-
+ference given the unknown image. We can use a variant
+of the algorithm in Section 2.2 to determine q(, z). Since
+the class label and annotations are not observed, we remove
+the mn terms from the variational distribution (Equation 1)
+and the terms involving c from the updates on the topic
+multinomials (Equation 8).
+
+In classication, we estimate the probability of the label
+c by replacing the true posterior p(z|w, r) with the varia-
+
+tional approximation
+
+p(c|r, w)
+
+exp(T
+
+Z exp T
+ exp Eq(cid:2)T
+
+c z  log  C
+l z)!! q(z)dz
+Xl=1
+c z(cid:3)  Eq"log  L
+l z)!#! ,
+Xl=1
+
+exp(T
+
+where the last equation comes from Jensens inequality, and
+q is the variational posterior computed in the rst step. The
+second term in the exponent is constant with respect to class
+label. Thus, the prediction rule is
+
+c = arg max
+
+c{1,...,C}
+
+Eq(cid:2)T
+
+c z(cid:3) = arg max
+
+c{1,...,C}
+
+T
+c
+
+. (13)
+
+There are two approximations at play. First, we approxi-
+mate the posterior with q. Second, we approximate the ex-
+pectation of an exponential using Jensens inequality. While
+there are no theoretical guarantees here, we evaluate this
+classication procedure empirically in Section 4.
+
+The procedure for predicting annotations is the same as
+in [2]. To obtain a distribution over annotation terms, we
+average the contributions from each region,
+
+p(w|r, c) 
+
+N
+
+Xn=1Xzn
+
+3. Related Work
+
+p(w|zn, )q(zn).
+
+(14)
+
+Image classication and annotation are both important
+problems in computer vision and machine learning. Much
+previous work has explored the use of global image features
+for scene (or event) classication [21, 27, 26, 28, 17], and
+both discriminative and generative techniques have been
+applied to this problem. Discriminative methods include
+the work in [7, 30, 29, 16]. Generative methods include
+the work in [9, 6, 22, 17].
+In the work of [5], the au-
+thors combine generative models for latent topic discov-
+ery [11] and discriminative methods for classication (k-
+nearest neighbors). LDA-based image classication was in-
+troduced in [9], where each category is identied with its
+own Dirichlet prior, and that prior is optimized to distin-
+guish between them. The multi-class sLDA model combines
+the generative and discriminative approaches, which may be
+better for modeling categorized images (see Section 4).
+
+For image annotation, several studies have explored the
+use of probabilistic models to learn the relationships be-
+tween images and annotation terms [1, 8, 12]. Our model is
+most related to the family of models based on LDA, which
+were introduced to image annotation in [8]. But the idea that
+image annotation and classication might share the same
+latent space has not been studied. We will compare the
+
+(Corr-LDA
+performance of our model to corr-LDA [2].
+was shown to provide better performance than the previous
+LDA-based annotation models in [1] and [8].)
+
+4. Empirical results
+
+We test our models with two real-world data sets that
+contain class labels and annotations: a subset from La-
+belMe [24] and the UIUC-Sport data from [17].
+In the
+LabelMe data, we used the on-line tool to obtain images
+from the following 8 classes: highway, inside city, tall
+building, street, forest, coast, mountain, and open
+country. We rst only kept the images that were 256  256
+pixels, and then randomly selected 200 images for each
+class. (In doing this, we attempted to obtain the same im-
+age data as described in [9].) The total number of images
+is 1600. The UIUC-Sport dataset [17] contains 8 types
+of sports: badminton, bocce, croquet, polo, rock-
+climbing, rowing, sailing and snowboarding. The
+number of images in each class varies from 137 (bocce) to
+250 (rowing). The total number of images is 1792.
+
+Following the setting in [9], we use the 128-dimensional
+SIFT [18] region descriptors selected by a sliding grid
+(5  5). We ran the k-means algorithm [15] to obtain the
+codewords and codebook. We report on a codebook of
+240 codewords.
+(Other codebook sizes gave similar per-
+formance.) In both data sets, we removed annotation terms
+that occurred less than 3 times. On average, there are 6
+terms per annotation in the LabelMe data, and 8 terms per
+annotation in the UIUC-Sport data. Finally, We evenly split
+each class to create the training and testing sets.
+
+Our procedure is to train the multi-class sLDA with an-
+notations on labeled and annotated images, and train the
+multi-class sLDA model on labeled images. All testing is
+on unlabeled and unannotated images. See Figure 4 for ex-
+ample annotations and classications from the multi-class
+sLDA with annotations.
+
+Image Classication. To assess our models on image
+classication, we compared the following methods,
+
+1. Fei-Fei and Perona, 2005: This is the model from [9].
+
+It is trained on labeled images without annotation.
+
+2. Bosch et al., 2006: This is the model described in
+[5]. It rst employs pLSA [11] to learn latent topics,
+and then uses the k-nearest neighbor (KNN) classier
+for classication. We use unsupervised LDA1 to learn
+the latent topics and, following [5], set the number of
+neighbors to be 10. As for the other models considered
+here, we use SIFT features. We note that [5] use other
+types of features as well.
+
+1According to [25], pLSA performs similarly to unsupervised LDA in
+
+practice.
+
+0.78
+
+0.76
+
+0.74
+
+0.72
+
+0.7
+
+0.68
+
+0.66
+
+0.64
+
+y
+c
+a
+r
+u
+c
+c
+a
+
+e
+g
+a
+r
+e
+v
+a
+
+image classification on the LabelMe dataset
+
+image classification on the UIUCSport dataset
+
+
+
+y
+c
+a
+r
+u
+c
+c
+a
+
+e
+g
+a
+r
+e
+v
+a
+
+0.66
+
+0.64
+
+0.62
+
+0.6
+
+0.58
+
+0.56
+
+
+
+20
+
+40
+
+60
+
+80
+
+100
+
+120
+
+topics
+
+20
+
+40
+
+60
+
+80
+
+100
+
+120
+
+topics
+
+multiclass sLDA with annotations
+
+multiclass sLDA
+
+FeiFei and Perona, 2005
+
+Bosch et al., 2006
+
+Figure 2. Comparisons of average accuracy over all classes based on 5 random train/test subsets. multi-class sLDA with annotations and
+multi-class sLDA (red curves in color) are both our models. left. Accuracy as a function of the number of topics on the LabelMe dataset.
+right. Accuracy as a function of the number of topics on the UIUC-Sport dataset.
+
+3. multi-class sLDA: This is the multi-class sLDA model,
+
+described in this paper.
+
+4. multi-class sLDA with annotations: This is multi-class
+
+sLDA with annotations, described in this paper.
+
+Note all testing is performed on unlabeled and unannotated
+images.
+
+The results are illustrated in the graphs of Figure 2 and
+in the confusion matrices of Figure 3.2 Our modelsmulti-
+class sLDA and multi-class sLDA with annotations per-
+form better than the other approaches. They reduce the error
+of Fei-Fei and Perona, 2005 by at least 10% on both data
+sets, and even more for Bosch et al., 2006. This demon-
+strates that multi-class sLDA is a better classier, and that
+joint modeling does not negatively affect classication ac-
+curacy when annotation information is available. In fact, it
+usually increases the accuracy.
+
+Observe that the model of [5], unsupervised LDA com-
+bined with KNN, gives the worst performance of these
+methods. This highlights the difference between nding
+topics that are predictive, as our models do, and nding
+topics in an unsupervised way. The accuracy of unsuper-
+vised LDA might be increased by using some of the other
+visual features suggested by [5]. Here, we restrict ourselves
+to SIFT features in order to compare models, rather than
+feature sets.
+
+As the number of topics increases, the multi-class sLDA
+models (with and without annotation) do not overt until
+around 100 topics, while Fei-Fei and Perona, 2005 begins
+to overt at 40 topics. This suggests that multi-class sLDA,
+which combines aspects of both generative and discrimina-
+tive classication, can handle more latent features than a
+purely generative approach. On one hand, a large number
+
+2Other than the topic models listed, we also tested an SVM-based ap-
+proach using SIFT image features. The SVM yielded much worse perfor-
+mance than the topic models (47% for the LabelMe data, and 20% for the
+UIUC-Sport data). These are not marked on the plots.
+
+of topics increases the possibility of overtting; on the other
+hand, it provides more latent features for building the clas-
+sier.
+
+Image Annotation.
+In the case of multi-class sLDA with
+annotations, we can use the same trained model for image
+annotation. We emphasize that our models are designed for
+simultaneous classication and annotation. For image an-
+notation, we compare following two methods,
+
+1. Blei and Jordan, 2003: This is the corr-LDA model
+
+from [2], trained on annotated images.
+
+2. multi-class sLDA with annotations: This is exactly the
+same model trained for image classication in the pre-
+vious section. In testing annotation, we observe only
+images.
+
+To measure image annotation performance, we use an
+evaluation measure from information retrieval. Speci-
+cally, we examine the top-N F-measure3, denoted as F-
+measure@N , where we set N = 5. We nd that multi-
+class sLDA with annotations performs slightly better than
+corr-LDA over all the numbers of topics tested (about 1%
+relative improvement). For example, considering models
+with 100 topics, the LabelMe F-measures are 38.2% (corr-
+LDA) and 38.7% (multi-class sLDA with annotations); on
+UIUC-Sport, they are 34.7% (corr-LDA) and 35.0% (multi-
+class sLDA with annotations).
+
+These results demonstrate that our models can perform
+classication and annotation with the same latent space.
+With a single trained model, we nd the annotation per-
+formance that is competitive with the state-of-the-art, and
+classication performance that is superior.
+
+3F-measure is dened as 2  precision  recall/(precision + recall).
+
+multiclass sLDA with annotations
+
+multiclass sLDA
+
+multiclass sLDA with annotations
+
+multiclass sLDA
+
+highw.
+
+.77 .01 .01 .05 .00 .05 .03 .08
+
+highw.
+
+.77 .02 .01 .04 .00 .05 .04 .07
+
+badmi.
+
+.81 .04 .08 .02 .00 .01 .02 .02
+
+badmi.
+
+.82 .02 .09 .03 .00 .01 .02 .01
+
+insid.
+
+.02 .73 .05 .18 .01 .00 .01 .00
+
+insid.
+
+.01 .75 .04 .17 .00 .01 .00 .02
+
+bocce
+
+.09 .31 .36 .05 .03 .04 .02 .11
+
+bocce
+
+.07 .26 .43 .05 .04 .03 .03 .08
+
+tallb.
+
+.00 .06 .85 .05 .01 .00 .02 .01
+
+tallb.
+
+.01 .06 .84 .04 .01 .00 .03 .01
+
+croquet
+
+.02 .08 .70 .08 .02 .04 .04 .02
+
+croquet
+
+.02 .08 .70 .08 .02 .04 .04 .02
+
+street
+
+.05 .16 .04 .72 .00 .00 .01 .02
+
+street
+
+.05 .17 .04 .71 .00 .00 .01 .02
+
+polo
+
+.10 .03 .19 .53 .01 .08 .02 .04
+
+polo
+
+.10 .03 .22 .51 .01 .06 .02 .05
+
+forest
+
+.00 .00 .00 .00 .92 .00 .04 .04
+
+forest
+
+.00 .00 .00 .00 .92 .00 .04 .04
+
+rockc
+
+.00 .02 .01 .03 .83 .01 .01 .09
+
+rockc
+
+.00 .02 .01 .03 .85 .01 .01 .07
+
+coast
+
+.12 .01 .00 .00 .01 .69 .01 .16
+
+coast
+
+.10 .00 .00 .00 .01 .71 .01 .17
+
+rowing
+
+.03 .02 .08 .07 .01 .73 .04 .03
+
+rowing
+
+.03 .02 .10 .07 .01 .71 .03 .03
+
+mount.
+
+.03 .00 .01 .01 .03 .00 .82 .10
+
+mount.
+
+.03 .00 .01 .01 .02 .00 .83 .10
+
+sailing
+
+.03 .01 .09 .03 .01 .07 .69 .07
+
+sailing
+
+.03 .00 .11 .03 .01 .07 .66 .09
+
+openc.
+
+.06 .00 .00 .01 .08 .11 .11 .62
+
+openc.
+
+.07 .00 .01 .01 .08 .12 .10 .61
+
+snowb.
+
+.03 .05 .07 .03 .08 .06 .04 .64
+
+snowb.
+
+.02 .05 .07 .05 .12 .04 .05 .60
+
+hig
+h
+
+in
+
+sid.
+
+tallb.
+
+stre
+
+fore
+st
+
+et
+
+c
+
+o
+
+a
+
+st
+
+w.
+
+m
+
+o
+
+u
+
+o
+
+p
+
+e
+
+nt.
+
+n
+
+c.
+
+hig
+h
+
+in
+
+sid.
+
+tallb.
+
+stre
+
+fore
+st
+
+et
+
+c
+
+o
+
+a
+
+st
+
+w.
+
+m
+
+o
+
+u
+
+o
+
+p
+
+e
+
+nt.
+
+n
+
+c.
+
+b
+
+a
+
+b
+
+o
+
+d
+mi.
+
+c
+
+c
+
+e
+
+cro
+
+p
+olo
+
+q
+
+u
+
+et
+
+ro
+
+ro
+
+c
+
+k
+
+c
+
+s
+
+ailin
+
+s
+
+n
+
+o
+
+w
+
+g
+
+win
+g
+
+b.
+
+b
+
+a
+
+b
+
+o
+
+d
+mi.
+
+c
+
+c
+
+e
+
+cro
+
+p
+olo
+
+q
+
+u
+
+et
+
+ro
+
+ro
+
+c
+
+k
+
+c
+
+s
+
+ailin
+
+s
+
+n
+
+o
+
+w
+
+g
+
+win
+g
+
+b.
+
+(a) LabelMe: avg. accuracy: 76%
+
+(b) LabelMe: avg. accuracy: 76%
+
+(c) UIUC-Sport: avg. accuracy: 66%
+
+(d) UIUC-Sport: avg. accuracy: 65%
+
+Figure 3. Comparisons using confusion matrices, all from the 100-topic models using multi-class sLDA with annotations and multi-class
+sLDA. (a) multi-class sLDA with annotations on the LabelMe dataset. (b) multi-class LDA on the LabelMe dataset. (c) multi-class sLDA
+with annotations on the UIUC-Sport dataset. (d) multi-class sLDA model on the UIUC-Sport dataset.
+
+5. Discussion
+
+We have developed a new graphical model for learning
+the salient patterns in images that are simultaneously pre-
+dictive of class and annotations. In the process, we have
+derived the multi-class setting of supervised topic models
+and studied its performance for computer vision problems.
+On real-world image data, we have demonstrated that the
+proposed model is on par with state-of-the-art image an-
+notation methods and outperforms current state-of-the-art
+image classication methods. Guided by the intuition that
+classication and annotation are related, we have illustrated
+that the same latent space can be used to predict both.
+
+Acknowledgments. David M. Blei is supported by ONR
+175-6343, NSF CAREER 0745520, and grants from
+Google and Microsoft. Li Fei-Fei is supported by a Mi-
+crosoft Research New Faculty Fellowship and a grant from
+Google.
+

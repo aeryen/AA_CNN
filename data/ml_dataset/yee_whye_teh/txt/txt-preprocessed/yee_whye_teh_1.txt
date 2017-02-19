@@ -1,0 +1,1228 @@
+Abstract
+
+Nonparametric Bayesian mixture models, in partic-
+ular Dirichlet process (DP) mixture models, have
+shown great promise for density estimation and
+data clustering. Given the size of todays datasets,
+computational efciency becomes an essential in-
+gredient in the applicability of these techniques to
+real world data. We study and experimentally com-
+pare a number of variational Bayesian (VB) ap-
+proximations to the DP mixture model. In partic-
+ular we consider the standard VB approximation
+where parameters are assumed to be independent
+from cluster assignment variables, and a novel col-
+lapsed VB approximation where mixture weights
+are marginalized out. For both VB approximations
+we consider two different ways to approximate the
+DP, by truncating the stick-breaking construction,
+and by using a nite mixture model with a sym-
+metric Dirichlet prior.
+
+1 Introduction
+
+Mixture modeling remains one of the most useful tools in
+statistics, machine learning and data mining for applications
+involving density estimation or clustering. One of the most
+prominent recent developments in this eld is the application
+of nonparametric Bayesian techniques to mixture modeling,
+which allow for the automatic determination of an appropriate
+number of mixture components. Current inference algorithms
+for such models are mostly based on Gibbs sampling, which
+suffer from a number of drawbacks. Most importantly, Gibbs
+sampling is not efcient enough to scale up to the large scale
+problems we face in modern-day data mining. Secondly, sam-
+pling requires careful monitoring of the convergence of the
+Markov chain, both to decide on the number of samples to
+be ignored for burn-in and to decide how many samples are
+needed to reduce the variance in the estimates. These con-
+siderations have lead researchers to develop deterministic al-
+ternatives which trade off variance with bias and are easily
+monitored in terms of their convergence. Moreover, they can
+
+This material is based in part upon work supported by the
+National Science Foundation under Grant Number D/HS-0535278.
+YWT thanks the Lee Kuan Yew Endowment Fund for funding.
+
+be orders of magnitude faster than sampling, especially when
+special data structures such as KD trees are used to cache cer-
+tain sufcient statistics [Moore, 1998; Verbeek et al., 2003;
+Kurihara et al., 2006].
+
+[Blei and Jordan, 2005] recently applied the framework of
+variational Bayesian (VB) inference to Dirichlet process (DP)
+mixture models and demonstrated signicant computational
+gains. Their model was formulated entirely in the truncated
+stick-breaking representation. The choice of this representa-
+tion has both advantages and disadvantages. For instance,
+it is very easy to generalize beyond the DP prior and use
+much more exible priors in this representation. On the ip
+side, the model is formulated in the space of explicit, non-
+exchangeable cluster labels (instead of partitions). In other
+words, randomly permuting the labels changes the probabil-
+ity of the data. This then requires samplers to mix over cluster
+labels to avoid bias [Porteous et al., 2006].
+
+In this paper we propose and study alternative approaches
+to VB inference in DP mixture models beyond that proposed
+in [Blei and Jordan, 2005]. There are three distinct contri-
+butions in this paper:
+in proposing an improved VB algo-
+rithm based on integrating out mixture weights, in comparing
+the stick-breaking representation against the nite symmet-
+ric Dirichlet approximation to the DP, and in the maintain-
+ing optimal ordering of cluster labels in the stick-breaking
+VB algorithms. These lead to a total of six different algo-
+rithms, including the one proposed in [Blei and Jordan, 2005].
+We experimentally evaluate these six algorithms and compare
+against Gibbs sampling.
+
+In Section 2.1 we explore both the truncated stick-breaking
+approximation and the nite symmetric Dirichlet prior as -
+nite dimensional approximations to the DP. As opposed to the
+truncated stick-breaking approximation, the nite symmetric
+Dirichlet model is exchangeable over cluster labels. Theoret-
+ically this has important consequences, for example a Gibbs
+sampler is not required to mix over cluster labels if we are
+computing averages over quantities invariant to cluster label
+permutations (as is typically the case).
+
+In Section 2.2 we explore the idea of integrating out the
+mixture weights , hence collapsing the model to a lower di-
+mensional space. This idea has been shown to work well for
+LDA models [Teh et al., 2006] where strong dependencies ex-
+ist between model parameters and assignment variables. Such
+dependencies exist between mixture weights and assignment
+
+IJCAI-07
+
+2796
+
+variables in our mixture model context as well, thus collaps-
+ing could also be important here. This intuition is reected in
+the observation that the variational bound on the log evidence
+is guaranteed to improve.
+
+In Section 3 we derive the VB update equations corre-
+sponding to the approximations in Section 2. We also con-
+sider optimally reordering cluster labels in the stick-breaking
+VB algorithms. As mentioned, the ordering of the cluster la-
+bels is important for models formulated in the stick-breaking
+representation. In the paper [Blei and Jordan, 2005] this issue
+was ignored. Here we also study the effect of cluster reorder-
+ing on relevant performance measures such as the predictive
+log evidence.
+
+The above considerations lead us to six VB inference meth-
+ods, which we evaluate in Section 4. The methods are: 1)
+the truncated stick-breaking representation with standard VB
+(TSB), 2) the truncated stick-breaking representation with
+collapsed VB (CTSB), 3) the nite symmetric Dirichlet rep-
+resentation with standard VB (FSD), 4) the nite symmetric
+Dirichlet presentation with collapsed VB (CFSD), and 5) and
+6) being TSB and CTSB with optimal reordering (O-TSB and
+O-CTSB respectively).
+
+2 Four Approximations to the DP
+
+We describe four approximations to the DP in this section.
+These four approximations are obtained by a combination of
+truncated stick-breaking/nite symmetric Dirichlet approxi-
+mations and whether the mixture weights are marginalized
+out or not. Based on these approximations we describe the
+six VB inference algorithms in the next section.
+
+(cid:2)
+
+The most natural representation of DPs is using the Chi-
+nese restaurant process, which is formulated in the space of
+partitions. Partitions are groupings of the data independent
+of cluster labels, where each data-point is assigned to exactly
+1 group. This space of partitions turns out to be problem-
+atic for VB inference, where we wish to use fully factorized
+variational distributions on the assignment variables, Q(z) =
+n q(zn). Since the assignments z1 = 1, z2 = 1, z3 = 2 rep-
+resent the same partition (1, 2)(3) as z1 = 3, z2 = 3, z3 = 2,
+there are intricate dependencies between the assignment vari-
+ables and it does not make sense to use the factorization
+above. We can circumvent this by using nite dimensional
+approximations for the DP, which are formulated in the space
+of cluster labels (not partitions) and which are known to
+closely approximate the DP prior as the number of explic-
+itly maintained clusters grows [Ishwaran and James, 2001;
+Ishwaran and Zarepour, 2002]. These nite approximations
+are what will we discuss next.
+
+2.1 TSB and FSD Approximations
+
+In the rst approximation we use the stick-breaking represen-
+tation for the DP [Ishwaran and James, 2001] and truncate it
+
+after T terms,
+
+vi  B(vi; 1, )
+vT = 1
+
+(cid:3)
+
+i = vi
+
+j<i
+
+i = 1, ..., T  1
+
+(1)
+
+(2)
+
+(3)
+
+(1  vj)
+
+i = 1, ..., T
+
+i > T
+
+i = 0
+
+(4)
+where B(v; 1, ) is a beta density for variable v with para-
+i=1 i = 1. In-
+meters 1 and , and one can verify that
+corporating this into a joint probability over data items X =
+{xn}, n = 1, ..., N , cluster assignments z = {zn}, n =
+1, ..., N , stick-breaking weights v = {vi}, i = 1, ..., T and
+cluster parameters  = {i}, i = 1, ..., T we nd
+
+(cid:4)T
+
+P (X, z, v, ) =
+
+(cid:5)
+
+N(cid:3)
+
+n=1
+
+(cid:6)(cid:5)
+
+T(cid:3)
+
+i=1
+
+p(xn|zn ) p(zn|(v))
+
+p(i)B(vi; 1, )
+
+(5)
+
+(cid:6)
+
+where (v) are the mixture weights as dened in (3). In this
+representation the cluster labels are not interchangeable, i.e.
+changing labels will change the probability value in (5). Note
+also that as T   the approximation becomes exact.
+
+A second approach to approximate the DP is by assuming
+a nite (but large) number of clusters, K, and using a sym-
+metric Dirichlet prior D on  [Ishwaran and Zarepour, 2002],
+
+  D(; 
+
+K
+
+, ..., 
+
+K )
+
+(6)
+
+This results in the joint model,
+
+P (X, z, , ) =
+
+p(xn|zn ) p(zn|)
+
+(cid:5)
+
+N(cid:3)
+
+n=1
+
+(cid:6)(cid:5)
+
+K(cid:3)
+
+i=1
+
+(cid:6)
+
+p(i)
+
+D(; 
+K
+
+, ..., 
+
+K ) (7)
+
+The essential difference with the stick-breaking representa-
+tion is that the cluster labels remain interchangeable under
+this representation, i.e.
+changing cluster labels does not
+change the probability [Porteous et al., 2006]. The limit
+K   is somewhat tricky because in the transition K 
+ we switch to the space of partitions, where states that
+result from cluster relabelings are mapped to the same par-
+tition. For example, both z1 = 1, z2 = 1, z3 = 2 and
+z1 = 3, z2 = 3, z3 = 2 are mapped to the same partition
+(1, 2)(3).
+
+In gure 1 we show the prior average cluster sizes under
+the truncated stick-breaking (TSB) representation (left) and
+under the nite symmetric Dirichlet (FSD) prior (middle) for
+two values of the truncation level and number of clusters re-
+spectively. From this gure it is apparent that the cluster
+labels in the TSB prior are not interchangeable (the proba-
+bilities are ordered in decreasing size), while they are inter-
+changeable for the FSD prior. As we increase T and K these
+priors approximate the DP prior with increasing accuracy.
+
+One should note however, that they live in different spaces.
+The DP itself is most naturally dened in the space of parti-
+tions, while both TSB and FSD are dened in the space over
+cluster labels. However, TSB and FSD also live in different
+
+IJCAI-07
+
+2797
+
+Truncated StickBreaking Representation
+
+Finite Symmetric Dirichlet Prior
+
+i
+
+e
+z
+s
+
+r
+e
+
+t
+s
+u
+c
+
+
+l
+
+d
+e
+
+t
+c
+e
+p
+x
+e
+
+0.4
+
+0.35
+
+0.3
+
+0.25
+
+0.2
+
+0.15
+
+0.1
+
+0.05
+
+0
+
+T=6
+
+T=11
+
+1
+
+2
+
+3
+
+4
+
+6
+
+5
+7
+cluster label
+
+8
+
+9
+
+10
+
+11
+
+i
+
+e
+z
+s
+
+r
+e
+
+t
+s
+u
+c
+
+
+l
+
+d
+e
+
+t
+c
+e
+p
+x
+e
+
+0.18
+
+0.16
+
+0.14
+
+0.12
+
+0.1
+
+0.08
+
+0.06
+
+0.04
+
+0.02
+
+0
+
+K=6
+
+K=11
+
+1
+
+2
+
+3
+
+4
+
+6
+
+5
+7
+cluster label
+
+8
+
+9
+
+10
+
+11
+
+i
+
+e
+z
+s
+
+r
+e
+
+t
+s
+u
+c
+
+
+l
+
+d
+e
+
+t
+c
+e
+p
+x
+e
+
+0.5
+
+0.45
+
+0.4
+
+0.35
+
+0.3
+
+0.25
+
+0.2
+
+0.15
+
+0.1
+
+0.05
+
+0
+
+Truncated StickBreaking Representation 2
+
+T=6
+
+T=11
+
+1
+
+2
+
+3
+
+4
+
+6
+
+5
+7
+cluster label
+
+8
+
+9
+
+10
+
+11
+
+Figure 1: Average cluster size for three nite approximations to the DP prior. Left: Truncated stick-breaking prior (TSB) as given in (3).
+Middle: Finite Symmetric Dirichlet prior (FSD). Right: Stick-breaking representation corresponding to the FSD prior. In each gure we
+show results for two truncation levels: T /K = 6 (left bars) and T /K = 11 (right bars).
+
+spaces! More precisely, one can transform a sample from
+the FSD prior into the stick-breaking representation by per-
+forming a size-biased permutation of the mixture weights 
+(i.e. after every sample from D() we sample an ordering
+according to  without replacement). As it turns out, for -
+nite K this does not exactly recover the left hand gure in
+1, but rather samples from a prior very closely related to it
+shown in the right pane of gure 1. This prior is given by
+a stick-breaking construction as in eqn.(3) with stick-lengths
+sampled from,
+
+vi  B(vi; 1 +
+
+
+K
+
+,  
+
+i
+K )
+
+(8)
+
+Conversely, we can obtain samples from the FSD prior by
+applying a random, uniformly distributed permutation on the
+cluster weights obtained from eqn.(8). Although these two
+stick-breaking constructions are slightly different, for large
+enough K, T they are very similar and we do not expect any
+difference in terms of performance between the two.
+
+2.2 Marginalizing out the Mixture Weights
+The variational Bayesian approximations discussed in the
+next section assume a factorized form for the posterior dis-
+tribution. This means that we assume that parameters are in-
+dependent of assignment variables. This is clearly a very bad
+assumption because changes in  will have a considerable
+impact on z. Ideally, we would integrate out all the parame-
+ters, but this is too computationally expensive. There is how-
+ever a middle ground: we can marginalize out  from both
+methods without computational penalty if we make another
+approximation which will be discussed in section 3.3. For
+both TSB and FSD representations the joint collapsed model
+over X, z,  is given by,
+
+(cid:6)
+
+(cid:5)
+
+(cid:3)
+
+(cid:6)
+
+(cid:5)
+
+N(cid:3)
+
+P (X, z, ) =
+
+p(xn|zn )
+
+p(z)
+
+p(i)
+
+(9)
+
+n=1
+
+i=1
+
+with different distributions over cluster labels p(z) in both
+cases. For the TSB representation we have,
+
+(cid:3)
+
+pTSB(z) =
+
+i<T
+
+(1 + Ni)( + N>i)
+
+(1 +  + Ni)
+
+(10)
+
+with
+
+N(cid:7)
+
+N(cid:7)
+
+Ni =
+
+I(zn = i)
+
+N>i =
+
+I(zn > i)
+
+(11)
+
+n=1
+
+n=1
+
+and Ni = Ni + N>i. For FSD we nd instead,
+
+(cid:2)K
+
+pFSD(z) =
+
+()
+
+k=1 (Nk + 
+K )
+
+(N + )( 
+
+K )K
+
+(12)
+
+3 Variational Bayesian Inference
+The variational Bayesian inference algorithm [Attias, 2000;
+Ghahramani and Beal, 2000] lower bounds the log marginal
+likelihood by assuming that parameters and hidden variables
+are independent. The lower bound is given by,
+
+L(X)  B(X) =
+
+Q(z)Q() log
+
+P (X, z, )
+Q(z)Q()
+
+(13)
+
+(cid:8)
+
+(cid:7)
+
+z
+
+d
+
+where  is either {, v}, {, } or {} in the various DP
+approximations discussed in the previous section. Approxi-
+mate inference is then achieved by alternating optimization
+of this bound over Q(z) and Q(). In the following we will
+spell out the details of VB inference for the proposed four
+methods. For the TSB prior we use,
+
+(cid:6)
+
+QTSB(z, , v) =
+
+q(zn)
+
+q(i)q(vi)
+
+(14)
+
+n
+
+i=1
+
+where q(v) is not used in the TSB model with v marginalized
+out. For the FSD prior we use,
+
+(cid:6)
+
+QFSD(z, , ) =
+
+q(zn)
+
+q(k)
+
+q()
+
+(15)
+
+n
+
+k=1
+
+As well, q() is left out for the collapsed version.
+
+3.1 Bounds on the Evidence
+Given the variational posteriors we can construct bounds on
+the log marginal likelihood by inserting Q into eqn.(13). Af-
+
+(cid:5)
+N(cid:3)
+
+(cid:5)
+N(cid:3)
+
+(cid:6)(cid:5)
+
+T(cid:3)
+
+(cid:6)(cid:5)
+
+K(cid:3)
+
+IJCAI-07
+
+2798
+
+ter some algebra we nd the following general form,
+
+N(cid:7)
+
+(cid:7)
+
+(cid:8)
+
+n=1
+
+zn
+
+dzn
+
+B(X) =
+
+(cid:8)
+
+(cid:7)
+
+q(zn)q(zn ) log p(xn|zn )
+
+N(cid:7)
+
+(cid:7)
+
++
+
+q(i) log
+
+i
+
+di
+
++ Extra Term
+
+p(i)
+q(i)
+
+
+
+q(zn) log q(zn)
+
+n=1
+
+zn
+
+(16)
+
+where the extra term depends on the particular method. For
+the TSB prior we have,
+
+(cid:8)
+
+(cid:5)
+
+zn(cid:3)
+
+(cid:6)
+
+TermTSB =
+
+q(zn)
+
+dv
+
+i=1
+
+q(vi)
+
+log p(zn|v)
+
+T(cid:7)
+N(cid:7)
+(cid:8)
+T(cid:7)
+
+n=1
+
+zn=1
+
++
+
+q(vi) log
+
+i=1
+
+dvi
+
+p(vi)
+q(vi)
+
+On the other hand for the FSD prior we nd,
+
+TermFSD =
+
+q(zn)q() log p(zn|)
+
+d
+
+(cid:8)
+
+K(cid:7)
+
+zn=1
+
+(cid:7)
+(cid:8)
+
+n
+
++
+
+q() log
+
+d
+
+p()
+q()
+
+(cid:5)
+
+N(cid:3)
+
+(cid:7)
+
+(cid:6)
+
+(17)
+
+(18)
+
+For both collapsed versions these expressions are replaced by,
+
+TermCTSB/CFSD =
+
+q(zn)
+
+log p(z)
+
+(19)
+
+z
+
+n=1
+
+3.2 VB Update Equations
+Given these bounds it is now not hard to derive update equa-
+tions for the various methods. Due to space constraints we
+will refer to the papers [Blei and Jordan, 2005; Ghahramani
+and Beal, 2000; Penny, 2001; Yu et al., 2005] for more details
+on the update equations for the un-collapsed methods and fo-
+cus on the novel collapsed update equations.
+
+Below we will provide the general form of the update
+equations where we do not assume anything about the par-
+ticular form of the prior p(i). The equations become par-
+ticularly simple when we choose this prior in the conju-
+gate exponential family. Explicit update equations for q(i)
+can be found in the papers [Ghahramani and Beal, 2000;
+Blei and Jordan, 2005; Penny, 2001; Yu et al., 2005].
+
+For q(i) we nd the same update for both methods,
+
+q(i)  p(i) exp
+
+q(zn = i) log p(xn|i)
+
+(20)
+
+while for q(zn) we nd the update
+
+q(zn)  exp
+
+q(zm) log p(zn|zn)
+
+(cid:9)(cid:7)
+
+n
+
+(cid:3)
+
+m(cid:4)=n
+
+
+(cid:7)
+(cid:9)(cid:8)
+
+zn
+
+(cid:10)
+
+
+
+(cid:10)
+
+ exp
+
+q(zn ) log p(xn|zn )
+
+(21)
+
+dzn
+
+where the conditional p(zn|zn) is different for the FSD and
+TSB priors. For the TSB prior we use (10), giving the condi-
+tional
+
+p(zn = i|zn) =
+
+1 + N n
+
+i
+
+1 +  + N n
+i
+
+ + N n
+>i
+
+1 +  + N n
+i
+
+(22)
+
+(cid:3)
+
+j<k
+
+i = Ni  I(zn = i), N n
+
+where N n
+>i = N>i  I(zn > i) are
+the corresponding counts with zn removed. In contrast, for
+the FSD prior we have,
+
+p(zn = k|zn) =
+
+k + 
+N n
+K
+N n + 
+
+(23)
+
+3.3 Gaussian Approximation
+The expectation required to compute the update (21) seems
+intractable due to the exponentially large space of all assign-
+ments for z. It can in fact be computed in polynomial time
+using convolutions, however this solution still tended to be
+too slow to be practical. A much more efcient approximate
+solution is to observe that both random variables Ni and N>i
+are sums over Bernoulli variables: Ni =
+n I(zn = i) and
+n I(zn > i). Using the central limit theorem these
+N>i =
+sums are expected to be closely approximated by Gaussian
+distributions with means and variances given by,
+
+(cid:4)
+
+(cid:4)
+
+q(zn = i)
+
+E[Ni] =
+
+V[Ni] =
+
+E[N>i] =
+
+n=1
+
+N(cid:7)
+N(cid:7)
+N(cid:7)
+N(cid:7)
+
+n=1
+
+n=1
+
+(cid:7)
+(cid:7)
+
+j>i
+
+q(zn = j)
+
+(cid:7)
+
+q(zn = i)(1  q(zn = i))
+
+(24)
+
+(25)
+
+(26)
+
+V[N>i] =
+
+q(zn = j)
+
+q(zn = k)
+
+(27)
+
+n=1
+
+j>i
+
+ki
+
+To apply this approximation to the computation of the average
+in (21), we use the following second order Taylor expansion,
+
+E[f (m)]  f (E(m)] +
+
+1
+2
+
+f (cid:2)(cid:2)
+
+(E[m])V[m]
+
+(28)
+
+This approximation has been observed to work extremely
+well in practice, even for small values of m.
+
+3.4 Optimal Cluster Label Reordering
+As discussed in section 2.1 the stick-breaking prior assumes a
+certain ordering of the clusters (more precisely, a size-biased
+ordering). Since a permutation of the cluster labels changes
+the probability of the data, we should choose the optimal per-
+mutation resulting in the highest probability for the data. The
+optimal relabelling of the clusters is given by the one that or-
+ders the cluster sizes in decreasing order (this is true since
+the average prior cluster sizes are also ordered). In our ex-
+periments we assess the effect of reordering by introducing
+algorithms O-TSB and O-CTSB which always maintain this
+optimal labelling of the clusters. Note that optimal ordering
+was not maintained in [Blei and Jordan, 2005].
+
+IJCAI-07
+
+2799
+
+Figure 2: Average log probability per data-point for test data as a
+function of N .
+
+Figure 4: Average log probability per data-point for test data as a
+function of T (for TSB methods) or K (for FSD methods).
+
+Figure 3: Relative average log probability per data-point for test
+data as a function of N .
+
+Figure 5: Relative average log probability per data-point for test
+data as a function of T (for TSB methods) or K (for FSD methods).
+
+4 Experiments
+
+In the following experiments we compared the six algorithms
+discussed in the main text in terms of their log-probability on
+held out test data. The probability for a test point, xt, is then
+given by,
+
+(cid:8)
+
+(cid:7)
+
+p(xt) =
+
+zt
+
+dzt
+
+p(xt|zt)q(zt )E[p(zt|ztrain)]q(ztrain)
+
+where the expectation E[p(zt|ztrain)]q(ztrain) is computed using
+the techniques introduced in section 3.3. All experiments
+were conducted using Gaussian mixtures with vague priors
+on the parameters.
+
+In the rst experiment we generated synthetic data from a
+mixture of 10 Gaussians in 16 dimensions with a separation
+
+coefcient1 c = 2. We studied the accuracy of each algorithm
+as a function of the number of data cases and the truncation
+level of the approximation. In gures 2 and 3 we show the
+results as we vary N (keeping T and K xed at 30) while in
+gures 4 and 5 we plot the results as we vary T and K (keep-
+ing N xed at 200). We plot both the absolute value of the log
+probability of test data and the value relative to a Gibbs sam-
+pler (GS). We 50 iterations for burn-in, and run another 200
+iterations for inference. Error bars are computed on the rela-
+tive values in order to subtract variance caused by the differ-
+ent splits (i.e. we measure variance on paired experiments).
+
+1Following [Dasgupta, 1999], a Gaussian mixture is c-separated
+if for each pair (i, j) of components we have ||mi  mj ||2 
+c2D max(max
+) , where max denotes the maximum eigen-
+value of their covariance.
+
+, max
+
+i
+
+j
+
+IJCAI-07
+
+2800
+
+TSB
+
+O-TSB
+
+CTSB
+
+O-CTSB
+
+FSD
+
+CFSD
+
+Figure 6: 15 most populated clusters found by the various al-
+gorithms in descending order of E[Ni]. Algorithms were trained
+on a random subset of 10,000 images from MNIST and dimen-
+sionality reduced to 50 dimensions using PCA. Log probability of
+10,000 test images are given by, L = 574.05  0.52 (TSB),
+L = 574.03  0.53 (O-TSB), L = 573.90  0.54 (CTSB),
+L = 573.89  0.54 (O-CTSB), L = 574.06  0.50 (FSD),
+and L = 573.89  0.51 (CFSD). Standard error over differences
+relative to O-CTSB are given by: dL = 0.17  0.13 (TSB),
+dL = 0.14  0.11 (O-TSB), dL = 0.01  0.05 (CTSB),
+dL = 0.17  0.13 (FSD), and dL = 0.00  0.10 (CFSD).
+
+Results were averaged over 30 independently sampled train-
+ing/testing datasets, where the number of test instances was
+always xed at 1000.2
+
+In the second experiment we have run the algorithms on
+subsets of MNIST. Images of size 28  28 were dimension-
+ality reduced to 50 PCA dimensions as a preprocessing step.
+We trained all algorithms on 30 splits of the data, each split
+containing 5000 data-cases for training and 10,000 data-cases
+for testing. Truncation levels were set to 80 for all algorithms.
+Unfortunately, the dataset was too large to obtain results with
+Gibbs sampling. All algorithms typically nd between 32 and
+36 clusters. Results are shown in gure 4.
+
+4.1 Discussion
+
+In this paper we explored six different ways to perform vari-
+ational Bayesian inference in DP mixture models. Besides an
+empirical study of these algorithms our contribution has been
+to introduce a new family of collapsed variational algorithms
+where the mixture weights are marginalized out. To make
+these algorithms efcient, we used the central limit theorem
+to approximate the required averages.
+
+We can draw three conclusions from our study. Firstly,
+there is very little difference between variational Bayesian in-
+ference in the reordered stick-breaking representation and the
+nite mixture model with symmetric Dirichlet priors. Sec-
+ondly, label reordering is important for the stick-breaking
+representation. Thirdly, variational approximations are much
+
+2For N=200 and T or K=40, TSB, O-TSB, CTSB, O-CTSB,
+FSD, CFSD and GS took 0.48, 0.70, 0.84, 1.22, 0.67, 1.16 and 1,019
+seconds on average, respectively. Note that the computational com-
+plexities of the variational algorithms are the same.
+
+more efcient computationally than Gibbs sampling, with al-
+most no loss in accuracy.
+
+We are currently working towards models where the para-
+meters  are marginalized out as well. We expect this to have
+a more signicant impact on test accuracy than the current
+setup which only marginalizes over , especially when clus-
+ters are overlapping. Unfortunately, it seems this will come
+at the cost of increased computation.
+
+Collapsed variational inference has also been applied to
+LDA models [Teh et al., 2006], where preliminary results
+indicate signicant performance improvement. We are cur-
+rently also exploring collapsed variational inference for hier-
+archical DP models [Teh et al., 2004].
+

@@ -1,0 +1,1462 @@
+Abstract
+
+Latent Dirichlet analysis, or topic modeling, is
+a exible latent variable framework for model-
+ing high-dimensional sparse count data. Various
+learning algorithms have been developed in re-
+cent years, including collapsed Gibbs sampling,
+variational inference, and maximum a posteriori
+estimation, and this variety motivates the need
+for careful empirical comparisons. In this paper,
+we highlight the close connections between these
+approaches. We nd that the main differences are
+attributable to the amount of smoothing applied
+to the counts. When the hyperparameters are op-
+timized, the differences in performance among
+the algorithms diminish signicantly. The ability
+of these algorithms to achieve solutions of com-
+parable accuracy gives us the freedom to select
+computationally efcient approaches. Using the
+insights gained from this comparative study, we
+show how accurate topic models can be learned
+in several seconds on text corpora with thousands
+of documents.
+
+1
+
+INTRODUCTION
+
+Latent Dirichlet Allocation (LDA) [Blei et al., 2003] and
+Probabilistic Latent Semantic Analysis (PLSA) [Hofmann,
+2001] are well-known latent variable models for high di-
+mensional count data, such as text data in the bag-of-
+words representation or images represented through fea-
+ture counts. Various inference techniques have been pro-
+posed, including collapsed Gibbs sampling (CGS) [Grif-
+ths and Steyvers, 2004], variational Bayesian inference
+(VB) [Blei et al., 2003], collapsed variational Bayesian in-
+ference (CVB) [Teh et al., 2007], maximum likelihood esti-
+mation (ML) [Hofmann, 2001], and maximum a posteriori
+estimation (MAP) [Chien and Wu, 2008].
+
+Among these algorithms, substantial performance differ-
+ences have been observed in practice. For instance, Blei
+
+et al. [2003] have shown that the VB algorithm for LDA
+outperforms ML estimation for PLSA. Furthermore, Teh
+et al. [2007] have found that CVB is signicantly more ac-
+curate than VB. But can these differences in performance
+really be attributed to the type of inference algorithm?
+
+In this paper, we provide convincing empirical evidence
+that points in a different direction, namely that the claimed
+differences can be explained away by the different settings
+of two smoothing parameters (or hyperparameters).
+In
+fact, our empirical results suggest that these inference algo-
+rithms have relatively similar predictive performance when
+the hyperparameters for each method are selected in an op-
+timal fashion. With hindsight, this phenomenon should not
+surprise us. Topic models operate in extremely high di-
+mensional spaces (with typically more than 10,000 dimen-
+sions) and, as a consequence, the curse of dimensionality
+is lurking around the corner; thus, hyperparameter settings
+have the potential to signicantly affect the results.
+
+We show that the potential perplexity gains by careful
+treatment of hyperparameters are on the order of (if not
+greater than) the differences between different inference al-
+gorithms. These results caution against using generic hy-
+perparameter settings when comparing results across algo-
+rithms. This in turn raises the question as to whether newly
+introduced models and approximate inference algorithms
+have real merit, or whether the observed difference in pre-
+dictive performance is attributable to suboptimal settings of
+hyperparameters for the algorithms being compared.
+
+In performing this study, we discovered that an algorithm
+which suggests itself in thinking about inference algo-
+rithms in a unied way  but was never proposed by itself
+before  performs best, albeit marginally so. More impor-
+tantly, it happens to be the most computationally efcient
+algorithm as well.
+
+In the following section, we highlight the similarities be-
+tween each of the algorithms. We then discuss the impor-
+tance of hyperparameter settings. We show accuracy re-
+sults, using perplexity and precision/recall metrics, for each
+algorithm over various text data sets. We then focus on
+
+28
+
+ASUNCION ET AL.
+
+UAI 2009
+
+a
+
+id
+
+q
+
+j
+
+iz
+
+f
+
+k
+
+ix
+
+h
+
+N
+
+Figure 1: Graphical model for Latent Dirichlet Allocation.
+Boxes denote parameters, and shaded/unshaded circles de-
+note observed/hidden variables.
+
+computational efciency and provide timing results across
+algorithms. Finally, we discuss related work and conclude
+with future directions.
+
+INFERENCE TECHNIQUES FOR LDA
+
+2
+LDA has roots in earlier statistical decomposition tech-
+niques, such as Latent Semantic Analysis (LSA) [Deer-
+wester et al., 1990] and Probabilistic Latent Semantic Anal-
+ysis (PLSA) [Hofmann, 2001]. Proposed as a generaliza-
+tion of PLSA, LDA was cast within the generative Bayesian
+framework to avoid some of the overtting issues that were
+observed with PLSA [Blei et al., 2003]. A review of the
+similarities between LSA, PLSA, LDA, and other models
+can be found in Buntine and Jakulin [2006].
+
+We describe the LDA model and begin with general nota-
+tion. LDA assumes the standard bag-of-words representa-
+tion, where D documents are each represented as a vector
+of counts with W components, where W is the number of
+words in the vocabulary. Each document j in the corpus is
+modeled as a mixture over K topics, and each topic k is a
+distribution over the vocabulary of W words. Each topic,
+k, is drawn from a Dirichlet with parameter , while each
+documents mixture, j, is sampled from a Dirichlet with
+parameter 1. For each token i in the corpus, a topic as-
+signment zi is sampled from di, and the specic word xi
+is drawn from zi. The generative process is below:
+
+k,j  D[]
+
+w,k  D[]
+
+zi  k,di
+
+xi  w,zi.
+
+In Figure 1, the graphical model for LDA is presented in
+a slightly unconventional fashion, as a Bayesian network
+where kj and wk are conditional probability tables and i
+runs over all tokens in the corpus. Each tokens document
+index di is explicitly shown as an observed variable, in or-
+der to show LDAs correspondence to the PLSA model.
+
+Exact inference (i.e. computing the posterior over the hid-
+den variables) for this model is intractable [Blei et al.,
+2003], and so a variety of approximate algorithms have
+been developed. If we ignore  and  and treat kj and
+wk as parameters, we obtain the PLSA model, and max-
+imum likelihood (ML) estimation over kj and wk di-
+rectly corresponds to PLSAs EM algorithm. Adding the
+hyperparameters  and  back in leads to MAP estimation.
+
+1We use symmetric Dirichlet priors for simplicity in this paper.
+
+Treating kj and wk as hidden variables and factorizing
+the posterior distribution leads to the VB algorithm, while
+collapsing kj and wk (i.e. marginalizing over these vari-
+ables) leads to the CVB and CGS algorithms. In the fol-
+lowing subsections, we provide details for each approach.
+
+2.1 ML ESTIMATION
+
+The PLSA algorithm described in Hofmann [2001] can be
+understood as an expectation maximization algorithm for
+the model depicted in Figure 1. We start the derivation by
+writing the log-likelihood as,
+
+ = Xi
+
+logXzi
+
+P (xi|zi, ) P (zi|di, )
+
+from which we derive via a standard EM derivation the up-
+dates (where we have left out explicit normalizations):
+
+P (zi|xi, di)  P (xi|zi, ) P (zi|di, )
+
+I[xi = w, zi = k]P (zi|xi, di)
+
+w,k  Xi
+k,j  Xi
+
+I[zi = k, di = j]P (zi|xi, di) .
+
+(1)
+
+(2)
+
+(3)
+
+These updates can be rewritten by dening wjk = P (z =
+k|x = w, d = j), Nwj the number of observations for
+
+word type w in document j, Nwk = Pj Nwjwjk, Nkj =
+Pw Nwjwjk, Nk = Pw Nwk and Nj = Pk Nkj,
+
+w,k  Nwk/Nk
+
+k,j  Nkj/Nj .
+
+Plugging these expressions back into the expression for the
+posterior (1) we arrive at the update,
+
+wjk 
+
+Nwk Nkj
+
+Nk
+
+(4)
+
+where the constant Nj is absorbed into the normalization.
+Hofmann [2001] regularizes the PLSA updates by raising
+the right hand side of (4) to a power  > 0 and searching
+for the best value of  on a validation set.
+
+2.2 MAP ESTIMATION
+
+We treat ,  as random variables from now on. We add
+Dirichlet priors with strengths  for  and  for  respec-
+tively. This extension was introduced as latent Dirichlet
+allocation in Blei et al. [2003].
+
+It is possible to optimize for the MAP estimate of , .
+The derivation is very similar to the ML derivation in the
+previous section, except that we now have terms corre-
+sponding to the log of the Dirichlet prior which are equal
+
+to Pwk(  1) log wk and Pkj(  1) log kj. After
+
+working through the math, we derive the following update
+(de Freitas and Barnard [2001], Chien and Wu [2008]),
+
+wjk 
+
+(Nwk +   1)(Nkj +   1)
+
+(Nk + W   W )
+
+(5)
+
+UAI 2009
+
+ASUNCION ET AL.
+
+29
+
+where ,  > 1. Upon convergence, MAP estimates are
+obtained:
+
+wk =
+
+Nwk +   1
+Nk + W   W
+
+kj =
+
+Nkj +   1
+Nj + K  K
+
+.
+
+(6)
+
+2.3 VARIATIONAL BAYES
+
+The variational Bayesian approximation (VB) to LDA fol-
+lows the standard variational EM framework [Attias, 2000,
+Ghahramani and Beal, 2000]. We introduce a factorized
+(and hence approximate) variational posterior distribution:
+
+2.4 COLLAPSED VARIATIONAL BAYES
+
+It is possible to marginalize out the random variables kj
+and wk from the joint probability distribution. Following
+a variational treatment, we can introduce variational pos-
+teriors over z variables which is once again assumed to be
+
+factorized: Q(z) = Qi q(zi). This collapsed variational
+
+free energy represents a strictly better bound on the (nega-
+tive) evidence than the original VB [Teh et al., 2007]. The
+derivation of the update equation for the q(zi) is slightly
+more complicated and involves approximations to compute
+intractable summations. The update is given below 2:
+
+Q(, , z) = Yk
+
+q(,k)Yj
+
+q(,j)Yi
+
+q(zi) .
+
+ijk 
+
+Using this assumption in the variational formulation of the
+EM algorithm [Neal and Hinton, 1998] we readily derive
+the VB updates analogous to the ML updates of Eqns. 2, 3
+and 1:
+
+q(,k) = D[ + N,k], Nwk = Xi
+
+q(zi = k)(xi, w)
+
+wk + 
+
+N ij
+k + W  (cid:16)N ij
+N ij
+
+kj + (cid:17) exp(cid:18) 
+
+V ij
+kj
+2(N ij
+kj + )2
+
+
+
+V ij
+wk
+2(N ij
+wk + )2
+
++
+
+V ij
+k
+2(N ij
+
+k + W )2(cid:19) .
+
+(12)
+
+N ij
+kj denotes the expected number of tokens in document
+j assigned to topic k (excluding the current token), and can
+be calculated as follows: N ij
+kj = Pi6=i ijk. For CVB,
+there is also a variance associated with each count: V ij
+Pi6=i ijk(1  ijk). For further details we refer to Teh
+
+et al. [2007].
+
+kj =
+
+The update in (12) makes use of a second-order Taylor ex-
+pansion as an approximation. A further approximation can
+be made by using only the zeroth-order information3:
+
+ijk 
+
+wk + 
+
+N ij
+k + W  (cid:16)N ij
+N ij
+
+kj + (cid:17) .
+
+(13)
+
+We refer to this approximate algorithm as CVB0.
+
+2.5 COLLAPSED GIBBS SAMPLING
+
+MCMC techniques are available to LDA as well.
+In
+collapsed Gibbs sampling (CGS) [Grifths and Steyvers,
+2004], kj and wk are integrated out (as in CVB) and sam-
+pling of the topic assignments is performed sequentially in
+the following manner:
+
+P (zij = k|zij, xij = w) 
+
+wk + 
+
+N ij
+k + W  (cid:16)N ij
+N ij
+
+kj + (cid:17) .
+
+(14)
+Nwk denotes the number of word tokens of type w as-
+signed to topic k, Nkj is the number of tokens in docu-
+
+ment j assigned to topic k, and Nk = Pw Nwk. N ij
+
+denotes the count with token ij removed. Note that stan-
+dard non-collapsed Gibbs sampling over , , and z can
+also be performed, but we have observed that CGS mixes
+more quickly in practice.
+
+2For convenience, we switch back to the conventional index-
+
+ing scheme for LDA where i runs over tokens in document j.
+
+3The rst-order information becomes zero in this case.
+
+(7)
+
+(8)
+(9)
+
+q(,j) = D[ + N,j], Nkj = Xi
+
+q(zi = k)(di, j)
+
+q(zi)  exp(cid:0)E[log xi,zi]q()E[log zi,di]q()(cid:1) .
+
+We can insert the expression for q() at (7) and q() at
+(8) into the update for q(z) in (9) and use the fact that
+
+E[logXi]D(X) = (Xi)  (Pj Xj) with () being the
+
+digamma function. As a nal observation, note that there
+is nothing in the free energy that would render any differ-
+ently the distributions q(zi) for tokens that correspond to
+the same word-type w in the same document j. Hence, we
+can simplify and update a single prototype of that equiva-
+lence class, denoted as wjk , q(zi = k)(xi, w)(di, j)
+as follows,
+
+wjk 
+
+exp((Nwk + ))
+exp((Nk + W ))
+
+exp(cid:0)(Nkj + )(cid:1) .
+
+(10)
+
+We note that exp((n))  n  0.5 for n > 1. Since Nwk,
+Nkj, and Nk are aggregations of expected counts, we ex-
+pect many of these counts to be greater than 1. Thus, the
+VB update can be approximated as follows,
+
+wjk 
+
+(Nwk +   0.5)
+
+(Nk + W   0.5)(cid:0)Nkj +   0.5(cid:1)
+
+(11)
+
+which exposes the relation to the MAP update in (5).
+
+In closing this section, we mention that the original VB
+algorithm derived in Blei et al. [2003] was a hybrid version
+between what we call VB and ML here. Although they did
+estimate variational posteriors q(), the  were treated as
+parameters and were estimated through ML.
+
+30
+
+ASUNCION ET AL.
+
+UAI 2009
+
+2.6 COMPARISON OF ALGORITHMS
+A comparison of update equations (5), (11), (12), (13), (14)
+reveals the similarities between these algorithms. All of
+these updates consist of a product of terms featuring Nwk
+and Nkj as well as a denominator featuring Nk. These
+updates resemble the Callen equations [Teh et al., 2007],
+which the true posterior distribution must satisfy (with Z
+as the normalization constant):
+
+P (zij = k|x) = Ep(zij |x)(cid:20) 1
+
+Z
+
+(N ij
+(N ij
+
+wk + )
+
+k + W )(cid:0)N ij
+
+kj +(cid:1)(cid:21).
+
+We highlight the striking connections between the algo-
+rithms.
+Interestingly, the probabilities for CGS (14) and
+CVB0 (13) are exactly the same. The only difference is
+that CGS samples each topic assignment while CVB0 de-
+terministically updates a discrete distribution over topics
+for each token. Another way to view this connection is to
+imagine that CGS can sample each topic assignment zij
+R times using (14) and maintain a distribution over these
+samples with which it can update the counts. As R  ,
+this distribution will be exactly (13) and this algorithm will
+be CVB0. The fact that algorithms like CVB0 are able
+to propagate the entire uncertainty in the topic distribution
+during each update suggests that deterministic algorithms
+should converge more quickly than CGS.
+
+CVB0 and CVB are almost identical as well, the distinction
+being the inclusion of second-order information for CVB.
+
+The conditional distributions used in VB (11) and MAP (5)
+are also very similar to those used for CGS, with the main
+difference being the presence of offsets of up to 0.5 and
+1 in the numerator terms for VB and MAP, respectively.
+Through the setting of hyperparameters  and , these extra
+offsets in the numerator can be eliminated, which suggests
+that these algorithms can be made to perform similarly with
+appropriate hyperparameter settings.
+
+Another intuition which sheds light on this phenomenon
+is as follows. Variational methods like VB are known to
+underestimate posterior variance [Wang and Titterington,
+2004].
+In the case of LDA this is reected in the offset
+of -0.5: typical values of  and  in the variational poste-
+rior tend to concentrate more mass on the high probability
+words and topics respectively. We can counteract this by in-
+crementing the hyperparameters by 0.5, which encourages
+more probability mass to be smoothed to all words and top-
+ics. Similarly, MAP offsets by -1, concentrating even more
+mass on high probability words and topics, and requiring
+even more smoothing by incrementing  and  by 1.
+
+Other subtle differences between the algorithms exist. For
+instance, VB subtracts only 0.5 from the denominator while
+MAP removes W , which suggests that VB applies more
+smoothing to the denominator. Since Nk is usually large,
+we do not expect this difference to play a large role in learn-
+ing. For the collapsed algorithms (CGS, CVB), the counts
+
+Nwk, Nkj, Nk are updated after each token update. Mean-
+while, the standard formulations of VB and MAP update
+these counts only after sweeping through all the tokens.
+This update schedule may affect the rate of convergence
+[Neal and Hinton, 1998]. Another difference is that the
+collapsed algorithms remove the count for the current to-
+ken ij.
+
+As we will see in the experimental results section, the per-
+formance differences among these algorithms that were ob-
+served in previous work can be substantially reduced when
+the hyperparameters are optimized for each algorithm.
+
+3 THE ROLE OF HYPERPARAMETERS
+The similarities between the update equations for these al-
+gorithms shed light on the important role that hyperparame-
+ters play. Since the amount of smoothing in the updates dif-
+ferentiates the algorithms, it is important to have good hy-
+perparameter settings. In previous results [Teh et al., 2007,
+Welling et al., 2008b, Mukherjee and Blei, 2009], hyper-
+parameters for VB were set to small values like  = 0.1,
+ = 0.1, and consequently, the performance of VB was
+observed to be signicantly suboptimal in comparison to
+CVB and CGS. Since VB effectively adds a discount of up
+to 0.5 in the updates, greater values for  and  are nec-
+essary for VB to perform well. We discuss hyperparameter
+learning and the role of hyperparameters in prediction.
+
+3.1 HYPERPARAMETER LEARNING
+It is possible to learn the hyperparameters during training.
+One approach is to place Gamma priors on the hyperpa-
+rameters (  G[a, b],   G[c, d]) and use Minkas xed-
+point iterations [Minka, 2000], e.g.:
+
+ 
+
+c  1 + Pj Pk [(Nkj + )  ()]
+d + KPj [(Nj + K )  (K )]
+
+.
+
+Other ways for learning hyperparameters include Newton-
+Raphson and other xed-point techniques [Wallach, 2008],
+as well as sampling techniques [Teh et al., 2006]. Another
+approach is to use a validation set and to explore various
+settings of ,  through grid search. We explore several of
+these approaches later in the paper.
+
+3.2 PREDICTION
+Hyperparameters play a role in prediction as well. Consider
+the update for MAP in (5) and the estimates for wk and kj
+(6) and note that the terms used in learning are the same
+as those used in prediction. Essentially the same can be
+said for the collapsed algorithms, since the following Rao-
+Blackwellized estimates are used, which bear resemblance
+to terms in the updates (14), (13):
+
+wk =
+
+Nwk + 
+Nk + W 
+
+kj =
+
+Nkj + 
+Nj + K
+
+.
+
+(15)
+
+In the case of VB, the expected values of the posterior
+Dirichlets in (7) and (8) are used in prediction, leading to
+
+UAI 2009
+
+ASUNCION ET AL.
+
+31
+
+Table 1: Data sets used in experiments
+
+NAME
+CRAN
+KOS
+MED
+NIPS
+NEWS
+NYT
+PAT
+
+D
+979
+3,000
+9,300
+1,500
+19,500
+6,800
+6,500
+
+W
+
+3,763
+6,906
+5,995
+12,419
+27,059
+16,253
+19,447
+
+Ntrain
+81,773
+410,595
+886,306
+1,932,365
+2,057,207
+3,768,969
+14,328,094
+
+Dtest
+210
+215
+169
+92
+249
+139
+106
+
+estimates for  and  of the same form as (15). However,
+for VB, an offset of 0.5 is found in update equation (10)
+while it is not found in the estimates used for prediction.
+
+The knowledge that VBs update equation contains an ef-
+fective offset of up to 0.5 suggests the use of an alterna-
+tive estimate for prediction:
+
+wk 
+
+exp((Nwk + ))
+exp((Nk + W ))
+
+kj 
+
+exp((Nkj + ))
+exp((Nj + K))
+
+.
+
+(16)
+Note the similarity that these estimates bear to the VB up-
+date (10). Essentially, the 0.5 offset is introduced into
+these estimates just as they are found in the update. An-
+other way to mimic this behavior is to use  + 0.5 and
+ + 0.5 during learning and then use  and  for predic-
+tion, using the estimates in (15). We nd that correcting
+this mismatch between the update and the estimate re-
+duces the performance gap between VB and the other al-
+gorithms. Perhaps this phenomenon bears relationships to
+the observation of Wainwright [2006], who shows that it
+certain cases, it is benecial to use the same algorithm for
+both learning and prediction, even if that algorithm is ap-
+proximate rather than exact.
+
+4 EXPERIMENTS
+Seven different text data sets are used to evaluate the perfor-
+mance of these algorithms: Craneld-subset (CRAN), Kos
+(KOS), Medline-subset (MED), NIPS (NIPS), 20 News-
+groups (NEWS), NYT-subset (NYT), and Patent (PAT).
+Several of these data sets are available online at the UCI
+ML Repository [Asuncion and Newman, 2007]. The char-
+acteristics of these data sets are summarized in Table 1.
+
+Each data set is separated into a training set and a test set.
+We learn the model on the training set, and then we mea-
+sure the performance of the algorithms on the test set. We
+also have a separate validation set of the same size as the
+test set that can be used to tune the hyperparameters. To
+evaluate accuracy, we use perplexity, a widely-used met-
+ric in the topic modeling community. While perplexity is a
+somewhat indirect measure of predictive performance, it is
+nonetheless a useful characterization of the predictive qual-
+ity of a language model and has been shown to be well-
+correlated with other measures of performance such word-
+error rate in speech recognition [Klakow and Peters, 2002].
+We also report precision/recall statistics.
+
+1800
+
+1600
+
+1400
+
+1200
+
+l
+
+y
+t
+i
+x
+e
+p
+r
+e
+P
+
+1000
+0
+
+CGS
+VB
+CVB
+CVB0
+
+100
+
+200
+300
+Iteration
+
+400
+
+500
+
+Figure 2: Convergence plot showing perplexities on MED,
+K=40; hyperparameters learned through Minkas update.
+
+We describe how perplexity is computed. For each of our
+algorithms, we perform runs lasting 500 iterations and we
+obtain the estimate wk at the end of each of those runs.
+To obtain kj, one must learn the topic assignments on the
+rst half of each document in the test set while holding wk
+xed. For this fold-in procedure, we use the same learning
+algorithm that we used for training. Perplexity is evaluated
+on the second half of each document in the test set, given
+wk and jk. For CGS, one can average over multiple sam-
+ples (where S is the number of samples to average over):
+
+log p(x
+
+test) = Xjw
+
+Njw log
+
+1
+
+S Xs Xk
+
+s
+kj
+
+s
+wk .
+
+In our experiments we dont perform averaging over sam-
+ples for CGS (other than in Figure 7 where we explicitly
+investigate averaging), both for computational reasons and
+to provide a fair comparison to the other algorithms. Us-
+ing a single sample from CGS is consistent with its use as
+an efcient stochastic mode-nder to nd a set of inter-
+pretable topics for a document set.
+
+For each experiment, we perform three different runs us-
+ing different initializations, and report the average of these
+perplexities. Usually these perplexities are similar to each
+other across different initializations (e.g.  10 or less).
+
+4.1 PERPLEXITY RESULTS
+In our rst set of experiments, we investigate the effects of
+learning the hyperparameters during training using Minkas
+xed point updates. We compare CGS, VB, CVB, and
+CVB0 in this set of experiments and leave out MAP since
+Minkas update does not apply to MAP. For each run, we
+initialize the hyperparameters to  = 0.5,  = 0.5 and turn
+on Minkas updates after 15 iterations to prevent numerical
+instabilities. Every other iteration, we compute perplexity
+on the validation set to allow us to perform early-stopping
+if necessary. Figure 2 shows the test perplexity as a func-
+tion of iteration for each algorithm on the MED data set.
+These perplexity results suggest that CVB and CVB0 out-
+perform VB when Minkas updates are used. The reason is
+because the learned hyperparameters for VB are too small
+and do not correct for the effective 0.5 offset found in the
+VB update equations. Also, CGS converges more slowly
+than the deterministic algorithms.
+
+32
+
+ASUNCION ET AL.
+
+UAI 2009
+
+CGS
+VB
+CVB
+CVB0
+
+3500
+
+3000
+
+2500
+
+2000
+
+1500
+
+1000
+
+500
+
+l
+
+y
+t
+i
+x
+e
+p
+r
+e
+P
+
+CGS
+VB
+VB (alt)
+CVB
+CVB0
+MAP
+
+3500
+
+3000
+
+2500
+
+2000
+
+1500
+
+1000
+
+500
+
+l
+
+y
+t
+i
+x
+e
+p
+r
+e
+P
+
+0
+
+N
+
+A
+
+R
+
+C
+
+S
+
+O
+
+K
+
+D
+
+E
+
+M
+
+S
+
+N I P
+
+S
+
+W
+
+E
+
+N
+
+T
+
+Y
+
+N
+
+T
+
+A
+
+P
+
+0
+
+N
+
+A
+
+R
+
+C
+
+S
+
+O
+
+K
+
+D
+
+E
+
+M
+
+S
+
+N I P
+
+S
+
+W
+
+E
+
+N
+
+Figure 3: Perplexities achieved with hyperparameter learn-
+ing through Minkas update, on various data sets, K=40.
+
+Figure 5: Perplexities achieved through grid search, K=40.
+
+2200
+
+2000
+
+1800
+
+1600
+
+l
+
+y
+t
+i
+x
+e
+p
+r
+e
+P
+
+1400
+0
+
+CGS
+VB
+CVB
+CVB0
+
+50
+Number of Topics
+
+100
+
+150
+
+Figure 4: Perplexity as a function of number of topics, on
+NIPS, with Minkas update enabled.
+
+In Figure 3, we show the nal perplexities achieved with
+hyperparameter learning (through Minkas update), on
+each data set. VB performs worse on several of the data
+sets compared to the other algorithms. We also found that
+CVB0 usually learns the highest level of smoothing, fol-
+lowed by CVB, while Minkas updates for VB learn small
+values for , .
+
+In our experiments thus far, we xed the number at topics at
+K = 40. In Figure 4, we vary the number of topics from 10
+to 160. In this experiment, CGS/CVB/CVB0 perform simi-
+larly, while VB learns less accurate solutions. Interestingly,
+the CVB0 perplexity at K = 160 is higher than the per-
+plexity at K = 80. This is due to the fact that a high value
+for  was learned for CVB0. When we set  = 0.13 (to
+the K = 80 level), the CVB0 perplexity is 1464, matching
+CGS. These results suggest that learning hyperparameters
+during training (using Minkas updates) does not necessar-
+ily lead to the optimal solution in terms of test perplexity.
+
+In the next set of experiments, we use a grid of hyperpa-
+rameters for each of  and , [0.01, 0.1, 0.25, 0.5, 0.75,
+1], and we run the algorithms for each combination of hy-
+perparameters. We include MAP in this set of experiments,
+and we shift the grid to the right by 1 for MAP (since hyper-
+parameters less than 1 cause MAP to have negative proba-
+bilities). We perform grid search on the validation set, and
+
+we nd the best hyperparameter settings (according to val-
+idation set perplexity) and use the corresponding estimates
+for prediction. For VB, we report both the standard per-
+plexity calculation and the alternative calculation that was
+detailed previously in (16).
+
+In Figure 5, we report the results achieved through perform-
+ing grid search. The differences between VB (with the al-
+ternative calculation) and CVB have largely vanished. This
+is due to the fact that we are using larger values for the
+hyperparameters, which allows VB to reach parity with the
+other algorithms. The alternative prediction scheme for VB
+also helps to reduce the perplexity gap, especially for the
+NEWS data set. Interestingly, CVB0 appears to perform
+slightly better than the other algorithms.
+
+Figure 6 shows the test perplexity of each method as a
+function of .
+It is visually apparent that VB and MAP
+perform better when their hyperparameter values are off-
+set by 0.5 and 1, respectively, relative to the other meth-
+ods. While this picture is not as clear-cut for every data set
+(since the approximate VB update holds only when n > 1),
+we have consistently observed that the minimum perplexi-
+ties achieved by VB are at hyperparameter values that are
+higher than the ones used by the other algorithms.
+
+In the previous experiments, we used one sample for CGS
+to compute perplexity. With enough samples, CGS should
+be the most accurate algorithm. In Figure 7, we show the
+effects of averaging over 10 different samples for CGS,
+taken over 10 different runs, and nd that CGS gains sub-
+stantially from averaging samples. It is also possible for
+other methods like CVB0 to average over their local poste-
+rior modes but we found the resulting gain is not as great.
+
+We also tested whether the algorithms would perform sim-
+ilarly in cases where the training set size is very small or
+the number of topics is very high. We ran VB and CVB
+with grid search on half of CRAN and achieved virtually
+the same perplexities. We also ran VB and CVB on CRAN
+with K = 100, and only found a 16-point perplexity gap.
+
+UAI 2009
+
+ASUNCION ET AL.
+
+2200
+
+2000
+
+1800
+
+1600
+
+l
+
+y
+t
+i
+x
+e
+p
+r
+e
+P
+
+1400
+0
+
+1300
+
+l
+
+y
+t
+i
+x
+e
+p
+r
+e
+P
+
+1200
+
+1100
+
+1000
+0
+
+CGS
+VB
+VB (alt)
+CVB
+CVB0
+MAP
+
+CGS
+VB
+VB (alt)
+CVB
+CVB0
+MAP
+
+0.5
+
+1
+
+1.5
+
+2
+
+0.5
+
+1
+
+1.5
+
+2
+
+Figure 6: TOP: KOS, K=40. BOTTOM: MED, K=40. Per-
+plexity as a function of . We xed  to 0.5 (1.5 for MAP).
+Relative to the other curves, VB and MAP curves are in
+effect shifted right by approximately 0.5 and 1.
+
+2500
+
+2000
+
+1500
+
+l
+
+y
+t
+i
+x
+e
+p
+r
+e
+P
+
+CGS S=1
+CVB0 S=1
+CGS S=10
+CVB0 S=10
+
+0
+
+100
+
+200
+300
+Iteration
+
+400
+
+500
+
+Figure 7: The effect of averaging over 10 samples/modes
+on KOS, K=40.
+
+To summarize our perplexity results, we juxtapose three
+different ways of setting hyperparameters in Figure 8, for
+NIPS, K = 40. The rst way is to have the same arbitrary
+values used across all algorithms (e.g.  = 0.1,  = 0.1).
+The second way is to learn the hyperparameters through
+Minkas update. The third way way is to nd the hyperpa-
+rameters by grid search. For the third way, we also show
+the VB perplexity achieved by the alternative estimates.
+
+4.2 PRECISION/RECALL RESULTS
+We also calculated precision/recall statistics on the NEWS
+data set. Since each document in NEWS is associated
+with one of twenty newsgroups, one can label each doc-
+ument by its corresponding newsgroup.
+It is possible to
+use the topic model for classication and to compute pre-
+cision/recall statistics. In Figure 9, we show the mean area
+under the ROC curve (AUC) achieved by CGS, VB, CVB,
+and CVB0 with hyperparameter learning through Minkas
+update. We also performed grid search over ,  and found
+that each method was able to achieve similar statistics. For
+instance, on NEWS, K = 10, each algorithm achieved the
+
+33
+
+CGS
+VB
+CVB
+CVB0
+
+Point     Minka     Grid    Grid (Alt)
+
+l
+
+y
+t
+i
+x
+e
+p
+r
+e
+P
+
+1900
+
+1800
+
+1700
+
+1600
+
+1500
+
+Figure 8: POINT: When  = 0.1,  = 0.1, VB performs
+substantially worse than other methods. MINKA: When
+using Minkas updates, the differences are less prominent.
+GRID: When grid search is performed, differences dimin-
+ish even more, especially with the alternative estimates.
+
+
+
+C
+U
+A
+n
+a
+e
+M
+
+0.9
+
+0.85
+
+0.8
+
+0.75
+
+0.7
+
+0.65
+0
+
+CGS
+VB
+CVB
+CVB0
+
+20
+
+40
+
+Iteration
+
+60
+
+80
+
+Figure 9: Mean AUC achieved on NEWS, K=40, with
+Minkas update.
+
+same area under the ROC curve (0.90) and mean average
+precision (0.14). These results are consistent with the per-
+plexity results in the previous section.
+
+5 COMPUTATIONAL EFFICIENCY
+
+While the algorithms can give similarly accurate solutions,
+some of these algorithms are more efcient than others. VB
+contains digamma functions which are computationally ex-
+pensive, while CVB requires the maintenance of variance
+counts. Meanwhile, the stochastic nature of CGS causes it
+to converge more slowly than the deterministic algorithms.
+
+In practice, we advocate using CVB0 since 1) it is faster
+than VB/CVB given that there are no calls to digamma or
+variance counts to maintain; 2) it converges more quickly
+than CGS since it is deterministic; 3) it does not have
+MAPs 1 offset issue. Furthermore, our empirical results
+suggest that CVB0 learns models that are as good or better
+(predictively) than those learned by the other algorithms.
+
+These algorithms can be parallelized over multiple proces-
+sors as well. The updates in MAP estimation can be per-
+formed in parallel without affecting the xed point since
+MAP is an EM algorithm [Neal and Hinton, 1998]. Since
+the other algorithms are very closely related to MAP there
+is condence that performing parallel updates over tokens
+for the other algorithms would lead to good results as well.
+
+h
+h
+34
+
+ASUNCION ET AL.
+
+UAI 2009
+
+Table 2: Timing results (in seconds)
+
+VB
+CVB
+CGS
+CVB0
+Parallel-CVB0
+
+MED KOS NIPS
+126.0
+151.6
+21.7
+25.1
+18.2
+10.0
+8.4
+9.5
+2.4
+3.0
+
+73.8
+9.0
+3.8
+4.0
+1.5
+
+While non-collapsed algorithms such as MAP and VB can
+be readily parallelized, the collapsed algorithms are se-
+quential, and thus there has not been a theoretical basis for
+parallelizing CVB or CGS (although good empirical results
+have been achieved for approximate parallel CGS [New-
+man et al., 2008]). We expect that a version of CVB0 that
+parallelizes over tokens would converge to the same quality
+of solution as sequential CVB0, since CVB0 is essentially
+MAP but without the 1 offset4.
+
+In Table 2, we show timing results for VB, CVB, CGS, and
+CVB0 on MED, KOS, and NIPS, with K = 10. We record
+the amount of time it takes for each algorithm to pass a
+xed perplexity threshold (the same for each algorithm).
+Since VB contains many calls to the digamma function,
+it is slower than the other algorithms. Meanwhile, CGS
+needs more iterations before it can reach the same perplex-
+ity, since it is stochastic. We see that CVB0 is computation-
+ally the fastest approach among these algorithms. We also
+parallelized CVB0 on a machine with 8 cores and nd that
+a topic model with coherent topics can be learned in 1.5
+seconds for KOS. These results suggest that it is feasible to
+learn topic models in near real-time for small corpora.
+
+6 RELATED WORK & CONCLUSIONS
+Some of these algorithms have been compared to each
+other in previous work. Teh et al. [2007] formulate the
+CVB algorithm and empirically compare it to VB, while
+Mukherjee and Blei [2009] theoretically analyze the differ-
+ences between VB and CVB and give cases for when CVB
+should perform better than VB. Welling et al. [2008b] also
+compare the algorithms and introduce a hybrid CGS/VB
+algorithm. In all these studies, low values of  and  were
+used for each algorithm, including VB. Our insights sug-
+gest that VB requires more smoothing in order to match
+the performance of the other algorithms.
+
+The similarities between PLSA and LDA have been noted
+in the past [Girolami and Kaban, 2003]. Others have uni-
+ed similar deterministic latent variable models [Welling
+et al., 2008a] and matrix factorization techniques [Singh
+and Gordon, 2008]. In this work, we highlight the similar-
+ities between various learning algorithms for LDA.
+
+While we focused on LDA and PLSA in this paper, we be-
+lieve that the insights gained are relevant to learning in gen-
+
+4If one wants convergence guarantees, one should also not re-
+
+move the current token ij.
+
+eral directed graphical models with Dirichlet priors, and
+generalizing these results to other models is an interesting
+avenue to pursue in the future.
+
+In conclusion, we have found that the update equations
+for these algorithms are closely connected, and that using
+the appropriate hyperparameters causes the performance
+differences between these algorithms to largely disappear.
+These insights suggest that hyperparameters play a large
+role in learning accurate topic models. Our comparative
+study also showed that there exist accurate and efcient
+learning algorithms for LDA and that these algorithms can
+be parallelized, allowing us to learn accurate models over
+thousands of documents in a matter of seconds.
+
+Acknowledgements
+This work is supported in part by NSF Awards IIS-0083489
+(PS, AA), IIS-0447903 and IIS-0535278 (MW), and an
+NSF graduate fellowship (AA), as well as ONR grants
+00014-06-1-073 (MW) and N00014-08-1-1015 (PS). PS is
+also supported by a Google Research Award. YWT is sup-
+ported by the Gatsby Charitable Foundation.

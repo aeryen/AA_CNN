@@ -1,0 +1,1843 @@
+Abstract. Dirichlet process (DP) mixture models are the cornerstone of non-
+parametric Bayesian statistics, and the development of Monte-Carlo Markov chain
+(MCMC) sampling methods for DP mixtures has enabled the application of non-
+parametric Bayesian methods to a variety of practical data analysis problems.
+However, MCMC sampling can be prohibitively slow, and it is important to ex-
+plore alternatives. One class of alternatives is provided by variational methods, a
+class of deterministic algorithms that convert inference problems into optimization
+problems (Opper and Saad 2001; Wainwright and Jordan 2003). Thus far, varia-
+tional methods have mainly been explored in the parametric setting, in particular
+within the formalism of the exponential family (Attias 2000; Ghahramani and Beal
+2001; Blei et al. 2003). In this paper, we present a variational inference algorithm
+for DP mixtures. We present experiments that compare the algorithm to Gibbs
+sampling algorithms for DP mixtures of Gaussians and present an application to
+a large-scale image analysis problem.
+
+Keywords: Dirichlet processes, hierarchical models, variational inference, image
+processing, Bayesian computation
+
+1 Introduction
+
+The methodology of Monte Carlo Markov chain (MCMC) sampling has energized Bayesian
+statistics for more than a decade, providing a systematic approach to the computation
+of likelihoods and posterior distributions, and permitting the deployment of Bayesian
+methods in a rapidly growing number of applied problems. However, while an unques-
+tioned success story, MCMC is not an unqualied success storyMCMC methods can
+be slow to converge and their convergence can be dicult to diagnose. While further
+research on sampling is needed, it is also important to explore alternatives, particularly
+in the context of large-scale problems.
+
+One such class of alternatives is provided by variational inference methods (Ghahra-
+mani and Beal 2001; Jordan et al. 1999; Opper and Saad 2001; Wainwright and Jordan
+2003; Wiegerinck 2000). Like MCMC, variational inference methods have their roots in
+statistical physics, and, in contradistinction to MCMC methods, they are deterministic.
+The basic idea of variational inference is to formulate the computation of a marginal
+
+c(cid:13) 2004 International Society for Bayesian Analysis
+
+ba0001
+
+2
+
+Variational inference for Dirichlet process mixtures
+
+or conditional probability in terms of an optimization problem. This (generally in-
+tractable) problem is then relaxed, yielding a simplied optimization problem that
+depends on a number of free parameters, known as variational parameters. Solving
+for the variational parameters gives an approximation to the marginal or conditional
+probabilities of interest.
+
+Variational inference methods have been developed principally in the context of the
+exponential family, where the convexity properties of the natural parameter space and
+the cumulant function yield an elegant general variational formalism (Wainwright and
+Jordan 2003). For example, variational methods have been developed for parametric hi-
+erarchical Bayesian models based on general exponential family specications (Ghahra-
+mani and Beal 2001). MCMC methods have seen much wider application. In particular,
+the development of MCMC algorithms for nonparametric models such as the Dirichlet
+process has led to increased interest in nonparametric Bayesian methods. In the current
+paper, we aim to close this gap by developing variational methods for Dirichlet process
+mixtures.
+
+The Dirichlet process (DP), introduced in Ferguson (1973), is a measure on measures.
+The DP is parameterized by a base distribution G0 and a positive scaling parameter
+.1 Suppose we draw a random measure G from a Dirichlet process, and independently
+draw N random variables n from G:
+
+G | {G0, }  DP(G0, )
+
+n  G, n  {1, . . . , N }.
+
+Marginalizing out the random measure G, the joint distribution of {1, . . . , N } follows
+a Polya urn scheme (Blackwell and MacQueen 1973). Positive probability is assigned to
+congurations in which dierent n take on identical values; moreover, the underlying
+random measure G is discrete with probability one. This is seen most directly in the
+stick-breaking representation of the DP, in which G is represented explicitly as an innite
+sum of atomic measures (Sethuraman 1994).
+
+The Dirichlet process mixture model (Antoniak 1974) adds a level to the hierarchy
+by treating n as the parameter of the distribution of the nth observation. Given the
+discreteness of G, the DP mixture has an interpretation as a mixture model with an
+unbounded number of mixture components.
+
+Given a sample {x1, . . . , xN } from a DP mixture, our goal is to compute the predic-
+
+tive density:
+
+p(x | x1, . . . , xN , , G0) =Z p(x | )p( | x1, . . . , xN , , G0)d,
+
+(1)
+
+As in many hierarchical Bayesian models, the posterior distribution p( | x1, . . . , xN , G0, )
+is complicated and is not available in a closed form. MCMC provides one class of ap-
+proximations for this posterior and the predictive density (MacEachern 1994; Escobar
+and West 1995; Neal 2000).
+
+1Ferguson (1973) parameterizes the Dirichlet process by a single base measure, which is G0 in our
+
+notation.
+
+D. M. Blei and M. I. Jordan
+
+3
+
+In this paper, we present a variational inference algorithm for DP mixtures based
+on the stick-breaking representation of the underlying DP. The algorithm involves two
+probability distributionsthe posterior distribution p and a variational distribution q.
+The latter is endowed with free variational parameters, and the algorithmic problem
+is to adjust these parameters so that q approximates p. We also use a stick-breaking
+representation for q, but in this case we truncate the representation to yield a nite-
+dimensional representation. While in principle we could also truncate p, turning the
+model into a nite-dimensional model, it is important to emphasize at the outset that
+this is not our approachwe truncate only the variational distribution.
+
+The paper is organized as follows.
+
+In Section 2 we provide basic background on
+DP mixture models, focusing on the case of exponential family mixtures. In Section 3
+we present a variational inference algorithms for DP mixtures. Section 4 overviews
+MCMC algorithms for the DP mixture, discussing algorithms based both on the Polya
+urn representation and the stick-breaking representation. Section 5 presents the results
+of experimental comparisons, Section 6 presents an analysis of natural image data, and
+Section 7 presents our conclusions.
+
+2 Dirichlet process mixture models
+
+Let  be a continuous random variable, let G0 be a non-atomic probability distribution
+for , and let  be a positive, real-valued scalar. A random measure G is distributed
+according to a Dirichlet process (DP) (Ferguson 1973), with scaling parameter  and
+base distribution G0, if for all natural numbers k and k-partitions {B1, . . . , Bk}:
+
+(G(B1), G(B2), . . . , G(Bk))  Dir(G0(B1), G0(B2), . . . , G0(Bk)).
+
+(2)
+
+Integrating out G, the joint distribution of the collection of variables {1, . . . , n} ex-
+hibits a clustering eect; conditioning on n  1 draws, the nth value is, with positive
+probability, exactly equal to one of those draws:
+
+p( | 1, . . . , n1)  G0() +
+
+i().
+
+n1
+
+Xi=1
+
+(3)
+
+Thus, the variables {1, . . . , n1} are randomly partitioned according to which variables
+are equal to the same value, with the distribution of the partition obtained from a Polya
+urn scheme (Blackwell and MacQueen 1973). Let {
+|c|} denote the distinct
+values of {1, . . . , n1}, let c = {c1, . . . , cn1} be assignment variables such that i =
+
+ci, and let |c| denote the number of cells in the partition. The distribution of n follows
+the urn distribution:
+
+1, . . . , 
+
+n =(
+
+
+i
+
+with prob.
+,   G0 with prob.
+
+|{j : cj =i}|
+
+n1+
+n1+ ,
+
+
+
+(4)
+
+where |{j : cj = i}| is the number of times the value 
+
+i occurs in {1, . . . , n1}.
+
+4
+
+Variational inference for Dirichlet process mixtures
+
+In the Dirichlet process mixture model, the DP is used as a nonparametric prior in
+
+a hierarchical Bayesian specication (Antoniak 1974):
+
+G | {, G0}  DP(, G0)
+
+n | G  G
+
+Xn | n  p(xn | n).
+
+Data generated from this model can be partitioned according to the distinct values of
+the parameter. Taking this view, the DP mixture has a natural interpretation as a
+exible mixture model in which the number of components (i.e., the number of cells in
+the partition) is random and grows as new data are observed.
+
+The denition of the DP via its nite dimensional distributions in Equation (2)
+reposes on the Kolmogorov consistency theorem (Ferguson 1973). Sethuraman (1994)
+provides a more explicit characterization of the DP in terms of a stick-breaking construc-
+tion. Consider two innite collections of independent random variables, Vi  Beta(1, )
+and 
+
+i  G0, for i = {1, 2, . . .}. The stick-breaking representation of G is as follows:
+
+(1  vj)
+
+i1
+
+Yj=1
+
+i(v)
+
+i
+
+.
+
+i(v) = vi
+
+G =
+
+
+
+Xi=1
+
+(5)
+
+(6)
+
+This representation of the DP makes clear that G is discrete (with probability one);
+the support of G consists of a countably innite set of atoms, drawn iid from G0. The
+mixing proportions i(v) are given by successively breaking a unit length stick into
+an innite number of pieces. The size of each successive piece, proportional to the rest
+of the stick, is given by an independent draw from a Beta(1, ) distribution.
+
+In the DP mixture, the vector (v) comprises the innite vector of mixing pro-
+portions and {
+2, . . .} are the atoms representing the mixture components. Let Zn
+be an assignment variable of the mixture component with which the data point xn is
+associated. The data can be described as arising from the following process:
+
+1, 
+
+1. Draw Vi |   Beta(1, ),
+
+i = {1, 2, . . .}
+
+2. Draw 
+
+i | G0  G0,
+
+i = {1, 2, . . .}
+
+3. For the nth data point:
+
+(a) Draw Zn | {v1, v2, . . .}  Mult((v)).
+(b) Draw Xn | zn  p(xn | 
+
+zn).
+
+In this paper, we restrict ourselves to DP mixtures for which the observable data
+are drawn from an exponential family distribution, and where the base distribution for
+the DP is the corresponding conjugate prior.
+
+D. M. Blei and M. I. Jordan
+
+5
+
+Z
+n
+
+X
+n
+
+V
+k
+
+*
+k
+
+
+
+
+
+N
+
+8
+
+Figure 1: Graphical model representation of an exponential family DP mixture. Nodes
+denote random variables, edges denote possible dependence, and plates denote replica-
+tion.
+
+The stick-breaking construction for the DP mixture is depicted as a graphical model
+in Figure 1. The conditional distributions of Vk and Zn are as described above. The
+distribution of Xn conditional on Zn and {
+
+1, 
+
+2, . . .} is:
+
+p(xn | zn, 
+
+1, 
+
+2, . . .) =
+
+
+
+Yi=1(cid:16)h(xn) exp{
+
+i
+
+T xn  a(
+
+i )}(cid:17)1[zn=i]
+
+,
+
+where a(
+is the sucient statistic for the natural parameter .
+
+i ) is the appropriate cumulant function and we assume for simplicity that x
+
+The vector of sucient statistics of the corresponding conjugate family is (T , a())T .
+
+The base distribution is:
+
+p( | ) = h() exp{T
+
+1  + 2(a())  a()},
+
+(7)
+
+where we decompose the hyperparameter  such that 1 contains the rst dim()
+components and 2 is a scalar.
+
+3 Variational inference for DP mixtures
+
+There is no direct way to compute the posterior distribution under a DP mixture prior.
+Approximate inference methods are required for DP mixtures and Markov chain Monte
+Carlo (MCMC) sampling methods have become the methodology of choice (MacEachern
+1994; Escobar and West 1995; MacEachern 1998; Neal 2000; Ishwaran and James 2001).
+
+Variational inference provides an alternative, deterministic methodology for ap-
+proximating likelihoods and posteriors (Wainwright and Jordan 2003). Consider a
+model with hyperparameters , latent variables W = {W1, . . . , WM }, and observations
+x = {x1, . . . , xN }. The posterior distribution of the latent variables is:
+
+p(w | x, ) = exp{log p(x, w | )  log p(x | )}.
+
+(8)
+
+6
+
+Variational inference for Dirichlet process mixtures
+
+Working directly with this posterior is typically precluded by the need to compute
+
+the normalizing constant. The log marginal probability of the observations is:
+
+log p(x | ) = logZ p(w, x | )dw,
+
+(9)
+
+which may be dicult to compute given that the latent variables become dependent
+when conditioning on observed data.
+
+MCMC algorithms circumvent this computation by constructing an approximate
+posterior based on samples from a Markov chain whose stationary distribution is the
+posterior of interest. Gibbs sampling is the simplest MCMC algorithm; one iteratively
+samples each latent variable conditioned on the previously sampled values of the other
+latent variables:
+
+p(wi | wi, x, ) = exp{log p(w, x | )  log p(wi, x | )}.
+
+(10)
+
+The normalizing constants for these conditional distributions are assumed to be available
+analytically for settings in which Gibbs sampling is appropriate.
+
+Variational inference is based on reformulating the problem of computing the poste-
+rior distribution as an optimization problem, perturbing (or, relaxing) that problem,
+and nding solutions to the perturbed problem (Wainwright and Jordan 2003). In this
+paper, we work with a particular class of variational methods known as mean-eld meth-
+ods. These are based on optimizing Kullback-Leibler (KL) divergence with respect to
+a so-called variational distribution. In particular, let q(w) be a family of distributions
+indexed by a variational parameter . We aim to minimize the KL divergence between
+q(w) and p(w | x, ):
+
+D(q(w)||p(w | x, )) = Eq [log q(W)]  Eq [log p(W, x | )] + log p(x | ),
+
+(11)
+
+where here and elsewhere in the paper we omit the variational parameters  when using
+q as a subscript of an expectation. Notice that the problematic marginal probability
+does not depend on the variational parameters; it can be ignored in the optimization.
+
+The minimization in Equation (11) can be cast alternatively as the maximization of
+
+a lower bound on the log marginal likelihood:
+
+log p(x | )  Eq [log p(W, x | )]  Eq [log q(W)] .
+
+(12)
+
+The gap in this bound is the divergence between q(w) and the true posterior.
+
+For the mean-eld framework to yield a computationally eective inference method,
+it is necessary to choose a family of distributions q(w) such that we can tractably
+optimize Equation (11). In constructing that family, one typically breaks some of de-
+pendencies between latent variables which make the true posterior dicult to compute.
+In the next sections, we consider fully-factorized variational distributions which break
+all of the dependencies.
+
+D. M. Blei and M. I. Jordan
+
+7
+
+3.1 Mean eld variational inference in exponential families
+
+For each latent variable, let us assume that the conditional distribution p(wi | wi, x, )
+is a member of the exponential family2:
+
+p(wi | wi, x, ) = h(wi) exp{gi(wi, x, )T wi  a(gi(wi, x, ))},
+
+(13)
+
+where gi(wi, x, ) is the natural parameter for wi when conditioning on the remaining
+latent variables and the observations.
+
+In this setting it is natural to consider the following family of distributions as mean-
+
+eld variational approximations (Ghahramani and Beal 2001):
+
+q (w) =
+
+M
+
+Yi=1
+
+exp{T
+
+i wi  a(wi)},
+
+(14)
+
+where  = {1, 2, . . . , M } are variational parameters. Indeed, it turns out that the
+variational algorithm that we obtain using this fully-factorized family is reminiscent
+of Gibbs sampling. In particular, as we show in Appendix 7, the optimization of KL
+divergence with respect to a single variational parameter i is achieved by computing
+the following expectation:
+
+i = Eq [gi(Wi, x, )] .
+
+(15)
+
+Repeatedly updating each parameter in turn by computing this expectation amounts
+to performing coordinate ascent in the KL divergence.
+
+Notice the interesting relationship of this algorithm to the Gibbs sampler. In Gibbs
+
+sampling, we iteratively draw the latent variables wi from the distribution p(wi | wi, x, ).
+In mean-eld variational inference, we iteratively update the variational parameter i
+by setting it equal to the expected value of gi(wi, x, ). This expectation is computed
+under the variational distribution.
+
+3.2 DP mixtures
+
+In this section we develop a mean-eld variational algorithm for the DP mixture. Our
+algorithm is based on the stick-breaking representation of the DP mixture (see Figure 1).
+In this representation the latent variables are the stick lengths, the atoms, and the cluster
+assignments: W = {V, 
+, Z}. The hyperparameters are the scaling parameter and the
+parameter of the conjugate base distribution:  = {, }.
+
+Following the general recipe in Equation (12), we write the variational bound on the
+
+2Examples of models in which p(wi | w
+
+i, x, ) is an exponential family distribution include hidden
+Markov models, mixture models, state space models, and hierarchical Bayesian models with conjugate
+and mixture of conjugate priors.
+
+8
+
+Variational inference for Dirichlet process mixtures
+
+log marginal probability of the data:
+
+log p(x | , )  Eq [log p(V | )] + Eq [log p(
+
+ | )]
+
+N
+
++
+
+(Eq [log p(Zn | V)] + Eq [log p(xn | Zn)])
+
+(16)
+
+Xn=1
+
+ Eq [log q(V, 
+
+, Z)] .
+
+To exploit this bound, we must nd a family of variational distributions that approxi-
+mates the distribution of the innite-dimensional random measure G, where the random
+measure is expressed in terms of the innite sets V = {V1, V2, . . .} and 
+2, . . .}.
+We do this by considering truncated stick-breaking representations. Thus, we x a value
+T and let q(vT = 1) = 1; this implies that the mixture proportions t(v) are equal to
+zero for t > T (see Equation 5).
+
+ = {
+
+1, 
+
+Truncated stick-breaking representations have been considered previously by Ish-
+waran and James (2001) in the context of sampling-based inference for an approxima-
+tion to the DP mixture model. Note that our use of truncation is rather dierent. In
+our case, the model is a full Dirichlet process and is not truncated; only the variational
+distribution is truncated. The truncation level T is a variational parameter which can
+be freely set; it is not a part of the prior model specication (see Section 5).
+
+We thus propose the following factorized family of variational distributions for mean-
+
+eld variational inference:
+
+q(v, 
+
+, z) =
+
+T 1
+
+Yt=1
+
+qt (vt)
+
+T
+
+Yt=1
+
+qt (
+t )
+
+N
+
+Yn=1
+
+qn (zn)
+
+(17)
+
+where qt (vt) are beta distributions, qt (
+t ) are exponential family distributions with
+natural parameters t, and qn(zn) are multinomial distributions. In the notation of
+Section 3.1, the free variational parameters are:
+
+ = {1, . . . , T 1, 1, . . . , T , 1, . . . , N }.
+
+It is important to note that there is a dierent variational parameter for each latent
+variable under the variational distribution. For example, the choice of the mixture com-
+ponent zn for the nth data point is governed by a multinomial distribution indexed by
+a variational parameter n. This reects the conditional nature of variational inference.
+
+Coordinate ascent algorithm
+
+In this section we present an explicit coordinate ascent algorithm for optimizing the
+bound in Equation (16) with respect to the variational parameters.
+
+All of the terms in the bound involve standard computations in the exponential
+family, except for the third term. We rewrite the third term using indicator random
+
+D. M. Blei and M. I. Jordan
+
+9
+
+variables:
+
+Eq [log p(Zn | V)] = Eqhlog(cid:16)Q
+
+= P
+
+i=1(1  Vi)1[Zn>i]V 1[Zn=i]
+
+i
+
+(cid:17)i
+
+i=1 q(zn > i)Eq [log(1  Vi)] + q(zn = i)Eq [log Vi] .
+
+Recall that Eq [log(1  VT )] = 0 and q(zn > T ) = 0. Consequently, we can truncate this
+summation at t = T :
+
+Eq [log p(Zn | V)] =
+
+T
+
+Xi=1
+
+where
+
+q(zn > i)Eq [log(1  Vi)] + q(zn = i)Eq [log Vi] ,
+
+q(zn = i) = n,i
+
+q(zn > i) = PT
+
+j=i+1 n,j
+
+Eq [log Vi] = (i,1)  (i,1 + i,2)
+Eq [log(1  Vi)] = (i,2)  (i,1 + i,2).
+
+The digamma function, denoted by , arises from the derivative of the log normalization
+factor in the beta distribution.
+
+We now use the general expression in Equation (15) to derive a mean-eld coordinate
+
+ascent algorithm. This yields:
+
+t,1 = 1 +Pn n,t
+t,2 =  +PnPT
+t,1 = 1 +Pn n,txn
+t,2 = 2 +Pn n,t.
+
+n,t  exp(St),
+
+j=t+1 n,j
+
+(18)
+
+(19)
+(20)
+
+(21)
+(22)
+
+for t  {1, . . . , T } and n  {1, . . . , N }, where:
+
+St = Eq [log Vt] +Pt1
+
+i=1 Eq [log(1  Vi)] + Eq [
+
+t ]T Xn  Eq [a(
+
+t )] .
+
+Iterating these updates optimizes Equation (16) with respect to the variational param-
+eters dened in Equation (17).
+
+Practical applications of variational methods must address initialization of the vari-
+ational distribution. While the algorithm yields a bound for any starting values of the
+variational parameters, poor choices of initialization can lead to local maxima that yield
+poor bounds. We initialize the variational distribution by incrementally updating the
+parameters according to a random permutation of the data points. (This can be viewed
+as a variational version of sequential importance sampling). We run the algorithm mul-
+tiple times and choose the nal parameter settings that give the best bound on the
+marginal likelihood.
+
+10
+
+Variational inference for Dirichlet process mixtures
+
+To compute the predictive distribution, we use the variational posterior in a manner
+analogous to the way that the empirical approximation is used by an MCMC sampling
+algorithm. The predictive distribution is:
+
+p(xN +1 | x, , ) =Z   
+Xt=1
+
+t(v)p(xN +1 | 
+
+t )! dP (v, 
+
+ | x, , ).
+
+Under the factorized variational approximation to the posterior, the distribution of
+the atoms and the stick lengths are decoupled and the innite sum is truncated. Conse-
+quently, we can approximate the predictive distribution with a product of expectations
+which are straightforward to compute under the variational approximation:
+
+p(xN +1 | x, , ) 
+
+T
+
+Xt=1
+
+Eq [t(V)] Eq [p(xN +1 | 
+
+t )] ,
+
+(23)
+
+where q depends implicitly on x, , and .
+
+Finally, we remark on two possible extensions. First, when G0 is not conjugate, a
+
+simple coordinate ascent update for i may not be available, particularly when p(
+is not in the exponential family. However, such an update is available for the special
+case of G0 being a mixture of conjugate distributions. Second, it is often important in
+applications to integrate over a diuse prior on the scaling parameter . As we show
+in Appendix 7, it is straightforward to extend the variational algorithm to include a
+gamma prior on .
+
+i | z, x, )
+
+4 Gibbs sampling
+
+For comparison to variational inference, we review the collapsed Gibbs sampler and
+blocked Gibbs sampler for DP mixtures.
+
+4.1 Collapsed Gibbs sampling
+
+The collapsed Gibbs sampler for a DP mixture with conjugate base distribution (MacEach-
+ern 1994) integrates out the random measure G and distinct parameter values {
+1, . . . , 
+|c|}.
+The Markov chain is thus dened only on the latent partition c = {c1, . . . , cN }. (Recall
+that |c| denotes the number of cells in the partition.)
+
+The algorithm iteratively samples each assignment variable Cn, for n  {1, . . . , N },
+conditional on the other cells in the partition, cn. The assignment Cn can be one of
+|cn| + 1 values: either the nth data point is in a cell with other data points, or in a
+cell by itself.
+
+Exchangeability implies that Cn has the following multinomial distribution:
+
+p(cn = k | x, cn, , )  p(xn | xn, cn, cn = k, )p(cn = k | cn, ).
+
+(24)
+
+D. M. Blei and M. I. Jordan
+
+11
+
+The rst term is a ratio of normalizing constants of the posterior distribution of the kth
+parameter, one including and one excluding the nth data point:
+
+p(xn | xn, cn, cn = k, ) =
+
+expna(1 +Pm6=n 1 [cm = k] xm + xn, 2 +Pm6=n 1 [cm = k] + 1)o
+
+expna(1 +Pm6=n 1 [cm = k] xm, 2 +Pm6=n 1 [cm = k])o
+
+The second term is given by the Polya urn scheme:
+
+(25)
+
+.
+
+p(cn = k | cn) (cid:26) |{j : cn,j = k}|
+
+
+
+if k is an existing cell in the partition
+if k is a new cell in the partition,
+
+(26)
+
+where |{j : cn,j = k}| denotes the number of data points in the kth cell of the partition
+cn.
+
+Once this chain has reached its stationary distribution, we collect B samples {c1, . . . , cB}
+
+to approximate the posterior. The approximate predictive distribution is an average of
+the predictive distributions across the Monte Carlo samples:
+
+p(xN +1 | x1, . . . , xN , , ) =
+
+1
+B
+
+B
+
+Xb=1
+
+p(xN +1 | cb, x, , ).
+
+For a given sample, that distribution is:
+
+p(xN +1 | cb, x, , ) =
+
+|cb|+1
+
+Xk=1
+
+p(cN +1 = k | cb, )p(xN +1 | cb, x, cN +1 = k, ).
+
+When G0 is not conjugate, the distribution in Equation (25) does not have a simple
+
+closed form. Eective algorithms for handling this case are given in Neal (2000).
+
+4.2 Blocked Gibbs sampling
+
+In the collapsed Gibbs sampler, the assignment variable Cn is drawn from a distribution
+that depends on the most recently sampled values of the other assignment variables.
+Consequently, these variables must be updated one at a time which can potentially slow
+down the algorithm when compared to a blocking strategy. To this end, Ishwaran and
+James (2001) developed a blocked Gibbs sampling algorithm based on the stick-breaking
+representation of Figure 1.
+
+The main issue to face in developing a blocked Gibbs sampler for the stick-breaking
+DP mixture is that one needs to sample the innite collection of stick lengths V before
+sampling the nite collection of cluster assignments Z. Ishwaran and James (2001) face
+this issue by dening a truncated Dirichlet process (TDP) in which VK1 is set equal to
+one for some xed value K. This yields i(V) = 0 for i  K, and converts the innite
+sum in Equation (5) into a nite sum. Ishwaran and James (2001) justify substituting a
+
+12
+
+Variational inference for Dirichlet process mixtures
+
+TDP mixture model for a full DP mixture model by showing that the truncated process
+closely approximates a true Dirichlet process when the truncation level is chosen large
+relative to the number of data points.
+
+In the TDP mixture, the state of the Markov chain consists of the beta variables
+V = {V1, . . . , VK1}, the mixture component parameters 
+K}, and the
+indicator variables Z = {Z1, . . . , ZN }. The blocked Gibbs sampler iterates between the
+following three steps:
+
+1, . . . , 
+
+ = {
+
+1. For n  {1, . . . , N }, independently sample Zn from:
+
+p(zn = k | v, 
+
+, x) = k(v)p(xn | 
+
+k),
+
+2. For k  {1, . . . , K}, independently sample Vk from Beta(k,1, k,2), where:
+
+k,1 = 1 +PN
+k,2 =  +PK
+
+i=k+1PN
+
+n=1 1 [zn = k]
+
+n=1 1 [zn = i] .
+
+This step follows from the conjugacy between the multinomial distribution and
+the truncated stick-breaking construction, which is a generalized Dirichlet distri-
+bution (Connor and Mosimann 1969).
+
+3. For k  {1, . . . , K}, independently sample 
+
+k from p(
+
+k | k). This distribution is
+
+in the same family as the base distribution, with parameters:
+
+k,1 = 1 +Pi6=n 1 [zi = k] xi
+k,2 = 2 +Pi6=n 1 [zi = k] .
+
+(27)
+
+After the chain has reached its stationary distribution, we collect B samples and
+construct an approximate predictive distribution. Again, this distribution is an aver-
+age of the predictive distributions for each of the collected samples. The predictive
+distribution for a particular sample is:
+
+p(xN +1 | z, x, , ) =
+
+K
+
+Xk=1
+
+E [i(V) | 1, . . . , k] p(xN +1 | k),
+
+(28)
+
+where E [i | 1, . . . , k] is the expectation of the product of independent beta variables
+given in Equation (5). This distribution only depends on z; the other variables are
+needed in the Gibbs sampling procedure, but can be integrated out here. Note that this
+approximation has a form similar to the approximate predictive distribution under the
+variational distribution in Equation (23). In the variational case, however, the averaging
+is done parametrically via the variational distribution rather than by a Monte Carlo
+integral.
+
+The TDP sampler readily handles non-conjugacy of G0, provided that there is a
+
+method of sampling 
+
+i from its posterior.
+
+D. M. Blei and M. I. Jordan
+
+initial
+
+iteration 2
+
+iteration 5
+
+0
+6
+
+0
+4
+
+0
+2
+
+0
+
+0
+2
+
+
+0
+4
+
+
+0
+6
+
+0
+4
+
+0
+2
+
+0
+6
+
+0
+4
+
+0
+2
+
+0
+6
+
+0
+4
+
+0
+2
+
+0
+6
+
+0
+4
+
+0
+2
+
+0
+
+0
+
+0
+
+0
+
+0
+2
+
+
+0
+4
+
+
+0
+2
+
+
+0
+4
+
+
+0
+2
+
+
+0
+4
+
+
+0
+2
+
+
+0
+4
+
+
+13
+
+0
+6
+
+0
+4
+
+0
+2
+
+0
+
+0
+2
+
+
+0
+4
+
+
+20
+
+10
+
+0
+
+10
+
+20
+
+20
+
+10
+
+0
+
+10
+
+20
+
+20
+
+10
+
+0
+
+10
+
+20
+
+Figure 2: The approximate predictive distribution given by variational inference at
+dierent stages of the algorithm. The data are 100 points generated by a Gaussian DP
+mixture model with xed diagonal covariance.
+
+5 Empirical comparison
+
+Qualitatively, variational methods oer several potential advantages over Gibbs sam-
+pling. They are deterministic, and have an optimization criterion given by Equa-
+tion (16) that can be used to assess convergence.
+In contrast, assessing convergence
+of a Gibbs samplernamely, determining when the Markov chain has reached its sta-
+tionary distributionis an active eld of research. Theoretical bounds on the mixing
+time are of little practical use, and there is no consensus on how to choose among the
+several empirical methods developed for this purpose (Robert and Casella 2004).
+
+But there are several potential disadvantages of variational methods as well. First,
+the optimization procedure can fall prey to local maxima in the variational parameter
+space. Local maxima can be mitigated with restarts, or removed via the incorporation
+of additional variational parameters, but these strategies may slow the overall conver-
+gence of the procedure. Second, any given xed variational representation yields only
+an approximation to the posterior. There are methods for considering hierarchies of
+variational representations that approach the posterior in the limit, but these methods
+may again incur serious computational costs. Lacking a theory by which these issues can
+be evaluated in the general setting of DP mixtures, we turn to experimental evaluation.
+
+We studied the performance of the variational algorithm of Section 3 and the Gibbs
+samplers of Section 4 in the setting of DP mixtures of Gaussians with xed inverse
+covariance matrix  (i.e., the DP mixes over the mean of the Gaussian). The natural
+conjugate base distribution for the DP is Gaussian, with covariance given by /2 (see
+Equation 7).
+
+Figure 2 provides an illustrative example of variational inference on a small problem
+involving 100 data points sampled from a two-dimensional DP mixture of Gaussians
+with diagonal covariance. Each panel in the gure plots the data and presents the
+
+14
+
+Variational inference for Dirichlet process mixtures
+
+Figure 3: Mean convergence time and standard error across ten data sets per dimension
+for variational inference, TDP Gibbs sampling, and the collapsed Gibbs sampler.
+
+predictive distribution given by the variational inference algorithm at a given iteration
+(see Equation (23)). The truncation level was set to 20. As seen in the rst panel, the
+initialization of the variational parameters yields a largely at distribution. After one
+iteration, the algorithm has found the modes of the predictive distribution and, after
+convergence, it has further rened those modes. Even though 20 mixture components
+are represented in the variational distribution, the tted approximate posterior only
+uses ve of them.
+
+To compare the variational inference algorithm to the Gibbs sampling algorithms, we
+conducted a systematic set of simulation experiments in which the dimensionality of the
+data was varied from 5 to 50. The covariance matrix was given by the autocorrelation
+matrix for a rst-order autoregressive process, chosen so that the components are highly
+dependent ( = 0.9). The base distribution was a zero-mean Gaussian with covariance
+appropriately scaled for comparison across dimensions. The scaling parameter  was
+set equal to one.
+
+In each case, we generated 100 data points from a DP mixture of Gaussians model
+of the chosen dimensionality and generated 100 additional points as held-out data. In
+testing on the held-out data, we treated each point as the 101st data point in the
+collection and computed its conditional probability using each algorithms approximate
+predictive distribution.
+
+D. M. Blei and M. I. Jordan
+
+15
+
+Dim
+
+Mean held out log probability (Std err)
+
+Variational
+-147.96 (4.12)
+-266.59 (7.69)
+-494.12 (7.31)
+-721.55 (8.18)
+-943.39 (10.65)
+-1151.01 (15.23)
+
+Collapsed Gibbs Truncated Gibbs
+-148.08 (3.93)
+-266.29 (7.64)
+-492.32 (7.54)
+-720.05 (7.92)
+-941.04 (10.15)
+-1148.51 (14.78)
+
+-147.93 (3.88)
+-265.89 (7.66)
+-491.96 (7.59)
+-720.02 (7.96)
+-940.71 (10.23)
+-1147.48 (14.55)
+
+5
+10
+20
+30
+40
+50
+
+Table 1: Average held-out log probability for the predictive distributions given by vari-
+ational inference, TDP Gibbs sampling, and the collapsed Gibbs sampler.
+
+d
+n
+u
+o
+b
+
+
+y
+t
+i
+l
+i
+
+b
+a
+b
+o
+r
+p
+
+
+l
+
+i
+
+a
+n
+g
+r
+a
+m
+g
+o
+L
+
+
+
+0
+0
+3
+1
+
+
+0
+4
+3
+1
+
+
+0
+8
+3
+1
+
+
+0
+2
+4
+1
+
+
+2.88e15
+
+1.46e10
+
+9.81e05
+
+e
+r
+o
+c
+s
+
+t
+
+u
+o
+
+d
+e
+H
+
+l
+
+0
+0
+3
+
+
+0
+2
+3
+
+
+0
+4
+3
+
+
+0
+6
+3
+
+
+0
+8
+3
+
+
+2
+
+4
+
+6
+
+8
+
+10
+
+0
+
+10
+
+20
+
+30
+
+40
+
+50
+
+60
+
+70
+
+Truncation level
+
+Iteration
+
+Figure 4: (Left) The optimal bound on the log probability as a function of the truncation
+level. There are ve clusters in the simulated 20-dimensional DP mixture of Gaussians
+data set which was used.
+(Right) Held-out probability as a function of iteration of
+variational inference for the same simulated data set. The relative change in the log
+probability bound of the observations is labeled at selected iterations.
+
+16
+
+n
+o
+
+i
+t
+
+l
+
+a
+e
+r
+r
+o
+c
+o
+u
+A
+
+t
+
+8
+0
+
+.
+
+4
+0
+
+.
+
+0
+0
+
+.
+
+Variational inference for Dirichlet process mixtures
+
+n
+o
+
+i
+t
+
+l
+
+a
+e
+r
+r
+o
+c
+o
+u
+A
+
+t
+
+8
+0
+
+.
+
+4
+0
+
+.
+
+0
+0
+
+.
+
+0
+
+50
+
+100
+
+150
+
+0
+
+50
+
+100
+
+150
+
+Lag
+
+Lag
+
+Figure 5: Autocorrelation plots on the size of the largest component for the truncated
+DP Gibbs sampler (left) and collapsed Gibbs sampler (right) in an example dataset of
+50-dimensional Gaussian data.
+
+The TDP approximation was truncated at K = 20 components. For the variational
+algorithm, the truncation level was also T = 20 components. Note that in the latter
+case, the truncation level is simply another variational parameter. While we held T xed
+in our simulations, it is also possible to optimize T with respect to the KL divergence.
+Indeed, Figure 4 (left) shows how the optimal KL divergence changes as a function of
+the truncation level for one of the simulated data sets.
+
+We ran all algorithms to convergence and measured the computation time.3 For the
+collapsed Gibbs sampler, we assessed convergence to the stationary distribution with
+the diagnostic given by Raftery and Lewis (1992), and collected 25 additional samples to
+estimate the predictive distribution (the same diagnostic provides an appropriate lag at
+which to collect uncorrelated samples). We assessed convergence of the blocked Gibbs
+sampler using the same statistic as for the collapsed Gibbs sampler and used the same
+number of samples to form the approximate predictive distribution.4
+
+Finally, for variational inference, we measured convergence using the relative change
+in the log marginal probability bound (Equation 16), stopping the algorithm when it
+was less than 1e10.
+
+There is a certain inevitable arbitrariness in these choices; in general it is dicult
+to envisage measures of computation time that allow stochastic MCMC algorithms and
+deterministic variational algorithms to be compared in a standardized way. Nonetheless,
+we have made what we consider to be reasonable, pragmatic choices. In particular, our
+choice of stopping time for the variational algorithm is quite conservative, as illustrated
+in Figure 4 (right).
+
+Figure 3 illustrates the average convergence time across ten datasets per dimension.
+With the caveats in mind regarding convergence time measurement, it appears that the
+variational algorithm is quite competitive with the MCMC algorithms. The variational
+
+3All timing computations were made on a Pentium III 1GHZ desktop machine.
+4Typically, hundreds or thousands of samples are used in MCMC algorithms to form the approxi-
+mate posterior. However, we found that such approximations did not oer any additional predictive
+performance in the simulated data. To be fair to MCMC in the timing comparisons, we used a small
+number of samples to estimate the predictive distributions.
+
+D. M. Blei and M. I. Jordan
+
+17
+
+Figure 6: Four sample clusters from a DP mixture analysis of 5000 images from the
+Associated Press. The left-most column is the posterior mean of each cluster followed
+by the top ten images associated with it. These clusters capture patterns in the data,
+such as basketball shots, outdoor scenes on gray days, faces, and pictures with blue
+backgrounds.
+
+algorithm was faster and exhibited signicantly less variance in its convergence time.
+Moreover, there is little evidence of an increase in convergence time across dimensionality
+for the variational algorithm over the range tested.
+
+Note that the collapsed Gibbs sampler converged faster than the TDP Gibbs sampler.
+Though an iteration of collapsed Gibbs is slower than an iteration of TDP Gibbs, the
+TDP Gibbs sampler required a longer burn-in and greater lag to obtain uncorrelated
+samples. This is illustrated in the autocorrelation plots of Figure 5. Comparing the two
+MCMC algorithms, we found no advantage to the truncated approximation.
+
+Table 1 illustrates the average log likelihood assigned to the held-out data by the
+approximate predictive distributions. First, notice that the collapsed DP Gibbs sam-
+pler assigned the same likelihood as the posterior from the TDP Gibbs sampleran
+indication of the quality of a TDP for approximating a DP. More importantly, however,
+the predictive distribution based on the variational posterior assigned a similar score as
+those based on samples from the true posterior. Though it is based on an approximation
+to the posterior, the resulting predictive distributions are very accurate for this class of
+DP mixtures.
+
+6 Image analysis
+
+Finite Gaussian mixture models are widely used in computer vision to model natural im-
+ages for the purposes of automatic clustering, retrieval, and classication (Barnard et al.
+2003; Jeon et al. 2003). These applications are often large-scale data analysis problems,
+involving thousands of data points (images) in hundreds of dimensions (pixels). The ap-
+
+18
+
+s
+e
+g
+a
+m
+
+i
+
+f
+o
+
+r
+e
+b
+m
+u
+n
+
+d
+e
+t
+c
+e
+p
+x
+E
+
+0
+2
+1
+
+0
+0
+1
+
+0
+8
+
+0
+6
+
+0
+4
+
+0
+2
+
+0
+
+Variational inference for Dirichlet process mixtures
+
+prior
+posterior
+
+0
+1
+
+.
+
+8
+0
+
+.
+
+6
+0
+
+.
+
+4
+0
+
+.
+
+2
+
+.
+
+0
+
+.
+
+0
+0
+
+Factor
+
+0
+
+5
+
+10
+
+15
+
+
+
+20
+
+25
+
+30
+
+Figure 7: (Left) The expected number of images allocated to each component in the
+variational posterior. The posterior uses 79 components to describe the data. (Right)
+The prior for the scaling parameter  and the approximate posterior given by its vari-
+ational distribution.
+
+propriate number of mixture components to use in these problems is generally unknown,
+and DP mixtures provide an attractive alternative to current methods. However, a de-
+ployment of DP mixtures in such problems crucially requires inferential methods that
+are computationally ecient. To demonstrate the applicability of our variational ap-
+proach to DP mixtures in the setting of large datasets, we analyzed a collection of 5000
+images from the Associated Press under the assumptions of a DP mixture of Gaussians
+model.
+
+Each image was reduced to a 192-dimensional real-valued vector given by an 88 grid
+of average red, green, and blue values. We t a DP mixture model in which the mixture
+components are Gaussian with mean  and covariance matrix 2I. The base distribution
+G0 was a product measureGamma(4,2) for 1/2 and N (0, 52) for . Furthermore, we
+placed a Gamma(1,1) prior on the DP scaling parameter , as described in Appendix 7.
+We used a truncation level of 150 for the variational distribution.
+
+The variational algorithm required approximately four hours to converge. The re-
+sulting approximate posterior used 79 mixture components to describe the collection.
+For a rough comparison to Gibbs sampling, an iteration of collapsed Gibbs takes 15
+minutes with this data set. In the same four hours, one could perform only 16 itera-
+tions. This is not enough for a chain to converge to its stationary distribution, let alone
+provide a sucient number of uncorrelated samples to construct an empirical estimate
+of the posterior.
+
+Figure 7 (Left) illustrates the expected number of images allocated to each compo-
+nent under the variational approximation to the posterior. Figure 6 illustrates the ten
+pictures with highest approximate posterior probability associated with each of four of
+the components. These clusters appear to capture basketball shots, outdoor scenes on
+gray days, faces, and blue backgrounds.
+
+Figure 7 (Right) illustrates the prior for the scaling parameter  as well as the
+approximate posterior given by the tted variational distribution. We see that the
+
+D. M. Blei and M. I. Jordan
+
+19
+
+approximate posterior is peaked and rather dierent from the prior, indicating that the
+data have provided information regarding .
+
+7 Conclusions
+
+We have developed a mean-eld variational inference algorithm for the Dirichlet pro-
+cess mixture model and demonstrated its applicability to the kinds of multivariate data
+for which Gibbs sampling algorithms can exhibit slow convergence. Variational infer-
+ence was faster than Gibbs sampling in our simulations, and its convergence time was
+independent of dimensionality for the range which we tested.
+
+Both variational and MCMC methods have strengths and weaknesses, and it is un-
+likely that one methodology will dominate the other in general. While MCMC sampling
+provides theoretical guarantees of accuracy, variational inference provides a fast, deter-
+ministic approximation to otherwise unattainable posteriors. Moreover, both MCMC
+and variational methods are computational paradigms, providing a wide variety of spe-
+cic algorithmic approaches which trade o speed, accuracy and ease of implementation
+in dierent ways. We have investigated the deployment of the simplest form of varia-
+tional method for DP mixturesa mean-eld variational algorithmbut it worth noting
+that other variational approaches, such as those described in Wainwright and Jordan
+(2003), are also worthy of consideration in the nonparametric context.
+
+A
+
+Variational inference in exponential families
+
+In this appendix, we derive the coordinate ascent algorithm for variational inference
+described in Section 3.2. Recall that we are considering a latent variable model with
+hyperparameters , observed variables x = {x1, . . . , xN }, and latent variables W =
+{W1, . . . , WM }. The posterior can be written as:
+
+p(w | x, ) = exp{log p(w, x | )  log p(x | )}.
+
+(29)
+
+The variational bound on the log marginal probability is:
+
+log p(x | )  Eq [log p(x, W | )]  Eq [log q(W)] .
+
+(30)
+
+This bound holds for any distribution q(w).
+
+selves to fully-factorized variational distributions of the form q (w) = QM
+
+For the optimization of this bound to be computationally tractable, we restrict our-
+i=1 qi(wi),
+where  = {1, 2, . . . , M } are variational parameters and each distribution is in the
+exponential family (Ghahramani and Beal 2001). We derive a coordinate ascent algo-
+rithm in which we iteratively maximize the bound with respect to each i, holding the
+other variational parameters xed.
+
+20
+
+Variational inference for Dirichlet process mixtures
+
+Let us rewrite the bound in Equation (30) using the chain rule:
+
+M
+
+M
+
+Eq [log p(Wm | x, W1, . . . , Wm1, )]
+
+Eq [log qm (Wm)] .
+
+(31)
+To optimize with respect to i, reorder w such that wi is last in the list. The portion
+of Equation (31) depending on i is:
+
+log p(x | )  log p(x | )+
+
+Xm=1
+
+Xm=1
+
+`i = Eq [log p(Wi | Wi, x, )]  Eq [log qi(Wi)] .
+
+(32)
+
+Given that the variational distribution qi(wi) is in the exponential family, we have:
+
+qi(wi) = h(wi) exp{T
+
+i wi  a(i)},
+
+and Equation (32) simplies as follows:
+
+`i = Eq(cid:2)log p(Wi | Wi, x, )  log h(Wi)  T
+
+= Eq [log p(Wi | Wi, x, )]  Eq [log h(Wi)]  T
+
+i Wi + a(i)(cid:3)
+
+i a0(i) + a(i),
+
+because Eq [Wi] = a0(i).
+
+The derivative with respect to i is:
+
+
+i
+
+`i =
+
+
+i
+
+(Eq [log p(Wi | Wi, x, )]  Eq [log h(Wi)])  T
+
+i a00(i).
+
+(33)
+
+The optimal i satises:
+
+i = [a00(i)]1(cid:18) 
+
+i
+
+Eq [log p(Wi | Wi, x, )] 
+
+
+i
+
+Eq [log h(Wi)](cid:19) .
+
+(34)
+
+The result in Equation (34) is general. In many applications of mean eld methods,
+including those in the current paper, a further simplication is achieved. In particu-
+lar, suppose that the conditional distribution p(wi | wi, x, ) is an exponential family
+distribution. We have:
+
+p(wi | wi, x, ) = h(wi) exp{gi(wi, x, )T wi  a(gi(wi, x, ))},
+
+where gi(wi, x, ) denotes the natural parameter for wi when conditioning on the
+remaining latent variables and the observations. This yields simplied expressions for
+the expected log probability of Wi and its rst derivative:
+
+Eq [log p(Wi | Wi, x, )] = Eq [log h(Wi)] + Eq [gi(Wi, x, )]T a0(i)  Eq [a(gi(Wi, x, ))]
+
+
+i
+
+Eq [log p(Wi | Wi, x, )] =
+
+
+i
+
+Eq [log h(Wi)] + Eq [gi(Wi, x, )]T a00(i).
+
+Using the rst derivative in Equation (34), the maximum is attained at:
+
+i = Eq [gi(Wi, x, )] .
+
+(35)
+
+D. M. Blei and M. I. Jordan
+
+21
+
+We dene a coordinate ascent algorithm based on Equation (35) by iteratively updating
+i for i  {1, . . . , M }. Such an algorithm nds a local maximum of Equation (30) by
+Proposition 2.7.1 of Bertsekas (1999), under the condition that the right-hand side of
+Equation (32) is strictly convex.
+
+Relaxing the two assumptions complicates the algorithm, but the basic idea re-
+If p(wi | wi, x, ) is not in the exponential family, then there may
+mains the same.
+not be an analytic expression for the update in Equation (34). If q(w) is not a fully
+factorized distribution, then the second term of the bound in Equation (32) becomes
+Eq [log q(wi | wi)] and the subsequent simplications may not be applicable.
+
+Further perspectives on algorithms of this kind can be found in Xing et al. (2003),
+Ghahramani and Beal (2001), and Wiegerinck (2000). For a more general treatment of
+variational methods for statistical inference, see Wainwright and Jordan (2003).
+
+B
+
+Placing a prior on the scaling parameter
+
+The scaling parameter  can have a signicant eect on the growth of the number of
+components grows with the data, and it is generally important to consider extended
+models which integrate over . For the urn-based samplers, Escobar and West (1995)
+place a Gamma(s1, s2) prior on  and implement the corresponding Gibbs updates with
+auxiliary variable methods.
+
+In the stick-breaking representation, the gamma distribution is convenient because
+it is conjugate to the stick lengths. Writing the gamma distribution in its canonical
+form we have:
+
+p( | s1, s2) = (1/) exp{s2 + s1 log   a(s1, s2)},
+
+where s1 is the shape parameter and s2 is the inverse scale parameter. This distribution
+is conjugate to Beta(1, ). The log normalizer is:
+
+and the posterior parameters conditional on data {v1, . . . , vK} are:
+
+a(s1, s2) = log (s1)  s1 log s2,
+
+s2 = s2 PK
+
+s1 = s1 + K.
+
+i=1 log(1  vi)
+
+We extend the variational inference algorithm to include posterior updates for the
+scaling parameter . The variational distribution is Gamma(w1, w2). The variational
+parameters are updated as follows:
+
+w1 = s1 + T  1
+
+T 1
+
+and we replace  with its expectation Eq [] = w1/w2 in the updates for t,2 in Equa-
+tion (19).
+
+Xi=1
+
+w2 = s2 
+
+Eq [log(1  Vi)]),
+
+22
+
+Variational inference for Dirichlet process mixtures
+

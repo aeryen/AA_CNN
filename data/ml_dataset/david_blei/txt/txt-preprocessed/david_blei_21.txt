@@ -1,0 +1,684 @@
+Abstract
+
+We develop an online variational Bayes (VB) algorithm for Latent Dirichlet Al-
+location (LDA). Online LDA is based on online stochastic optimization with a
+natural gradient step, which we show converges to a local optimum of the VB
+objective function. It can handily analyze massive document collections, includ-
+ing those arriving in a stream. We study the performance of online LDA in several
+ways, including by tting a 100-topic topic model to 3.3M articles from Wikipedia
+in a single pass. We demonstrate that online LDA nds topic models as good or
+better than those found with batch VB, and in a fraction of the time.
+
+1
+
+Introduction
+
+Hierarchical Bayesian modeling has become a mainstay in machine learning and applied statistics.
+Bayesian models provide a natural way to encode assumptions about observed data, and analysis
+proceeds by examining the posterior distribution of model parameters and latent variables condi-
+tioned on a set of observations. For example, research in probabilistic topic modelingthe applica-
+tion we will focus on in this paperrevolves around tting complex hierarchical Bayesian models
+to large collections of documents. In a topic model, the posterior distribution reveals latent semantic
+structure that can be used for many applications.
+For topic models and many other Bayesian models of interest, however, the posterior is intractable
+to compute and researchers must appeal to approximate posterior inference. Modern approximate
+posterior inference algorithms fall in two categoriessampling approaches and optimization ap-
+proaches. Sampling approaches are usually based on Markov Chain Monte Carlo (MCMC) sam-
+pling, where a Markov chain is dened whose stationary distribution is the posterior of interest. Op-
+timization approaches are usually based on variational inference, which is called variational Bayes
+(VB) when used in a Bayesian hierarchical model. Whereas MCMC methods seek to generate inde-
+pendent samples from the posterior, VB optimizes a simplied parametric distribution to be close in
+Kullback-Leibler divergence to the posterior. Although the choice of approximate posterior intro-
+duces bias, VB is empirically shown to be faster than and as accurate as MCMC, which makes it an
+attractive option when applying Bayesian models to large datasets [1, 2, 3].
+Nonetheless, large scale data analysis with VB can be computationally difcult. Standard batch
+VB algorithms iterate between analyzing each observation and updating dataset-wide variational
+parameters. The per-iteration cost of batch algorithms can quickly become impractical for very large
+datasets. In topic modeling applications, this issue is particularly relevanttopic modeling promises
+
+1
+
+Figure 1: Top: Perplexity on held-out Wikipedia documents as a function of number of documents
+analyzed, i.e., the number of E steps. Online VB run on 3.3 million unique Wikipedia articles is
+compared with online VB run on 98,000 Wikipedia articles and with the batch algorithm run on the
+same 98,000 articles. The online algorithms converge much faster than the batch algorithm does.
+Bottom: Evolution of a topic about business as online LDA sees more and more documents.
+
+to summarize the latent structure of massive document collections that cannot be annotated by hand.
+A central research problem for topic modeling is to efciently t models to larger corpora [4, 5].
+To this end, we develop an online variational Bayes algorithm for latent Dirichlet allocation (LDA),
+one of the simplest topic models and one on which many others are based. Our algorithm is based on
+online stochastic optimization, which has been shown to produce good parameter estimates dramat-
+ically faster than batch algorithms on large datasets [6]. Online LDA handily analyzes massive col-
+lections of documents and, moreover, online LDA need not locally store or collect the documents
+each can arrive in a stream and be discarded after one look.
+In the subsequent sections, we derive online LDA and show that it converges to a stationary point
+of the variational objective function. We study the performance of online LDA in several ways,
+including by tting a topic model to 3.3M articles from Wikipedia without looking at the same
+article twice. We show that online LDA nds topic models as good as or better than those found
+with batch VB, and in a fraction of the time (see gure 1). Online variational Bayes is a practical
+new method for estimating the posterior of complex hierarchical Bayesian models.
+
+2 Online variational Bayes for latent Dirichlet allocation
+
+Latent Dirichlet Allocation (LDA) [7] is a Bayesian probabilistic model of text documents. It as-
+sumes a collection of K topics. Each topic denes a multinomial distribution over the vocabulary
+and is assumed to have been drawn from a Dirichlet, k  Dirichlet(). Given the topics, LDA
+assumes the following generative process for each document d. First, draw a distribution over topics
+d  Dirichlet(). Then, for each word i in the document, draw a topic index zdi  {1, . . . , K}
+from the topic weights zdi  d and draw the observed word wdi from the selected topic, wdi  zdi.
+For simplicity, we assume symmetric priors on  and , but this assumption is easy to relax [8].
+
+Note that if we sum over the topic assignments z, then we get p(wdi|d, ) = (cid:80)
+
+k dkkw. This
+leads to the multinomial PCA interpretation of LDA; we can think of LDA as a probabilistic
+factorization of the matrix of word counts n (where ndw is the number of times word w appears in
+document d) into a matrix of topic weights  and a dictionary of topics  [9]. Our work can thus
+
+2
+
+4096systemshealthcommunicationservicebillionlanguagecareroad8192servicesystemshealthcompaniesmarketcommunicationcompanybillion12288servicesystemscompaniesbusinesscompanybillionhealthindustry16384servicecompaniessystemsbusinesscompanyindustrymarketbillion32768businessservicecompaniesindustrycompanymanagementsystemsservices49152businessservicecompaniesindustryservicescompanymanagementpublic2048systemsroadmadeserviceannouncednationalwestlanguage65536businessindustryservicecompaniesservicescompanymanagementpublicDocumentsanalyzedTop eightwordsDocuments seen (log scale)Perplexity600650700750800850900103.5104104.5105105.5106106.5Batch 98KOnline 98KOnline 3.3Mbe seen as an extension of online matrix factorization techniques that optimize squared error [10] to
+more general probabilistic formulations.
+We can analyze a corpus of documents with LDA by examining the posterior distribution of the
+topics , topic proportions , and topic assignments z conditioned on the documents. This reveals
+latent structure in the collection that can be used for prediction or data exploration. This posterior
+cannot be computed directly [7], and is usually approximated using Markov Chain Monte Carlo
+(MCMC) methods or variational inference. Both classes of methods are effective, but both present
+signicant computational challenges in the face of massive data sets.Developing scalable approxi-
+mate inference methods for topic models is an active area of research [3, 4, 5, 11].
+To this end, we develop online variational inference for LDA, an approximate posterior inference
+algorithm that can analyze massive collections of documents. We rst review the traditional vari-
+ational Bayes algorithm for LDA and its objective function, then present our online method, and
+show that it converges to a stationary point of the same objective function.
+
+2.1 Batch variational Bayes for LDA
+
+In Variational Bayesian inference (VB) the true posterior is approximated by a simpler distribution
+q(z, , ), which is indexed by a set of free parameters [12, 13]. These parameters are optimized to
+maximize the Evidence Lower BOund (ELBO):
+
+q(zdi = k) = dwdik;
+
+log p(w|, ) L(w, , , ) (cid:44) Eq[log p(w, z, , |, )]  Eq[log q(z, , )].
+
+(1)
+Maximizing the ELBO is equivalent to minimizing the KL divergence between q(z, , ) and the
+posterior p(z, , |w, , ). Following [7], we choose a fully factorized distribution q of the form
+(2)
+The posterior over the per-word topic assignments z is parameterized by , the posterior over the per-
+document topic weights  is parameterized by , and the posterior over the topics  is parameterized
+by . As a shorthand, we refer to  as the topics. Equation 1 factorizes to
+
+(cid:8)Eq[log p(wd|d, zd, )] + Eq[log p(zd|d)]  Eq[log q(zd)]
++ Eq[log p(d|)]  Eq[log q(d)] + (Eq[log p(|)]  Eq[log q()])/D(cid:9).
+
+L(w, , , ) =(cid:80)
+
+q(k) = Dirichlet(k; k),
+
+q(d) = Dirichlet(d; d);
+
+(3)
+
+d
+
+Notice we have brought the per-corpus terms into the summation over documents, and divided them
+by the number of documents D. This step will help us to derive an online inference algorithm.
+We now expand the expectations above to be functions of the variational parameters. This reveals
+that the variational objective relies only on ndw, the number of times word w appears in document
+d. When using VBas opposed to MCMCdocuments can be summarized by their word counts,
+
+d
+
+w ndw
+
+(cid:80)
+L =(cid:80)
+(cid:80)
+ log ((cid:80)
+k dk) +(cid:80)
+k dwk(Eq[log dk] + Eq[log kw]  log dwk)
++ ((cid:80)
+k  log ((cid:80)
+k(  dk)Eq[log dk] + log (dk)
+(cid:44)(cid:80)
+
++ log (K)  K log () + (log (W )  W log ())/D
+d (cid:96)(nd, d, d, ),
+
+w kw) +(cid:80)
+
+w(  kw)Eq[log kw] + log (kw))/D
+
+(4)
+
+The expectations under q of log  and log  are
+
+Eq[log dk] = (dk)  ((cid:80)K
+
+where W is the size of the vocabulary and D is the number of documents. (cid:96)(nd, d, d, ) denotes
+the contribution of document d to the ELBO.
+L can be optimized using coordinate ascent over the variational parameters , ,  [7]:
+dwk  exp{Eq[log dk] + Eq[log kw]};
+
+dk =  +(cid:80)
+
+kw =  +(cid:80)
+i=1 di); Eq[log kw] = (kw)  ((cid:80)W
+
+w ndwdwk;
+
+(6)
+where  denotes the digamma function (the rst derivative of the logarithm of the gamma function).
+The updates in equation 5 are guaranteed to converge to a stationary point of the ELBO. By analogy
+to the Expectation-Maximization (EM) algorithm [14], we can partition these updates into an E
+stepiteratively updating  and  until convergence, holding  xedand an M stepupdating
+ given . In practice, this algorithm converges to a better solution if we reinitialize  and  before
+each E step. Algorithm 1 outlines batch VB for LDA.
+
+i=1 ki),
+
+d ndwdwk.
+(5)
+
+3
+
+Algorithm 1 Batch variational Bayes for LDA
+
+Initialize  randomly.
+while relative improvement in L(w, , , ) > 0.00001 do
+
+E step:
+for d = 1 to D do
+
+Initialize dk = 1. (The constant 1 is arbitrary.)
+repeat
+Set dwk  exp{Eq[log dk] + Eq[log kw]}
+
+Set dk =  +(cid:80)
+(cid:80)
+k |change indk| < 0.00001
+Set kw =  +(cid:80)
+
+w dwkndw
+
+until 1
+K
+
+end for
+M step:
+
+d ndwdwk
+
+end while
+
+2.2 Online variational inference for LDA
+
+Algorithm 1 has constant memory requirements and empirically converges faster than batch col-
+lapsed Gibbs sampling [3]. However, it still requires a full pass through the entire corpus each
+iteration. It can therefore be slow to apply to very large datasets, and is not naturally suited to set-
+tings where new data is constantly arriving. We propose an online variational inference algorithm
+for tting , the parameters to the variational posterior over the topic distributions . Our algorithm
+is nearly as simple as the batch VB algorithm, but converges much faster for large datasets.
+A good setting of the topics  is one for which the ELBO L is as high as possible after tting the
+per-document variational parameters  and  with the E step dened in algorithm 1. Let (nd, )
+and (nd, ) be the values of d and d produced by the E step. Our goal is to set  to maximize
+
+d (cid:96)(nd, (nd, ), (nd, ), ),
+
+(7)
+
+L(n, ) (cid:44)(cid:80)
+
+where (cid:96)(nd, d, d, ) is the dth documents contribution to the variational bound in equation 4.
+This is analogous to the goal of least-squares matrix factorization, although the ELBO for LDA is
+less convenient to work with than a simple squared loss function such as the one in [10].
+Online VB for LDA (online LDA) is described in algorithm 2. As the tth vector of word counts
+nt is observed, we perform an E step to nd locally optimal values of t and t, holding  xed.
+We then compute , the setting of  that would be optimal (given t) if our entire corpus consisted
+of the single document nt repeated D times. D is the number of unique documents available to the
+algorithm, e.g. the size of a corpus. (In the true online case D  , corresponding to empirical
+Bayes estimation of .) We then update  using a weighted average of its previous value and .
+The weight given to  is given by t (cid:44) (0 + t), where   (0.5, 1] controls the rate at which
+old values of  are forgotten and 0  0 slows down the early iterations of the algorithm. The
+condition that   (0.5, 1] is needed to guarantee convergence. We show in section 2.3 that online
+LDA corresponds to a stochastic natural gradient algorithm on the variational objective L [15, 16].
+This algorithm closely resembles one proposed in [16] for online VB on models with hidden data
+the most important difference is that we use an approximate E step to optimize t and t, since we
+cannot compute the conditional distribution p(zt, t|, nt, ) exactly.
+
+(cid:80)
+
+Mini-batches. A common technique in stochastic learning is to consider multiple observations per
+update to reduce noise [6, 17]. In online LDA, this means computing  using S > 1 observations:
+
+kw =  + D
+S
+
+s ntsktskw,
+
+(8)
+
+where nts is the sth document in mini-batch t. The variational parameters ts and ts for this
+document are t with a normal E step. Note that we recover batch VB when S = D and  = 0.
+
+Hyperparameter estimation.
+In batch variational LDA, point estimates of the hyperparameters
+ and  can be t given  and  using a linear-time Newton-Raphson method [7]. We can likewise
+
+4
+
+Algorithm 2 Online variational Bayes for LDA
+
+Dene t (cid:44) (0 + t)
+Initialize  randomly.
+for t = 0 to  do
+
+E step:
+Initialize tk = 1. (The constant 1 is arbitrary.)
+repeat
+Set twk  exp{Eq[log tk] + Eq[log kw]}
+
+Set tk =  +(cid:80)
+
+(cid:80)
+k |change intk| < 0.00001
+
+w twkntw
+
+until 1
+K
+M step:
+Compute kw =  + Dntwtwk
+Set  = (1  t) + t
+
+.
+
+end for
+
+incorporate updates for  and  into online LDA:
+    t (t);
+
+(9)
+where (t) is the inverse of the Hessian times the gradient (cid:96)(nt, t, t, ), () is the inverse
+of the Hessian times the gradient L, and t (cid:44) (0 + t) as elsewhere.
+
+    t (),
+
+2.3 Analysis of convergence
+
+(cid:80)D
+
+In this section we show that algorithm 2 converges to a stationary point of the objective dened in
+equation 7. Since variational inference replaces sampling with optimization, we can use results from
+stochastic optimization to analyze online LDA. Stochastic optimization algorithms optimize an ob-
+jective using noisy estimates of its gradient [18]. Although there is no explicit gradient computation,
+algorithm 2 can be interpreted as a stochastic natural gradient algorithm [16, 15].
+We begin by deriving a related rst-order stochastic gradient algorithm for LDA. Let g(n) denote
+the population distribution over documents n from which we will repeatedly sample documents:
+
+(10)
+I[n = nd] is 1 if n = nd and 0 otherwise. If this population consists of the D documents in the
+corpus, then we can rewrite equation 7 as
+
+d=1
+
+D
+
+g(n) (cid:44) 1
+
+I[n = nd].
+
+L(g, ) (cid:44) DEg[(cid:96)(n, (n, ), (n, ), )|].
+
+(11)
+
+where (cid:96) is dened as in equation 3. We can optimize equation 11 over  by repeatedly drawing an
+observation nt  g, computing t (cid:44) (nt, ) and t (cid:44) (nt, ), and applying the update
+
+   + tD(cid:96)(nt, t, t, )
+
+(12)
+
+(cid:80)
+d (cid:96)(nd, d, d, ). Thus, since(cid:80)
+
+where t (cid:44) (0 + t) as in algorithm 2.
+If we condition on the current value of  and
+treat t and t as random variables drawn at the same time as each observed document nt, then
+Eg[D(cid:96)(nt, t, t, )|] = 
+t <
+, the analysis in [19] shows both that  converges and that the gradient 
+d (cid:96)(nd, d, d, )
+converges to 0, and thus that  converges to a stationary point.1
+The update in equation 12 only makes use of rst-order gradient information. Stochastic gradient
+algorithms can be sped up by multiplying the gradient by the inverse of an appropriate positive
+denite matrix H [19]. One choice for H is the Hessian of the objective function. In variational
+inference, an alternative is to use the Fisher information matrix of the variational distribution q (i.e.,
+the Hessian of the log of the variational probability density function), which corresponds to using
+
+t=0 t =  and(cid:80)
+
+(cid:80)
+
+t=0 2
+
+1Although we use a deterministic procedure to compute  and  given n and , this analysis can also be
+
+applied if  and  are optimized using a randomized algorithm. We address this case in the supplement.
+
+5
+
+a natural gradient method instead of a (quasi-) Newton method [16, 15]. Following the analysis in
+[16], the gradient of the per-document ELBO (cid:96) can be written as
+
+(kv/D + /D + ntvtvk)
+(kv/D + /D + ntvtvk),
+
+(13)
+
+kw
+
+v=1
+
+kw
+
+(cid:96)(nt,t,t,)
+
+=(cid:80)W
+=(cid:80)W
+Eq[log kv]
+v=1  2 log q(k)
+(cid:20)(cid:16) 2 log q(log k)
+(cid:21)
+(cid:17)1
+
+(cid:96)(nt,t,t,)
+
+kvkw
+
+kT
+k
+
+k
+
+w
+
+where we have used the fact that Eq[log kv] is the derivative of the log-normalizer of q(log k). By
+denition, multiplying equation 13 by the inverse of the Fisher information matrix yields
+
+= kw/D + /D + ntwtwk.
+
+(14)
+
+Multiplying equation 14 by tD and adding it to kw yields the update for  in algorithm 2. Thus
+we can interpret our algorithm as a stochastic natural gradient algorithm, as in [16].
+
+3 Related work
+
+Comparison with other stochastic learning algorithms.
+In the standard stochastic gradient op-
+timization setup, the number of parameters to be t does not depend on the number of observations
+[19]. However, some learning algorithms must also t a set of per-observation parameters (such
+as the per-document variational parameters d and d in LDA). The problem is addressed by on-
+line coordinate ascent algorithms such as those described in [20, 21, 16, 17, 10]. The goal of these
+algorithms is to set the global parameters so that the objective is as good as possible once the per-
+observation parameters are optimized. Most of these approaches assume the computability of a
+unique optimum for the per-observation parameters, which is not available for LDA.
+
+Efcient sampling methods. Markov Chain Monte Carlo (MCMC) methods form one class of
+approximate inference algorithms for LDA. Collapsed Gibbs Sampling (CGS) is a popular MCMC
+approach that samples from the posterior over topic assignments z by repeatedly sampling the topic
+assignment zdi conditioned on the data and all other topic assignments [22].
+One online MCMC approach adapts CGS by sampling topic assignments zdi based on the topic
+assignments and data for all previously analyzed words, instead of all other words in the corpus [23].
+This algorithm is fast and has constant memory requirements, but is not guaranteed to converge to
+the posterior. Two alternative online MCMC approaches were considered in [24]. The rst, called
+incremental LDA, periodically resamples the topic assignments for previously analyzed words. The
+second approach uses particle ltering instead of CGS. In a study in [24], none of these three online
+MCMC algorithms performed as well as batch CGS.
+Instead of online methods, the authors of [4] used parallel computing to apply LDA to large corpora.
+They developed two approximate parallel CGS schemes for LDA that gave similar predictive per-
+formance on held-out documents to batch CGS. However, they require parallel hardware, and their
+complexity and memory costs still scale linearly with the number of documents.
+Except for the algorithm in [23] (which is not guaranteed to converge), all of the MCMC algorithms
+described above have memory costs that scale linearly with the number of documents analyzed. By
+contrast, batch VB can be implemented using constant memory, and parallelizes easily. As we will
+show in the next section, its online counterpart is even faster.
+
+4 Experiments
+
+We ran several experiments to evaluate online LDAs efciency and effectiveness. The rst set of
+experiments compares algorithms 1 and 2 on static datasets. The second set of experiments evaluates
+online VB in the setting where new documents are constantly being observed. Both algorithms were
+implemented in Python using Numpy. The implementations are as similar as possible.2
+
+2Open-source Python implementations of batch and online LDA can be found at http://www.cs.
+
+princeton.edu/mdhoffma.
+
+6
+
+Table 1: Best settings of  and 0 for various mini-batch sizes S, with resulting perplexities on
+Nature and Wikipedia corpora.
+
+S
+
+0
+Perplexity
+
+S
+
+0
+Perplexity
+
+Best parameter settings for Nature corpus
+1024
+0.5
+256
+1031
+
+4
+0.8
+1024
+1087
+
+16
+0.8
+1024
+1052
+
+64
+0.7
+1024
+1053
+
+256
+0.6
+1024
+1042
+
+1
+0.9
+1024
+1132
+
+Best parameter settings for Wikipedia corpus
+
+1
+0.9
+1024
+675
+
+4
+0.9
+1024
+640
+
+16
+0.8
+1024
+611
+
+64
+0.7
+1024
+595
+
+256
+0.6
+1024
+588
+
+1024
+0.5
+1024
+584
+
+4096
+0.5
+64
+1030
+
+4096
+0.5
+64
+580
+
+16384
+0.5
+1
+1046
+
+16384
+0.5
+1
+584
+
+Figure 2: Held-out perplexity obtained on the Nature (left) and Wikipedia (right) corpora as a func-
+tion of CPU time. For moderately large mini-batch sizes, online LDA nds solutions as good as
+those that the batch LDA nds, but with much less computation. When t to a 10,000-document
+subset of the training corpus batch LDAs speed improves, but its performance suffers.
+
+We use perplexity on held-out data as a measure of model t. Perplexity is dened as the geometric
+mean of the inverse marginal probability of each word in the held-out set of documents:
+
+perplexity(ntest, , ) (cid:44) exp
+
+(15)
+test denotes the vector of word counts for the ith document. Since we cannot directly
+
+i log p(ntest
+
+|, ), we use a lower bound on perplexity as a proxy:
+
+(cid:110)((cid:80)
+
+i
+
+|, ))/((cid:80)
+
+(cid:111)
+, i, zi|, )]  Eq[log q(i, zi)])((cid:80)
+
+i,w ntest
+iw )
+
+where ni
+compute log p(ntest
+perplexity(ntest, , )  exp
+
+i
+
+(cid:110)((cid:80)
+
+(cid:111)
+
+.
+
+i
+
+i
+
+Eq[log p(ntest
+
+i,w ntest
+iw )
+(16)
+The per-document parameters i and i for the variational distributions q(i) and q(zi) are t using
+the E step in algorithm 2. The topics  are t to a training set of documents and then held xed. In
+all experiments  and  are xed at 0.01 and the number of topics K = 100.
+There is some question as to the meaningfulness of perplexity as a metric for comparing different
+topic models [25]. Held-out likelihood metrics are nonetheless well suited to measuring how well
+an inference algorithm accomplishes the specic optimization task dened by a model.
+Evaluating learning parameters. Online LDA introduces several learning parameters:  
+(0.5, 1], which controls how quickly old information is forgotten; 0  0, which downweights early
+iterations; and the mini-batch size S, which controls how many documents are used each iteration.
+Although online LDA converges to a stationary point for any valid , 0, and S, the quality of this
+stationary point and the speed of convergence may depend on how the learning parameters are set.
+We evaluated a range of settings of the learning parameters , 0, and S on two corpora: 352,549
+documents from the journal Nature 3 and 100,000 documents downloaded from the English ver-
+
+3For the Nature articles, we removed all words not in a pruned vocabulary of 4,253 words.
+
+7
+
+Time in seconds (log scale)Perplexity150020002500101102103104Batch size000010001600256010240409616384batch10Kbatch98KTime in seconds (log scale)Perplexity6007008009001000101102103104Batch size000010001600256010240409616384batch10Kbatch98Ksion of Wikipedia 4. For each corpus, we set aside a 1,000-document test set and a separate
+1,000-document validation set. We then ran online LDA for ve hours on the remaining docu-
+ments from each corpus for   {0.5, 0.6, 0.7, 0.8, 0.9, 1.0}, 0  {1, 4, 16, 64, 256, 1024}, and
+S  {1, 4, 16, 64, 256, 1024, 4096, 16384}, for a total of 288 runs per corpus. After ve hours of
+CPU time, we computed perplexity on the test sets for the topics  obtained at the end of each t.
+Table 1 summarizes the best settings for each corpus of  and 0 for a range of settings of S. The
+supplement includes a more exhaustive summary. The best learning parameter settings for both
+corpora were  = 0.5, 0 = 64, and S = 4096. The best settings of  and 0 are consistent across
+the two corpora. For mini-batch sizes from 256 to 16384 there is little difference in perplexity scores.
+Several trends emerge from these results. Higher values of the learning rate  and the downweighting
+parameter 0 lead to better performance for small mini-batch sizes S, but worse performance for
+larger values of S. Mini-batch sizes of at least 256 documents outperform smaller mini-batch sizes.
+Comparing batch and online on xed corpora. To compare batch LDA to online LDA, we evalu-
+ated held-out perplexity as a function of time on the Nature and Wikipedia corpora above. We tried
+various mini-batch sizes from 1 to 16,384, using the best learning parameters for each mini-batch
+size found in the previous study of the Nature corpus. We also evaluated batch LDA t to a 10,000-
+document subset of the training corpus. We computed perplexity on a separate validation set from
+the test set used in the previous experiment. Each algorithm ran for 24 hours of CPU time.
+Figure 2 summarizes the results. On the larger Nature corpus, online LDA nds a solution as good as
+the batch algorithms with much less computation. On the smaller Wikipedia corpus, the online al-
+gorithm nds a better solution than the batch algorithm does. The batch algorithm converges quickly
+on the 10,000-document corpora, but makes less accurate predictions on held-out documents.
+True online. To demonstrate the ability of online VB to perform in a true online setting, we wrote a
+Python script to continually download and analyze mini-batches of articles chosen at random from
+a list of approximately 3.3 million Wikipedia articles. This script can download and analyze about
+60,000 articles an hour. It completed a pass through all 3.3 million articles in under three days. The
+amount of time needed to download an article and convert it to a vector of word counts is comparable
+to the amount of time that the online LDA algorithm takes to analyze it.
+We ran online LDA with  = 0.5, 0 = 1024, and S = 1024. Figure 1 shows the evolution of the
+perplexity obtained on the held-out validation set of 1,000 Wikipedia articles by the online algorithm
+as a function of number of articles seen. Shown for comparison is the perplexity obtained by the
+online algorithm (with the same parameters) t to only 98,000 Wikipedia articles, and that obtained
+by the batch algorithm t to the same 98,000 articles.
+The online algorithm outperforms the batch algorithm regardless of which training dataset is used,
+but it does best with access to a constant stream of novel documents. The batch algorithms failure
+to outperform the online algorithm on limited data may be due to stochastic gradients robustness
+to local optima [19]. The online algorithm converged after analyzing about half of the 3.3 million
+articles. Even one iteration of the batch algorithm over that many articles would have taken days.
+
+5 Discussion
+
+We have developed online variational Bayes (VB) for LDA. This algorithm requires only a few
+more lines of code than the traditional batch VB of [7], and is handily applied to massive and
+streaming document collections. Online VB for LDA approximates the posterior as well as previous
+approaches in a fraction of the time. The approach we used to derive an online version of batch VB
+for LDA is general (and simple) enough to apply to a wide variety of hierarchical Bayesian models.
+
+Acknowledgments
+
+D.M. Blei is supported by ONR 175-6343, NSF CAREER 0745520, AFOSR 09NL202, the Alfred
+P. Sloan foundation, and a grant from Google. F. Bach is supported by ANR (MGA project).
+
+4For the Wikipedia articles, we removed all words not from a xed vocabulary of 7,995 common words.
+This vocabulary was obtained by removing words less than 3 characters long from a list of the 10,000 most com-
+mon words in Project Gutenberg texts obtained from http://en.wiktionary.org/wiki/Wiktionary:Frequency lists.
+
+8
+

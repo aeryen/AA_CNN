@@ -1,0 +1,766 @@
+Abstract
+
+A wide variety of Dirichlet-multinomial topic models have found interesting ap-
+plications in recent years. While Gibbs sampling remains an important method of
+inference in such models, variational techniques have certain advantages such as
+easy assessment of convergence, easy optimization without the need to maintain
+detailed balance, a bound on the marginal likelihood, and side-stepping of issues
+with topic-identiability. The most accurate variational technique thus far, namely
+collapsed variational latent Dirichlet allocation, did not deal with model selection
+nor did it include inference for hyperparameters. We address both issues by gen-
+eralizing the technique, obtaining the rst variational algorithm to deal with the
+hierarchical Dirichlet process and to deal with hyperparameters of Dirichlet vari-
+ables. Experiments show a signicant improvement in accuracy.
+
+1
+
+Introduction
+
+Many applications of graphical models have traditionally dealt with discrete state spaces, where
+each variable is multinomial distributed given its parents [1]. Without strong prior knowledge on
+the structure of dependencies between variables and their parents, the typical Bayesian prior over
+parameters has been the Dirichlet distribution. This is because the Dirichlet prior is conjugate to
+the multinomial, leading to simple and efcient computations for both the posterior over parameters
+and the marginal likelihood of data. When there are latent or unobserved variables, the variational
+Bayesian approach to posterior estimation, where the latent variables are assumed independent from
+the parameters, has proven successful [2].
+In recent years there has been a proliferation of graphical models composed of a multitude of multi-
+nomial and Dirichlet variables interacting in various inventive ways. The major classes include the
+latent Dirichlet allocation (LDA) [3] and many other topic models inspired by LDA, and the hier-
+archical Dirichlet process (HDP) [4] and many other nonparametric models based on the Dirichlet
+process (DP). LDA pioneered the use of Dirichlet distributed latent variables to represent shades
+of membership to different clusters or topics, while the HDP pioneered the use of nonparametric
+models to sidestep the need for model selection.
+For these Dirichlet-multinomial models the inference method of choice is typically collapsed Gibbs
+sampling, due to its simplicity, speed, and good predictive performance on test sets. However there
+are drawbacks as well: it is often hard to access convergence of the Markov chains, it is harder still
+to accurately estimate the marginal probability of the training data or the predictive probability of
+test data (if latent variables are associated with the test data), averaging topic-dependent quantities
+based on samples is not well-dened because the topic labels may have switched during sampling
+and avoiding local optima through large MCMC moves such as split and merge algorithms are tricky
+to implement due to the need to preserve detailed balance. Thus there seems to be a genuine need to
+consider alternatives to sampling.
+For LDA and its cousins, there are alternatives based on variational Bayesian (VB) approximations
+[3] and on expectation propagation (EP) [5]. [6] found that EP was not efcient enough for large
+
+scale applications, while VB suffered from signicant bias resulting in worse predictive performance
+than Gibbs sampling. [7] addressed these issues by proposing an improved VB approximation based
+on the idea of collapsing, that is, integrating out the parameters while assuming that other latent
+variables are independent. As for nonparametric models, a number of VB approximations have
+been proposed for DP mixture models [8, 9], while to our knowledge none has been proposed for
+the HDP thus far ([10] derived a VB inference for the HDP, but dealt only with point estimates for
+higher level parameters).
+In this paper we investigate a new VB approach to inference for the class of Dirichlet-multinomial
+models. To be concrete we focus our attention on an application of the HDP to topic modeling [4],
+though the approach is more generally applicable. Our approach is an extension of the collapsed
+VB approximation for LDA (CV-LDA) presented in [7], and represents the rst VB approximation
+to the HDP1. We call this the collapsed variational HDP (CV-HDP). The advantage of CV-HDP
+over CV-LDA is that the optimal number of variational components is not nite. This implies, apart
+from local optima, that we can keep adding components indenitely while the algorithm will take
+care removing unnecessary clusters. Ours is also the rst variational algorithm to treat full posterior
+distributions over the hyperparameters of Dirichlet variables, and we show experimentally that this
+results in signicant improvements in both the variational bound and test-set likelihood. We expect
+our approach to be generally applicable to a wide variety of Dirichlet-multinomial models beyond
+what we have described here.
+
+2 A Nonparametric Hierarchical Bayesian Topic Model
+
+We consider a document model where each document in a corpus is modelled as a mixture over
+topics, and each topic is a distribution over words in the vocabulary. Let there be D documents in
+the corpus, and W words in the vocabulary. For each document d = 1, . . . , D, let d be a vector of
+mixing proportions over topics. For each topic k, let k be a vector of probabilities for words in that
+topic. Words in each document are drawn as follows: rst choose a topic k with probability dk,
+then choose a word w with probability kw. Let xid be the ith word token in document d, and zid
+its chosen topic. We have,
+
+zid | d  Mult(d)
+
+xid | zid, zid  Mult(zid)
+
+We place Dirichlet priors on the parameters d and k,
+
+d |   Dir()
+
+k |   Dir()
+
+(1)
+
+(2)
+
+where  is the corpus-wide distribution over topics,  is the corpus-wide distribution over the vo-
+cabulary, and  and  are concentration parameters describing how close d and k are to their
+respective prior means  and .
+If the number of topics K is nite and xed, the above model is LDA. As we usually do not know
+the number of topics a priori, and would like a model that can determine this automatically, we
+consider a nonparametric extension reposed on the HDP [4]. Specically, we have a countably in-
+nite number of topics (thus d and  are innite-dimensional vectors), and we use a stick-breaking
+representation [11] for :
+
+(cid:81)k1
+l=1 (1  l)
+
+k = k
+
+DP(, Dir()), where Gd =(cid:80)
+
+(3)
+In the normal Dirichlet process notation, we would equivalently have Gd  DP(, G0) and G0 
+k=1 kk are sums of point masses, and
+Dir() is the base distribution. Finally, in addition to the prior over , we place priors over the
+other hyperparameters , ,  and  of the model as well,
+
+for k = 1, 2, . . .
+
+k|  Beta(1, )
+
+k=1 dkk and G0 =(cid:80)
+
+  Gamma(a, b)
+
+  Gamma(a, b)
+
+  Gamma(a, b)
+
+  Dir(a )
+
+(4)
+
+The full model is shown graphically in Figure 1(left).
+
+1In this paper, by HDP we shall mean the two level HDP topic model in Section 2. We do not claim to have
+derived a VB inference for the general HDP in [4], which is signicantly more difcult; see nal discussions.
+
+Figure 1: Left: The HDP topic model. Right: Factor graph of the model with auxiliary variables.
+
+3 Collapsed Variational Bayesian Inference for HDP
+
+There is substantial empirical evidence that marginalizing out variables is helpful for efcient infer-
+ence. For instance, in [12] it was observed that Gibbs sampling enjoys better mixing, while in [7] it
+was shown that variational inference is more accurate in this collapsed space. In the following we
+will build on this experience and propose a collapsed variational inference algorithm for the HDP,
+based upon rst replacing the parameters with auxiliary variables, then effectively collapsing out the
+auxiliary variables variationally. The algorithm is fully Bayesian in the sense that all parameter pos-
+teriors are treated exactly and full posterior distributions are maintained for all hyperparameters. The
+only assumptions made are independencies among the latent topic variables and hyperparameters,
+and that there is a nite upper bound on the number of topics used (which is found automatically).
+The only inputs required of the modeller are the values of the top-level parameters a, b, ....
+
+D(cid:89)
+
+d=1
+
+3.1 Replacing parameters with auxiliary variables
+In order to obtain efcient variational updates, we shall replace the parameters  = {d} and  =
+{k} with auxiliary variables. Specically, we rst integrate out the parameters; this gives a joint
+distribution over latent variables z = {zid} and word tokens x = {xid} as follows:
+
+(cid:81)K
+
+K(cid:89)
+
+(cid:81)W
+
+p(z, x|, , , , ) =
+
+(k+ndk)
+
+()
+
+(w+nkw)
+
+()
+
+k=1
+
+(k)
+
+(+nd)
+
+(5)
+with ndkw = #{i : xid = w, zid = k}, dot denoting sum over that index, and K denoting an index
+such that zid  K for all i, d. The ratios of gamma functions in (5) result from the normalization
+constants of the Dirichlet densities of  and , and prove to be nuisances for updating the hyperpa-
+rameter posteriors. Thus we introduce four sets of auxiliary variables: d and k taking values in
+[0, 1], and sdk and tkw taking integral values. This results in a joint probability distribution over an
+expanded system,
+
+(+nk)
+
+(w)
+
+w=1
+
+k=1
+
+p(z, x, , , s, t|, , , , )
+k=1[ndk
+
+(1d)nd1QK
+
+D(cid:89)
+
+1
+
+d
+
+sdk ](k)sdk
+
+K(cid:89)
+
+=
+
+(nd)
+
+(1k)nk1QW
+
+1
+
+k
+
+w=1[nkw
+
+tkw ](w)tkw
+
+(nk)
+
+(6)
+
+d=1
+
+k=1
+
+where [ n
+m] are unsigned Stirling numbers of the rst kind, and bold face letters denote sets of the
+corresponding variables. It can be readily veried that marginalizing out , , s and t reduces (6)
+to (5). The main insight is that conditioned on z and x the auxiliary variables are independent and
+have well-known distributions. Specically, d and k are Beta distributed, while sdk (respectively
+tkw) is the random number of occupied tables in a Chinese restaurant process with ndk (respectively
+nkw) customers and a strength parameter of k (respectively w) [13, 4].
+
+3.2 The Variational Approximation
+
+We assume the following form for the variational posterior over the auxiliary variables system:
+
+q(z, , , s, t, , , , , ) = q()q()q()q()q()q(, , s, t|z)
+
+q(zid)
+
+(7)
+
+where the dependence of auxiliary variables on z is modelled exactly. [7] showed that modelling
+exactly the dependence of a set of variables on another set is equivalent to integrating out the rst
+
+d=1
+
+i=1
+
+D(cid:89)
+
+nd(cid:89)
+
+topics k=1...        document d=1...Dwords i=1...ndzidxiddktopics k=1...        document d=1...Dwords i=1...ndzidxiddsdktkset. Thus we can interpret (7) as integrating out the auxiliary variables with respect to z. Given the
+above factorization, q() further factorizes so that the ks are independent, as do the posterior over
+auxiliary variables.
+For computational tractability, we also truncated our posterior representation to K topics. Specif-
+ically, we assumed that q(zid > K) = 0 for every i and d. A consequence is that observations
+have no effect on k and k for all k > K, and these parameters can be exactly marginalized out.
+Notice that our approach to truncation is different from that in [8], who implemented a truncation
+at T by instead xing the posterior for the stick weight q(vT = 1) = 1, and from that in [9], who
+assumed that the variational posteriors for parameters beyond the truncation level are set at their
+priors. Our truncation approximation is nested like that in [9], and unlike that in [8]. Our approach
+is also simpler than that in [9], which requires computing an innite sum which is intractable in the
+case of HDPs. We shall treat K as a parameter of the variational approximation, possibly optimized
+by iteratively splitting or merging topics (though we have not explored these in this paper; see dis-
+cussion section). As in [9], we reordered the topic labels such that E[n1] > E[n2] >  . An
+expression for the variational bound on the marginal log-likelihood is given in appendix A.
+
+3.3 Variational Updates
+
+y
+
+In this section we shall derive the complete set of variational updates for the system. In the following
+E[log y] the geometric expectation, and V[y] = E[y2] 
+E[y] denotes the expectation of y, G[y] = e
+E[y]2 the variance. Let (y) =  log (y)
+be the digamma function. We shall also employ index
+summation shorthands:  sums out that index, while >l sums over i where i > l.
+Hyperparameters. Updates for the hyperparameters are derived using the standard fully factorized
+variational approach, since they are assumed independent from each other and from other variables.
+For completeness we list these here, noting that , ,  are gamma distributed in the posterior, ks
+are beta distributed, and  is Dirichlet distributed:
+
+q()  a+E[s]1e(bP
+q()  a +E[t]1e(bP
+q()  a +K1e(bPK
+(cid:81)
+In subsequent updates we will need averages and geometric averages of these quantities which can be
+k  G[xk] = e(ak)/e(P
+extracted using the following identities: p(x)  xa1ebx  E[x] = a/b, G[x] = e(a)/b, p(x) 
+G[k] = G[]G[k], G[w] = G[]G[w] and G[k] = G[k](cid:81)k1
+k xak1
+k ak). Note also that the geometric expectations factorizes:
+
+E[sk]
+k
+w=1  a +E[tw]1
+
+E[log d])
+E[log k])
+E[log(1k)]
+
+q() (cid:81)W
+
+(1  k)E[]+E[s>k]1
+
+q(k)  
+
+G[1  l].
+
+(8)
+
+k=1
+
+d
+
+k
+
+w
+
+l=1
+
+Auxiliary variables. The variational posteriors for the auxiliary variables depend on z through the
+counts ndkw. d and k are beta distributed. If ndk = 0 then q(sdk = 0) = 1 otherwise q(sdk) > 0
+only if 1  sdk  ndk. Similarly for tkw. The posteriors are:
+
+q(d|z)  
+q(k|z)  
+
+E[]1
+d
+E[]1
+k
+
+(1  d)nd1
+(1  k)nk1
+
+q(sdk = m|z)  [ndk
+q(tkw = m|z)  [nkw
+
+m ] (G[k])m
+m ] (G[w])m
+
+(9)
+
+To obtain expectations of the auxiliary variables in (8) we will have to average over z as well. For
+d this is E[log d] = (E[])  (E[] + nd) where nd is the (xed) number of words in
+document d. For the other auxiliary variables these expectations depend on counts which can take
+on many values and a nave computation can be expensive. We derive computationally tractable
+approximations based upon an improvement to the second-order approximation in [7]. As we see in
+the experiments these approximations are very accurate. Consider E[log k]. We have,
+
+E[log k|z] = (E[])  (E[] + nk)
+
+(10)
+and we need to average over nk as well. [7] tackled a similar problem with log instead of  using
+a second order Taylor expansion to log. Unfortunately such an approximation failed to work in our
+case as the digamma function (y) diverges much more quickly than log y at y = 0. Our solution
+is to treat the case nk = 0 exactly, and apply the second-order approximation when nk > 0. This
+leads to the following approximation:
+
+E[log k]  P+[nk](cid:0)(E[])  (E[] + E+[nk])  1
+
+V+[nk](cid:48)(cid:48)(E[] + E+[nk])(cid:1)
+
+(11)
+
+2
+
+where P+ is the probability of being positive operator: P+[y] = q(y > 0), and E+[y], V+[y] are
+the expectation and variance conditional on y > 0. The other two expectations are derived similarly,
+making use of the fact that sdk and tkw are distributionally equal to the random numbers of tables
+in Chinese restaurant processes:
+E[sdk]  G[k]P+[ndk]
+E[tkw]  G[w]P+[nkw]
+
+(G[k]+E+[ndk])(G[k])+ V+[ndk](cid:48)(cid:48)(G[k]+E+[ndk])
+(G[w]+E+[nkw])(G[w])+ V+[nkw](cid:48)(cid:48)(G[w]+E+[nkw])
+
+(cid:16)
+(cid:16)
+
+(cid:17)
+
+(cid:17)
+
+(12)
+
+2
+
+2
+
+E[ndk] =(cid:80)
+
+As in [7], we can efciently track the relevant quantities above by noting that each count is a sum of
+independent Bernoulli variables. Consider ndk as an example. We keep track of three quantities:
+i log q(zid(cid:54)= k) (13)
+
+i q(zid = k)q(zid(cid:54)= k) Z[ndk] =(cid:80)
+
+i q(zid = k) V[ndk] =(cid:80)
+
+Some algebraic manipulations now show that:
+
+P+[ndk] = 1  e
+
+Z[ndk] E+[ndk] = E[ndk]
+P+[ndk]
+
+V+[ndk] = V[ndk]
+
+P+[ndk]  e
+
+Z[ndk]E+[ndk]
+
+(14)
+
+[7] showed that if the dependence of a set of variables, say A, on
+Topic assignment variables.
+another set of variables, say z, is modelled exactly, then in deriving the updates for z we may
+equivalently integrate out A. Applying to our situation with A = {, , s, t}, we obtain updates
+similar to those in [7], except that the hyperparameters are replaced by either their expectations
+or their geometric expectations, depending on which is used in the updates for the corresponding
+auxiliary variables:
+
+q(zid = k) G(cid:2)G[k] + nid
+(cid:0)G[k] + E[nid
+
+(cid:18)
+
+
+
+2(G[k]+E[nid
+
+exp
+
+4 Experiments
+
+dk(cid:3)G(cid:2)G[xid] + nidkxid
+dk ](cid:1)(cid:0)G[xid] + E[nidkxid
+dk ])2 
+
+V[nid
+dk ]
+
+V[nidkxid
+
+]
+
+2(G[xid ]+E[nidkxid
+
+(cid:3)G(cid:2)E[] + nidk(cid:3)1
+](cid:1)(cid:0)E[] + E[nidk ](cid:1)1
+
+])2 +
+
+V[nidk ]
+
+2(E[]+E[nidk ])2
+
+(cid:19)
+
+(15)
+
+We implemented and compared performances for 5 inference algorithms for LDA and HDP: 1)
+variational LDA (V-LDA) [3], collapsed variational LDA (CV-LDA) [7], collapsed variational HDP
+(CV-HDP, this paper), collapsed Gibbs sampling for LDA (G-LDA) [12] and the direct assignment
+Gibbs sampler for HDP (G-HDP) [4].
+We report results on the following 3 datasets: i) KOS (W = 6906, D = 3430, number of word-
+tokens N = 467, 714), ii) a subset of the Reuters dataset consisting of news-topics with a number
+of documents larger than 300 (W = 4593, D = 8433, N = 566, 298), iii) a subset of the 20News-
+groups dataset consisting of the topics comp.os.ms-windows.misc, rec.autos, rec.sport.baseball,
+sci.space and talk.politics.misc (W = 8424, D = 4716, N = 437, 850).
+For G-HDP we use the released code at http://www.gatsby.ucl.ac.uk/ywteh/research/software.html.
+The variables ,  are not adapted in that code, so we xed them at  = 100 and w = 1/W
+for all algorithms (see below for discussion regarding adapting these in CV-HDP). G-HDP was
+initialized with either 1 topic (G-HDP1) or with 100 topics (G-HDP100). For CV-HDP we use
+the following initialization: E[] = G[] = 100 and G[w] = 1/W (kept xed to compare with
+G-HDP), E[] = a/b, G[] = e(a)/b, E[] = a/b, G[k] = 1/K and q(zij = k)  1 + u
+with u  U[0, 1]. We set2 hyperparameters a, b, a, b in the range between [2, 6], while a, b
+was chosen in the range [5, 10] and a in [30  50]/W . The number of topics used in CV-HDP
+was truncated at 40, 80, and 120 topics, corresponding to the number of topics used in the LDA
+algorithms. Finally, for all LDA algorithms we used  = 0.1,  = 1/K.
+
+2We actually set these values using a xed but somewhat elaborate scheme which is the reason they ended
+up different for each dataset. Note that this scheme simply converts prior expectations about the number of
+topics and amount of sharing into hyperparameter values, and that they were never tweaked. Since they always
+ended up in these compact ranges and since we do not expect a strong dependence on their values inside these
+ranges we choose to omit the details.
+
+Performance was evaluated by comparing i) the in-sample (train) variational bound on the log-
+likelihood for all three variational methods and ii) the out-of-sample (test) log-likelihood for all ve
+methods. All inference algorithms were run on 90% of the words in each document while test-
+set performance was evaluated on the remaining 10% of the words. Test-set log-likelihood was
+computed as follows for the variational methods:
+
+jk
+
+kxtest
+
+ij
+
+jk = k+Eq[njk]
++Eq[nj]
+
+kw = w+Eq[nkw]
++Eq[nk]
+
+(16)
+
+k
+
+ij
+
+p(xtest) =(cid:81)
+
+(cid:80)
+
+Note that we used estimated mean values of jk and kw [14]. For CV-HDP we replaced all hy-
+perparameters by their expectations. For the Gibbs sampling algorithms, given S samples from the
+posterior, we used:
+
+p(xtest) =(cid:81)
+
+(cid:80)S
+
+(cid:80)
+
+1
+S
+
+ij
+
+s=1
+
+kxtest
+ij
+
+k s
+
+jk = ss
+s
+
+k+ns
+jk
+s+ns
+j
+
+jks
+
+kw = w+nskw
+s
++nsk
+
+(17)
+We used all samples obtained by the Gibbs sampling algorithms after an initial burn-in period; each
+point in the predictive probabilities plots below is obtained from the samples collected thus far.
+The results, shown in Figure 2, display a signicant improvement in accuracy of CV-HDP over
+CV-LDA, both in terms of the bound on the training log-likelihood as well as for the test-set log-
+likelihood. This is caused by the fact that CV-HDP is learning the variational distributions over the
+hyperparameters. We note that we have not trained  or  for any of these methods. In fact, initial
+results for CV-HDP show no additional improvement in test-set log-likelihood, in some cases even
+a deterioration of the results. A second observation is that convergence of all variational methods
+is faster than for the sampling methods. Thirdly, we see signicant local optima effects in our
+simulations. For example, G-HDP100 achieves the best results, better than G-HDP1, indicating that
+pruning topics is a better way than adding topics to escape local optima in these models and leads to
+better posterior modes.
+In further experiments we have also found that the variational methods benet from better initializa-
+tions due to local optima. In Figure 3 we show results when the variational methods were initialized
+at the last state obtained by G-HDP100. We see that indeed the variational methods were able to nd
+signicantly better local optima in the vicinity of the one found by G-HDP100, and that CV-HDP is
+still consistently better than the other variational methods.
+
+5 Discussion
+
+In this paper we have explored collapsed variational inference for the HDP. Our algorithm is the rst
+to deal with the HDP and with posteriors over the parameters of Dirichlet distributions. We found
+that the CV-HDP performs signicantly better than the CV-LDA on both test-set likelihood and the
+variational bound. A caveat is that CV-HDP gives slightly worse test-set likelihood than collapsed
+Gibbs sampling. However, as discussed in the introduction, we believe there are advantages to
+variational approximations that are not available to sampling methods. A second caveat is that our
+variational approximation works only for two layer HDPsa layer of group-specic DPs, and a
+global DP tying the groups together. It would be interesting to explore variational approximations
+for more general HDPs.
+CV-HDP presents an improvement over CV-LDA in two ways. Firstly, we use a more sophisticated
+variational approximation that can infer posterior distributions over the higher level variables in the
+model. Secondly, we use a more sophisticated HDP based model with an innite number of topics,
+and allow the model to nd an appropriate number of topics automatically. These two advances are
+coupled, because we needed the more sophisticated variational approximation to deal with the HDP.
+Along the way we have also proposed two useful technical tricks. Firstly, we have a new truncation
+technique that guarantees nesting. As a result we know that the variational bound on the marginal
+log-likelihood will reach its highest value (ignoring local optima issues) when K  . This fact
+should facilitate the search over number of topics or clusters, e.g. by splitting and merging topics, an
+aspect that we have not yet fully explored, and for which we expect to gain signicantly from in the
+face of the observed local optima issues in the experiments. Secondly, we have an improved second-
+order approximation that is able to handle the often encountered digamma function accurately.
+An issue raised by the reviewers and in need of more thought by the community is the need for better
+evaluation criteria. The standard evaluation criteria in this area of research are the variational bound
+
+Figure 2: Left column: KOS, Middle column: Reuters and Right column: 20Newsgroups. Top row:
+log p(xtest) as a function of K, Middle row: log p(xtest) as a function of number of steps (dened as number of
+iterations multiplied by K) and Bottom row: variational bounds as a function of K. Log probabilities are on a
+per word basis. Shown are averages and standard errors obtained by repeating the experiments 10 times with
+random restarts. The distribution over the number of topics found by G-HDP1 are: KOS: K = 113.2  11.4,
+Reuters: K = 60.4  6.4, 20News: K = 83.5  5.0. For G-HDP100 we have: KOS: K = 168.3  3.9,
+Reuters: K = 122.2  5.0, 20News: K = 128.1  6.6.
+
+Figure 3: G-HDP100 initialized variational methods (K = 130), compared against variational methods ini-
+tialized in the usual manner with K = 130 as well. Results were averaged over 10 repeats.
+
+4080120!8!7.8!7.6!7.4!7.2K4080120!8.4!8.2!8!7.8!7.6K04000800012000!8!7.8!7.6!7.4!7.2#steps4080120!6.6!6.4!6.2!6!5.8K4080120!7!6.8!6.6!6.4K04000800012000!7!6.8!6.6!6.4!6.2!6!5.8#steps4080120!7.4!7.2!7!6.8K4080120!8.2!8!7.8!7.6!7.4K04000800012000!8!7.8!7.6!7.4!7.2!7!6.8#steps  GHDP100GHDP1GLDACVHDPCVLDAVLDA  CVHDPCVLDAVLDA  GHDP100GHDP1GLDACVHDPCVLDAVLDA05000#0000!9!8&5!8!7&5!7#ste,svariational bound0500010000!7.8!7.6!7.4!7.2!7!6.8!6.6#stepslog p(test) / N  GHDP100Gibbs init. CVHDPGibbs init. CVLDAGibbs init. VLDArandom init. CVHDPrandom init. CVLDArandom init. VLDAand the test-set likelihood. However both confound improvements to the model and improvements
+to the inference method. An alternative is to compare the computed posteriors over latent variables
+on toy problems with known true values. However such toy problems are much smaller than real
+world problems, and inferential quality on such problems may be of limited interest to practitioners.
+We expect the proliferation of Dirichlet-multinomial models and their many exciting applications to
+continue. For some applications variational approximations may prove to be the most convenient
+tool for inference. We believe that the methods presented here are applicable to many models of this
+general class and we hope to provide general purpose software to support inference in these models
+in the future.
+
+A Variational lower bound
+E[log p(z,x|,, )log q(z)]KL[q()(cid:107)p()]KL[q()(cid:107)p()]PK
+=P
+
+(G[]G[k]+ndk)
+
+Fh
+
+log
+
+log
+
+d log
+
+k
+
+Fh
+i
++P
+E[]P
+E[]P
+
+d
+
+k
+
+(G[]G[k])
+G[]
+
+(a)
+
+(a+E[s])
+
+E[s]e
+
+E[log d]P
+
+(a )
+
+(a +E[t])
+
+G[]
+
+E[t]e
+
+E[log k]
+
+(E[])
+
+(E[]+nd) +P
+(bP
+(bP
+
+E[log d])a+E[s]
+E[log k])a +E[t]
+
+a
+
+
+dk
+
+k
+
+d
+
+b
+
+a
+b
+
+
+log
+
+log
+
+P
+
+k log
+
+(1++E[sk]+E[s>k])
+(1+E[sk])(+E[s>k])
+
+where F[f (n)]=P+[n](f (E+[n])+ 1
+
+2
+
+Acknowledgements
+
+k=1 KL[q(k)(cid:107)p(k)]KL[q( )(cid:107)p( )]
+(E[])
+(E[]+nk)
+
+(G[]G[w ])
+
+(G[]G[w ]+nkw )
+
+log
+
+kw
+
+Fh
+
+(18)
+
+i
+
+dk
+
+i=1 q(zid=k) log q(zid=k)
+
+i
++P
+Pnd
+
+Q
+
+G[k]
+
+E[sk]G[1k]
+
+G[w]
+V+[n]f(cid:48)(cid:48)(E+[n])) is the improved second order approximation.
+
+E[s>k]log (+E[t])
+
+(w +E[tw ])
+
+(w )
+
+()
+
+w
+
+E[tw ]
+
+We thank the reviewers for thoughtful and constructive comments. MW was supported by NSF
+grants IIS-0535278 and IIS-0447903.
+

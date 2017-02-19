@@ -1,0 +1,392 @@
+Abstract
+
+Recent work in unsupervised feature learning and deep learning has shown that be-
+ing able to train large models can dramatically improve performance. In this paper,
+we consider the problem of training a deep network with billions of parameters
+using tens of thousands of CPU cores. We have developed a software framework
+called DistBelief that can utilize computing clusters with thousands of machines to
+train large models. Within this framework, we have developed two algorithms for
+large-scale distributed training: (i) Downpour SGD, an asynchronous stochastic
+gradient descent procedure supporting a large number of model replicas, and (ii)
+Sandblaster, a framework that supports a variety of distributed batch optimization
+procedures, including a distributed implementation of L-BFGS. Downpour SGD
+and Sandblaster L-BFGS both increase the scale and speed of deep network train-
+ing. We have successfully used our system to train a deep network 30x larger than
+previously reported in the literature, and achieves state-of-the-art performance on
+ImageNet, a visual object recognition task with 16 million images and 21k cate-
+gories. We show that these same techniques dramatically accelerate the training
+of a more modestly- sized deep network for a commercial speech recognition ser-
+vice. Although we focus on and report performance of these methods as applied
+to training large neural networks, the underlying algorithms are applicable to any
+gradient-based machine learning algorithm.
+
+1
+
+Introduction
+
+Deep learning and unsupervised feature learning have shown great promise in many practical ap-
+plications. State-of-the-art performance has been reported in several domains, ranging from speech
+recognition [1, 2], visual object recognition [3, 4], to text processing [5, 6].
+It has also been observed that increasing the scale of deep learning, with respect to the number
+of training examples, the number of model parameters, or both, can drastically improve ultimate
+classication accuracy [3, 4, 7]. These results have led to a surge of interest in scaling up the
+training and inference algorithms used for these models [8] and in improving applicable optimization
+procedures [7, 9]. The use of GPUs [1, 2, 3, 8] is a signicant advance in recent years that makes
+the training of modestly sized deep networks practical. A known limitation of the GPU approach is
+that the training speed-up is small when the model does not t in GPU memory (typically less than
+6 gigabytes). To use a GPU effectively, researchers often reduce the size of the data or parameters
+so that CPU-to-GPU transfers are not a signicant bottleneck. While data and parameter reduction
+work well for small problems (e.g. acoustic modeling for speech recognition), they are less attractive
+for problems with a large number of examples and dimensions (e.g., high-resolution images).
+In this paper, we describe an alternative approach: using large-scale clusters of machines to distribute
+training and inference in deep networks. We have developed a software framework called DistBe-
+lief that enables model parallelism within a machine (via multithreading) and across machines (via
+
+1
+
+message passing), with the details of parallelism, synchronization and communication managed by
+the framework. In addition to supporting model parallelism, the DistBelief framework also supports
+data parallelism, where multiple replicas of a model are used to optimize a single objective. Within
+this framework, we have designed and implemented two novel methods for large-scale distributed
+training: (i) Downpour SGD, an asynchronous stochastic gradient descent procedure which lever-
+ages adaptive learning rates and supports a large number of model replicas, and (ii) Sandblaster
+L-BFGS, a distributed implementation of L-BFGS that uses both data and model parallelism.1 Both
+Downpour SGD and Sandblaster L-BFGS enjoy signicant speed gains compared to more conven-
+tional implementations of SGD and L-BFGS.
+Our experiments reveal several surprising results about large-scale nonconvex optimization. Firstly,
+asynchronous SGD, rarely applied to nonconvex problems, works very well for training deep net-
+works, particularly when combined with Adagrad [10] adaptive learning rates. Secondly, we show
+that given sufcient resources, L-BFGS is competitive with or faster than many variants of SGD.
+With regard to specic applications in deep learning, we report two main ndings: that our dis-
+tributed optimization approach can both greatly accelerate the training of modestly sized models,
+and that it can also train models that are larger than could be contemplated otherwise. To illustrate
+the rst point, we show that we can use a cluster of machines to train a modestly sized speech model
+to the same classication accuracy in less than 1/10th the time required on a GPU. To illustrate the
+second point, we trained a large neural network of more than 1 billion parameters and used this
+network to drastically improve on state-of-the-art performance on the ImageNet dataset, one of the
+largest datasets in computer vision.
+
+2 Previous work
+
+In recent years commercial and academic machine learning data sets have grown at an unprece-
+dented pace. In response, a great many authors have explored scaling up machine learning algo-
+rithms through parallelization and distribution [11, 12, 13, 14, 15, 16, 17]. Much of this research has
+focused on linear, convex models, where distributed gradient computation is the natural rst step.
+Within this area, some groups have relaxed synchronization requirements, exploring delayed gradi-
+ent updates for convex problems [12, 17]. In parallel, other groups working on problems with sparse
+gradients (problems where only a tiny fraction of the coordinates of the gradient vector are non-zero
+for any given training example) have explored lock-less asynchronous stochastic gradient descent
+on shared-memory architectures (i.e. single machines) [5, 18]. We are interested in an approach
+that captures the best of both worlds, allowing the use of a cluster of machines asynchronously
+computing gradients, but without requiring that the problem be either convex or sparse.
+In the context of deep learning, most work has focused on training relatively small models on a single
+machine (e.g., Theano [19]). Suggestions for scaling up deep learning include the use of a farm of
+GPUs to train a collection of many small models and subsequently averaging their predictions [20],
+or modifying standard deep networks to make them inherently more parallelizable [21]. Our focus
+is scaling deep learning techniques in the direction of training very large models, those with a few
+billion parameters, but without introducing restrictions on the form of the model. In special cases
+where one layer dominates computation, some authors have considered distributing computation in
+that one layer and replicating computation in the remaining layers [5]. But in the general case where
+many layers of the model are computationally intensive, full model parallelism in a spirit similar
+to [22] is required. To be successful, however, we believe that model parallelism must be combined
+with clever distributed optimization techniques that leverage data parallelism.
+We considered a number of existing large-scale computational tools for application to our prob-
+lem, MapReduce [23] and GraphLab [24] being notable examples. We concluded that MapRe-
+duce, designed for parallel data processing, was ill-suited for the iterative computations inherent in
+deep network training; whereas GraphLab, designed for general (unstructured) graph computations,
+would not exploit computing efciencies available in the structured graphs typically found in deep
+networks.
+
+1We implemented L-BFGS within the Sandblaster framework, but the general approach is also suitable for
+
+a variety of other batch optimization methods.
+
+2
+
+Figure 1: An example of model parallelism in DistBelief. A ve layer deep neural network with
+local connectivity is shown here, partitioned across four machines (blue rectangles). Only those
+nodes with edges that cross partition boundaries (thick lines) will need to have their state transmitted
+between machines. Even in cases where a node has multiple edges crossing a partition boundary,
+its state is only sent to the machine on the other side of that boundary once. Within each partition,
+computation for individual nodes will the parallelized across all available CPU cores.
+
+3 Model parallelism
+
+To facilitate the training of very large deep networks, we have developed a software framework,
+DistBelief, that supports distributed computation in neural networks and layered graphical models.
+The user denes the computation that takes place at each node in each layer of the model, and the
+messages that should be passed during the upward and downward phases of computation.2 For
+large models, the user may partition the model across several machines (Figure 1), so that respon-
+sibility for the computation for different nodes is assigned to different machines. The framework
+automatically parallelizes computation in each machine using all available cores, and manages com-
+munication, synchronization and data transfer between machines during both training and inference.
+The performance benets of distributing a deep network across multiple machines depends on the
+connectivity structure and computational needs of the model. Models with a large number of param-
+eters or high computational demands typically benet from access to more CPUs and memory, up
+to the point where communication costs dominate. We have successfully run large models with up
+to 144 partitions in the DistBelief framework with signicant speedups, while more modestly sized
+models show decent speedups for up to 8 or 16 partitions. (See Section 5, under the heading Model
+Parallelism Benchmarks, for experimental results.) Obviously, models with local connectivity struc-
+tures tend to be more amenable to extensive distribution than fully-connected structures, given their
+lower communication requirements. The typical cause of less-than-ideal speedups is variance in
+processing times across the different machines, leading to many machines waiting for the single
+slowest machine to nish a given phase of computation. Nonetheless, for our largest models, we can
+efciently use 32 machines where each machine achieves an average CPU utilization of 16 cores, for
+a total of 512 CPU cores training a single large neural network. When combined with the distributed
+optimization algorithms described in the next section, which utilize multiple replicas of the entire
+neural network, it is possible to use tens of thousands of CPU cores for training a single model,
+leading to signicant reductions in overall training times.
+
+4 Distributed optimization algorithms
+
+Parallelizing computation within the DistBelief framework allows us to instantiate and run neural
+networks considerably larger than have been previously reported. But in order to train such large
+models in a reasonable amount of time, we need to parallelize computation not only within a single
+
+2In the case of a neural network upward and downward might equally well be called feedforward and
+
+backprop, while for a Hidden Markov Model, they might be more familiar as forward and backward.
+
+3
+
+Machine 1Machine 2Machine 3Machine 4Figure 2: Left: Downpour SGD. Model replicas asynchronously fetch parameters w and push gra-
+dients w to the parameter server. Right: Sandblaster L-BFGS. A single coordinator sends small
+messages to replicas and the parameter server to orchestrate batch optimization.
+
+instance of the model, but to distribute training across multiple model instances. In this section we
+describe this second level of parallelism, where we employ a set of DistBelief model instances, or
+replicas, to simultaneously solve a single optimization problem.
+We present a comparison of two large-scale distributed optimization procedures: Downpour SGD,
+an online method, and Sandblaster L-BFGS, a batch method. Both methods leverage the concept
+of a centralized sharded parameter server, which model replicas use to share their parameters. Both
+methods take advantage of the distributed computation DistBelief allows within each individual
+replica. But most importantly, both methods are designed to tolerate variance in the processing
+speed of different model replicas, and even the wholesale failure of model replicas which may be
+taken ofine or restarted at random.
+In a sense, these two optimization algorithms implement an intelligent version of data parallelism.
+Both approaches allow us to simultaneously process distinct training examples in each of the many
+model replicas, and periodically combine their results to optimize our objective function.
+
+4.1 Downpour SGD
+
+Stochastic gradient descent (SGD) is perhaps the most commonly used optimization procedure for
+training deep neural networks [25, 26, 3]. Unfortunately, the traditional formulation of SGD is
+inherently sequential, making it impractical to apply to very large data sets where the time required
+to move through the data in an entirely serial fashion is prohibitive.
+To apply SGD to large data sets, we introduce Downpour SGD, a variant of asynchronous stochas-
+tic gradient descent that uses multiple replicas of a single DistBelief model. The basic approach is
+as follows: We divide the training data into a number of subsets and run a copy of the model on
+each of these subsets. The models communicate updates through a centralized parameter server,
+which keeps the current state of all parameters for the model, sharded across many machines (e.g.,
+if we have 10 parameter server shards, each shard is responsible for storing and applying updates
+to 1/10th of the model parameters) (Figure 2). This approach is asynchronous in two distinct as-
+pects: the model replicas run independently of each other, and the parameter server shards also run
+independently of one another.
+In the simplest implementation, before processing each mini-batch, a model replica asks the pa-
+rameter server service for an updated copy of its model parameters. Because DistBelief models
+are themselves partitioned across multiple machines, each machine needs to communicate with just
+the subset of parameter server shards that hold the model parameters relevant to its partition. After
+receiving an updated copy of its parameters, the DistBelief model replica processes a mini-batch of
+data to compute a parameter gradient, and sends the gradient to the parameter server, which then
+applies the gradient to the current value of the model parameters.
+It is possible to reduce the communication overhead of Downpour SGD by limiting each model
+replica to request updated parameters only every nf etch steps and send updated gradient values only
+every npush steps (where nf etch might not be equal to npush).
+In fact, the process of fetching
+
+4
+
+Parameter ServerModelReplicasDataShardsw = w - wwwParameter ServerModelReplicasDataCoordinator(small messages)parameters, pushing gradients, and processing training data can be carried out in three only weakly
+synchronized threads (see the Appendix for pseudocode). In the experiments reported below we
+xed nf etch = npush = 1 for simplicity and ease of comparison to traditional SGD.
+Downpour SGD is more robust to machines failures than standard (synchronous) SGD. For syn-
+chronous SGD, if one machine fails, the entire training process is delayed; whereas for asynchronous
+SGD, if one machine in a model replica fails, the other model replicas continue processing their
+training data and updating the model parameters via the parameter servers. On the other hand, the
+multiple forms of asynchronous processing in Downpour SGD introduce a great deal of additional
+stochasticity in the optimization procedure. Most obviously, a model replica is almost certainly
+computing its gradients based on a set of parameters that are slightly out of date, in that some other
+model replica will likely have updated the parameters on the parameter server in the meantime. But
+there are several other sources of stochasticity beyond this: Because the parameter server shards act
+independently, there is no guarantee that at any given moment the parameters on each shard of the
+parameter server have undergone the same number of updates, or that the updates were applied in
+the same order. Moreover, because the model replicas are permitted to fetch parameters and push
+gradients in separate threads, there may be additional subtle inconsistencies in the timestamps of
+parameters. There is little theoretical grounding for the safety of these operations for nonconvex
+problems, but in practice we found relaxing consistency requirements to be remarkably effective.
+One technique that we have found to greatly increase the robustness of Downpour SGD is the use
+of the Adagrad [10] adaptive learning rate procedure. Rather than using a single xed learning
+rate on the parameter sever ( in Figure 2), Adagrad uses a separate adaptive learning rate for each
+parameter. Let i,K be the learning rate of the i-th parameter at iteration K and wi,K its gradient,
+then we set: i,K = /
+2. Because these learning rates are computed only from the
+summed squared gradients of each parameter, Adagrad is easily implemented locally within each
+parameter server shard. The value of , the constant scaling factor for all learning rates, is generally
+larger (perhaps by an order of magnitude) than the best xed learning rate used without Adagrad.
+The use of Adagrad extends the maximum number of model replicas that can productively work
+simultaneously, and combined with a practice of warmstarting model training with only a single
+model replica before unleashing the other replicas, it has virtually eliminated stability concerns in
+training deep networks using Downpour SGD (see results in Section 5).
+
+(cid:113)(cid:80)K
+
+j=1 wi,j
+
+4.2 Sandblaster L-BFGS
+
+Batch methods have been shown to work well in training small deep networks [7]. To apply these
+methods to large models and large datasets, we introduce the Sandblaster batch optimization frame-
+work and discuss an implementation of L-BFGS using this framework.
+A key idea in Sandblaster is distributed parameter storage and manipulation. The core of the opti-
+mization algorithm (e.g L-BFGS) resides in a coordinator process (Figure 2), which does not have
+direct access to the model parameters.
+Instead, the coordinator issues commands drawn from a
+small set of operations (e.g., dot product, scaling, coefcient-wise addition, multiplication) that can
+be performed by each parameter server shard independently, with the results being stored locally
+on the same shard. Additional information, e.g the history cache for L-BFGS, is also stored on the
+parameter server shard on which it was computed. This allows running large models (billions of
+parameters) without incurring the overhead of sending all the parameters and gradients to a single
+central server. (See the Appendix for pseudocode.)
+In typical parallelized implementations of L-BFGS, data is distributed to many machines and each
+machine is responsible for computing the gradient on a specic subset of data examples. The gra-
+dients are sent back to a central server (or aggregated via a tree [16]). Many such methods wait for
+the slowest machine, and therefore do not scale well to large shared clusters. To account for this
+problem, we employ the following load balancing scheme: The coordinator assigns each of the N
+model replicas a small portion of work, much smaller than 1/Nth of the total size of a batch, and
+assigns replicas new portions whenever they are free. With this approach, faster model replicas do
+more work than slower replicas. To further manage slow model replicas at the end of a batch, the
+coordinator schedules multiple copies of the outstanding portions and uses the result from whichever
+model replica nishes rst. This scheme is similar to the use of backup tasks in the MapReduce
+framework [23]. Prefetching of data, along with supporting data afnity by assigning sequential
+
+5
+
+portions of data to the same worker makes data access a non-issue. In contrast with Downpour
+SGD, which requires relatively high frequency, high bandwidth parameter synchronization with the
+parameter server, Sandblaster workers only fetch parameters at the beginning of each batch (when
+they have been updated by the coordinator), and only send the gradients every few completed por-
+tions (to protect against replica failures and restarts).
+
+5 Experiments
+
+We evaluated our optimization algorithms by applying them to training models for two different deep
+learning problems: object recognition in still images and acoustic processing for speech recognition.
+The speech recognition task was to classify the central region (or frame) in a short snippet of audio as
+one of several thousand acoustic states. We used a deep network with ve layers: four hidden layer
+with sigmoidal activations and 2560 nodes each, and a softmax output layer with 8192 nodes. The
+input representation was 11 consecutive overlapping 25 ms frames of speech, each represented by
+40 log-energy values. The network was fully-connected layer-to-layer, for a total of approximately
+42 million model parameters. We trained on a data set of 1.1 billion weakly labeled examples,
+and evaluated on a hold out test set. See [27] for similar deep network congurations and training
+procedures.
+For visual object recognition we trained a larger neural network with locally-connected receptive
+elds on the ImageNet data set of 16 million images, each of which we scaled to 100x100 pixels [28].
+The network had three stages, each composed of ltering, pooling and local contrast normalization,
+where each node in the ltering layer was connected to a 10x10 patch in the layer below. Our
+infrastructure allows many nodes to connect to the same input patch, and we ran experiments varying
+the number of identically connected nodes from 8 to 36. The output layer consisted of 21 thousand
+one-vs-all logistic classier nodes, one for each of the ImageNet object categories. See [29] for
+similar deep network congurations and training procedures.
+
+Model parallelism benchmarks: To explore the scaling behavior of DistBelief model parallelism
+(Section 3), we measured the mean time to process a single mini-batch for simple SGD training as
+a function of the number of partitions (machines) used in a single model instance. In Figure 3 we
+quantify the impact of parallelizing across N machines by reporting the average training speed-up:
+the ratio of the time taken using only a single machine to the time taken using N. Speedups for
+inference steps in these models are similar and are not shown here.
+The moderately sized speech model runs fastest on 8 machines, computing 2.2 faster than using a
+single machine. (Models were congured to use no more than 20 cores per machine.) Partitioning
+
+Figure 3: Training speed-up for four different deep networks as a function of machines allocated
+to a single DistBelief model instance. Models with more parameters benet more from the use of
+additional machines than do models with fewer parameters.
+
+6
+
+1163264128051015Machines per model instanceTraining speed(cid:239)up  Speech: 42M parametersImages: 80M parametersImages: 330M parametersImages: 1.7B parametersFigure 4: Left: Training accuracy (on a portion of the training set) for different optimization meth-
+ods. Right: Classication accuracy on the hold out test set as a function of training time. Downpour
+and Sandblaster experiments initialized using the same 10 hour warmstart of simple SGD.
+
+the model on more than 8 machines actually slows training, as network overhead starts to dominate
+in the fully-connected network structure and there is less work for each machine to perform with
+more partitions.
+In contrast, the much larger, locally-connected image models can benet from using many more
+machines per model replica. The largest model, with 1.7 billion parameters benets the most, giving
+a speedup of more than 12 using 81 machines. For these large models using more machines
+continues to increase speed, but with diminishing returns.
+
+Optimization method comparisons: To evaluate the proposed distributed optimization proce-
+dures, we ran the speech model described above in a variety of congurations. We consider two
+baseline optimization procedures: training a DistBelief model (on 8 partitions) using conventional
+(single replica) SGD, and training the identical model on a GPU using CUDA [27]. The three dis-
+tributed optimization methods we compare to these baseline methods are: Downpour SGD with a
+xed learning rate, Downpour SGD with Adagrad learning rates, and Sandblaster L-BFGS.
+Figure 4 shows classication performance as a function of training time for each of these methods
+on both the training and test sets. Our goal is to obtain the maximum test set accuracy in the
+minimum amount of training time, regardless of resource requirements. Conventional single replica
+SGD (black curves) is the slowest to train. Downpour SGD with 20 model replicas (blue curves)
+shows a signicant improvement. Downpour SGD with 20 replicas plus Adagrad (orange curve)
+is modestly faster. Sandblaster L-BFGS using 2000 model replicas (green curves) is considerably
+faster yet again. The fastest, however, is Downpour SGD plus Adagrad with 200 model replicas (red
+curves). Given access to sufcient CPU resourses, both Sandblaster L-BFGS and Downpour SGD
+with Adagrad can train models substantially faster than a high performance GPU.
+Though we did not conne the above experiments to a xed resource budget, it is interesting to
+consider how the various methods trade off resource consumption for performance. We analyze
+this by arbitrarily choosing a xed test set accuracy (16%), and measuring the time each method
+took to reach that accuracy as a function of machines and utilized CPU cores, Figure 5. One of the
+four points on each traces corresponds to a training conguration shown in Figure 4, the other three
+points are alternative congurations.
+In this plot, points closer to the origin are preferable in that they take less time while using fewer re-
+sources. In this regard Downpour SGD using Adagrad appears to be the best trade-off: For any xed
+budget of machines or cores, Downpour SGD with Adagrad takes less time to reach the accuracy
+target than either Downpour SGD with a xed learning rate or Sandblaster L-BFGS. For any allotted
+training time to reach the accuracy target, Downpour SGD with Adagrad used few resources than
+Sandblaster L-BFGS, and in many cases Downpour SGD with a xed learning rate could not even
+reach the target within the deadline. The Sandblaster L-BFGS system does show promise in terms
+
+7
+
+0204060801001200510152025Time (hours)Average Frame Accuracy (%)Accuracy on Training Set  SGD [1]DownpourSGD [20]DownpourSGD [200] w/AdagradSandblaster LBFGS [2000]0204060801001200510152025Time (hours)Average Frame Accuracy (%)Accuracy on Test Set  SGD [1]GPU [1]DownpourSGD [20]DownpourSGD [20] w/AdagradDownpourSGD [200] w/AdagradSandblaster LBFGS [2000]Figure 5: Time to reach a xed accuracy (16%) for different optimization strategies as a function of
+number of the machines (left) and cores (right).
+
+of its scaling with additional cores, suggesting that it may ultimately produce the fastest training
+times if used with an extremely large resource budget (e.g., 30k cores).
+
+Application to ImageNet: The previous experiments demonstrate that our techniques can accel-
+erate the training of neural networks with tens of millions of parameters. However, the more sig-
+nicant advantage of our cluster-based approach to distributed optimization is its ability to scale to
+models that are much larger than can be comfortably t on single machine, let alone a single GPU.
+As a rst step toward exploring the capabilities of very large neural networks, we used Downpour
+SGD to train the 1.7 billion parameter image model described above on the ImageNet object classi-
+cation task. As detailed in [29], this network achieved a cross-validated classication accuracy of
+over 15%, a relative improvement over 60% from the best performance we are aware of on the 21k
+category ImageNet classication task.
+
+6 Conclusions
+
+In this paper we introduced DistBelief, a framework for parallel distributed training of deep net-
+works. Within this framework, we discovered several effective distributed optimization strategies.
+We found that Downpour SGD, a highly asynchronous variant of SGD works surprisingly well for
+training nonconvex deep learning models. Sandblaster L-BFGS, a distributed implementation of
+L-BFGS, can be competitive with SGD, and its more efcient use of network bandwidth enables it
+to scale to a larger number of concurrent cores for training a single model. That said, the combi-
+nation of Downpour SGD with the Adagrad adaptive learning rate procedure emerges as the clearly
+dominant method when working with a computational budget of 2000 CPU cores or less.
+Adagrad was not originally designed to be used with asynchronous SGD, and neither method is
+typically applied to nonconvex problems. It is surprising, therefore, that they work so well together,
+and on highly nonlinear deep networks. We conjecture that Adagrad automatically stabilizes volatile
+parameters in the face of the urry of asynchronous updates, and naturally adjusts learning rates to
+the demands of different layers in the deep network.
+Our experiments show that our new large-scale training methods can use a cluster of machines to
+train even modestly sized deep networks signicantly faster than a GPU, and without the GPUs
+limitation on the maximum size of the model. To demonstrate the value of being able to train larger
+models, we have trained a model with over 1 billion parameters to achieve better than state-of-the-art
+performance on the ImageNet object recognition challenge.
+
+Acknowledgments
+
+The authors would like to thank Samy Bengio, Tom Dean, John Duchi, Yuval Netzer, Patrick Nguyen, Yoram
+Singer, Sebastian Thrun, and Vincent Vanhoucke for their indispensable advice, support, and comments.
+
+8
+

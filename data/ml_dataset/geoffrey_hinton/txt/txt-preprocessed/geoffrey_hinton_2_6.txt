@@ -1,0 +1,1426 @@
+Abstract
+
+Most of the existing approaches to collab-
+orative (cid:12)ltering cannot handle very large
+data sets.
+In this paper we show how a
+class of two-layer undirected graphical mod-
+els, called Restricted Boltzmann Machines
+(RBMs), can be used to model tabular data,
+such as users ratings of movies. We present
+e(cid:14)cient learning and inference procedures for
+this class of models and demonstrate that
+RBMs can be successfully applied to the
+Net(cid:13)ix data set, containing over 100 mil-
+lion user/movie ratings. We also show that
+RBMs slightly outperform carefully-tuned
+SVD models. When the predictions of mul-
+tiple RBM models and multiple SVD models
+are linearly combined, we achieve an error
+rate that is well over 6% better than the score
+of Net(cid:13)ixs own system.
+
+1. Introduction
+
+A common approach to collaborative (cid:12)ltering is to as-
+sign a low-dimensional feature vector to each user and
+a low-dimensional feature vector to each movie so that
+the rating that each user assigns to each movie is mod-
+eled by the scalar-product of the two feature vectors.
+This means that the N (cid:2) M matrix of ratings that N
+users assign to M movies is modeled by the matrix
+X which is the product of an N (cid:2) C matrix U whose
+rows are the user feature vectors and a C (cid:2) M matrix
+V 0 whose columns are the movie feature vectors. The
+rank of X is C { the number of features assigned to
+each user or movie.
+
+Appearing in Proceedings of the 24 th International Confer-
+ence on Machine Learning, Corvallis, OR, 2007. Copyright
+2007 by the author(s)/owner(s).
+
+Low-rank approximations based on minimizing the
+sum-squared distance can be found using Singular
+Value Decomposition (SVD). In the collaborative (cid:12)l-
+tering domain, however, most of the data sets are
+sparse, and as shown by Srebro and Jaakkola (2003),
+this creates a di(cid:14)cult non-convex problem, so a naive
+solution is not going work.1
+
+In this paper we describe a class of two-layer undi-
+rected graphical models that generalize Restricted
+Boltzmann Machines to modeling tabular or count
+data (Welling et al., 2005). Maximum likelihood learn-
+ing is intractable in these models, but we show that
+learning can be performed e(cid:14)ciently by following an
+approximation to the gradient of a di(cid:11)erent objec-
+tive function called \Contrastive Divergence" (Hinton,
+2002).
+
+2. Restricted Boltzmann Machines
+
+(RBMs)
+
+Suppose we have M movies, N users, and integer rat-
+ing values from 1 to K. The (cid:12)rst problem in applying
+RBMs to movie ratings is how to deal e(cid:14)ciently with
+the missing ratings.
+If all N users rated the same
+set of M movies, we could treat each user as a single
+training case for an RBM which had M \softmax" vis-
+ible units symmetrically connected to a set of binary
+hidden units. Each hidden unit could then learn to
+model a signi(cid:12)cant dependency between the ratings of
+di(cid:11)erent movies. When most of the ratings are miss-
+ing, we use a di(cid:11)erent RBM for each user (see Fig.
+1). Every RBM has the same number of hidden units,
+but an RBM only has visible softmax units for the
+movies rated by that user, so an RBM has few connec-
+tions if that user rated few movies. Each RBM only
+has a single training case, but all of the corresponding
+
+1We describe the details of the SVD training procedure
+
+in section 7.
+
+Restricted Boltzmann Machines for Collaborative Filtering
+
+h
+
+W
+
+V
+...
+
+Binary hidden
+features
+
+Visible movie
+ratings
+
+g
+n
+i
+s
+s
+i
+
+M
+
+g
+n
+i
+s
+s
+i
+
+M
+
+g
+n
+i
+s
+s
+i
+
+M
+
+...
+
+g
+n
+i
+s
+s
+i
+
+M
+
+Figure 1. A restricted Boltzmann machine with binary
+hidden units and softmax visible units. For each user, the
+RBM only includes softmax units for the movies that user
+has rated. In addition to the symmetric weights between
+each hidden unit and each of the K = 5 values of a soft-
+max unit, there are 5 biases for each softmax unit and one
+for each hidden unit. When modeling user ratings with
+an RBM that has Gaussian hidden units, the top layer is
+composed of linear units with Gaussian noise.
+
+weights and biases are tied together, so if two users
+have rated the same movie, their two RBMs must use
+the same weights between the softmax visible unit for
+that movie and the hidden units. The binary states of
+the hidden units, however, can be quite di(cid:11)erent for
+di(cid:11)erent users. From now on, to simplify the nota-
+tion, we will concentrate on getting the gradients for
+the parameters of a single user-speci(cid:12)c RBM. The full
+gradients with respect to the shared weight parameters
+can then be obtained by averaging over all N users.
+
+Suppose a user rated m movies. Let V be a K (cid:2) m
+observed binary indicator matrix with vk
+i = 1 if the
+user rated movie i as k and 0 otherwise. We also let
+hj, j = 1; :::; F , be the binary values of hidden (la-
+tent) variables, that can be thought of as representing
+stochastic binary features that have di(cid:11)erent values for
+di(cid:11)erent users.
+
+2.1. The Model
+
+We use a conditional multinomial distribution (a \soft-
+max") for modeling each column of the observed
+\visible" binary rating matrix V and a conditional
+Bernoulli distribution for modeling \hidden" user fea-
+tures h (see Fig. 1):
+
+p(hj = 1jV) = (cid:27)(bj +
+
+m
+
+K
+
+Xi=1
+
+Xk=1
+
+i W k
+vk
+ij)
+
+(2)
+
+where (cid:27)(x) = 1=(1 + e(cid:0)x) is the logistic function, W k
+ij
+is a symmetric interaction parameter between feature
+j and rating k of movie i, bk
+i is the bias of rating k for
+movie i, and bj is the bias of feature j. Note that the
+bk
+i can be initialized to the logs of their respective base
+rates over all users.
+
+The marginal distribution over the visible ratings V
+is:
+
+p(V) = Xh
+
+exp ((cid:0)E(V; h))
+
+PV0;h0 exp ((cid:0)E(V0; h0))
+
+with an \energy" term given by:
+
+(3)
+
+E(V; h) = (cid:0)
+
+m
+
+F
+
+K
+
+Xi=1
+
+Xj=1
+
+Xk=1
+
+W k
+
+ijhjvk
+
+i +
+
+m
+
+Xi=1
+
+log Zi
+
+m
+
+K
+
+F
+
+(cid:0)
+
+hjbj
+
+(4)
+
+i (cid:0)
+
+i bk
+vk
+
+Xi=1
+
+Xk=1
+Xj=1
+where Zi = PK
+i +Pj hjW l
+ization term that ensures that PK
+
+l=1 exp(cid:0)bl
+
+i = 1jh) = 1.
+The movies with missing ratings do not make any con-
+tribution to the energy function.
+
+ij(cid:1) is the normal-
+l=1 p(vl
+
+2.2. Learning
+
+The parameter updates required to perform gradient
+ascent in the log-likelihood can be obtained from Eq.
+3:
+
+(cid:1)W k
+
+ij = (cid:15)
+
+@ log p(V)
+
+@W k
+ij
+
+=
+
+= (cid:15)(cid:18) <vk
+
+i hj>data (cid:0) <vk
+
+i hj>model (cid:19)
+
+(5)
+
+where (cid:15) is the learning rate. The expectation
+<vk
+i hj>data de(cid:12)nes the frequency with which movie i
+with rating k and feature j are on together when the
+features are being driven by the observed user-rating
+data from the training set using Eq. 2, and <(cid:1)>model is
+an expectation with respect to the distribution de(cid:12)ned
+by the model. The expectation < (cid:1)>model cannot be
+computed analytically in less than exponential time.
+MCMC methods (Neal, 1993) can be employed to ap-
+proximate this expectation. These methods, however,
+are quite slow and su(cid:11)er from high variance in their
+estimates.
+
+p(vk
+
+i = 1jh) =
+
+exp (bk
+
+i +PF
+i +PF
+
+j=1 hjW k
+ij)
+ij(cid:1)
+j=1 hjW l
+
+PK
+l=1 exp(cid:0)bl
+
+(1)
+
+To avoid computing <(cid:1)>model, we follow an approxi-
+mation to the gradient of a di(cid:11)erent objective function
+
+Restricted Boltzmann Machines for Collaborative Filtering
+
+called \Contrastive Divergence" (CD) (Hinton, 2002):
+
+over K ratings for a movie q:
+
+(cid:1)W k
+
+ij = (cid:15)(<vk
+
+i hj>data (cid:0) <vk
+
+i hj>T )
+
+(6)
+
+The expectation < (cid:1) >T represents a distribution of
+samples from running the Gibbs sampler (Eqs. 1,2),
+initialized at the data, for T full steps. T is typi-
+cally set to one at the beginning of learning and in-
+creased as the learning converges. By increasing T
+to a su(cid:14)ciently large value, it is possible to approx-
+imate maximum likelihood learning arbitrarily well
+(Carreira-Perpinan & Hinton, 2005), but large values
+of T are seldom needed in practice. When running the
+Gibbs sampler, we only reconstruct (Eq. 1) the distri-
+bution over the non-missing ratings. The approximate
+gradients of CD with respect to the shared weight pa-
+rameters of Eq. 6 can be then be averaged over all N
+users.
+
+It was shown (Hinton, 2002) that CD learning is quite
+e(cid:14)cient and greatly reduces the variance of the es-
+timates used for learning. The learning rule for the
+biases is just a simpli(cid:12)ed version of Eq. 6.
+
+2.3. Making Predictions
+
+Given the observed ratings V, we can predict a rating
+for a new query movie q in time linear in the number
+of hidden units:
+
+p(vk
+
+q = 1jV) / Xh1;:::;hp
+
+exp((cid:0)E(vk
+
+q ; V; h))
+
+(7)
+
+F
+
+/ (cid:0)k
+q
+
+= (cid:0)k
+q
+
+Yj=1 Xhj2f0;1g
+Yj=1
+
+exp(cid:0)Xil
+(cid:18)1 + exp(cid:0)Xil
+
+F
+
+vl
+ihjW l
+
+ij + vk
+
+q hjW k
+
+qj + hjbj(cid:1)
+
+iW l
+vl
+
+ij + vk
+
+q W k
+
+qj + bj(cid:1)(cid:19)
+
+q bk
+
+q = exp (vk
+
+where (cid:0)k
+q ). Once we obtain unnormalized
+scores, we can either pick the rating with the maximum
+score as our prediction, or perform normalization over
+K values to get probabilities p(vq = kjV) and take
+the expectation E[vq] as our prediction. The latter
+method works better.
+
+When asked to predict ratings for n movies q1, q2,...,
+qn, we can also compute
+
+p(vk1
+
+q1 = 1; vk2
+
+q2 = 1; :::; vkn
+
+qn = 1jV)
+
+(8)
+
+This, however, requires us to make K n evaluations for
+each user.
+
+Alternatively, we can perform one iteration of the
+mean (cid:12)eld updates to get the probability distribution
+
+^pj = p(hj = 1jV) = (cid:27)(bj +
+
+m
+
+K
+
+i W k
+vk
+ij)
+
+Xk=1
+Xi=1
+q +PF
+j=1 ^pjW k
+qj)
+q +PF
+qj(cid:1)
+j=1 ^pjW l
+
+exp (bk
+
+PK
+l=1 exp(cid:0)bl
+
+(9)
+
+(10)
+
+p(vk
+
+q = 1j^p) =
+
+and take an expectation as our prediction. In our expe-
+rience, Eq. 7 makes slightly more accurate predictions,
+although one iteration of the mean (cid:12)eld equations is
+considerably faster. We use the mean (cid:12)eld method in
+the experiments described below.
+
+3. RBMs with Gaussian Hidden Units
+
+We can also model \hidden" user features h as Gaus-
+sian latent variables (Welling et al., 2005). This model
+represents an undirected counterpart of pLSI (Hof-
+mann, 1999):
+
+p(vk
+
+i = 1jh) =
+
+PK
+p(hj = hjV) = 1p2(cid:25)(cid:27)j
+
+l=1
+
+exp (bk
+
+j=1
+
+ij )
+
+hj W k
+
+i +PF
+exp(cid:0)bl
+ij(cid:1)
+i+PF
+exp(cid:18) (cid:0) (cid:0)h(cid:0)bj(cid:0)(cid:27)jPik
+
+hj W l
+
+2(cid:27)2
+j
+
+j=1
+
+i W k
+vk
+
+ij(cid:1)2
+
+(cid:19)
+
+where (cid:27)2
+
+j is the variance of the hidden unit j.
+
+The marginal distribution over visible units V is given
+by Eq. 3. with an energy term:
+
+E(V; h) = (cid:0)Xijk
+(cid:0)Xik
+
+W k
+
+ijhjvk
+
+i +Xi
+
+log Zi
+
+i +Xj
+i bk
+vk
+
+(hj (cid:0) bj)2
+
+2(cid:27)2
+j
+
+(11)
+
+We (cid:12)x variances at (cid:27)2
+j = 1 for all hidden units j, in
+which case the parameter updates are the same as de-
+(cid:12)ned in Eq. 6.
+
+4. Conditional RBMs
+
+Suppose that we add w to each of the K weights from
+the K possible ratings to each hidden feature and we
+subtract w from the bias of the hidden feature. So long
+as one of the K ratings is present, this does not have
+any e(cid:11)ect on the behaviour of the hidden or visible
+units because the \softmax" is over-parameterized. If,
+however, the rating is missing, there is an e(cid:11)ect of (cid:0)w
+on the total input to the hidden feature. So by using
+the over-parametrization of the softmax, the RBM can
+learn to use missing ratings to in(cid:13)uence its hidden fea-
+tures, even though it does not try to reconstruct these
+
+Restricted Boltzmann Machines for Collaborative Filtering
+
+.
+.
+.
+
+r
+
+D
+
+h
+
+Binary hidden
+features
+
+.
+.
+.
+
+W
+
+V
+...
+
+g
+n
+
+i
+s
+s
+i
+
+M
+
+g
+n
+
+i
+s
+s
+i
+
+M
+
+g
+n
+
+i
+s
+s
+i
+
+M
+
+Visible
+movie
+ratings
+
+...
+
+g
+n
+
+i
+s
+s
+i
+
+M
+
+Figure 2. Conditional RBM. The binary vector r, indi-
+cating rated/unrated movies, a(cid:11)ects binary states of the
+hidden units.
+
+missing ratings and it does not perform any computa-
+tions that scale with the number of missing ratings.
+
+There is a more subtle source of information in the
+Net(cid:13)ix database that cannot be captured by the \stan-
+dard" multinomial RBM. Net(cid:13)ix tells us in advance
+which user/movie pairs occur in the test set, so we
+have a third category: movies that were viewed but
+for which the rating is unknown. This is a valuable
+source of information about users who occur several
+times in the test set, especially if they only gave a
+small number of ratings in the training set. If, for ex-
+ample, a user is known to have rated \Rocky 5", we
+already have a good bet about the kinds of movies he
+likes.
+
+The conditional RBM model takes this extra informa-
+tion into account. Let r 2 f0; 1gM be a binary vec-
+tor of length M (total number of movies), indicating
+which movies the user rated (even if these ratings are
+unknown). The idea is to de(cid:12)ne a joint distribution
+over (V; h) conditional on r. In the proposed condi-
+tional model, a vector r will a(cid:11)ect the states of the
+hidden units (see Fig. 2):
+
+p(vk
+
+exp (bk
+
+i = 1jh) =
+
+i +PF
+PK
+i +PF
+l=1 exp(cid:0)bl
+p(hj = 1jV; r) = (cid:27)(cid:18)bj +
+Xk=1
+Xi=1
+
+j=1 hjW k
+ij)
+ij(cid:1)
+j=1 hjW l
+Xi=1
+
+i W k
+vk
+
+ij +
+
+m
+
+K
+
+M
+
+riDij(cid:3)(cid:19)
+
+where Dij is an element of a learned matrix that mod-
+els the e(cid:11)ect of r on h. Learning D using CD is similar
+
+to learning biases and takes the form:
+
+(cid:1)Dij = (cid:15)(cid:18) <hj>data (cid:0) <hj>T (cid:19)ri
+
+(12)
+
+We could instead de(cid:12)ne an arbitrary nonlinear func-
+tion f (rj(cid:18)). Provided f is di(cid:11)erentiable with respect
+to (cid:18), we could use backpropagation to learn (cid:18):
+
+(cid:1)(cid:18) = (cid:15)(cid:18) <hj>data (cid:0) <hj>T (cid:19) @f (rj(cid:18))
+
+@(cid:18)
+
+(13)
+
+In particular, f (rj(cid:18)) can be parameterized as a multi-
+layer neural network.
+
+Conditional RBM models have been successfully used
+for modeling temporal data, such as motion cap-
+ture data (Taylor et al., 2006), or video sequences
+(Sutskever & Hinton, 2006). For the Net(cid:13)ix task, con-
+ditioning on a vector of rated/unrated movies proves
+to be quite helpful { it signi(cid:12)cantly improves perfor-
+mance.
+
+Instead of using a conditional RBM, we can impute
+the missing ratings from the ordinary RBM model.
+Suppose a user rated a movie t, but his/her rating is
+missing (i.e. it was provided as a part of the test set).
+We can initialize vt to the base rate of movie t, and
+compute the gradient of the log-probability of the data
+with respect to this input (Eq. 3). The CD learning
+takes form:
+
+(cid:1)vk
+
+t = (cid:15)(cid:18) <Xj
+
+W k
+
+t hj>T (cid:19)
+
+W k
+
+t hj>data (cid:0) <Xj
+t , for k = 1; ::; K, vk
+
+After updating vk
+t are renormalized
+to obtain probability distribution over K values. The
+imputed values vt will now contribute to the energy
+term of Eq. 4 and will a(cid:11)ect the states of the hidden
+units.
+Imputing missing values by following an ap-
+proximate gradient of CD works quite well on a small
+subset of the Net(cid:13)ix data set, but is slow for the com-
+plete data set. Alternatively, we can use a set of mean
+(cid:12)eld equations Eqs. 9, 10 to impute the missing val-
+ues. The imputed values will be quite noisy, especially
+at the early stages of training. Nevertheless, in our
+experiments, the model performance was signi(cid:12)cantly
+improved by using imputations and was comparable to
+the performance of the conditional RBM.
+
+5. Conditional Factored RBMs
+
+One disadvantage of the RBM models we have de-
+scribed so far is that their current parameterization of
+W 2 RM(cid:2)K(cid:2)F results in a large number of free param-
+eters. In our current implementation, with F = 100
+
+Restricted Boltzmann Machines for Collaborative Filtering
+
+E
+S
+M
+R
+
+1.02
+
+1.01
+
+1
+
+0.99
+
+0.98
+
+0.97
+
+0.96
+
+0.95
+
+0.94
+
+0.93
+
+0.92
+
+0.91
+
+0.9
+0
+
+RBM with Gaussian
+hidden units
+
+Netflix Score
+
+E
+S
+M
+R
+
+
+RBM
+
+Start
+CD T=3
+
+5
+
+10
+
+15
+
+20
+
+Start
+CD T=5
+
+25
+
+Epochs
+
+30
+
+Start
+CD T=9
+35
+40
+
+1
+
+0.99
+
+0.98
+
+0.97
+
+0.96
+
+0.95
+
+0.94
+
+0.93
+
+0.92
+
+0.91
+
+RBM
+
+Conditional
+RBM
+
+CD T=3
+
+1
+
+0.99
+
+0.98
+
+0.97
+
+0.96
+
+0.95
+
+0.94
+
+0.93
+
+0.92
+
+0.91
+
+0.9
+
+E
+S
+M
+R
+
+Conditional
+RBM
+
+Conditional
+Factored
+RBM
+
+CD T=3 CD T=5
+
+CD T=9
+
+35
+
+40
+
+45
+
+50
+
+0.89
+0
+
+5
+
+10
+
+15
+
+20
+
+25
+
+Epochs
+
+30
+
+35
+
+40
+
+45
+
+50
+
+CD T=5
+25
+
+30
+
+Epochs
+
+45
+
+50
+
+0.9
+0
+
+5
+
+10
+
+15
+
+20
+
+Figure 3. Performance of various models on the validation data. Left panel: RBM vs. RBM with Gaussian hidden
+units. Middle panel: RBM vs. conditional RBM. Right panel: conditional RBM vs. conditional factored RBM. The
+y-axis displays RMSE (root mean squared error), and the x-axis shows the number of epochs, or passes through the entire
+training dataset.
+
+(the number of hidden units), M = 17770, and K = 5,
+we end up with about 9 million free parameters. By
+using proper weight-decay to regularize the model, we
+are still able to avoid serious over(cid:12)tting. However, if
+we increase the number of hidden features or the num-
+ber of movies,2 learning this huge parameter matrix
+W becomes problematic. Reducing the number of free
+parameters by simply reducing the number of hidden
+units does not lead to a good model because the model
+cannot express enough information about each user in
+its hidden state.
+
+We address this problem by factorizing the parameter
+matrix W into a product of two lower-rank matrices
+A and B. In particular:
+
+W k
+
+ij =
+
+C
+
+Xc=1
+
+Ak
+
+icBcj
+
+(14)
+
+where typically C (cid:28) M and C (cid:28) F . For example,
+setting C = 30, we reduce the number of free parame-
+ters by a factor of three. We call this model a factored
+RBM. Learning matrices A and B is quite similar to
+learning W of Eq. 6:
+
+(cid:1)Ak
+
+ic = (cid:15)(cid:18) <(cid:2)Xj
+
+(cid:1)Bcj = (cid:15)(cid:18) <(cid:2)Xik
+
+i >data (cid:0)
+
+Bcjhj(cid:3)vk
+<(cid:2)Xj
+Bcjhj(cid:3)vk
+icvk
+i (cid:3)hj>data (cid:0)
+
+Ak
+
+i >T (cid:19)
+
+<(cid:2)Xik
+
+Ak
+
+icvk
+
+i (cid:3)hj>T (cid:19)
+
+2Net(cid:13)ixs own database contains about 65000 movie ti-
+
+tles.
+
+In our experimental results section we show that a con-
+ditional factored RBM converges considerably faster
+than a conditional unfactored RBM.
+
+6. Experimental Results
+
+6.1. Description of the Net(cid:13)ix Data
+
+According to Net(cid:13)ix, the data were collected between
+October, 1998 and December, 2005 and represent the
+distribution of all ratings Net(cid:13)ix obtained during this
+period. The training data set consists of 100,480,507
+ratings from 480,189 randomly-chosen, anonymous
+users on 17,770 movie titles. As part of the training
+data, Net(cid:13)ix also provides validation data, containing
+1,408,395 ratings. In addition to the training and vali-
+dation data, Net(cid:13)ix also provides a test set containing
+2,817,131 user/movie pairs with the ratings withheld.
+The pairs were selected from the most recent ratings
+from a subset of the users in the training data set,
+over a subset of the movies. To reduce the uninten-
+tional (cid:12)ne-tuning on the test set that plagues many
+empirical comparisons in the machine learning litera-
+ture, performance is assessed by submitting predicted
+ratings to Net(cid:13)ix who then post the root mean squared
+error (RMSE) on an unknown half of the test set. As a
+baseline, Net(cid:13)ix provided the score of its own system
+trained on the same data, which is 0.9514.
+
+6.2. Details RBM Training
+
+We train the RBM with F = 100, and the condi-
+tional factored RBM with F = 500, and C = 30.
+To speed-up the training, we subdivided the Net(cid:13)ix
+dataset into small mini-batches, each containing 1000
+cases (users), and updated the weights after each mini-
+batch. All models were trained for between 40 and 50
+passes (epochs) through the entire training dataset.
+
+Restricted Boltzmann Machines for Collaborative Filtering
+
+The weights were updated using a learning rate of
+0.01/batch-size, momentum of 0.9, and a weight de-
+cay of 0.001. The weights were initialized with small
+random values sampled from a zero-mean normal dis-
+tribution with standard deviation 0.01. CD learning
+was started with T = 1 and increased in small steps
+during training.
+
+6.3. Results
+
+We compare di(cid:11)erent models based on their perfor-
+mance on the validation set. The error that Net(cid:13)ix
+reports on the test set is typically larger than the er-
+ror we get on the validation set by about 0.0014. When
+the validation set is added to the training set, RMSE
+on the test set is typically reduced by about 0.005.
+
+Figure 3 (left panel) shows performance of the RBM
+and the RBM with Gaussian hidden units. The y-
+axis displays RMSE, and the x-axis shows the number
+of epochs. Clearly, the nonlinear model substantially
+outperforms its linear counterpart. Figure 3 (middle
+panel) also reveals that conditioning on rated/unrated
+information signi(cid:12)cantly improves model performance.
+It also shows (right panel) that, when using a condi-
+tional RBM, factoring the weight matrix leads to much
+faster convergence.
+
+7. Singular Value Decomposition (SVD)
+
+SVD seeks a low-rank matrix X = U V 0, where U 2
+RN(cid:2)C and V 2 RM(cid:2)C, that minimizes the sum-
+squared distance to the fully observed target matrix
+Y . The solution is given by the leading singular vec-
+tors of Y . In the collaborative (cid:12)ltering domain, most
+of the entries in Y will be missing, so the sum-squared
+distance is minimized with respect to the partially ob-
+served entries of the target matrix Y . Unobserved en-
+tries of Y are then predicted using the corresponding
+entries of X.
+
+Let X = U V 0, where U 2 RN(cid:2)C and V 2 RM(cid:2)C de-
+note the low-rank approximation to the partially ob-
+served target matrix Y 2 RN(cid:2)M . Matrices U and
+V are initialized with small random values sampled
+from a zero-mean normal distribution with standard
+deviation 0.01. We minimize the following objective
+function:
+
+N
+
+M
+
+f =
+
+Iij(cid:0)uivj0 (cid:0) Yij(cid:1)2
+Xj=1
+Xi=1
++(cid:21)Xij
+Iij(cid:0) k ui k2
+
+F ro + k vj k2
+
+F ro (cid:1)
+
+(15)
+
+where k (cid:1) k2
+
+F ro denotes the Frobenius norm, and Iij is
+
+0.99
+
+0.98
+
+0.97
+
+0.96
+
+0.95
+
+0.94
+
+0.93
+
+0.92
+
+0.91
+
+0.9
+
+E
+S
+M
+R
+
+SVD
+
+Conditional
+Factored
+RBM
+
+CD T=3
+
+SVD
+
+0.89
+0
+
+5
+
+10
+
+15
+
+20
+25
+Epochs
+
+30
+
+35
+
+40
+
+45
+
+Figure 4. Performance of the conditional factored RBM
+vs.
+SVD with C = 40 factors. The y-axis displays
+RMSE (root mean squared error), and the x-axis shows
+the number of epochs, or passes through the entire train-
+ing dataset.
+
+the indicator function, taking on value 1 if user i rated
+movie j, and 0 otherwise. We then perform gradient
+descent in U and V to minimize the objective function
+of Eq. 15.
+
+To speed-up the training, we subdivided the Net(cid:13)ix
+data into mini-batches of size 100,000 (user/movie
+pairs), and updated the weights after each mini-batch.
+The weights were updated using a learning rate of
+0.005, momentum of 0.9, and regularization parameter
+(cid:21) = 0:01. Regularization, particularly for the Net(cid:13)ix
+dataset, makes quite a signi(cid:12)cant di(cid:11)erence in model
+performance. We also experimented with various val-
+ues of C and report the results with C = 40, since it
+resulted in the best model performance on the valida-
+tion set. Values of C in the range of [20; 60] also give
+similar results.
+
+factored RBM with
+We compared the conditional
+an SVD model (see Fig. 4). The conditional fac-
+tored RBM slightly outperforms SVD, but not by
+much. Both models could potentially be improved by
+more careful tuning of learning rates, batch sizes, and
+weight-decay. More importantly, the errors made by
+various versions of the RBM are signi(cid:12)cantly di(cid:11)erent
+from the errors made by various versions of SVD, so
+linearly combining the predictions of several di(cid:11)erent
+versions of each method, using coe(cid:14)cients tuned on
+the validation data, produces an error rate that is well
+over 6% better than the Net(cid:13)ixs own baseline score.
+
+Restricted Boltzmann Machines for Collaborative Filtering
+
+8. Future extensions
+
+There are several extensions to our model that we are
+currently pursuing.
+
+8.1. Learning Autoencoders
+
+An alternative way of using an RBM is to treat this
+learning as a pretraining stage that (cid:12)nds a good re-
+gion of the parameter space (Hinton & Salakhut-
+dinov, 2006). After pretraining, the RBM is \un-
+rolled" as shown in (cid:12)gure 5 to create an autoencoder
+network in which the stochastic activities of the bi-
+nary \hidden" features are replaced by deterministic,
+real-valued probabilities. Backpropagation, using the
+squared error objective function, is then used to (cid:12)ne-
+tune the weights for optimal reconstruction of each
+users ratings. However, over(cid:12)tting becomes an issue
+and more careful model regularization is required.
+
+8.2. Learning Deep Generative Models
+
+Recently, (Hinton et al., 2006) derived a way to per-
+form fast, greedy learning of deep belief networks one
+layer at a time, with the top two layers forming an
+undirected bipartite graph which acts as an associa-
+tive memory.
+
+The learning procedure consists of training a stack of
+RBMs each having only one layer of latent (hidden)
+feature detectors. The learned feature activations of
+one RBM are used as the \data" for training the next
+RBM in the stack.
+
+An important aspect of this layer-wise training proce-
+dure is that, provided the number of features per layer
+does not decrease, each extra layer increases a lower
+bound on the log probability of data. So layer-by-layer
+training can be recursively applied several times3 to
+learn a deep, hierarchical model in which each layer
+of features captures strong high-order correlations be-
+tween the activities of features in the layer below.
+
+Learning multi-layer models has been successfully ap-
+plied in the domain of dimensionality reduction (Hin-
+ton & Salakhutdinov, 2006), with the resulting mod-
+els signi(cid:12)cantly outperforming Latent Semantic Anal-
+ysis, a well-known document retrieval method based
+on SVD (Deerwester et al., 1990).
+It has also been
+used for modeling temporal data (Taylor et al., 2006;
+Sutskever & Hinton, 2006) and learning nonlinear em-
+beddings (Salakhutdinov & Hinton, 2007). We are
+currently exploring this kind of learning for the Net-
+(cid:13)ix data. For classi(cid:12)cation of the MNIST digits,
+
+3In fact, one can proceed learning recursively for as
+
+many layers as desired.
+
+Backpropagate
+Squared Error
+
+r
+
+D
+
+WT
+
+W
+
+Figure 5. The \unrolled" RBM used to create an autoen-
+coder network which is then (cid:12)ne-tuned using backpropa-
+gation of error derivatives.
+
+deep networks reduce the error signi(cid:12)cantly (Hinton
+& Salakhutdinov, 2006) and our hope is that they will
+be similarly helpful for the Net(cid:13)ix data.
+
+9. Summary and Discussion
+
+We introduced a class of two-layer undirected graph-
+ical models (RBMs), suitable for modeling tabular
+or count data, and presented e(cid:14)cient learning and
+inference procedures for this class of models. We
+also demonstrated that RBMs can be successfully ap-
+plied to a large dataset containing over 100 million
+user/movie ratings.
+
+A variety of models have recently been proposed for
+minimizing the loss corresponding to a speci(cid:12)c prob-
+abilistic model (Hofmann, 1999; Canny, 2002; Marlin
+& Zemel, 2004). All these probabilistic models can
+be viewed as graphical models in which hidden factor
+variables have directed connections to variables that
+represent user ratings. Their major drawback(Welling
+et al., 2005) is that exact inference is intractable due
+to explaining away, so they have to resort to slow or
+inaccurate approximations to compute the posterior
+distribution over hidden factors.
+
+Instead of constraining the rank or dimensionality of
+the factorization X = U V 0, i.e. the number of factors,
+(Srebro et al., 2004) proposed constraining the norms
+of U and V . This problem formulation termed \Max-
+imum Margin Matrix Factorization" could be seen as
+constraining the overall \strength" of factors rather
+than their number. However,
+learning MMMF re-
+quires solving a sparse semi-de(cid:12)nite program (SDP).
+Generic SDP solvers run into di(cid:14)culties with more
+than about 10,000 observations (user/movie pairs), so
+
+Restricted Boltzmann Machines for Collaborative Filtering
+
+Salakhutdinov, R., & Hinton, G. E. (2007). Learning a
+nonlinear embedding by preserving class neighbour-
+hood structure. AI and Statistics.
+
+Srebro, N., & Jaakkola, T. (2003). Weighted low-rank
+approximations. Machine Learning, Proceedings
+of the Twentieth International Conference (ICML
+2003), August 21-24, 2003, Washington, DC, USA
+(pp. 720{727). AAAI Press.
+
+Srebro, N., Rennie, J. D. M., & Jaakkola, T. (2004).
+Maximum-margin matrix factorization. Advances in
+Neural Information Processing Systems.
+
+Sutskever,
+
+I., & Hinton, G. E. (2006).
+
+Learn-
+ing multilevel distributed representations for high-
+dimensional sequences (Technical Report UTML
+TR 2006-003). Dept. of Computer Science, Univer-
+sity of Toronto.
+
+Taylor, G. W., Hinton, G. E., & Roweis, S. T. (2006).
+Modeling human motion using binary latent vari-
+ables. Advances in Neural Information Processing
+Systems. MIT Press.
+
+Welling, M., Rosen-Zvi, M., & Hinton, G. (2005). Ex-
+ponential family harmoniums with an application
+to information retrieval. NIPS 17 (pp. 1481{1488).
+Cambridge, MA: MIT Press.
+
+direct gradient-based optimization methods have been
+proposed in an attempt to make MMMF scale up to
+larger problems. The Net(cid:13)ix data set, however, con-
+tains over 100 million observations and none of the
+above-mentioned approaches can easily deal with such
+large data sets.
+
+Acknowledgments
+
+We thank Vinod Nair, Tijmen Tieleman and Ilya
+Sutskever for many helpful discussions. We thank Net-
+(cid:13)ix for making such nice data freely available and for
+providing a free and rigorous model evaluation service.
+

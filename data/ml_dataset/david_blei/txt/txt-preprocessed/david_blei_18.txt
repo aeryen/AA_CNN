@@ -1,0 +1,3134 @@
+Abstract
+
+Consider data consisting of pairwise measurements, such as presence or absence of links between
+pairs of objects. These data arise, for instance, in the analysis of protein interactions and gene
+regulatory networks, collections of author-recipient email, and social networks. Analyzing pair-
+wise measurements with probabilistic models requires special assumptions, since the usual inde-
+pendence or exchangeability assumptions no longer hold. Here we introduce a class of variance
+allocation models for pairwise measurements: mixed membership stochastic blockmodels. These
+models combine global parameters that instantiate dense patches of connectivity (blockmodel) with
+local parameters that instantiate node-specic variability in the connections (mixed membership).
+We develop a general variational inference algorithm for fast approximate posterior inference. We
+demonstrate the advantages of mixed membership stochastic blockmodels with applications to so-
+cial networks and protein interaction networks.
+Keywords:
+analysis, social networks, protein interaction networks
+
+hierarchical Bayes, latent variables, mean-eld approximation, statistical network
+
+1. Introduction
+
+The problem of modeling relational information among objects, such as pairwise relations repre-
+sented as graphs, arises in a number of settings in machine learning. For example, scientic litera-
+ture connects papers by citations, the Web connects pages by links, and protein-protein interaction
+data connects proteins by physical binding records. In these settings, we often wish to infer hidden
+attributes of the objects from the observed measurements on pairwise properties. For example, we
+might want to compute a clustering of the web-pages, predict the functions of a protein, or assess
+
+(cid:3). Also in the Lewis-Sigler Institute for Integrative Genomics. Address correspondence to 228 Carl Icahn Laboratory,
+
+Princeton University.
+
+. Also in the School of Computer Science.
+
+c(cid:13)2008 Edoardo M. Airoldi, David M. Blei, Stephen E. Fienberg and Eric P. Xing.
+
+AIROLDI, BLEI, FIENBERG AND XING
+
+the degree of relevance of a scientic abstract to a scholars query. Unlike traditional data collected
+from individual objects, relational data violate the classical independence or exchangeability as-
+sumptions made in machine learning and statistics. The observations are dependent because of the
+way they are connected. This interdependence suggests that a different set of assumptions is more
+appropriate.
+
+There is a history of research devoted to analyzing relational data. One well-studied problem is
+clustering, grouping the objects to uncover a structure based on the observed patterns of interactions.
+Standard model-based clustering methods, for example, mixture models, are not immediately ap-
+plicable to relational data because they assume that the objects are conditionally independent given
+their cluster assignments. Rather, the latent stochastic blockmodel (Wang and Wong, 1987; Snijders
+and Nowicki, 1997) is an adaptation of mixture modeling to relational data. In that model, each ob-
+ject belongs to a cluster and the relationships between objects are governed by the corresponding
+pair of clusters. With posterior inference, one identies a set of latent roles which govern the ob-
+jects relationships with each other. A recent extension of this model relaxed the nite-cardinality
+assumption on the latent clusters with a nonparametric hierarchical Bayesian model based on the
+Dirichlet process prior (Kemp et al., 2004, 2006; Xu et al., 2006).
+
+The latent stochastic blockmodel suffers from a limitation that each object can only belong to
+one cluster, or in other words, play a single latent role. However, many relational data sets are
+multi-facet. For example, when a protein or a social actor interacts with different partners, different
+functional or social contexts may apply and thus the protein or the actor may be acting according to
+different latent roles they can possible play. In this paper, we relax the assumption of single-latent-
+role for actors, and develop a mixed membership model for relational data. Mixed membership
+models, such as latent Dirichlet allocation (Blei et al., 2003), have re-emerged in recent years as a
+exible modeling tool for data where the single cluster assumption is violated by the heterogeneity
+within of a data point. For almost two decades, these models have been successfully applied in many
+domains, such as surveys (Berkman et al., 1989; Erosheva, 2002), population genetics (Pritchard
+et al., 2000), document analysis (Minka and Lafferty, 2002; Blei et al., 2003; Buntine and Jakulin,
+2006), image processing (Li and Perona, 2005), and transcriptional regulation (Airoldi et al., 2007).
+
+The mixed membership model associates each unit of observation with multiple clusters rather
+than a single cluster, via a membership probability-like vector. The concurrent membership of
+a data in different clusters can capture its different aspects, such as different underlying topics
+for words constituting each document. This is also a natural idea for relational data, where the
+objects can bear multiple latent roles or cluster-memberships that inuence their relationships to
+others. As we will demonstrate, a mixed membership approach to relational data lets us describe
+the interaction between objects playing multiple roles. For example, some of a proteins interactions
+may be governed by one function; other interactions may be governed by another function.
+
+Existing mixed membership models are not appropriate for relational data because they assume
+that the data are conditionally independent given their latent membership vectors. In relational data,
+where each object is described by its relationships to others, we would like to assume that the en-
+semble of mixed membership vectors help govern the relationships of each object. The conditional
+independence assumptions of modern mixed membership models do not apply.
+
+1982
+
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+1
+
+2
+
+3
+
+.
+
+.
+
+.
+
+n
+
+y 11
+
+y 12
+
+y 13
+
+y
+
+21
+
+y
+
+22
+
+y
+
+23
+
+. . .
+
+. . .
+
+. . .
+
+y
+
+31
+
+y
+
+32
+
+y
+
+33
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+. . .
+
+y 1N
+
+y
+
+2N
+
+y
+
+3N
+
+.
+
+.
+
+.
+
+y
+
+N1
+
+y
+
+N2
+
+y
+
+N3
+
+y
+
+NN
+
+B
+
+1
+
+2
+
+3
+
+n
+
+.
+
+.
+
+.
+
+z
+
+1 1
+
+z
+
+1 2
+
+z
+
+1 3
+
+z
+
+1 N
+
+. . .
+
+z
+
+1 1
+
+y 11
+
+z
+
+1 2
+
+y 12
+
+z
+
+1 3
+
+y 13
+
+z
+
+1 N
+
+y 1N
+
+z
+
+2 1
+
+z
+
+2 2
+
+z
+
+2 3
+
+. . .
+
+z
+
+2 N
+
+B
+
+z
+
+2 1
+
+y 21
+
+z
+
+2 2
+
+y 22
+
+z
+
+2 3
+
+y 23
+
+z
+
+2 N
+
+y 2N
+
+z
+
+3 1
+
+z
+
+3 2
+
+z
+
+3 3
+
+z
+
+3 N
+
+. . .
+
+z
+
+3 1
+
+y 31
+
+z
+
+3 2
+
+y 32
+
+z
+
+3 3
+
+y 33
+
+z
+
+3 N
+
+y 3N
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+.
+
+z
+
+N 1
+
+z
+
+N 2
+
+z
+
+N 3
+
+.
+
+.
+
+.
+
+. . .
+
+.
+
+.
+
+.
+
+z
+
+N N
+
+z
+
+N 1
+
+y N1
+
+z
+
+N 2
+
+y N2
+
+z
+
+1 1
+
+y N3
+
+z
+
+N N
+
+y NN
+
+Figure 1: Two graphical model representations of the mixed membership stochastic blockmodel
+(MMB). Intuitively, the MMB summarized the variability of a graph with the blockmodel
+B and node-specic mixed membership vectors (left). In detail, a mixed membership,
+p n(k), quanties the expected proportion of times node n instantiates the connectivity
+pattern of group k, according to the blockmodel. In any given interaction, Y (n; m), how-
+ever, node n instantiates the connectivity pattern of a single group, zn!m(k). (right). We
+did not draw all the arrows out of the block model B for clarity; all interactions depend
+on it.
+
+In this paper, we develop mixed membership models for relational data.1 Models in this family
+include parameters to reduce bias due to sparsity, and can be used to analyze multiple collections
+of paired measurements, and collections of non-binary and multivariate paired measurements. We
+develop a fast nested variational inference algorithm that performs well in the relational setting and
+is parallelizable. We demonstrate the application of our technique to large-scale protein interaction
+networks and social networks. Our model captures the multiple roles that objects exhibit in interac-
+tion with others, and the relationships between those roles in determining the observed interaction
+matrix.
+
+Mixed membership and the latent block structure can be recovered from relational data (Section
+4.1). The application to a friendship network among students tests the model on a real data set where
+a well-dened latent block structure exists (Section 4.2). The application to a protein interaction
+network tests to what extent our model can reduce the dimensionality of the data, while revealing
+substantive information about the functionality of proteins that can be used to inform subsequent
+analyses (Section 4.3).
+
+1983
+
+AIROLDI, BLEI, FIENBERG AND XING
+
+2. The Mixed Membership Stochastic Blockmodel
+
+In this section, we describe the modeling assumptions if the mixed membership model of relational
+data. We represent observed relational data as a graph G = (N ;Y ), where Y (p; q) maps pairs of
+nodes to values, that is, edge weights. We consider binary matrices, where Y (p; q) 2 f0;1g. The
+data can be thought of as a directed graph.
+
+As a running example, we consider the monk data of Sampson (1968). Sampson measured a
+collection of sociometric relations among a group of monks by repeatedly asking questions such as
+whom do you like? and whom do you dislike? to determine asymmetric social relationships
+within the group. The questionnaire was repeated at four subsequent epochs. Information about
+these repeated, asymmetric relations was collapsed into a square binary table that encodes the di-
+rected connections between monks by Breiger et al. (1975). In analyzing this data, the goal is to
+determine the social structure within the monastery.
+
+In the context of the monastery example, we assume K factions, that is, latent groups, exist in the
+monastery, and the observed network is generated according to distributions of group-membership
+for each monk and a matrix of group-group interaction strength. The per-monk distributions are
+specied by latent simplicial vectors. Each monk is associated with a randomly drawn vector ~p
+i
+for monk i, where p
+i;g denotes the probability of monk i belonging to group g. That is, each monk
+can simultaneously belong to multiple groups with different degrees of afliation strength. The
+probabilities of interactions between different groups are dened by a matrix of Bernoulli rates
+B(K(cid:2)K), where B(g; h) represents the probability of having a link between a monk from group g and
+a monk from group h.
+
+For each monk, the indicator vector ~zp!q denotes the group membership of monk p when he
+responds to survey questions about monk q and~z p q denotes the group membership of monk q when
+he responds to survey questions about node p.2 N denotes the number of monks in the monastery,
+and recall that K denotes the number of distinct groups a monk can belong to.
+
+More in general, monks can be represented by nodes in a graph, where directed (binary) edges
+represent positive responses to survey questions about a specic sociometric relation. In this abstract
+setting, the mixed membership stochastic blockmodel (MMB) posits that a graph G = (N ;Y ) is
+drawn from the following procedure.
+
+(cid:15) For each node p 2 N :
+
+ Draw a K dimensional mixed membership vector ~p p (cid:24) Dirichlet ( ~a
+
+).
+
+(cid:15) For each pair of nodes (p; q) 2 N (cid:2) N :
+
+ Draw membership indicator for the initiator,~zp!q (cid:24) Multinomial (~p p ).
+ Draw membership indicator for the receiver,~zq!p (cid:24) Multinomial (~p q ).
+ Sample the value of their interaction, Y (p; q) (cid:24) Bernoulli (~z >
+p!qB~zp q ).
+
+1. In previous work we combined mixed membership and blockmodels to perform analyses of a single collection of bi-
+nary, paired measurements; namely, hypothesis testing, predicting and de-noising interactions within an unsupervised
+learning setting (Airoldi et al., 2005).
+
+2. An indicator vector is used to denote membership in one of the K groups. Such a membership-indicator vector is
+specied as a K-dimensional vector of which only one element equals to one, whose index corresponds to the group
+to be indicated, and all other elements equal to zero.
+
+1984
+
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+This process is illustrated as a graphical model in Figure 1. Note that the group membership of each
+node is context dependent. That is, each node may assume different membership when interacting
+to or being interacted by different peers. Statistically, each node is an admixture of group-specic
+interactions. The two sets of latent group indicators are denoted by f~z p!q : p; q 2 N g =: Z! and
+f~zp q : p; q 2 N g =: Z . Also note that the pairs of group memberships that underlie interactions
+need not be equal; this fact is useful for characterizing asymmetric interaction networks. Equality
+may be enforced when modeling symmetric interactions.
+
+Under the MMB, the joint probability of the data Y and the latent variables f~p 1:N; Z!; Z g can
+
+be written in the following factored form,
+
+p(Y;~p 1:N; Z!; Z j~a
+
+; B)
+
+= (cid:213)
+
+P(Y (p; q)j~zp!q;~zp q; B)P(~zp!qj~p p)P(~zp qj~p q)(cid:213)
+
+p;q
+
+P(~p pj~a ):
+
+p
+
+(1)
+
+This model generalizes to two important cases. First, multiple networks among the same actors
+can be generated by the same latent vectors. This may be useful, for instance, to analyze multivariate
+sociometric relations. Second, in the MMB the data generating distribution is a Bernoulli, but B can
+be a matrix that parameterizes any kind of distribution. This may be useful, for instance, to analyze
+collections of paired measurements, Y , that take values in an arbitrary metric space. We elaborate
+on this in Section 5.
+
+2.1 Modeling Sparsity
+
+Adjacency matrices encoding binary pairwise measurements are often sparse, that is, they contain
+many zeros or non-interactions. It is useful to distinguish two sources of non-interaction: they may
+be the result of the rarity of interactions in general, or they may be an indication that the pair of
+relevant blocks rarely interact. In applications to social sciences, for instance, nodes may represent
+people and blocks may represent social communities. It is reasonable to expect that a large portion
+of the non-interactions is due to limited opportunities of contact between people rather than due to
+deliberate choices, the structure of which the blockmodel is trying to estimate. It is useful to account
+for these two sources of sparsity at the model level. A good estimate of the portion of zeros that
+should not be explained by the blockmodel B reduces the bias of the estimates of its elements.
+
+Thus, we introduce a sparsity parameter r 2 [0;1] in the MMB to characterize the source of non-
+interaction. Instead of sampling a relation Y (p:q) directly the Bernoulli with parameter specied
+as above, we down-weight the probability of successful interaction to (1 (cid:0) r ) (cid:1)~z >
+p!qB ~zp q. This
+is the result of assuming that the probability of a non-interaction comes from a mixture, 1 (cid:0) s pq =
+(1 (cid:0) r ) (cid:1)~z >
+capture the portion zeros that should not be
+explained by the blockmodel B. A large value of r will cause the interactions in the matrix to be
+weighted more than non-interactions, in determining plausible values for f~a
+
+p!q(1 (cid:0) B) ~zp q + r
+
+, where the weight r
+
+; B;~p 1:Ng.
+
+The sparsity parameter r can be estimated. Its maximum likelihood estimate provides the best
+data-driven guess about the proportion of zeros that the blockmodel can explain. Introducing r
+provides a strategy to rescale B, by separating zeros in the adjacency matrix into those that are
+likely to be due to the blockmodel and those that are not.
+
+1985
+
+AIROLDI, BLEI, FIENBERG AND XING
+
+2.2 Summarizing and De-Noising Pairwise Measurements
+
+It is useful to distinguish two types of data analysis that can be performed with the mixed-membership
+blockmodel. First, MMB can be used to summarize the data, Y , in terms of the global blockmodel,
+B, and the node-specic mixed memberships, P s. Second, MMB can be used to de-noise the data,
+Y , in terms of the global blockmodel, B, and interaction-specic single memberships, Zs. In both
+cases the model depends on a small set of unknown constants to be estimated: a
+, and B. The like-
+lihood is the same in both cases, although, the rationale for including the set of latent variables Zs
+differs. When summarizing data, we could integrate out the Zs analytically; this leads to numerical
+optimization of a smaller set of variational parameters, G s. We choose to keep the Zs to simplify
+inference. When de-noising, the Zs are instrumental in estimating posterior expectations of each
+interactions individuallya network analog to the Kalman Filter. The posterior expectations of an
+interaction is computed as follows, in the two cases,
+
+E [ Y (p; q) = 1 ](cid:25)b~p p
+
+0bBb~p q
+
+2.3 An Illustration: Crisis in a Cloister
+
+and
+
+E [ Y (p; q) = 1 ](cid:25)b~f
+
+p!q
+
+0bBb~f
+
+p q:
+
+To illustrate the MMB, we return to an analysis of the monk data described above. Sampson (1968)
+surveyed 18 novice monks in a monastery and asked them to rank the other novices in terms of four
+sociometric relations:
+like/dislike, esteem, personal inuence, and alignment with the monastic
+credo. We consider Breigers collation of Sampsons data (Breiger et al., 1975). The original graph
+of monk-monk interaction is illustrated in Figure 2 (left).
+
+Sampson spent several months in a monastery in New England, where novice monks were
+preparing to join a monastic order. Sampsons original analysis was rooted in direct anthropological
+observations. He suggested the existence of tight factions among the novices: the loyal opposition
+(whose members joined the monastery rst), the young turks (who joined later on), the outcasts (who
+were not accepted in the two main factions), and the waverers (who did not take sides). The events
+that took place during Sampsons stay at the monastery supported his observationsmembers of
+the young turks resigned or were expelled over religious differences (John and Gregory). We shall
+
+Figure 2: Original adjacency matrix of whom-do-like sociometric relations (left), relations pre-
+dicted using approximate MLEs for~p 1:N and B (center), and relations de-noised using the
+model including Zs indicators (right).
+
+1986
+
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+refer to the labels assigned by Sampson to the novices in the analysis below. For more analyses, we
+refer to Fienberg et al. (1985), Davis and Carley (2006) and Handcock et al. (2007).
+
+Using the algorithms presented in Section 3, we t the monks to MMB models for different
+numbers of groups, providing model estimates f a
+; Bg and posterior mixed membership vectors ~p n
+for each monk. Here, we use the following approximation to BIC to choose the number of groups
+in the MMB:
+
+; Bj (cid:1) log jY j;
+
+BIC = 2 (cid:1) log p(Y ) (cid:25) 2 (cid:1) log p(Y jb~p ;bZ;b~a
+
+;bB) (cid:0) j~a
+
+which selects three groups, where j~a
+; Bj is the number of hyper-parameters in the model, and jY j is
+the number of positive relations observed (Volinsky and Raftery, 2000; Handcock et al., 2007). Note
+that this is the same number of groups that Sampson identied. We illustrate the t of model t via
+the predicted network in Figure 2 (Right). The three panels contrast the different resolution of the
+original adjacency matrix of whom-do-like sociometric relations (left panel) obtained in different
+uses of MMB. If the goal of the analysis if to nd a parsimonious summary of the data, the amount
+of relational information that is captured by in a
+; B, and E[~p jY ] leads to a coarse reconstruction
+of the original sociomatrix (central panel). If the goal of the analysis if to de-noising a collection
+of pairwise measurements, the amount of relational information that is revealed by a
+; B; E[~p jY ]
+and E[Z!; Z jY ] leads to a ner reconstruction of the original sociomatrix, Y relations in Y are
+re-weighted according to how much they make sense to the model (right panel).
+
+12
+
+7
+
+Outcasts
+
+5   6
+
+Waverers
+
+15
+
+Loyal
+
+O pposition
+
+13
+
+11
+
+8
+
+1
+16
+
+10
+
+Young
+Turks
+
+9
+
+17
+
+3
+
+14
+
+4
+18
+
+2
+
+1 Ambrose
+2 Boniface
+3 M ark
+4 W infrid
+5 Elias
+6 Basil
+7 Simplicius
+8 Berthold
+9 John Bosco
+10 Victor
+
+11 Bonaventure
+12 Amand
+
+13 Louis
+14 Albert
+15Ramuald
+
+16 Peter
+17 Gregory
+18 Hugh
+
+Figure 3: Posterior mixed membership vectors, ~p 1:18, projected in the simplex. Numbered points
+can be mapped to monks names using the legend on the right. The colors identify the
+four factions dened by Sampsons anthropological observations.
+
+1987
+
+AIROLDI, BLEI, FIENBERG AND XING
+
+0.9
+
+Young Turks
+
+0.4
+
+Loyal
+Opposition
+
+Outcasts
+
+0.3
+
+0.9
+
+0.5
+
+Figure 4: Estimated blockmodel in the monk data, B.
+
+The MMB provides interesting descriptive statistics about the actors in the observed graph. In
+Figure 3 we illustrate the the posterior means of the mixed membership scores, E[~p jY ], for the 18
+monks in the monastery. Note that the monks cluster according to Sampsons classication, with
+Young Turks, Loyal Opposition, and Outcasts dominating each corner respectively. We can see the
+central role played by John Bosco and Gregory, who exhibit relations in all three groups, as well
+as the uncertain afliations of Ramuald and Victor. (Amands uncertain afliation, however, is not
+captured.) The estimated blockmodel is shown in Figure 4.
+
+3. Parameter Estimation and Posterior Inference
+
+Two computational problems are central to the MMB: posterior inference of the per-node mixed
+membership vectors and per-pair roles, and parameter estimation of the Dirichlet parameters and
+Bernoulli rate matrix. We derive empirical Bayes estimates of the parameters (~a
+; B), and employ a
+mean-eld approximation scheme for posterior inference.
+
+3.1 Posterior Inference
+
+The posterior inference problem is to compute the posterior distribution of the latent variables given
+a collection of observations. The normalizing constant of the posterior distribution is the marginal
+probability of the data, which requires an integral over the simplicial vectors ~p p,
+
+p(Y j~a
+
+; B) = ZP
+
+Zs (cid:213)
+
+p;q
+
+P(Y (p; q)j~zp!q;~zp q; B)P(~zp!qj~p p)P(~zp qj~p q)(cid:213)
+
+P(~p pj~a )!d~p ;
+
+p
+
+which is not solvable in closed form (Blei et al., 2003). A number of approximate inference al-
+gorithms for mixed membership models have appeared in recent years, including mean-eld vari-
+ational methods (Blei et al., 2003; Teh et al., 2007), expectation propagation (Minka and Lafferty,
+2002), and Monte Carlo Markov chain sampling (MCMC) (Erosheva and Fienberg, 2005; Grifths
+and Steyvers, 2004).
+
+1988
+
+(cid:229)
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+We appeal to variational methods (Jordan et al., 1999; Wainwright and Jordan, 2003). The
+main idea behind variational methods is to rst posit a distribution of the latent variables with free
+parameters, and then t those parameters such that the distribution is close in Kullback-Leibler
+divergence to the true posterior. The variational distribution is simpler than the true posterior so that
+the optimization problem can be approximately solved. Good reviews of variational methods can be
+found in Wainwright and Jordan (2003), Xing et al. (2003), Bishop et al. (2003) and Airoldi (2007).
+In the MMB, we begin by bounding the log of the marginal probability of the data with Jensens
+
+inequality,
+
+log p(Y ja
+
+; B) (cid:21) Eq [ log p(Y;~p 1:N; Z!; Z ja
+
+; B) ] (cid:0)Eq [ logq(~p 1:N; Z!; Z ) ] :
+
+We have introduced a distribution of the latent variables q that depends on a set of free parameters.
+We specify q as the mean-eld fully-factorized family,
+q1(~p pj~g p) (cid:213)
+
+q(~p 1:N; Z!; Z j~g 1:N;F !;F  ) = (cid:213)
+
+p;q (cid:16)q2(~zp!qj~f p!q) q2(~zp qj~f p q)(cid:17);
+
+p
+
+where q1 is a Dirichlet, q2 is a multinomial, and f~g 1:N;F !;F  g are the set of free variational
+parameters that are optimized to tighten the bound.
+
+Tightening the bound with respect to the variational parameters is equivalent to minimizing the
+KL divergence between q and the true posterior. When all the nodes in the graphical model are
+conjugate pairs or mixtures of conjugate pairs, we can directly write down a coordinate ascent algo-
+rithm for this optimization to reach a local maximum of the bound. The updates for the variational
+multinomial parameters are
+
+f p!q;g
+
+f p q;h
+
+e Eq[logp p;g] (cid:1)(cid:213)
+
+e Eq[logp q;h] (cid:1)(cid:213)
+
+h (cid:18) B(g; h)Y (p;q)(cid:1) ( 1 (cid:0) B(g; h) )1(cid:0)Y (p;q)(cid:19)f p q;h
+g (cid:18) B(g; h)Y (p;q)(cid:1) ( 1 (cid:0) B(g; h) )1(cid:0)Y (p;q)(cid:19)f p!q;g
+
+;
+
+for g; h = 1; : : : ; K. The update for the variational Dirichlet parameters g p;k is
+
+g p;k = a k +(cid:229)
+
+f p!q;k +(cid:229)
+
+q
+
+f p q;k;
+
+q
+
+(2)
+
+(3)
+
+(4)
+
+for all nodes p = 1; : : : ; N and k = 1; : : : ; K. The complete coordinate ascent algorithm is described
+in Figure 5.
+
+To improve convergence, we employed a nested variational inference scheme based on an al-
+ternative schedule of updates to the traditional ordering. In a typical schedule for coordinate ascent
+(which we call nave variational inference), one initializes the variational Dirichlet parameters
+~g 1:N and the variational multinomial parameters (~f p!q;~f p q) to non-informative values, and then
+iterates the following two steps until convergence: (i) update ~f p!q and f p q for all edges (p; q),
+and (ii) update~g p for all nodes p 2 N . In such algorithm, at each variational inference cycle we
+need to allocate NK + 2N2K scalars.
+
+In our experiments, the nave variational algorithm often converged only after many iterations.
+We attribute this behavior to the dependence between ~g 1:N and B, which is not satised by the
+nave algorithm. Some intuition about why this may happen follows. From a purely algorithmic
+
+1989
+
+(cid:181)
+(cid:181)
+AIROLDI, BLEI, FIENBERG AND XING
+
+K for all p; k
+
+pk = 2N
+
+for p = 1 to N
+
+initialize~g 0
+repeat
+
+1.
+2.
+3.
+4.
+5.
+6.
+7. until convergence
+
+for q = 1 to N
+
+get variational~f
+t+1
+partially update ~g t+1
+p
+
+p!q and~f
+, ~g t+1
+
+q
+
+t+1
+
+p q = f ( Y (p; q);~g t
+and Bt+1
+
+p;~g t
+
+q; Bt )
+
+p q;h = 1
+
+p!q;g = f 0
+
+initialize f 0
+repeat
+
+5.1.
+5.2.
+for g = 1 to K
+5.3.
+update f s+1
+f1 (~f s
+5.4.
+p!q
+normalize~f s+1
+p!q to sum to 1
+5.5.
+for h = 1 to K
+5.6.
+update f s+1
+f2 (~f s
+5.7.
+p q
+normalize~f s+1
+5.8.
+p q to sum to 1
+5.9. until convergence
+
+K for all g; h
+
+p q;~g p; B )
+
+p!q;~g q; B )
+
+Figure 5: Top: The two-layered variational inference for (~g ;f p!q;g;f p q;h) and M = 1. The in-
+ner algorithm consists of Step 5. The function f is described in details in the bottom
+panel. The partial updates in Step 6 for ~g and B refer to Equation 4 of Section B.4 and
+Equation 5 of Section B.5, respectively. Bottom: Inference for the variational parame-
+ters (~f p!q;~f p q) corresponding to the basic observation Y (p; q). This nested algorithm
+details Step 5 in the top panel. The functions f1 and f2 are the updates for f p!q;g and
+f p q;h described in Equations 2 and 3 of Section B.4.
+
+perspective, the nave variational EM algorithm instantiates a large coordinate ascent algorithm,
+where the parameters can be divided into blocks. Blocks are processed in a specic order, and the
+parameters within each block get all updated each time.3 At every new iteration the nave algorithm
+sets all the elements of~g t+1
+1:N equal to the same constant. This dampens the likelihood by suddenly
+1:N and in Bt that was being
+
+breaking the dependence between the estimates of parameters inb~g t
+
+Instead, the nested variational inference algorithm maintains some of this dependence that is
+being inferred from the data across the various iterations. This is achieved mainly through a different
+
+inferred from the data during the previous iteration.
+
+3. Within a block, the order according to which (scalar) parameters get updated is not expected to affect convergence.
+
+1990
+
+(cid:181)
+(cid:181)
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+scheduling of the parameter updates in the various blocks. To a minor extent, the dependence
+is maintained by always keeping the block of free parameters, (~f p!q;~f p q), optimized given the
+other variational parameters. Note that these parameters are involved in the updates of parameters
+in~g 1:N and in B, thus providing us with a channel to maintain some of the dependence among them,
+that is, by keeping them at their optimal value given the data.
+
+Furthermore, the nested algorithm has the advantage that it trades time for space thus allowing
+us to deal with large graphs; at each variational cycle we need to allocate NK + 2K scalars only.
+The increased running time is partially offset by the fact that the algorithm can be parallelized and
+leads to empirically observed faster convergence rates.
+
+An alternative strategy to perform inference is given by Monte Carlo Markov chain (e.g., see
+Grifths and Steyvers, 2004; Kemp et al., 2004). While powerful in some settings, MCMC is
+impractical here. There are too many variables to sample. The proposed nested variational EM
+algorithm outperforms MCMC variations (i.e., blocked and collapsed Gibbs samplers) in terms of
+memory requirements and convergence rates.
+
+3.2 Parameter Estimation
+We compute the empirical Bayes estimates of the model hyper-parameters f~a
+; Bg with a variational
+expectation-maximization (EM) algorithm. Alternatives to empirical Bayes have been proposed to
+x the hyper-parameters and reduce the computation. The results, however, are not always sat-
+isfactory and often times cause of concern, since the inference is sensitive to the choice of the
+hyper-parameters (Joutard et al., 2007). Empirical Bayes, on the other hand, guides the posterior
+inference towards a region of the hyper-parameter space that is supported by the data.
+
+Variational EM uses the lower bound in Equation 5 as a surrogate for the likelihood. To nd a
+local optimum of the bound, we iterate between tting the variational distribution q to approximate
+the posterior and maximizing the corresponding bound with respect to the parameters. The latter
+M-step is equivalent to nding the MLE using expected sufcient statistics under the variational
+distribution. We consider the maximization step for each parameter in turn.
+
+A closed form solution for the approximate maximum likelihood estimate of ~a does not exist
+(Minka, 2003). We use a linear-time Newton-Raphson method, where the gradient and Hessian are
+
+ L~a
+
+k
+
+ L~a
+k1
+
+a k2
+
+( (cid:229)
+
+= N(cid:18) y
+= N(cid:18) I(k1=k2) (cid:1) y
+
+k
+
+a k ) (cid:0)y (a k)(cid:19) +(cid:229)
+0 ( (cid:229)
+
+0(a k1) (cid:0) y
+
+( (cid:229)
+
+k
+
+g p;k )(cid:19);
+
+p (cid:18) y (g p;k) (cid:0) y
+a k )(cid:19) :
+
+k
+
+The approximate MLE of B is
+
+B(g; h) =
+
+p;qY (p; q) (cid:1) f p!qg f p qh
+(1 (cid:0) r ) (cid:1) (cid:229)
+p;q f p!qg f p qh
+
+;
+
+for every index pair (g; h) 2 [1; K] (cid:2) [1; K]. Finally, the approximate MLE of the sparsity parameter
+
+is
+
+r =
+
+p;q ( 1 (cid:0)Y (p; q) ) (cid:1) ( (cid:229) g;h f p!qg f p qh )
+
+p;q (cid:229) g;h f p!qg f p qh
+
+:
+
+1991
+
+
+a
+
+a
+(cid:229)
+r
+(cid:229)
+(cid:229)
+AIROLDI, BLEI, FIENBERG AND XING
+
+Alternatively, we can x r prior to the analysis; the density of the interaction matrix is estimated
+p;qY (p; q)=N2, and the sparsity parameter is set to r = (1 (cid:0) d). This latter estimator
+with d = (cid:229)
+attributes all the information in the non-interactions to the point mass, that is, to latent sources other
+than the block model B or the mixed membership vectors ~p 1:N. It does however provide a quick
+recipe to reduce the computational burden during exploratory analyses.4
+
+Several model selection strategies are available for complex hierarchical models (Joutard et al.,
+2007). In our setting, model selection translates into the determination of a plausible value of the
+number of groups K. In the various analyses presented, we selected the optimal value of K according
+to two strategies. On large networks, we selected K corresponding to the highest averaged held-out
+likelihood in a cross-validation experiment. On small networkswhere cross-validation cannot be
+expected to work well, as we discuss in Section 5we selected K using an approximation to BIC.
+
+4. Experiments and Results
+
+We present a study of simulated data and applications to social and protein interaction networks.
+
+Simulations are performed in Section 4.1 to show that both mixed membership, ~p 1:N, and the
+latent block structure, B, can be recovered from data, when they exist, and that the nested variational
+inference algorithm is faster than the nave implementation while reaching the same peak in the
+likelihoodall other things being equal.
+
+The application to a friendship network among students in Section 4.2 tests the model on a real
+data set where we expect a well-dened latent block structure to inform the observed connectivity
+patterns in the network. In this application, the blocks are interpretable in terms of grades. We
+compare our results with those that were recently obtained with a simple mixture of blocks (Doreian
+et al., 2007) and with a latent space model (Handcock et al., 2007) on the same data.
+
+The application to a protein interaction network in Section 4.3 tests the model on a real data set
+where we expect a noisy, vague latent block structure to inform the observed connectivity patterns
+in the network to some degree. In this application, the blocks are interpretable in terms functional
+biological contexts. This application tests to what extent our model can reduce the dimensionality
+of the data, while revealing substantive information about the functionality of proteins that can be
+used to inform subsequent analyses.
+
+4.1 Exploring Expected Model Behavior with Simulations
+
+In developing the MMB and the corresponding computation, our hope is the the model can recover
+both the mixed membership of nodes to clusters and the latent block structure among clusters in
+situations where a block structure exists and the relations are measured with some error. To sub-
+stantiate this claim, we sampled graphs of 100;300; and 600 nodes from blockmodels with 4;10;
+and 20 clusters, respectively, using the MMB. We used different values of a
+to simulate a range of
+settings in terms of membership of nodes to clustersfrom unique (a = 0:05) to mixed (a = 0:25).
+Recovering the truth. The variational EM algorithm successfully recovers both the latent block
+model B and the latent mixed membership vectors ~p 1:N. In Figure 6 we show the adjacency matri-
+ces of binary interactions where rows, that is, nodes, are reordered according to their most likely
+membership. The estimated reordering reveals the block model that was originally used to simulate
+4. Note that r = r
+any (p; q) pair.
+
+in the case of single membership. In fact, that implies f m
+
+p!qg = f m
+
+p qh = 1 for some (g; h) pair, for
+
+1992
+
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+the interactions. As a
+increases, each node is likely to belong to more clusters. As a consequence,
+they express interaction patterns of clusters. This phenomenon reects in the reordered interaction
+matrices as the block structure is less evident.
+
+Nested variational inference. The nested variational algorithm drives the log-likelihood to con-
+verge faster to its peak than the nave algorithm. In Figure 7 (left panel) we compare the running
+times of the nested variational-EM algorithm versus the nave implementation. The nested algo-
+rithm, which is more efcient in terms of space, converged faster. Furthermore, the nested varia-
+tional algorithm can be parallelized given that the updates for each interaction (i; j) are independent
+of one another.
+
+Choosing the number of blocks. The right panel of Figure 7 shows an example where cross-
+validation is sufcient to perform model selection for the MMB. The example shown corresponds
+to a network among 300 nodes with K = 10 clusters. We measure the number of latent clusters
+
+Figure 6: Adjacency matrices of corresponding to simulated interaction graphs with 100 nodes and
+4 clusters, 300 nodes and 10 clusters, 600 nodes and 20 clusters (top to bottom) and
+equal to 0:05;0:1 and 0:25 (left to right). Rows, which corresponds to nodes, are
+reordered according to their most likely membership. The estimated reordering accurately
+reveals the original blockmodel.
+
+1993
+
+a
+AIROLDI, BLEI, FIENBERG AND XING
+
+on the X axis and the average held-out log-likelihood, corresponding to ve-fold cross-validation
+experiments, on the Y axis. The nested variational EM algorithm was xrun until convergence, for
+each value of K we tested, with a tolerance of e = 10(cid:0)5. Our estimate for K occurs at the peak in
+the average held-out log-likelihood, and equals the correct number of clusters, K (cid:3) = 10
+
+4.2 Application to Social Network Analysis
+
+We considered a friendship network among a group of 69 students in grades 712. The analysis
+here directly compares clustering results obtained by MMB to published clustering results obtained
+by competing models, in a setting where a fair amount of social segregation is expected (Doreian
+et al., 2007; Handcock et al., 2007).
+
+The National Longitudinal Study of Adolescent Health is nationally representative study that
+explores the how social contexts such as families, friends, peers, schools, neighborhoods, and com-
+munities inuence health and risk behaviors of adolescents, and their outcomes in young adulthood
+(Harris et al., 2003; Udry, 2003). As part of the survey, a questionnaire was administered to a sam-
+ple of students in each school, who were allowed to nominate up to 10 friends. We analyzed a
+friendship network among the students, at the same school that was considered by Handcock et al.
+(2007) and discussants. Friendship nominations were collected among 71 students in grades 7 to 12;
+two students did not nominate any friends. The network of binary, asymmetric friendship relations
+among the remaining 69 students that constitutes our data is shown in Figure 9 (left).
+
+d
+o
+o
+h
+li
+ke
+L
+g
+o
+
+i
+
+t  L
+u
+-O
+ld
+e
+H
+
+-5000
+
+-6000
+
+-7000
+
+-8000
+
+-9000
+
+d
+o
+o
+lih
+e
+ik
+L
+g
+o
+
+t  L
+u
+-O
+ld
+e
+H
+
+-4K
+
+-6K
+
+-8K
+
+-10K
+
+-12K
+
+0
+
+50
+
+100
+
+150
+
+5
+
+10
+
+Time (in seconds)
+
+15
+
+20
+
+30
+Number of latent groups
+
+25
+
+35
+
+40
+
+Figure 7: Left: The running time of the nave variational inference (dashed, red line) against the
+running time of our enhanced (nested) variational inference algorithm (solid, black line),
+on a graph with 100 nodes and 4 clusters. We measure the number of seconds on the
+X axis and the log-likelihood on the Y axis. The two curves are averages over 26 ex-
+periments, and the error bars are at three standard deviations. Each of the 26 pairs of
+experiments was initialized with the same values for the parameters. Right: The held-out
+log-likelihood is indicative of the true number of latent clusters, on simulated data. We
+measure the number of latent clusters on the X axis and the log-likelihood on a test set
+on the Y axis. In the example shown, the peak identies the correct number of clusters,
+K(cid:3) = 10
+
+1994
+
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+Figure 8: The posterior mixed membership scores, ~p
+
+, for the 69 students. Each panel correspond to
+a student; we order the clusters 1 to 6 on the X axis, and we measure the students grade
+of membership to these clusters on the Y axis.
+
+Given the size of the network we used BIC to perform model selection, as in the monks example
+of Section 2.3. The results suggest a model with K (cid:3) = 6 groups. (We x K(cid:3) = 6 in the analyses
+that follow.) The hyper-parameters estimated with the nested variational EM. They are a = 0:0487,
+r = 0:936, and a fairly diagonal blockmodel,
+0:0
+0:0002
+0:2607
+0:0
+0:0
+0:0
+
+0:0
+0:0
+0:0002
+0:0
+0:0
+0:3719
+
+0:0
+0:0
+0:0
+0:3751
+0:0002
+0:0
+
+0:0
+0:0
+0:0
+0:0009
+0:3795
+0:0
+
+0:3235
+0:0
+0:0
+0:0
+0:0
+0:0
+
+0:0
+0:3614
+0:0
+0:0
+0:0
+0:0
+
+B =
+
+26666664
+
+:
+
+37777775
+
+Figure 8 shows the expected posterior mixed membership scores for the 69 students in the sam-
+ple; few students display mixed membership. The rarity of mixed membership in this context is
+expected, while mixed membership may signal unexpected social situations for further investiga-
+tion. For instance, it may signal a family bond such as brotherhood, or a student that is repeating
+a grade and is thus part of a broader social clique. In Figure 9, we contrast the friendship relation
+data (left) to the estimates obtained by thresholding the estimated probabilities of a relation, using
+the blockmodel and the node-specic latent variables (center) and the interactions-specic latent
+variables (right). The model provides a good summary of the social structure in the school; students
+
+1995
+
+AIROLDI, BLEI, FIENBERG AND XING
+
+tend to befriend other students in the same grade, with a few exceptions. The low degree of mixed
+membership explains the absence of obvious differences between the model-based reconstructions
+of the friendship relations with the two model variants (center and right).
+
+Figure 9: Original matrix of friensdhip relations among 69 students in grades 7 to 12 (left),
+and friendship estimated relations obtained by thresholding the posterior expectations
+~p p
+
+0B~p qjY (center), and~f p
+
+0B~f qjY (right).
+
+Next, we attempted a quantitative evaluation of the goodness of t. In this data, the blocks
+are clearly interpretable a-posteriori in terms of grades. The mixed membership vectors provide a
+mapping between grades and blocks. Conditionally on such a mapping, we assign students to the
+grade they are most associated with, according to their posterior-mean mixed membership vectors,
+E[~p njY ]. To be fair in the comparison with competing models, we assign students to a unique
+gradedespite MMB allows for mixed membership. Table 1 computes the correspondence of
+grades to blocks by quoting the number of students in each grade-block pair, for MMB versus
+the mixture blockmodel (MB) in Doreian et al. (2007), and the latent space cluster model (LSCM)
+in Handcock et al. (2007). The higher the sum of counts on diagonal elements is the better is the
+correspondence, while the higher the sum of counts off diagonal elements is the worse is the cor-
+respondence. MMB performs best by allocating 63 students to their grades, versus 57 of MB, and
+37 of LSCM. Correspondence only partially captures goodness of t, however, it is a good metric
+in the setting we consider, where a fair amount of clustering is present. The results suggest that the
+extra-exibility MMB offers over MB and LSCM reduces bias in the prediction of the membership
+of students to blocks. In other words, mixed membership does not absorb noise in this example;
+rather it accommodates variability in the friendship relation that is instrumental in producing better
+predictions.
+
+Concluding this example, we note how the model decouples the observed friendship patterns
+into two complementary sources of variability. On the one hand, the connectivity matrix B is a
+global, unconstrained set of hyper-parameters. On the other hand, the mixed membership vectors
+~p 1:N provide a collection of node-specic latent vectors, which inform the directed connections in
+the graph in a symmetric fashion.
+
+4.3 Application to Protein Interactions in Saccharomyces Cerevisiae
+
+We considered physical interactions among 871 proteins in yeast. The analysis allows us to evalu-
+ate the utility of MMB in summarizing and de-noising complex connectivity patterns quantitatively,
+using an independent set of functional annotations. For instance, between two models that sug-
+
+1996
+
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+Grade
+7
+8
+9
+10
+11
+12
+
+1
+13
+0
+0
+0
+0
+0
+
+MMB Clusters
+2
+1
+9
+0
+0
+0
+0
+
+4
+0
+0
+0
+10
+0
+0
+
+3
+0
+2
+16
+0
+1
+0
+
+5
+0
+0
+0
+0
+11
+0
+
+6
+0
+1
+0
+0
+1
+4
+
+1
+13
+0
+0
+0
+0
+0
+
+MSB Clusters
+2
+1
+10
+0
+0
+0
+0
+
+4
+0
+0
+0
+10
+0
+0
+
+3
+0
+2
+10
+0
+1
+0
+
+5
+0
+0
+0
+0
+11
+0
+
+6
+0
+0
+6
+0
+1
+4
+
+1
+13
+0
+0
+0
+0
+0
+
+LSCM Clusters
+5
+2
+1
+0
+0
+11
+3
+0
+3
+0
+0
+3
+0
+0
+
+3
+0
+1
+7
+0
+0
+0
+
+4
+0
+0
+6
+0
+0
+0
+
+6
+0
+0
+0
+7
+10
+4
+
+Table 1: Grade levels versus (highest) expected posterior membership for the 69 students, accord-
+ing to three alternative models. MMB is the proposed mixed membership stochastic block-
+model, MSB is a simpler stochastic block mixture model (Doreian et al., 2007), and LSCM
+is the latent space cluster model (Handcock et al., 2007).
+
+gest different sets of interactions as reliable, we prefer the model that reveals functionally relevant
+interactionsas measured using the annotations.
+
+Protein interactions (PPI) form the physical basis for the formation of stable protein complexes
+(i.e., protein clusters) and signaling pathways (i.e., cascades of protein interaction events) that carry
+out all major biological processes in the cell. A number of high-throughput experimental tech-
+nologies have been devised to determine the set of interacting proteins on a global scale in yeast.
+These include two-hybrid (Y2H) screens and mass spectrometry methods (Gavin et al., 2002; Ho
+et al., 2002; Krogan et al., 2006). High-throughput technologies, however, often miss to identify
+interactions that are not present under the given conditions. Specic wet-lab methods employed by
+a certain technology, such as tagging, may disturb the formation of a stable protein complex, and
+weakly associated components may dissociate and escape detection. Statistical models that encode
+information about functional processes with high precision are an essential tool for carrying out
+probabilistic de-noising of biological signals from high-throughput experiments.
+
+The goal of the analysis of protein interactions with MMB is to reveal the proteins diverse
+functional roles by analyzing their local and global patterns of interaction. The biochemical compo-
+sition of individual proteins make them suitable for carrying out a specic set of cellular operations,
+or functions. The main intuition behind our methodology is that pairs of protein interact because
+they participate in the same cellular process, as part of the same stable protein complex, that is,
+co-location, or because they are part of interacting protein complexes, as they carry out compatible
+cellular operations (Alberts et al., 2002). Below, we describe the MIPS protein interactions data and
+the possible interpretations of the blocks in MMB in terms of biological functions, and we report
+results of two experiments.
+
+4.3.1 PROTEIN INTERACTION DATA AND FUNCTIONAL ANNOTATION DATA
+
+The Munich Institute for Protein Sequencing (MIPS) database was created in 1998 based on ev-
+idence derived from a variety of experimental techniques (Mewes et al., 2004).
+It includes a
+hand-curated collection of protein interactions that does not include interactions obtained with high-
+throughput technologies. The collection covers about 8000 protein complex associations in yeast.
+
+1997
+
+AIROLDI, BLEI, FIENBERG AND XING
+
+We analyzed a subset of this collection containing 871 proteins, the interactions amongst which
+were hand-curated.
+
+The MIPS institute also provides a set of functional annotations for each protein. These anno-
+tations are organized in a tree, with 15 nodes (i.e., high-level functions) at the rst level, 72 nodes
+(i.e., the mid-level functions) at the second level, and 255 nodes (i.e., the low-level functions) at the
+the leaf level. We mapped the 871 proteins in our collections to the high-level functions of the MIPS
+annotation tree. Table 2 quotes the number of proteins annotated to each of these 15 functions. Most
+proteins participate in more than one functional category, with an average of (cid:25) 2:4 functional anno-
+tations for each protein.. The relative importance of functional categories in our collection, in terms
+of the number of proteins involved, is similar to the relative importance of functional categories
+over the entire MIPS collection. We can also represent each protein in terms of its MIPS functional
+annotations. This leads to a 15-dimensional, binary representation for each protein, ~bp, where a
+component ~bp(k) = 1 indicates that protein p is annotated with function k in Table 2. Figure 10
+shows the binary representations, ~b1:871, of the proteins in our collections; each panel corresponds
+to a protein; the 15 functional categories are ordered as in Table 2 on the X axis, whereas the pres-
+ence or absence of the corresponding functional annotation is displayed on the Y axis. In Section
+4.3.2, we t a mixed membership blockmodel with K = 15, and we explore the direct correspon-
+dence between protein-specic mixed memberships to blocks, ~p 1:871, and MIPS-derived functional
+annotations,~b1:871.
+
+An alternative source of functional annotations is the gene ontology (GO), distributed as part
+of the Saccharomyces genome database (Ashburner et al., 2000). GO provides vocabularies for
+describing the molecular function, biological process, and cellular component of gene products
+such as proteins. Terms are organized in a directed acyclic graph. Terms at the top represent
+broader, more general concepts, terms lower down represent more specic concepts. There are
+two different relationship types between (parent-child) terms: is a and part of. Proteins are
+annotated to terms, and, most importantly, a protein is typically annotated to multiple terms, in
+different portions of the GO annotation graph. We restrict our evaluations to a collection of GO
+terms that is specic enough for a co-annotation (i.e., two proteins annotated to the same term) to
+be functionally relevant to molecular biologists (Myers et al., 2006). In Section 4.3.3, we select
+the mixed membership blockmodel best for predicting out-of-sample interactions, corresponding to
+
+# Category
+1 Metabolism
+2 Energy
+3 Cell cycle & DNA processing
+4 Transcription (tRNA)
+5 Protein synthesis
+6 Protein fate
+7 Cellular transportation
+8 Cell rescue, defence & virulence
+
+Count
+125
+56
+162
+258
+220
+170
+122
+6
+
+Interaction w/ cell. environment
+
+# Category
+9
+10 Cellular regulation
+11 Cellular other
+12 Control of cell organization
+13 Sub-cellular activities
+14 Protein regulators
+15 Transport facilitation
+
+Count
+18
+37
+78
+36
+789
+1
+41
+
+Table 2: The 15 high-level functional categories obtained by cutting the MIPS annotation tree at
+
+the rst level and how many proteins (out of 871) participate in each.
+
+1998
+
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+K(cid:3) = 50, and we explore its goodness-of-t indirectlyrather than attempting a direct interpretation
+of the models parameters, in terms of the number of predicted interactions that are functionally
+relevant according to GO functional annotations.
+
+4.3.2 DIRECT EVALUATION: THE MODEL CAPTURES SUBSTANTIVE BIOLOGY
+
+In the rst experiment, we t a model with K = 15 blocks, and we attempt a direct interpretation
+of the blocks in terms of the 15 high-level functional categories in the MIPS annotation tree
+separate from the MIPS protein interaction data, and independently conceived. We discuss results
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+SPO7
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+POP5
+
+PTA1
+
+1
+
+3
+
+5
+
+7
+
+9
+
+11
+
+13
+
+15
+
+1
+
+3
+
+5
+
+7
+
+9
+
+11
+
+13
+
+15
+
+1
+
+3
+
+5
+
+7
+
+9
+
+11
+
+13
+
+15
+
+Figure 10: By mapping individual proteins to the 15 general functions in Table 2, we obtain a 15-
+dimensional representation for each protein. Here, each panel corresponds to a protein;
+the 15 functional categories are displayed on the X axis, whereas the presence or absence
+of the corresponding functional annotation is displayed on the Y axis. The plots at the
+bottom zoom into three example panels (proteins).
+
+1999
+
+AIROLDI, BLEI, FIENBERG AND XING
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+y
+c
+n
+e
+u
+q
+
+l fre
+a
+in
+rg
+a
+M
+
+y
+c
+n
+e
+u
+q
+
+l fre
+a
+in
+rg
+a
+m
+d
+te
+a
+stim
+
+E
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+2
+
+4
+
+6
+
+8
+
+10
+
+12
+
+14
+
+2
+
+4
+
+6
+
+8
+
+10
+
+12
+
+14
+
+Functional category
+
+Functional category given estimated identification
+
+Figure 11: The mapping of blocks to functions is estimated by maximizing the accuracy of the pre-
+dicted annotations of 87 proteins. We plot marginal frequencies of proteins membership
+to true functions (left) and to predicted functions (right).
+
+that portray the relevance of mixed membership, the resolution of the identication of blocks with
+functional categories, and selected predictions.
+
+We want to compute the correspondence between protein-specic mixed memberships to blocks,
+~p 1:871, and MIPS-derived functional annotations, ~b1:871. The K = 15 blocks in the blockmodel B
+are not directly identiable in terms of functional categories. In other words, we need to estimate
+a permutation of the components of ~p n in order to be able to interpret E[p n(k)jY ] as the expected
+degree of membership of protein n in function k of Table 2rather than simply the expected degree
+of membership of protein n in block k, out of 15. To estimate the permutation that best identies
+blocks to functions, we proceeded as follows. We sampled 87 proteins and their corresponding
+MIPS annotations, ~b1:87. We predicted membership of the 87 proteins by thresholding their mixed
+membership representations,
+
+bn(k) =(cid:26) 1 if p n(k) > t
+
+0 otherwise;
+
+where t
+is the 95th percentile of the ensemble of elements of ~p 1:87, corresponding to the 87 proteins
+in the training set. We then greedily identied the mapping that maximizing the accuracy of the
+predicted annotations of 87 proteins. We used this mapping to compare predicted versus known
+functional annotations for all proteins; in Figure 11 we plot marginal frequencies of proteins mem-
+bership to true functions (left panel) and to predicted functions (right panel). The accuracy on the
+90% testing set is about 87%. An algorithm that randomly guesses annotations, knowing the right
+proportions of annotations in each category, leads to a baseline accuracy of about 70%. Figure 12
+shows predicted mixed memberships (dashed, red lines) versus the true annotations (solid, black
+lines), given the estimated mapping of blocks to functions, for six example proteins.
+
+4.3.3 INDIRECT EVALUATION: FUNCTIONAL CONTENT OF PREDICTED INTERACTIONS
+
+In the second experiment, we selected the mixed membership blockmodel best for predicting out-
+of-sample interactions, and we explored its goodness-of-t indirectly, in terms of the number of
+
+2000
+
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+predicted interactions that are functionally relevant according to GO present in estimated protein
+interaction networks obtained with the two types of analyses that MMB supports; summarization
+and de-noising.
+
+We t models with K ranging between 2 and 255. We selected the best model (K = 50) using
+cross-validated held-out log likelihood, as in Figure 7. This nding supports the hypothesis that
+proteins derived from the MIPS data are interpretable in terms functional biological contexts. Al-
+ternatively, the blocks might encode signal at a ner resolution, such as that of protein complexes.
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+GAL4
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+NAT1
+
+2
+
+4
+
+6 8 10
+
+12
+
+14
+
+2
+
+4
+
+6 8 10
+
+12
+
+14
+
+M ET31
+
+TAF3
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+2
+
+4
+
+6 8 10
+
+12
+
+14
+
+2
+
+4
+
+6 8 10
+
+12
+
+14
+
+NOP58
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+NOP1
+
+2
+
+4
+
+6 8 10
+
+12
+
+14
+
+2
+
+4
+
+6 8 10
+
+12
+
+14
+
+Figure 12: Predicted mixed-memberships (dashed, red lines) versus binary manually curated func-
+tional annotations (solid, black lines) for six example proteins, given the estimated map-
+ping of blocks to functions in Figure 11.
+
+2001
+
+AIROLDI, BLEI, FIENBERG AND XING
+
+3
+
+1
+
+2
+
+n
+o
+si
+i
+c
+e
+
+Pr
+
+0.9
+
+0.7
+
+0.5
+
+0.3
+
+0.1
+
+Recall (unnormalized)
+
+100
+
+1K
+
+10K
+
+100K
+
+1M L
+
+Gavin et al. (2002, Aff. Precipitation)
+Ho et al. (2002, Aff. Precipitation)
+Tong et al. (2004, Synthetic Lethality)
+Uetz et al. (2000, Two Hybrid)
+Ito et al. (2000, Two Hybrid)
+Ito et al. (2001, Two Hybrid)
+Tong et al. (2002, Two Hybrid)
+Fromont-Racine et al. (Two Hybrid)
+Drees et al. (2001, Two Hybrid)
+Gasch et al. (2001, Expression M icroarray)
+Gasch et al. (2000, Expression M icroarray)
+Spellman et al. (1998, Expression M icroarray)
+M ewes et al. (2004, M IPS database)
+M M B (M IPS data de-noised with Zs & B, 50 blocks)
+M M B (M IPS data summarized with (cid:2)s & B, 50 blocks)
+Random
+
+Figure 13: In the top panel we measure the functional content of the the MIPS collection of pro-
+tein interactions (yellow diamond), and compare it against other published collections of
+interactions and microarray data, and to the posterior estimates of the MMB models
+computed as described in Section 4.3.3. A breakdown of three estimated interaction
+networks (the points annotated 1, 2, and 3) into most represented gene ontology cate-
+gories is detailed in Table 3.
+
+If that was the case, however, we would expect the optimal number of blocks to be signicantly
+higher; 871=5 (cid:25) 175, given an average size of ve proteins in a complex (Krogan et al., 2006).
+
+Using this model, we computed posterior model-based expectations of each interaction as fol-
+
+lows,
+
+E [ Y (p; q) ](cid:25)b~p p
+
+0bBb~p q
+
+E [ Y (p; q) ](cid:25)b~f
+
+0bBb~f
+
+and
+
+p!q
+
+p q:
+
+These computations lead to two estimated protein interaction networks with expected probabilities
+of interactions taking values in [0;1]. We obtained binary protein interaction networks by thresh-
+olding these expected probabilities at ten different values. In terms of the two analyses described
+in Section 2.2, this amount to either (i)predicting physical interactions by thresholding the posterior
+expectations computed using blockmodel B and mixed membership map ~p s, essentially a predic-
+tion task, or (ii) we de-noise the observed interactions Y using the blockmodel B and interaction-
+specic membership indicators Zs, essentially a de-noising task. We use the independent set of
+functional annotations from the gene ontology to decide which interactions are functionally mean-
+ingful; namely those between pairs of proteins that share at least one functional annotation (Myers
+et al., 2006). In this sense, between two models that suggest different sets of interactions as reliable,
+our evaluation assigns a higher score to the model that reveals functionally relevant interactions.
+Figure 13 shows the functional content of the original MIPS collection of physical interactions
+(point no.2), and of the collections of interactions computed using (B;P s), the light blue ((cid:0)(cid:2))
+line, and using (B; Zs), the dark blue ((cid:0)+) line, thresholded at ten different levelsprecision-recall
+curves. The posterior means of P s provide a parsimonious representation for the MIPS collection,
+and lead to precise interaction estimates, in moderate amount ((cid:0)(cid:2) line). The posterior means of Zs
+provide a richer representation for the data, and describe most of the functional content of the MIPS
+collection with high precision ((cid:0)+ line). Figure 13 also shows the functional content of the original
+MIPS collection (the yellow diamond). Most importantly, notice the estimated protein interaction
+
+2002
+
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+networks, that is, ex-es and crosses, corresponding to lower levels of recall feature a more precise
+functional content than the original. This means that the proposed latent block structure is helpful in
+summarizing the collection of interactionsby ranking them properly. On closer inspection, dense
+blocks of predicted interactions contain known functional predictions that were not in the MIPS
+collection, thus effectively improving the quality of the data that instantiate activity specic to few
+biological contexts, such as biopolymer catabolism and homeostasis. In conclusion, results suggest
+that MMB successfully reduces the dimensionality of the data, while revealing substantive informa-
+tion about the multiple functionality of proteins that can be used to inform subsequent analyses.
+
+Table 3 provides more information about three instances of predicted interaction networks dis-
+played in Figure 13; those corresponding the points annotated 1, 2, and 3. Specically, the table
+shows a breakdown of the predicted (posterior) collections of interactions in each example network
+into the gene ontology categories. A count in the table corresponds to the fact that both proteins are
+annotated with the same GO functional category.5
+
+In this application, the MMB learned information about (i) the mixed membership of objects to
+latent groups, and (ii) the connectivity patterns among latent groups. These estimates were useful
+in describing and summarizing the functional content of the MIPS collection of protein interac-
+tions. This suggests the use of MMB as a dimensionality reduction approach that may be useful for
+performing model-driven de-noising of new collections of interactions, such as those measured via
+high-throughput experiments.
+
+5. Discussion
+
+Modern probabilistic models for relational data analysis are rooted in the stochastic blockmodels
+for psychometric and sociological analysis, pioneered by Lorrain and White (1971) and by Holland
+and Leinhardt (1975).
+In statistics, this line of research has been extended in various contexts
+over the years (Fienberg et al., 1985; Wasserman and Pattison, 1996; Snijders, 2002; Hoff et al.,
+2002; Doreian et al., 2004). In machine learning, the related technique of Markov random networks
+(Frank and Strauss, 1986) have been used for link prediction (Taskar et al., 2003) and the traditional
+blockmodels have been extended to include nonparametric Bayesian priors (Kemp et al., 2004,
+2006; Xu et al., 2006) and to integrate relations and text (McCallum et al., 2007).
+
+There is a close relationship between the MMB and the latent space models (Hoff et al., 2002;
+Handcock et al., 2007). In the latent space models, the latent vectors are drawn from Gaussian
+distributions and the interaction data is drawn from a Gaussian with mean ~p p
+0I~p q. In the MMB,
+the marginal probability of an interaction takes a similar form, ~p p
+0B~p q, where B is the matrix of
+probabilities of interactions for each pair of latent groups. Two major differences exist between
+these approaches. In MMB, the distribution over the latent vectors is a Dirichlet and the underlying
+data distribution is arbitrarywe have chosen Bernoulli. The posterior inference in latent space
+models (Hoff et al., 2002; Handcock et al., 2007) is carried out via MCMC sampling, while we have
+developed a scalable variational inference algorithm to analyze large network structures. (It would
+be interesting to develop a variational algorithm for the latent space models as well.) A number
+of well-designed numerical investigations and comparisons between variational EM and variants of
+MCMC have been performed in existing literature; for instance, see Buntine and Jakulin (2006),6
+
+5. Note that, in GO, proteins are typically annotated to multiple functional categories.
+6. See corresponding slides with additional results. (http://www.hiit.fi/buntine/dpca\_slides.pdf)
+
+2003
+
+AIROLDI, BLEI, FIENBERG AND XING
+
+Description
+
+# GO Term
+1 GO:0043285 Biopolymer catabolism
+1 GO:0006366 Transcription from RNA polymerase II promoter
+1 GO:0006412 Protein biosynthesis
+1 GO:0006260 DNA replication
+1 GO:0006461 Protein complex assembly
+1 GO:0016568 Chromatin modication
+1 GO:0006473 Protein amino acid acetylation
+1 GO:0006360 Transcription from RNA polymerase I promoter
+1 GO:0042592 Homeostasis
+2 GO:0043285 Biopolymer catabolism
+2 GO:0006366 Transcription from RNA polymerase II promoter
+2 GO:0016568 Chromatin modication
+2 GO:0006260 DNA replication
+2 GO:0006412 Protein biosynthesis
+2 GO:0045045 Secretory pathway
+2 GO:0006793 Phosphorus metabolism
+2 GO:0048193 Golgi vesicle transport
+2 GO:0006352 Transcription initiation
+3 GO:0006412 Protein biosynthesis
+3 GO:0006461 Protein complex assembly
+3 GO:0009889 Regulation of biosynthesis
+3 GO:0051246 Regulation of protein metabolism
+3 GO:0007046 Ribosome biogenesis
+3 GO:0006512 Ubiquitin cycle
+
+Pred.
+561
+341
+281
+196
+191
+172
+91
+78
+78
+631
+414
+229
+226
+225
+151
+134
+128
+121
+277
+190
+28
+28
+10
+3
+
+Tot.
+17020
+36046
+299925
+5253
+11175
+15400
+666
+378
+5778
+17020
+36046
+15400
+5253
+299925
+18915
+17391
+9180
+1540
+299925
+11175
+990
+903
+21528
+2211
+
+Table 3: Breakdown of three example interaction networks into most represented gene ontology
+categoriessee text for more details. The digit in the rst column indicates the example
+network in Figure 13 that any given line refers to. The last two columns quote the number
+of predicted, and possible pairs for each GO term.
+
+and Braun and McAuliffe (2007). We refer readers interested in the comparison between variational
+vs. MCMC to these resources.
+
+The model decouples the observed connectivity patterns into two sources of variability, B;P s,
+that are apparently in competition for explaining the data, possibly raising an identiability issue.
+This is not the case, however, as the blockmodel B captures global/asymmetric relations, while
+the mixed membership vectors P s capture local/symmetric relations. This difference practically
+eliminates the issue, unless there is no signal in the data to begin with.
+
+A recurring question, which bears relevance to mixed membership models in general, is why
+we do not integrate out the single membership indicators(~z p!q;~zp q). While this may lead to
+computational efciencies we would often lose interpretable quantities that are useful for making
+predictions, for de-noising new measurements, or for performing other tasks. In fact, the posterior
+distributions of such quantities typically carry substantive information about elements of the appli-
+
+2004
+
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+cation at hand. In the application to protein interaction networks of Section 4.3, for example, they
+encode the interaction-specic memberships of individual proteins to protein complexes.
+
+In the relational setting, cross-validation is feasible if the blockmodel estimated on training data
+can be expected to hold on test data; for this to happen the network must be of reasonable size,
+so that we can expect members of each block to be in both training and test sets. In this setting,
+scheduling of variational updates is important; nested variational scheduling leads to efcient and
+parallelizable inference.
+
+A limitation of our model can be best appreciated in a simulation setting. If we consider struc-
+tural properties of the network MMB is capable of generating, we count a wide array of local and
+global connectivity patterns. But the model does not readily generate hubs, that is, nodes con-
+nected with a large number of directed or undirected connections, or networks with skewed degree
+distributions.
+
+From a data analysis perspective, we speculate that the value of MMB in capturing substan-
+tive information about a problem will increase in semi-supervised settingwhere, for example,
+information about the membership of genes to functional contexts is included in the form of prior
+distributions. In such a setting we may be interested in looking at the change between prior and
+posterior membership; a sharp change may signal biological phenomena worth investigating. We
+need not assume that the number of groups/blocks, K, is nite. It is possible, for example, to posit
+that the mixed-membership vectors are sampled form a stochastic process, in the nonparametric set-
+ting. To maintain mixed membership of nodes to groups/blocks in such setting, we need to sample
+them from a hierarchical Dirichlet process (Teh et al., 2006), rather than from a Dirichlet Process
+(Escobar and West, 1995).
+
+MMB generalizes to two important cases. First, multiple data collections Y1:M on the same
+objects can be generated by the same latent vectors. This might be useful, for example, for simul-
+taneously analyzing the relational measurements about esteem and disesteem, liking and disliking,
+positive inuence and negative inuence, praise and blame, for example, see Sampson (1968), or
+those about the collection of 17 relations measured by Bradley (1987). Second, in the MMB the
+data generating distribution is a Bernoulli, but B can be a matrix that parameterizes any kind of
+distribution. For example, technologies for measuring interactions between pairs of proteins such
+as mass spectrometry (Ho et al., 2002) and tandem afnity purication (Gavin et al., 2002) return a
+probabilistic assessment about the presence of interactions, thus setting the range of Y (p; q) to [0;1].
+This is not the case for the manually curated collection of interactions we analyze in Section 4.3.
+
+6. Conclusions
+
+In this paper we introduced mixed membership stochastic blockmodels, a novel class of latent vari-
+able models for relational data. These models provide exploratory tools for scientic analyses in
+applications where the observations can be represented as a collection of unipartite graphs. The
+nested variational inference algorithm is parallelizable and allows fast approximate inference on
+large graphs.
+
+Acknowledgments
+
+2005
+
+AIROLDI, BLEI, FIENBERG AND XING
+
+This work was partially supported by National Institutes of Health under Grant No. R01 AG023141-
+01, by the Ofce of Naval Research under Contracts N00014-02-1-0973 and 175-6343, by the Na-
+tional Science Foundation under Grants No. DMS-0240019, IIS-0218466, IIS-0745520and DBI-
+0546594, by the Pennsylvania Department of Healths Health Research Program under Grant No.
+2001NF-Cancer Health Research Grant ME-01-739, and by the Department of Defense, all to
+Carnegie Mellon University. The authors would like to thank David Banks and Jim Berger at Duke
+University, Alan Karr at the National Institute of Statistical Sciences for insight and advice, and
+acknowledge generous support from the Statistical and Applied Mathematical Sciences Institute.
+
+Appendix A. General Model Formulation
+
+In general, mixed membership stochastic blockmodels can be specied in terms of assumptions at
+four levels: population, node, latent variable, and sampling scheme level.
+
+A.1 Population Level
+
+Assume that there are K classes or sub-populations in the population of interest. We denote by
+f ( Y (p; q) j B(g; h) ) the probability distribution of the relation measured on the pair of nodes
+(p; q), where the p-th node is in the h-th sub-population, the q-th node is in the h-th sub-population,
+and B(g; h) contains the relevant parameters. The indices i; j run in 1; : : : ; N, and the indices g; h run
+in 1; : : : ; K.
+
+A.2 Node Level
+The components of the membership vector ~p p = [~p p(1); : : : ;~p p(k)]0 encodes the mixed membership
+of the n-th node to the various sub-populations. The distribution of the observed response Y (p; q)
+given the relevant, node-specic memberships, (~p p;~p q), is then
+
+Pr ( Y (p; q) j~p p;~p q; B ) =
+
+K(cid:229)
+
+~p p(g) f (Y (p; q) j B(g; h)) ~p q(h):
+
+g;h=1
+
+Conditional on the mixed memberships, the response edges y jnm are independent of one another,
+both across distinct graphs and pairs of nodes.
+
+A.3 Latent Variable Level
+Assume that the mixed membership vectors~p 1:N are realizations of a latent variable with distribution
+D~a
+
+. The probability of observing Y (p; q), given the parameters, is then
+
+, with parameter vector ~a
+
+Pr ( Y (p; q) j ~a
+
+; B ) = Z Pr ( Y (p; q) j~p p;~p q; B ) D~a (d~p ):
+
+A.4 Sampling Scheme Level
+
+Assume that the M independent replications of the relations measured on the population of nodes
+are independent of one another. The probability of observing the whole collection of graphs, Y1:M,
+given the parameters, is then given by the following equation.
+
+Pr ( Y1:M j ~a
+
+; B ) =
+
+M(cid:213)
+
+N(cid:213)
+
+m=1
+
+p;q=1
+
+2006
+
+Pr ( Ym(p; q) j ~a
+
+; B ) :
+
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+Full model specications immediately adapt to the different kinds of data, for example, multiple
+data types through the choice of f , or parametric or semi-parametric specications of the prior on
+the number of clusters through the choice of a distribution for the p s, Da
+
+.
+
+Appendix B. Details of the Variational Approximation
+
+Here we present more details about the derivation of the variational EM algorithm presented in
+Section 3. Furthermore, we address a setting where M replicates are available about the paired
+measurements, G1:M = (N;Y1:M), and relations Ym(p; q) take values into an arbitrary metric space
+according to f ( Ym(p; q) j :: ). An extension of the inference algorithm to address the case or
+multivariate relations, say J-dimensional, and multiple blockmodels B1:J each corresponding to a
+distinct relational response, can be derived with minor modications of the derivations that follow.
+
+B.1 Variational Expectation-Maximization
+
+We begin by briey summarizing the general strategy we intend to use. The approximate variant of
+EM we describe here is often referred to as Variational EM (Beal and Ghahramani, 2003). Recall
+that Y denotes the data. Rewrite X = (~p 1:N; Z!; Z ) for the latent variables, and Q = (~a
+; B) for the
+models parameters. Briey, it is possible to lower bound the likelihood, p(Y jQ ), making use of
+Jensens inequality and of any distribution on the latent variables q(X),
+
+p(Y; XjQ )
+
+p(Y; XjQ ) dX
+
+p(Y jQ ) = logZX
+= logZX
+(cid:21) ZX
+(Jensens)
+= Eq [ log p(Y; XjQ ) (cid:0) logq(X) ] =: L(q;Q )
+In EM, the lower bound L(q;Q ) is then iteratively maximized with respect to Q
+q in the E step (Dempster et al., 1977). In particular, at the t-th iteration of the E step we set
+
+(for any q)
+
+q(X)
+
+p(Y; XjQ )
+
+dX
+
+dX
+
+, in the M step, and
+
+q(X)
+
+q(X) log
+
+q(X)
+
+q(t) = p(XjY;Q
+
+(t(cid:0)1));
+
+(5)
+
+that is, equal to the posterior distribution of the latent variables given the data and the estimates of
+the parameters at the previous iteration.
+
+Unfortunately, we cannot compute the posterior in Equation 5 for the admixture of latent blocks
+model. Rather, we dene a direct parametric approximation to it, q = qD (X), which involves an
+extra set of variational parameters, D
+, and entails an approximate lower bound for the likelihood
+LD (q;Q ). At the t-th iteration of the E step, we then minimize the Kullback-Leibler divergence
+between q(t) and q(t)
+, using the data.7 The optimal parametric approximation is,
+in fact, a proper posterior as it depends on the data Y , although indirectly, q(t) (cid:25) q(t)
+D (cid:3)(Y )(X) = p(XjY ).
+
+, with respect to D
+
+B.2 Lower Bound for the Likelihood
+
+According to the mean-eld theory (Jordan et al., 1999), one can approximate an intractable distri-
+bution such as the one dened by Equation (1) by a fully factored distribution q(~p 1:N; Z!
+1:M)
+7. This is equivalent to maximizing the approximate lower bound for the likelihood, LD (q;Q ), with respect to D
+
+1:M; Z
+
+.
+
+2007
+
+D
+AIROLDI, BLEI, FIENBERG AND XING
+
+dened as follows:
+
+= (cid:213)
+
+q(~p 1:N; Z!
+
+1:M; Z
+q1(~p pj~g p) (cid:213)
+
+p
+
+m
+
+1:Mj~g 1:N;F !
+
+1:M;F
+1:M)
+p!qj~f m
+
+p;q (cid:16)q2(~zm
+
+p!q;1) q2(~zm
+
+p qj~f m
+
+p q;1)(cid:17);
+
+1:M;F
+Minimizing the Kulback-Leibler divergence between this q(~p 1:N; Z!
+
+where q1 is a Dirichlet, q2 is a multinomial, and D = (~g 1:N;F !
+variational parameters need to be estimated in the approximate distribution.
+p(~p 1:N; Z!
+likelihood.
+
+1:M) represent the set of free
+1:MjD ) and the original
+1:M dened by Equation (1) leads to the following approximate lower bound for the
+
+1:M; Z
+
+1:M; Z
+
+LD (q;Q ) = Eq(cid:2) log(cid:213)
++ Eq(cid:2) log(cid:213)
++ Eq(cid:2) log(cid:213)
+(cid:0) Eq(cid:2) log(cid:213)
+
+m
+
+p;q
+
+m
+
+p
+
+p;q
+
+p3(~p pj~a )(cid:3) (cid:0)Eq(cid:2) (cid:213)
+
+q2(~zm
+
+p2(~zm
+
+p1(Ym(p; q)j~zm
+
+m
+
+p!q;~zm
+
+p q; B)(cid:3)
+p!qj~p p;1)(cid:3) +Eq(cid:2) log(cid:213)
+q1(~p pj~g p)(cid:3)
+p!q;1)(cid:3) (cid:0)Eq(cid:2) log(cid:213)
+p q;h (cid:1) f(cid:0) Ym(p; q); B(g; h)(cid:1)
+
+p!qj~f m
+
+p
+
+f m
+p!q;g
+
+f m
+
+m
+
+p;q
+
+Working on the single expectations leads to
+
+p2(~zm
+
+p qj~p q;1)(cid:3)
+
+p;q
+
+q2(~zm
+
+p qj~f m
+
+p q;1)(cid:3) :
+
+m
+
+p;q
+
+LD (q;Q ) = (cid:229)
++ (cid:229)
++ (cid:229)
++ (cid:229)
+(cid:0) (cid:229)
+(cid:0) (cid:229)
+
+m
+
+p;q
+
+g;h
+
+m
+
+p;q
+
+g
+
+h
+
+p;q
+
+f m
+logG ((cid:229)
+logG ((cid:229)
+
+k
+
+g
+
+f m
+
+p!q;g(cid:2) y (g p;g) (cid:0) y ((cid:229)
+g p;g)(cid:3)
+p q;h(cid:2) y (g p;h) (cid:0) y ((cid:229)
+g p;h)(cid:3)
+(a k (cid:0) 1)(cid:2) y (g p;k) (cid:0) y ((cid:229)
+logG (a k) +(cid:229)
+a k) (cid:0)(cid:229)
+g p;k) +(cid:229)
+logG (g p;k) (cid:0)(cid:229)
+(g p;k (cid:0) 1)(cid:2) y (g p;k) (cid:0) y ((cid:229)
+k
+p!q;g (cid:0)(cid:229)
+p!q;g logf m
+f m
+
+p q;h logf m
+f m
+
+p q;h
+
+p;k
+
+p;k
+
+p;k
+
+p;k
+
+h
+
+k
+
+m
+
+p
+
+p
+
+m
+
+p;q
+
+h
+
+g p;k)(cid:3)
+g p;k)(cid:3)
+
+k
+
+where
+
+m
+
+p;q
+
+g
+
+f ( Ym(p; q); B(g; h) )= Ym(p; q)logB(g; h)+ ( 1 (cid:0)Ym(p; q) ) log ( 1 (cid:0) B(g; h) );
+
+m runs over 1; : : : ; M; p; q run over 1; : : : ; N; g; h; k run over 1; : : : ; K; and y (x) is the derivative of
+the log-gamma function, d logG (x)
+
+.
+
+dx
+
+B.3 The Expected Value of the Log of a Dirichlet Random Vector
+The computation of the lower bound for the likelihood requires us to evaluate Eq [ log~p p ] for
+p = 1; : : : ; N. Recall that the density of an exponential family distribution with natural parameter ~q
+can be written as
+
+p(xja ) = h(x) (cid:1) c(a ) (cid:1) exp f (cid:229)
+
+q k(a ) (cid:1) tk(x) g
+
+= h(x) (cid:1) exp f (cid:229)
+
+k
+
+q k(a ) (cid:1) tk(x) (cid:0) logc(a ) g :
+
+k
+
+2008
+
+(cid:213)
+(cid:213)
+(cid:213)
+(cid:213)
+(cid:213)
+(cid:213)
+(cid:229)
+(cid:229)
+(cid:229)
+(cid:229)
+(cid:229)
+(cid:229)
+(cid:229)
+(cid:229)
+(cid:229)
+(cid:229)
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+
+Omitting the node index p for convenience, we can rewrite the density of the Dirichlet distribution
+p3 as an exponential family distribution,
+
+p3(~p j~a ) = exp(cid:26) (cid:229)
+
+k
+
+(a k (cid:0) 1)log(p k) (cid:0) log
+
+k G (a k)
+G ((cid:229)
+
+k a k) (cid:27);
+
+with natural parameters q k(~a ) = (a k (cid:0) 1) and natural sufcient statistics tk(~p ) = log(p k). Let
+c0(~q ) = c(a 1(~q ); : : : ;a K(~q )); using a well known property of the exponential family distributions
+(Schervish, 1995) we nd that
+
+Eq [ logp k ] = E~q
+
+[ logtk(x) ]= y
+
+( a k ) (cid:0)y
+
+( (cid:229)
+
+k
+
+a k );
+
+where y (x) is the derivative of the log-gamma function, d logG (x)
+
+dx
+
+.
+
+B.4 Variational E Step
+The approximate lower bound for the likelihood LD (q;Q ) can be maximized using exponential
+family arguments and coordinate ascent (Wainwright and Jordan, 2003).
+p!q;g(q;Q ). The
+p!q) and
+
+p!q;g and f m
+p q corresponding to the natural sufcient statistics log(~zm
+
+Isolating terms containing f m
+p!q and ~gm
+
+p!q;g(q;Q ) and Lf m
+
+p q;h we obtain Lf m
+
+p q) are functions of the other latent variables and the observations. We nd that
+
+natural parameters ~gm
+log(~zm
+
+p!q;g = logp p;g +(cid:229)
+gm
+p q;h = logp q;h +(cid:229)
+gm
+
+h
+
+g
+
+zm
+p q;h (cid:1) f ( Ym(p; q); B(g; h) );
+
+zm
+p!q;g (cid:1) f ( Ym(p; q); B(g; h) );
+
+for all pairs of nodes (p; q) in the m-th network; where g; h = 1; : : : ; K, and
+
+f ( Ym(p; q); B(g; h) )= Ym(p; q)logB(g; h)+ ( 1 (cid:0)Ym(p; q) ) log ( 1 (cid:0) B(g; h) ) :
+
+This leads to the following updates for the variational parameters (~f m
+(p; q) in the m-th network:
+
+p!q;~f m
+
+p q), for a pair of nodes
+
+f m
+p!q;g
+
+e Eq[gm
+
+p!q;g]
+
+= e Eq[logp p;g] (cid:1) e (cid:229) h f m
+= e Eq[logp p;g] (cid:1)(cid:213)
+
+f m
+p q;h
+
+e Eq[gm
+
+p q;h]
+
+p q;h(cid:1) Eq[ f (Ym(p;q);B(g;h))]
+
+h (cid:18) B(g; h)Ym(p;q)(cid:1) ( 1 (cid:0) B(g; h) )1(cid:0)Ym(p;q)(cid:19)f m
+
+p q;h
+
+= e Eq[logp q;h] (cid:1) e (cid:229) g f m
+= e Eq[logp q;h] (cid:1)(cid:213)
+
+p!q;g(cid:1) Eq[ f (Ym(p;q);B(g;h))]
+
+g (cid:18) B(g; h)Ym(p;q)(cid:1) ( 1 (cid:0) B(g; h) )1(cid:0)Ym(p;q)(cid:19)f m
+
+p!q;g
+
+;
+
+;
+
+for g; h = 1; : : : ; K. These estimates of the parameters underlying the distribution of the nodes group
+indicators~f m
+
+p q need be normalized, to make sure (cid:229)
+
+p!q and~f m
+
+p!q;k = (cid:229)
+
+p q;k = 1.
+
+k f m
+
+k f m
+
+2009
+
+(cid:213)
+(cid:181)
+(cid:181)
+AIROLDI, BLEI, FIENBERG AND XING
+
+Isolating terms containing g p;k we obtain Lg p;k (q;Q ). Setting
+
+g p;k yields:
+
+ Lg
+
+p;k
+p;k
+
+equal to zero and solving for
+
+g p;k = a k +(cid:229)
+
+p!q;k +(cid:229)
+f m
+
+f m
+p q;k;
+
+m
+
+q
+
+m
+
+q
+
+for all nodes p 2 P and k = 1; : : : ; K.
+
+The t-th iteration of the variational E step is carried out for xed values of Q
+(t(cid:0)1); B(t(cid:0)1)), and nds the optimal approximate lower bound for the likelihood LD (cid:3)(q;Q
+
+(~a
+
+(t(cid:0)1) =
+(t(cid:0)1)).
+
+B.5 Variational M Step
+The optimal lower bound LD (cid:3)(q(t(cid:0)1);Q ) provides a tractable surrogate for the likelihood at the t-th
+iteration of the variational M step. We derive empirical Bayes estimates for the hyper-parameters
+, given expected
+
+that are based upon it.8 That is, we maximize LD (cid:3)(q(t(cid:0)1);Q ) with respect to Q
+
+sufcient statistics computed using LD (cid:3)(q(t(cid:0)1);Q
+
+(t(cid:0)1)).
+
+Isolating terms containing ~a we obtain L~a (q;Q ). Unfortunately, a closed form solution for the
+approximate maximum likelihood estimate of ~a does not exist (Blei et al., 2003). We can produce
+a Newton-Raphson method that is linear in time, where the gradient and Hessian for the bound L~a
+are
+
+ L~a
+
+k
+
+ L~a
+k1
+
+a k2
+
+k
+
+( (cid:229)
+
+= N(cid:18) y
+= N(cid:18) I(k1=k2) (cid:1) y
+m (cid:18) (cid:229)
+
+B(g; h) =
+
+1
+M
+
+a k ) (cid:0)y (a k)(cid:19) +(cid:229)
+0 ( (cid:229)
+
+0(a k1) (cid:0) y
+
+( (cid:229)
+
+k
+
+g p;k )(cid:19);
+
+p (cid:18) y (g p;k) (cid:0) y
+a k )(cid:19) :
+
+k
+
+p;qYm(p; q) (cid:1) f m
+(1 (cid:0) r ) (cid:1) (cid:229)
+p;q f m
+
+p!qg
+
+p!qg
+
+f m
+p qh
+f m
+
+p qh (cid:19);
+
+Isolating terms containing B we obtain LB, whose approximate maximum is
+
+for every index pair (g; h) 2 [1; K] (cid:2) [1; K].
+
+In Section 2.1 we introduced an extra parameter, r
+
+, to control the relative importance of presence
+and absence of interactions in likelihood, that is, the score that informs inference and estimation.
+Isolating terms containing r we obtain Lr . We may then estimate the sparsity parameter r by
+
+r =
+
+1
+M
+
+m (cid:18) (cid:229)
+
+p;q ( 1 (cid:0)Ym(p; q) ) (cid:1) ( (cid:229) g;h f m
+
+p!qg
+
+p;q (cid:229) g;h f m
+
+p!qg
+
+f m
+p qh
+
+f m
+p qh )
+
+(cid:19) :
+
+Alternatively, we can x r prior to the analysis; the density of the interaction matrix is estimated
+with d = (cid:229) m;p;qYm(p; q)=(N2M), and the sparsity parameter is set to r = (1 (cid:0) d). This latter estima-
+tor attributes all the information in the non-interactions to the point mass, that is, to latent sources
+other than the block model B or the mixed membership vectors ~p 1:N. It does, however, provide a
+quick recipe to reduce the computational burden during exploratory analyses.9
+
+8. We could term these estimates pseudo empirical Bayes estimates, since they maximize an approximate lower bound
+
+for the likelihood, LD (cid:3).
+
+9. Note that r = r
+any (p; q) pair.
+
+in the case of single membership. In fact, that implies f m
+
+p!qg = f m
+
+p qh = 1 for some (g; h) pair, for
+
+2010
+
+
+g
+(cid:229)
+(cid:229)
+Q
+
+a
+
+a
+(cid:229)
+(cid:229)
+(cid:229)
+MIXED MEMBERSHIP STOCHASTIC BLOCKMODELS
+

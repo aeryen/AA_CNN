@@ -1,0 +1,3644 @@
+Abstract Discriminative training approaches like structural SVMs have shown
+much promise for building highly complex and accurate models in areas like natural
+language processing, protein structure prediction, and information retrieval. How-
+ever, current training algorithms are computationally expensive or intractable on
+large datasets. To overcome this bottleneck, this paper explores how cutting-plane
+methods can provide fast training not only for classication SVMs, but also for
+structural SVMs. In particular, we show that in an equivalent 1-slack reformula-
+tion of the linear SVM training problem, our cutting-plane method has time com-
+plexity linear in the number of training examples, linear in the desired precision,
+and linear also in all other parameters. Furthermore, we present an extensive em-
+pirical evaluation of the method applied to binary classication, multi-class classi-
+cation, HMM sequence tagging, and CFG parsing. The experiments show that the
+cutting-plane algorithm is broadly applicable and fast in practice. On large datasets,
+it is typically several orders of magnitude faster than conventional training methods
+derived from decomposition methods like SVM light , or conventional cutting-plane
+methods. Implementations of our methods are available online.
+
+Key words: Structural SVMs, Support Vector Machines, Structured Output Predic-
+tion, Training Algorithms
+
+Thorsten Joachims
+Dept. of Computer Science, Cornell University, Ithaca, NY, USA, e-mail: tj@cs.cornell.edu
+
+Thomas Finley
+Dept. of Computer Science, Cornell University, Ithaca, NY, USA, e-mail: tomf@cs.cornell.edu
+
+Chun-Nam John Yu
+Dept. of Computer Science, Cornell University, Ithaca, NY, USA, e-mail: cnyu@cs.cornell.edu
+
+1
+
+2
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+1 Introduction
+
+Consider the problem of learning a function with complex outputs, where the predic-
+tion is not a single univariate response (e.g., 0/1 for classication or a real number
+for regression), but a structured multivariate object. Examples of such structured
+prediction problems are the prediction of parse trees in natural language process-
+ing, the prediction of total orderings in web search, or the prediction of sequence
+alignments in protein threading.
+
+Recent years have provided intriguing advances in extending methods like Logis-
+tic Regression, Perceptrons, and Support Vector Machines (SVMs) to global train-
+ing of such structured prediction models (e.g., Lafferty et al, 2001; Collins, 2004;
+Collins and Duffy, 2002; Taskar et al, 2003; Tsochantaridis et al, 2004). In contrast
+to conventional generative training, these methods are discriminative (e.g., condi-
+tional likelihood, empirical risk minimization). Akin to moving from Naive Bayes to
+an SVM for classication, this provides greater modeling exibility through avoid-
+ance of independence assumptions, and it was shown to provide substantially im-
+proved prediction accuracy in many domains (e.g., Lafferty et al, 2001; Taskar et al,
+2003; Tsochantaridis et al, 2004; Taskar et al, 2004; Yu et al, 2007). By eliminat-
+ing the need for modeling statistical dependencies between features, discriminative
+training enables us to freely use more complex and possibly interdependent features,
+which provides the potential to learn models with improved delity. However, train-
+ing these rich models with a sufciently large training set is often beyond the reach
+of current discriminative training algorithms.
+
+We focus on the problem of training structural SVMs in this paper. Formally, this
+can be thought of as solving a convex quadratic program (QP) with a large (typi-
+cally exponential or innite) number of constraints. Existing algorithm fall into two
+groups. The rst group of algorithms relies on an elegant polynomial-size reformu-
+lation of the training problem (Taskar et al, 2003; Anguelov et al, 2005), which is
+possible for the special case of margin-rescaling (Tsochantaridis et al, 2005) with
+linearly decomposable loss. These smaller QPs can then be solved, for example,
+with general-purpose optimization methods (Anguelov et al, 2005) or decompo-
+sition methods similar to SMO (Taskar et al, 2003; Platt, 1999). Unfortunately,
+decomposition methods are known to scale super-linearly with the number of ex-
+amples (Platt, 1999; Joachims, 1999), and so do general-purpose optimizers, since
+they do not exploit the special structure of this optimization problem. But most sig-
+nicantly, the algorithms in the rst group are limited to applications where the
+polynomial-size reformulation exists. Similar restrictions also apply to the extra-
+gradient method (Taskar et al, 2005), which applies only to problems where sub-
+gradients of the QP can be computed via a convex real relaxation, as well as ex-
+ponentiated gradient methods (Bartlett et al, 2004; Globerson et al, 2007), which
+require the ability to compute marginals (e.g. via the sum-product algorithm).
+The second group of algorithms works directly with the original, exponentially-
+sized QP. This is feasible, since a polynomially-sized subset of the constraints from
+the original QP is already sufcient for a solution of arbitrary accuracy (Joachims,
+2003; Tsochantaridis et al, 2005). Such algorithms either take stochastic subgradi-
+
+Cutting-Plane Training of Structural SVMs
+
+3
+
+ent steps (Collins, 2002; Ratliff et al, 2007; Shalev-Shwartz et al, 2007), or build
+a cutting-plane model which is easy to solve directly (Tsochantaridis et al, 2004).
+The algorithm in (Tsochantaridis et al, 2005) shows how such a cutting-plane can
+be constructed efciently. Compared to the subgradient methods, the cutting-plane
+approach does not take a single gradient step, but always takes an optimal step in the
+current cutting-plane model. It requires only the existence of an efcient separation
+oracle, which makes it applicable to many problems for which no polynomially-
+sized reformulation is known. In practice, however, the cutting-plane method of
+Tsochantaridis et al (2005) is known to scale super-linearly with the number of
+training examples. In particular, since the size of the cutting-plane model typically
+grows linearly with the dataset size (see Tsochantaridis et al, 2005, and Section 5.5),
+QPs of increasing size need to be solved to compute the optimal steps, which leads
+to the super-linear runtime.
+
+In this paper, we explore an extension of the cutting-plane method presented in
+(Joachims, 2006) for training linear structural SVMs, both in the margin-rescaling
+and in the slack-rescaling formulation (Tsochantaridis et al, 2005). In contrast to
+the cutting-plane method presented in (Tsochantaridis et al, 2005), we show that
+the size of the cutting-plane models and the number of iterations are independent of
+the number of training examples n. Instead, their size and the number of iterations
+), where C is the regularization constant and  is
+can be upper bounded by O( C
+the desired precision of the solution (see Optimization Problems OP2 and OP3 in
+Section 2). Since each iteration of the new algorithm takes O(n) time and memory,
+it also scales O(n) overall with the number of training examples both in terms of
+computation time and memory. Empirically, the size of the cutting-plane models
+and the QPs that need to be solved in each iteration is typically very small (less than
+a few hundred variables) even for problems with millions of features and hundreds
+of thousands of examples.
+
+A key conceptual difference of the new algorithm compared to the algorithm of
+Tsochantaridis et al (2005) and most other SVM training methods is that not only
+individual data points are considered as potential Support Vectors (SVs), but also
+linear combinations of those. This increased exibility allows for solutions with
+far fewer non-zero dual variables, and it leads to the small cutting-plane models
+discussed above.
+
+The new algorithm is applicable to all structural SVM problems where the sep-
+aration oracle can be computed efciently, which makes it just as widely applica-
+ble as the most general training algorithms known to date. Even further, following
+the original publication in (Joachims, 2006), Teo et al (2007) have already shown
+that the algorithm can also be extended to Conditional Random Field training. We
+provide a theoretical analysis of the algorithms correctness, convergence rate, and
+scaling behavior for structured prediction. Furthermore, we present empirical results
+for several structured prediction problems (i.e., multi-class classication, part-of-
+speech tagging, and natural language parsing), and compare against conventional
+algorithms also for the special case of binary classication. On all problems, the
+new algorithm is substantially faster than conventional decomposition methods and
+cutting-plane methods, often by several orders of magnitude for large datasets.
+
+4
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+2 Structural Support Vector Machines
+
+Structured output prediction describes the problem of learning a function
+
+h : X  Y
+
+where X is the space of inputs, and Y is the space of (multivariate and structured)
+outputs. In the case of natural language parsing, for example, X is the space of
+sentences, and Y is the space of trees over a given set of non-terminal grammar
+symbols. To learn h, we assume that a training sample of input-output pairs
+
+S = ((x1,y1), . . . ,(xn,yn))  (X  Y )n
+
+is available and drawn i.i.d.1 from a distribution P(X,Y). For a given hypothesis
+space H , the goal is to nd a function h  H that has low prediction error, or,
+more generally, low risk
+
+(cid:2)
+
+
+(h) =
+P
+
+R
+
+X Y
+
+(y,h(x))dP(x,y) .
+
+(y, y) is a loss function that quanties the loss associated with predicting y when y
+is the correct output value. We assume that (y,y) = 0 and (y, y)  0 for y (cid:5)= y. We
+follow the Empirical Risk Minimization Principle (Vapnik, 1998) to infer a function
+h from the training sample S. The learner evaluates the quality of a function h  H
+using its empirical risk R
+S
+
+(h) on the training sample S.
+
+R
+
+(h) = 1
+
+S
+n
+
+n
+i=1
+
+(yi,h(xi))
+
+Support Vector Machines select an h  H that minimizes a regularized empirical
+risk on S. For conventional binary classication where Y = {1,+1}, SVM train-
+ing is typically formulated as the following convex quadratic optimization problem 2
+(Cortes and Vapnik, 1995; Vapnik, 1998).
+
+Optimization Problem 1 (CLASSIFICATION SVM (PRIMAL))
+
+1
+2
+
+wwwT www + C
+n
+
+min
+www,i0
+s.t. i  {1, ...,n} : yi(wwwT xi)  1 i
+
+i
+
+n
+i=1
+
+It was shown that SVM training can be generalized to structured outputs (Altun
+et al, 2003; Taskar et al, 2003; Tsochantaridis et al, 2004), leading to an optimiza-
+
+1 Note, however, that all formal results in this paper also hold for non i.i.d. data, since our algo-
+rithms do not rely on the order or distribution of the examples.
+2 For simplicity, we consider the case of hyperplanes passing through the origin. By adding a
+constant feature, an offset can easily be simulated.
+
+Cutting-Plane Training of Structural SVMs
+
+5
+
+tion problem that is similar to multi-class SVMs (Crammer and Singer, 2001) and
+extending the Perceptron approach described in (Collins, 2002). The idea is to learn
+a discriminant function f : X  Y   over input/output pairs from which one
+derives a prediction by maximizing f over all y  Y for a given input x.
+
+hwww(x) = argmax
+
+yY
+
+fwww(x,y)
+
+We assume that fwww(x,y) takes the form of a linear function
+
+fwww(x,y) = wwwT(x,y)
+
+where www  N is a parameter vector and (x,y) is a feature vector relating input
+x and output y. Intuitively, one can think of f www(x,y) as a compatibility function
+that measures how well the output y matches the given input x. The exibility in
+designing  allows employing structural SVMs for problems as diverse as natu-
+ral language parsing (Taskar et al, 2004), protein sequence alignment (Yu et al,
+2007), supervised clustering (Finley and Joachims, 2005), learning ranking func-
+tions that optimize IR performance measures (Yue et al, 2007), and segmenting
+images (Anguelov et al, 2005).
+
+For training the weights www of the linear discriminant function, the standard
+SVM optimization problem can be generalized in several ways (Altun et al, 2003;
+Joachims, 2003; Taskar et al, 2003; Tsochantaridis et al, 2004, 2005). This paper
+uses the formulations given in (Tsochantaridis et al, 2005), which subsume all other
+approaches. We refer to these as the n-slack formulations, since they assign a dif-
+ferent slack variable to each of the n training examples. Tsochantaridis et al (2005)
+identify two different ways of using a hinge loss to convex upper bound the loss,
+namely margin-rescaling and slack-rescaling. In margin-rescaling, the position
+of the hinge is adapted while the slope is xed,
+
+MR(y,hwww(x)) = max
+yY
+
+{(y, y) wwwT(x,y) + wwwT(x, y)}  (y,hwww(x))
+
+(1)
+
+while in slack-rescaling, the slope is adjusted while the position of the hinge is xed.
+
+SR(y,hwww(x)) = max
+yY
+
+{(y, y)(1 wwwT(x,y) + wwwT(x, y))}  (y,hwww(x))
+
+(2)
+
+This leads to the following two training problems, where each slack variable i
+is equal to the respective MR(yi,hwww(xi)) or SR(yi,hwww(xi)) for training example
+(xi,yi).
+
+6
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+Optimization Problem 2 (n-SLACK STRUCTURAL SVM WITH MARGIN-
+RESCALING (PRIMAL))
+
+1
+2
+
+wwwT www + C
+n
+
+i
+
+n
+i=1
+
+min
+www,000
+s.t.  y1  Y : wwwT [(x1,y1)(x1, y1)]  (y1, y1) 1
+
+...
+
+s.t.  yn  Y : wwwT [(xn,yn)(xn, yn)]  (yn, yn) n
+
+Optimization Problem 3 (n-SLACK
+RESCALING (PRIMAL))
+
+STRUCTURAL
+
+SVM WITH
+
+SLACK-
+
+1
+2
+
+wwwT www + C
+n
+
+min
+www,000
+s.t.  y1  Y : wwwT [(x1,y1)(x1, y1)]  1
+
+i
+
+n
+i=1
+
+...
+
+s.t.  yn  Y : wwwT [(xn,yn)(xn, yn)]  1
+
+1
+
+(y1, y1)
+
+n
+
+(yn, yn)
+
+The objective is the conventional regularized risk used in SVMs. The constraints
+state that for each training example (xi,yi) the score wwwT(xi,yi) of the correct struc-
+ture yi must be greater than the score wwwT(xi, y) of all incorrect structures y by a
+required margin. This margin is 1 in slack-rescaling, and equal to the loss (y i, y) in
+margin rescaling. If the margin is violated, the slack variable i of the example be-
+comes non-zero. Note that i is shared among constraints from the same example. It
+is easy to verify that for both margin-rescaling and for slack-rescaling, i is an up-
+per bound on the empirical risk R
+(h) on the training sample S (see Tsochantaridis
+S
+et al, 2005).
+It is not immediately obvious that Optimization Problems OP2 and OP3 can be
+solved efciently, since they have O(n|Y |) constraints. |Y | is typically extremely
+large (e.g., all possible alignments of two amino-acid sequence) or even innite
+(e.g., real-valued outputs). For the special case of margin-rescaling with linearly
+decomposable loss functions , Taskar et al. (Taskar et al, 2003) have shown that
+the problem can be reformulated as a quadratic program with only a polynomial
+number of constraints and variables.
+
+A more general algorithm that applies to both margin-rescaling and slack-
+rescaling under a large variety of loss functions was given in (Tsochantaridis et al,
+2004, 2005). The algorithm relies on the theoretical result that for any desired pre-
+cision , a greedily constructed cutting-plane model of OP2 and OP3 requires only
+O( n
+) many constraints (Joachims, 2003; Tsochantaridis et al, 2005). This greedy
+2
+algorithm for the case of margin-rescaling is Algorithm 1, for slack-rescaling it leads
+to Algorithm 2. The algorithms iteratively construct a working set W = W 1...Wn
+
+Cutting-Plane Training of Structural SVMs
+
+7
+
+Algorithm 1 for training Structural SVMs (with margin-rescaling) via the n-Slack
+Formulation (OP2).
+1: Input: S = ((x1, y1), . . .,(xn, yn)), C, 
+2: Wi  /0, i  0 for all i = 1, ..., n
+3: repeat
+4:
+5:
+6:
+7:
+8:
+
+y  argmaxyY {(yi, y) wwwT [(xi, yi)(xi, y)]}
+if (yi, y) wwwT [(xi, yi)(xi, y)] > i + then
+
+Wi  Wi { y}
+(www,)  argminwww,000
+
+for i=1,...,n do
+
+2 wwwT www + C
+
+n
+
+s.t.  y1  W1 : wwwT [(x1, y1)(x1, y1)]  (y1, y1) 1
+
+i=1
+
+i
+
+1
+
+n
+
+ yn  Wn : wwwT [(xn, yn)(xn, yn)]  (yn, yn) n
+
+end if
+end for
+
+9:
+10:
+11: until no Wi has changed during iteration
+12: return(www,)
+
+...
+
+...
+
+Algorithm 2 for training Structural SVMs (with slack-rescaling) via the n-Slack
+Formulation (OP3).
+1: Input: S = ((x1, y1), . . .,(xn, yn)), C, 
+2: Wi  /0, i  0 for all i = 1, ..., n
+3: repeat
+4:
+5:
+6:
+7:
+8:
+
+y  argmaxyY {(yi, y)(1 wwwT [(xi, yi)(xi, y)])}
+if (yi, y)(1 wwwT [(xi, yi)(xi, y)]) > i + then
+
+Wi  Wi { y}
+(www,)  argminwww,000
+
+for i=1,...,n do
+
+s.t.  y1  W1 : wwwT (y1, y1)[(x1, y1)(x1, y1)]  (y1, y1) 1
+
+2 wwwT www + C
+
+n
+
+i=1
+
+i
+
+1
+
+n
+
+ yn  Wn : wwwT (yn, yn)[(xn, yn)(xn, yn)]  (yn, yn) n
+
+end if
+end for
+
+9:
+10:
+11: until no Wi has changed during iteration
+12: return(www,)
+
+of constraints, starting with an empty working set W = /0. The algorithms iterate
+through the training examples and nd the constraint that is violated most by the
+current solution www, (Line 5). If this constraint is violated by more than the desired
+precision (Line 6), the constraint is added to the working set (Line 7) and the QP is
+solved over the extended W (Line 8). The algorithms terminate when no constraint
+is added in the previous iteration, meaning that all constraints in OP2 or OP3 are ful-
+lled up to a precision of . The algorithm is provably efcient whenever the most
+violated constraint can be found efciently. The argmax in Line 5 has an efcient
+solution for a wide variety of choices for, Y , and (see e.g., Tsochantaridis et al,
+
+8
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+2005; Joachims, 2005; Yu et al, 2007; Yue et al, 2007), and often the algorithm for
+making predictions (see Eq. 1) can be adapted to compute this solution.
+
+Related to Algorithm 1 is the method proposed in (Anguelov et al, 2005), which
+applies to the special case where the argmax in Line 5 can be computed as a linear
+program. This allows them not to explicitly maintain a working set, but implicitly
+represent it by folding n linear programs into the quadratic program OP2. To this
+special case also applies the method of Taskar et al (2005), which casts the training
+of max-margin structured predictors as a convex-concave saddle-point problem. It
+provides improved scalability compared to an explicit reduction to a polynomially-
+sized QP, but involves the use of a special min-cost quadratic ow solver in the
+projection steps of the extragradient method.
+
+Exponentiated gradient methods, originally proposed for online learning of lin-
+ear predictors (Kivinen and Warmuth, 1997), have also been applied to the training
+of structured predictors (Globerson et al, 2007; Bartlett et al, 2004). They solve the
+optimization problem in the dual, and treat conditional random eld and structural
+SVM within the same framework using Bregman divergences. Stochastic gradient
+methods Vishwanathan et al (2006) have been applied to the training of conditional
+random eld on large scale problems, and exhibit faster rate of convergence than
+BFGS methods. Recently, subgradient methods and their stochastic variants (Ratliff
+et al, 2007) have also been proposed to solve the optimization problem in max-
+margin structured prediction. While not yet explored for structured prediction, the
+PEGASOS algorithm (Shalev-Shwartz et al, 2007) has shown promising perfor-
+mance for binary classication SVMs. Related to such online methods is also the
+MIRA algorithm (Crammer and Singer, 2003), which has been used for training
+structured predictors (e.g. McDonald et al, 2005). However, to deal with the expo-
+nential size of Y , heuristics have to be used (e.g. only using a k-best subset of Y ),
+leading to only approximate solutions of Optimization Problem OP2.
+
+3 Training Algorithm
+
+While polynomial runtime was established for most algorithms discussed above,
+training general structural SVMs on large-scale problems is still a challenging prob-
+lem. In the following, we present an equivalent reformulation of the training prob-
+lems for both margin-rescaling and slack-rescaling, leading to a cutting-plane train-
+ing algorithm that has not only provably linear runtime in the number of training
+examples, but is also several orders of magnitude faster than conventional cutting-
+plane methods (Tsochantaridis et al, 2005) on large-scale problems. Nevertheless,
+the new algorithm is equally general as Algorithms 1 and 2.
+
+Cutting-Plane Training of Structural SVMs
+
+3.1 1-Slack Formulation
+
+9
+
+The rst step towards the new algorithm is a reformulation of the optimization prob-
+lems for training. The key idea is to replace the n cutting-plane models of the hinge
+loss  one for each training example  with a single cutting plane model for the sum
+of the hinge-losses. Since there is only a single slack variable in the new formula-
+tions, we refer to them as 1-slack formulations.
+
+Optimization Problem 4 (1-SLACK STRUCTURAL SVM WITH MARGIN-
+RESCALING (PRIMAL))
+
+1
+2
+
+wwwT www +C 
+
+min
+www,0
+s.t. ( y1, ..., yn)  Y n :
+
+1
+n
+
+wwwT
+
+n
+i=1
+
+[(xi,yi)(xi, yi)]  1
+n
+
+n
+i=1
+
+(yi, yi) 
+
+Optimization Problem 5 (1-SLACK
+RESCALING (PRIMAL))
+
+STRUCTURAL
+
+SVM WITH
+
+SLACK-
+
+1
+2
+
+wwwT www +C 
+
+min
+www,0
+s.t. (y1, ..., yn) Y n :
+
+1
+n
+
+wwwT
+
+n
+i=1
+
+(yi, yi)[(xi,yi)(xi, yi)]  1
+n
+
+n
+i=1
+
+(yi, yi) 
+
+While OP4 has |Y |n constraints, one for each possible combination of labels
+( y1, ..., yn)  Y n, it has only one slack variable that is shared across all constraints.
+(h) respectively, and
+Each constraint corresponds to a tangent to R
+the set of constraints forms an equivalent model of the risk function. Specically, the
+following theorems show that  = R
+,) of OP4, and
+,) of OP5, since the n-slack and the 1-slack
+ = R
+formulations are equivalent in the following sense.
+
+(hw) at the solution (w
+
+(hw) at the solution (w
+
+(h) and R
+
+MR
+S
+
+MR
+S
+
+SR
+S
+
+SR
+S
+
+
+
+i=1
+
+
+i .
+
+of OP4 is also a solution of OP2 (and vice versa), with  =
+
+Theorem 1. (EQUIVALENCE OF OP2 AND OP4)
+Any solution www
+n
+1
+n
+Proof. Generalizing the proof in (Joachims, 2006), we will show that for every www the
+smallest feasible  and n
+i
+
+For a given www, each i in OP2 can be optimized individually, and the smallest
+
+i are equal.
+
+feasible i given www is achieved for
+
+i = max
+yiY
+
+{(yi, yi) wwwT [(xi,yi)(xi, yi)]}.
+
+For OP4, the smallest feasible  for a given www is
+
+10
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+Algorithm 3 for training Structural SVMs (with margin-rescaling) via the 1-Slack
+Formulation (OP4).
+1: Input: S = ((x1, y1), . . .,(xn, yn)), C, 
+2: W  /0
+3: repeat
+4:
+
+(www,)  argminwww,0
+
+1
+
+2 wwwT www +C
+s.t. ( y1, ..., yn)  W : 1
+
+n wwwT
+
+n
+i=1
+
+[(xi, yi)(xi, yi)]  1
+
+(yi, yi) 
+
+n
+i=1
+
+n
+
+for i=1,...,n do
+
+yi  argmax yY {(yi, y) + wwwT(xi, y)}
+
+5:
+6:
+7:
+8:
+9: until 1
+n
+10: return(www,)
+
+n
+i=1
+
+end for
+W  W {( y1, ..., yn)}
+n
+n wwwT
+i=1
+
+(yi, yi) 1
+
+[(xi, yi)(xi, yi)]  + 
+
+(cid:3)
+
+1
+n
+
+n
+i=1
+
+(yi, yi) wwwT 1
+n
+
+n
+i=1
+
+[(xi,yi)(xi, yi)]
+
+(cid:4)
+
+.
+
+ =
+
+max
+
+( y1,..., yn)Y n
+
+Since the function can be decomposed linearly in y i, for any given www, each yi can be
+optimized independently.
+
+(cid:5)
+
+=
+
+n
+i=1
+
+max
+yiY
+
+1
+n
+
+(yi, yi) 1
+n
+
+(cid:6)
+wwwT [(xi,yi)(xi, yi)]
+
+= 1
+n
+
+i
+
+n
+i=1
+
+Therefore, the objective functions of both optimization problems are equal for any
+www given the corresponding smallest feasible  and i. Consequently this is also true
+(cid:11)(cid:12)
+for www
+
+and its corresponding smallest feasible slacks 
+
+
+
+and 
+i .
+
+of OP5 is also a solution of OP3 (and vice versa), with  =
+
+
+
+Theorem 2. (EQUIVALENCE OF OP3 AND OP5)
+Any solution www
+n
+1
+n
+Proof. Analogous to Theorem 1.
+
+
+i .
+
+i=1
+
+(cid:11)(cid:12)
+
+3.2 Cutting-Plane Algorithm
+
+What could we possibly have gained by moving from the n-slack to the 1-slack
+formulation, exponentially increasing the number of constraints in the process? We
+will show in the following that the dual of the 1-slack formulation has a solution that
+is extremely sparse, with the number of non-zero dual variables independent of the
+number of training examples. To nd this solution, we propose Algorithms 3 and 4,
+which are generalizations of the algorithm in (Joachims, 2006) to structural SVMs.
+Similar to the cutting-plane algorithms for the n-slack formulations, Algorithms 3
+and 4 iteratively construct a working set W of constraints. In each iteration, the al-
+
+Cutting-Plane Training of Structural SVMs
+
+11
+
+Algorithm 4 for training Structural SVMs (with slack-rescaling) via the 1-Slack
+Formulation (OP5).
+1: Input: S = ((x1, y1), . . .,(xn, yn)), C, 
+2: W  /0
+3: repeat
+4:
+
+(www,)  argminwww,0
+
+1
+
+s.t. ( y1, ..., yn)  W : 1
+yi  argmax yY {(yi, y)(1 wwwT [(xi, yi)(xi, y)])}
+
+(yi, yi)[(xi, yi)(xi, yi)]  1
+
+for i=1,...,n do
+
+n
+
+(yi, yi) 
+
+n
+i=1
+
+2 wwwT www +C
+n
+i=1
+
+n wwwT
+
+5:
+6:
+7:
+8:
+9: until 1
+n
+10: return(www,)
+
+n
+i=1
+
+end for
+W  W {( y1, ..., yn)}
+n
+n wwwT
+i=1
+
+(yi, yi) 1
+
+(yi, yi)[(xi, yi)(xi, yi)]  + 
+
+gorithms compute the solution over the current W (Line 4), nd the most violated
+constraint (Lines 5-7), and add it to the working set. The algorithm stops once no
+constraint can be found that is violated by more than the desired precision  (Line
+9). Unlike in the n-slack algorithms, only a single constraint is added in each iter-
+ation. The following theorems characterize the quality of the solutions returned by
+Algorithms 3 and 4.
+
+Theorem 3. (CORRECTNESS OF ALGORITHM 3)
+,) is the
+For any training sample S = ((x1,y1), . . . ,(xn,yn)) and any > 0, if (www
+optimal solution of OP4, then Algorithm 3 returns a point (www,) that has a better
+objective value than (www
+Proof. We rst verify that Lines 5-7 in Algorithm 3 compute the vector ( y 1, ..., yn) 
+Y n that maximizes
+
+,), and for which (www,+ ) is feasible in OP4.
+(cid:4)
+(cid:3)
+[(xi,yi)(xi, yi)]
+
+(cid:13) =
+
+max
+
+wwwT
+
+.
+
+1
+n
+
+n
+i=1
+
+(yi, yi) 1
+n
+
+n
+i=1
+
+( y1,..., yn)Y n
+
+(cid:13)
+is the minimum value needed to fulll all constraints in OP4 for the current www.
+The maximization problem is linear in the yi, so one can maximize over each yi
+independently.
+
+(cid:7)
+(yi, y) wwwT [(xi,yi)(xi, y)]
+
+(cid:8)
+
+n
+(cid:13) = 1
+max
+yY
+n
+i=1
+=  1
+n
+wwwT(xi,yi) + 1
+n
+n
+i=1
+
+n
+i=1
+
+max
+yY
+
+(cid:7)
+(yi, y) + wwwT(xi, y)
+
+(cid:8)
+
+(3)
+
+(4)
+
+Since the rst sum in Equation (4) is constant, the second term directly corresponds
+to the assignment in Line 6. As checked in Line 9, the algorithm terminates only if
+(cid:13)
+
+does not exceed the  from the solution over W by more than  as desired.
+
+12
+
+2 www
+
+T www
+
+2 wwwT www +C.
+
+,), and for which (www,+ ) is feasible in OP5.
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+Since the (www,) returned by Algorithm 3 is the solution on a subset of the con-
+(cid:11)(cid:12)
+
+Using a stopping criterion based on the accuracy of the empirical risk 
+
+ +C  1
+straints from OP4, it holds that 1
+Theorem 4. (CORRECTNESS OF ALGORITHM 4)
+,) is the
+For any training sample S = ((x1,y1), . . . ,(xn,yn)) and any > 0, if (www
+optimal solution of OP5, then Algorithm 4 returns a point (www,) that has a better
+objective value than (www
+(cid:11)(cid:12)
+Proof. Analogous to the proof of Theorem 3.
+is very
+intuitive and practically meaningful, unlike the stopping criteria typically used in
+decomposition methods. Intuitively,  can be used to indicate how close one wants
+to be to the empirical risk of the best parameter vector. In most machine learning ap-
+plications, tolerating a training error that is suboptimal by 0.1% is very acceptable.
+This intuition makes selecting the stopping criterion much easier than in other train-
+ing methods, where it is usually dened based on the accuracy of the Kuhn-Tucker
+Conditions of the dual (see e.g., Joachims, 1999). Nevertheless, it is easy to see
+that  also bounds the duality gap of the solution by C. Solving the optimization
+problems to an arbitrary but xed precision of  is essential in our analysis below,
+making sure that computation time is not wasted on computing a solution that is
+more accurate than necessary.
+
+We next analyze the time complexity of Algorithms 3 and 4. It is easy to see that
+each iteration of the algorithm takes n calls to the separation oracle, and that for the
+linear kernel the remaining work in each iteration scales linearly with n as well. We
+show next that the number of iterations until convergence is bounded, and that this
+upper bound is independent of n.
+
+The argument requires the Wolfe-dual programs, which are straightforward to
+derive (see Appendix). For a more compact notation, we denote vectors of labels as
+y = ( y1, ..., yn)  Y n. For such vectors of labels, we then dene (y) and the inner
+(cid:13)) as follows. Note that yi and y j denote correct training labels,
+product HMR(y, y
+(cid:13)
+while yi and y
+j denote arbitrary labels:
+
+(y) = 1
+n
+(cid:13)) = 1
+n2
+
+HMR(y, y
+
+n
+i=1
+n
+i=1
+
+(5)
+
+n
+j=1
+
+(yi, yi)
+(cid:9)
+(xi,yi)T(x j,y j)(xi,yi)T(x j, y
+(cid:13)
+)
+j
+(xi, yi)T(x j,y j)+(xi, yi)T(x j, y
+(cid:13)
+j
+(cid:13),y
+(cid:13)) are computed either explicitly or via a Kernel
+(cid:13)). Note that it is typically more efcient to compute
+
+(cid:10)
+
+)
+
+(6)
+
+(cid:12)
+
+((x j,y j)(x j, y
+(cid:13)
+))
+j
+
+(7)
+
+The inner products (x,y)T(x
+(cid:13),y
+K(x,y,x
+
+(cid:13)) = (x,y)T(x
+(cid:11)
+
+(cid:13),y
+
+HMR(y, y
+
+(cid:13))= 1
+n2
+
+(cid:12)
+((xi,yi)(xi, yi))
+n
+i=1
+
+T
+
+(cid:11)
+n
+j=1
+
+if no kernel is used. The dual of the 1-slack formulation for margin-rescaling is:
+
+Cutting-Plane Training of Structural SVMs
+
+13
+
+Optimization Problem 6 (1-SLACK STRUCTURAL SVM WITH MARGIN-
+RESCALING (DUAL))
+
+(y)y  1
+2
+
+
+yY n
+
+
+y(cid:13)Y n
+
+yy(cid:13)HMR(y, y
+
+(cid:13))
+
+D() = 
+yY n
+y = C
+
+max0
+s.t. 
+yY n
+
+For the case of slack-rescaling, the respective H(y, y
+
+(cid:13)) is dened as follows, and
+we again give an analogous factorization that is more efcient to compute if no
+kernel is used:
+(cid:13))= 1
+n2
+
+(cid:9)
+(xi,yi)T(x j,y j)(xi,yi)T(x j, y
+(cid:13)
+(cid:13)
+(yi, yi)(y j, y
+)
+)
+j
+j
+(xi, yi)T(x j,y j)+(xi, yi)T(x j, y
+(cid:13)
+)
+j
+
+HSR(y, y
+
+(cid:10)
+
+(8)
+
+n
+j=1
+
+n
+i=1
+(cid:12)
+(cid:11)
+(yi, yi)((xi,yi)(xi, yi))
+n
+i=1
+
+(cid:11)
+
+T
+
+n
+j=1
+
+= 1
+n2
+
+(cid:13)
+(y j, y
+j
+
+)((x j,y j)(x j, y
+(cid:13)
+))
+j
+
+(9)
+
+(cid:12)
+
+The dual of the 1-slack formulation is:
+
+Optimization Problem 7 (1-SLACK
+RESCALING (DUAL))
+
+STRUCTURAL
+
+SVM WITH
+
+SLACK-
+
+(y)y  1
+2
+
+
+yY n
+
+
+y(cid:13)Y n
+
+yy(cid:13)HSR(y, y
+
+(cid:13))
+
+D() = 
+yY n
+y = C
+
+max0
+s.t. 
+yY n
+
+Using the respective dual solution 
+solving the primal via
+
+weight vector www
+
+
+
+, one can compute inner products with the
+
+(cid:15)(cid:16)
+(cid:14)
+(x,y)T(x j,y j)(x,y)T(x j, y j)
+
+(cid:12)
+[(x j,y j)(x j, y j)]
+
+T
+
+(x,y)
+
+(cid:13)
+
+1
+n
+
+
+y
+
+n
+j=1
+n
+j=1
+
+(cid:15)(cid:16)
+(cid:14)
+(x,y)T(x j,y j)(x,y)T(x j, y j)
+
+(y j, y j)
+
+(cid:12)T
+(y j, y j)[(x j,y j)(x j, y j)]
+
+(x,y)
+
+T(x,y) = 
+(cid:11)
+www
+yY n
+
+
+y
+
+=
+
+1
+n
+
+
+yY n
+(cid:13)
+
+for margin-rescaling and via
+
+T(x,y) = 
+(cid:11)
+www
+yY n
+
+
+y
+
+1
+n
+
+=
+
+1
+n
+
+
+yY n
+
+
+y
+
+n
+j=1
+n
+j=1
+
+14
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+for slack-rescaling. We will show in the following that only a small (i.e., poly-
+nomial) number of the y is non-zero at the solution. In analogy to classication
+SVMs, we will refer to those y with non-zero y as Support Vectors. However, note
+that Support Vectors in the 1-slack formulation are linear combinations of multiple
+examples. We can now state the theorem giving an upper bound on the number of
+iterations of the 1-slack algorithms. The proof extends the one in (Joachims, 2006)
+to general structural SVMs, and is based on the technique introduced in (Joachims,
+2003) and generalized in (Tsochantaridis et al, 2005). The nal step of the proof
+uses an improvement developed in (Teo et al, 2007).
+
+Theorem 5. (1-SLACK MARGIN-RESCALING SVM ITERATION COMPLEXITY)
+For any 0 < C, 0 <  4R2C and any training sample S = ((x1,y1), . . . ,(xn,yn)),
+Algorithms 3 terminates after at most
+
+4R2C
+
+(cid:19)(cid:20)
+
+(cid:18)
+
+log2
+
++
+
+16R2C
+
+
+
+(10)
+
+(cid:17)
+
+(cid:17)
+
+(cid:20)
+
+iterations. R2 = maxi, y||(xi,yi)(xi, y)||2,  = maxi, y (yi, y), and (cid:14)..(cid:15) is the
+integer ceiling function.
+
+Proof. We will show that adding each new constraint to W increases the objective
+value at the solution of the quadratic program in Line 4 by at least some constant
+positive value. Since the objective value of the solution of OP6 is upper bounded by
+C(since www = 0 and =  is a feasible point in the primal), the algorithm can only
+perform a constant number of iterations before termination. The amount by which
+the solution increases by adding one constraint that is violated by more then  (i.e.,
+the criteria in Line 9 of Algorithm 3 and Algorithm 4) to W can be lower bounded
+as follows.
+
+Let y be the newly added constraint and let  be the solution of the dual before
+the addition. To lower bound the progress made by the algorithm in each iteration,
+consider the increase in the dual that can be achieved with a line search
+
+{D(+ )} D().
+
+max
+0C
+
+(11)
+
+The direction  is constructed by setting y = 1 and y =  1
+y for all other y.
+Note that the constraints on  and the construction of  ensure that +  never
+leaves the feasible region of the dual.
+
+C
+
+To apply Lemma 2 (see Appendix) for computing the progress made by a line
+search, we need a lower bound for D()T  and an upper bound for T H.
+Starting with the lower bound for D()T , note that
+
+D()
+y
+
+= (y) 
+y(cid:13)W
+
+y(cid:13) HMR(y, y
+
+(cid:13)) = 
+
+(12)
+
+for all y with non-zero y at the solution over the previous working set W . For the
+newly added constraint y and some > 0,
+
+Cutting-Plane Training of Structural SVMs
+
+D()
+y
+
+= (y) 
+y(cid:13)W
+
+y(cid:13)HMR(y, y
+
+(cid:13)) = +  + 
+
+by construction due to Line 9 of Algorithms 3. It follows that
+
+(cid:13)
+
+y
+D()T  = +  
+yW
+C
+1 1
+
+yW
+C
+
+= 
+
+
+
+(cid:16)
+
+y
+
++ 
+
+= .
+
+The following gives an upper bound for T H, where Hyy(cid:13) = HMR(y, y
+W {y}.
+
+15
+
+(13)
+
+(14)
+
+(15)
+
+(16)
+(cid:13) 
+
+(cid:13)) for y, y
+
+yHMR(y, y) + 1
+
+C2 
+yW
+
+T H = HMR(y, y) 2
+C
+CR2 + 1
+
+
+yW
+C2 C2R2
+
+ R2 + 2
+C
+= 4R2
+
+yy(cid:13)HMR(y, y
+
+(cid:13))(17)
+
+
+y(cid:13)W
+
+(18)
+
+(19)
+
+The bound uses that R2  HMR(y, y)  R2.
+
+Plugging everything into the bound of Lemma 2 shows that the increase of the
+
+(cid:6)
+
+(cid:5)
+
+C
+,
+2
+
+2
+8R2
+
+objective is at least
+
+{D(+ )} D()  min
+
+max
+0C
+
+(20)
+
+Note that the rst case applies whenever  4R2C, and that the second case applies
+otherwise.
+
+The nal step of the proof is to use this constant increase of the objective value in
+each iteration to bound the maximum number of iterations. First, note that y = 0
+for all incorrect vectors of labels y and y = C for the correct vector of labels
+ = (y1, ...,yn) is a feasible starting point 0 with a dual objective of 0. This means
+y
+the initial optimality gap (0) = D() D(0) is at most C, where 
+is the
+optimal dual solution. An optimality gap of (i) = D()  D(i) ensures that
+there exists a constraint that is violated by at least  (i)
+C . This means that the rst
+case of (20) applies while (i)  4R2C2, leading to a decrease in the optimality gap
+of at least
+
+(i + 1)  (i) 1
+2
+
+(i)
+
+(21)
+
+in each iteration. Starting from the worst possible optimality gap of (0) = C, the
+algorithm needs at most
+
+(cid:17)
+
+(cid:18)
+
+(cid:19)(cid:20)
+
+
+4R2C
+
+i1 
+
+16
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+(22)
+iterations until it has reached an optimality gap of (i 1)  4R2C2, where the second
+case of (20) becomes valid. As proposed in (Teo et al, 2007), the recurrence equation
+
+log2
+
+(i + 1)  (i) 1
+
+8R2C2
+
+(i)2
+
+(23)
+
+=  1
+8R2C2
+
+for the second case of (20) can be upper bounded by solving the differential equation
+(i)2 with boundary condition (0) = 4R2C2. The solution is (i) 
+(i)
+i
+8R2C2
+i+2 , showing that the algorithms does not need more than
+
+i2  8R2C2
+C
+
+(24)
+
+iterations until it reaches an optimality gap of C when starting at a gap of 4R 2C2,
+where  is the desired target precision given to the algorithm. Once the optimal-
+ity gap reaches C, it is no longer guaranteed that an -violated constraint exists.
+However, such constraints may still exist and so the algorithm does not yet termi-
+nate. But since each such constraint leads to an increase in the dual objective of at
+least 2
+
+8R2 , only
+
+(cid:17)
+
+(cid:20)
+
+i3 
+
+8R2C
+
+
+
+(25)
+
+can be added before the optimality gap becomes negative. The overall bound results
+(cid:11)(cid:12)
+from adding i1, i2, and i3.
+
+Note that the proof of the theorem requires only a line search in each step, while
+Algorithm 4 actually computes the full QP solution. This suggests the following.
+On the one hand, the actual number of iterations in Algorithm 4 might be substan-
+tially smaller in practice than what is predicted by the bound. On the other hand, it
+suggests a variant of Algorithm 4, where the QP solver is replaced by a simple line
+search. This may be benecial in structured prediction problems where the separa-
+tion oracle in Line 6 is particularly cheap to compute.
+
+Theorem 6. (1-SLACK SLACK-RESCALING SVM ITERATION COMPLEXITY)
+For any 0 < C, 0 <  42R2C and any training sample S = ((x1,y1), . . . ,(xn,yn)),
+Algorithms 4 terminate after at most
+1
+
+16R22C
+
+(cid:19)(cid:20)
+
+(cid:18)
+
+(cid:17)
+
+(cid:20)
+
+(cid:17)
+
+(26)
+
+log2
+
+4R2C
+
++
+
+
+
+iterations. R2 = maxi, y||(xi,yi)(xi, y)||2,  = maxi, y (yi, y), and (cid:14)..(cid:15) is the
+integer ceiling function.
+
+Cutting-Plane Training of Structural SVMs
+
+17
+
+Proof. The proof for the case of slack-rescaling is analogous. The only difference is
+that 2R2  HSR( y, y
+(cid:11)(cid:12)
+
+(cid:13))  2R2.
+
+The O( 1
+
+) convergence rate in the bound is tight, as the following example
+shows. Consider a multi-class classication problem with innitely many classes
+Y = {1, ...,} and a feature space X =  that contains only one feature. This
+problem can be encoded using a feature map (x,y) which takes value x in po-
+sition y and 0 everywhere else. For a training set with a single training example
+(x,y) = ((1),1) and using the zero/one-loss, the 1-slack quadratic program for both
+margin-rescaling and slack-rescaling is
+
+1
+2
+
+wwwT www +C
+
+min
+www,0
+s.t. wwwT [(x,1)(x,2)]  1 
+wwwT [(x,1)(x,3)]  1 
+wwwT [(x,1)(x,4)]  1 
+...
+
+(27)
+
+2
+
+, 1
+
+Lets assume without loss of generaltity that Algorithm 3 (or equivalently Algo-
+rithm 4) introduces the rst constraint in the rst iteration. For C  1
+2 the solution
+,0,0, . . .) and  = 0. All other constraints are
+over this working set is wwwT = ( 1
+2
+now violated by 1
+2 and one of them is selected at random to be added to the working
+set in the next iteration. It is easy to verify that after adding k constraints, the solu-
+,0,0, . . .) for C  1
+tion over the working set is wwwT = ( k
+2 , and all
+k+1
+constraints outside the working set are violated by = 1
+k+1 . It therefore takes O( 1
+)
+iterations to reach a desired precision of .
+The O(C) scaling with C is tight as well, at least for small values of C. Consider-
+ing the same examples and C  1
+2 , the solution over the working set after adding k
+constraints is wwwT = (C, C
+, . . . , C
+,0,0, . . .). This means that after k constraints, all
+k
+constraints outside the working set are violated by = C
+k . Consequently, the bounds
+in (10) and (26) accurately reect the worst-case scaling with C up to the log-term
+for C  1
+2 .
+
+, . . . , 1
+k+1
+
+, 1
+k+1
+
+The following theorem summarizes our characterization of the time complex-
+ity of the 1-slack algorithms. In real applications, however, we will see that Algo-
+rithms 3 scales much better than what is predicted by these worst-case bounds both
+w.r.t. C and . Note that a support vector (i.e. point with non-zero dual variable)
+no longer corresponds to a single data point in the 1-slack dual, but is typically a
+linear combination of data points.
+
+k
+
+Corollary 1. (TIME COMPLEXITY OF ALGORITHMS 3 AND 4 FOR LINEAR
+KERNEL)
+with
+maxi, y||(xi,yi)(xi, y)||2  R2 <  and maxi, y (yi, y)   <  for all
+
+S = ((x1,y1), . . . ,(xn,yn))
+
+examples
+
+training
+
+any
+
+For
+
+n
+
+18
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+n, the 1-slack cutting plane Algorithms 3 and 4 with constant  and C using the
+linear kernel
+ require at most O(n) calls to the separation oracle,
+ require at most O(n) computation time outside the separation oracle,
+ nd a solution where the number of support vectors (i.e. the number of non-zero
+
+dual variables in the cutting-plane model) does not depend on n,
+
+for any xed value of C > 0 and > 0.
+
+Proof. Theorems 5 and 6 shows that the algorithms terminate after a constant num-
+ber of iterations that does not depend on n. Since only one constraint is introduced
+in each iteration, the number of support vectors is bounded by the number of iter-
+ations. In each iteration, the algorithm performs exactly n calls to the separation
+oracle, which proves the rst statement. Similarly, the QP that is solved in each
+iteration is of constant size and therefore requires only constant time. It is easily
+veried that the remaining operations in each iterations can be done in time O(n)
+(cid:11)(cid:12)
+using Eqs. (7) and (9).
+
+We further discuss the time complexity for the case of kernels in the following
+section. Note that the linear-time algorithm proposed in (Joachims, 2006) for train-
+ing binary classication SVMs is a special case of the 1-slack methods developed
+here. In particular, for binary classication X =  N and Y = {1,+1}, and plug-
+ging
+
+(cid:5)
+
+(x,y) = 1
+2
+
+yx and (y,y
+
+(cid:13)) =
+
+(cid:13)
+
+0 if y = y
+1 otherwise
+
+(28)
+
+into either n-slack formulation OP2 or OP3 produces the standard SVM optimiza-
+tion problem OP1. The 1-slack formulations and algorithms are then equivalent to
+) bound on the maximum number of
+those in (Joachims, 2006). However, the O( 1
+iterations derived here is tighter than the O( 1
+) bound in (Joachims, 2006). Us-
+2
+ing a similar argument, it can also be shown that the ordinal regression method in
+(Joachims, 2006) is a special case of the 1-slack algorithm.
+
+3.3 Kernels and Low-Rank Approximations
+
+For problems where a (non-linear) kernel is used, the computation time in each
+iteration is O(n2) instead of O(n), since Eqs. (7) and (9) not longer apply. How-
+ever, the 1-slack algorithm can easily exploit rank-k approximations, which we will
+show reduces the computation time outside of the separation oracle from O(n 2) to
+(cid:13)
+(cid:13)
+(cid:13)
+(cid:13)
+O(nk + k3). Let (x
+) be a set of basis functions so that the subspace
+), ...,(x
+,y
+,y
+(cid:13)
+(cid:13)
+(cid:13)
+(cid:13)
+
+1
+1
+k
+k
+spanned by (x
+), ...,(x
+) (approximately) contains the solution www
+,y
+,y
+of OP4
+1
+1
+k
+k
+and OP5 respectively. Algorithms for nding such approximations have been sug-
+gested in (Keerthi et al, 2006; Fukumizu et al, 2004; Smola and Scholkopf, 2000) for
+
+Cutting-Plane Training of Structural SVMs
+
+19
+
+classications SVMs, and at least some of them can be extended to structural SVMs
+as well. In the simplest case, the set of k basis functions can be chosen randomly
+from the set of training examples.
+
+For a kernel K(.) and the resulting Gram matrix K with Ki j =(x
+(cid:13)
+K(x
+,y
+i
+of K in time O(k3). Assuming that www
+lently rewrite the 1-slack optimization problems as
+
+(cid:13)
+) =
+j
+1 of the Cholesky Decomposition L
+actually lies in the subspace, we can equiva-
+
+), we can compute the inverse L
+
+)T(x
+
+,x
+
+,y
+
+,y
+
+,y
+
+(cid:13)
+j
+
+(cid:13)
+j
+
+(cid:13)
+j
+
+
+
+(cid:13)
+i
+
+(cid:13)
+i
+
+(cid:13)
+i
+
+Optimization Problem 8 (1-SLACK STRUCTURAL SVM WITH MARGIN-
+RESCALING AND k BASIS FUNCTIONS (PRIMAL))
+
+min
+,0
+
+1
+2
+
+T +C 
+
+s.t.( y1, ..., yn) Y n :
+
+1
+
+T L
+
+1
+n
+
+
+K(xi,yi,x
+n
+i=1
+
+K(xi,yi,x
+
+(cid:13)
+,y
+1
+
+(cid:13)
+1
+
+(cid:13)
+,y
+k
+
+(cid:13)
+k
+
+) K(xi, yi,x
+...
+) K(xi, yi,x
+
+(cid:13)
+,y
+1
+
+(cid:13)
+)
+1
+
+(cid:13)
+,y
+k
+
+(cid:13)
+)
+k
+
+
+ 1
+
+(yi, yi) 
+
+n
+i=1
+
+n
+
+Optimization Problem 9 (1-SLACK
+RESCALING AND k BASIS FUNCTIONS (PRIMAL))
+
+STRUCTURAL
+
+SVM WITH
+
+SLACK-
+
+min
+,0
+
+1
+2
+
+T +C 
+
+s.t.(y1, ..., yn) Y n:
+
+1
+TL
+
+1
+n
+
+n
+i=1
+
+
+K(xi,yi,x
+(yi, yi)
+
+K(xi,yi,x
+
+(yi, yi)
+
+n
+i=1
+
+n
+
+
+ 1
+
+(cid:13)
+,y
+1
+
+(cid:13)
+1
+
+(cid:13)
+,y
+k
+
+(cid:13)
+k
+
+)K(xi, yi,x
+...
+)K(xi, yi,x
+
+(cid:13)
+,y
+1
+
+(cid:13)
+)
+1
+
+(cid:13)
+,y
+k
+
+(cid:13)
+)
+k
+
+Intuitively, the values of the kernel K(.) with each of the k basis functions form
+(cid:13)
+a new feature vector (cid:13)(x,y)T = (K(x,y,x
+(cid:13)
+))T describing each
+,y
+1, OP8 and OP9 become identical to
+1
+1
+example (x,y). After multiplication with L
+a problem with linear kernel and k features, and it is straightforward to see that
+Algorithms 3 and 4 apply to this new representation.
+
+), ...,K(x,y,x
+
+,y
+
+(cid:13)
+k
+
+(cid:13)
+k
+
+n
+
+For
+
+any
+
+training
+
+examples
+
+S = ((x1,y1), . . . ,(xn,yn))
+
+Corollary 2. (TIME COMPLEXITY OF ALGORITHMS 3 AND 4 FOR NON-LINEAR
+KERNEL)
+with
+maxi, y||(xi,yi)(xi, y)||2  R2 <  and maxi, y (yi, y)   <  for all
+n, the 1-slack cutting plane Algorithms 3 and 4 using a non-linear kernel
+ require at most O(n) calls to the separation oracle,
+ require at most O(n2) computation time outside the separation oracle,
+ require at most O(nk + k3) computation time outside the separation oracle, if a
+ nd a solution where the number of support vectors does not depend on n,
+for any xed value of C > 0 and > 0.
+
+set of k  n basis functions is used,
+
+20
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+Proof. The proof is analogous to that of Corollary 1. For the low-rank approxima-
+1 before entering the
+tion, note that it is more efcient to once compute wwwT = T L
+1(cid:13)(x,y) for each example. k3 is the cost of the
+loop in Line 5, than to compute L
+(cid:11)(cid:12)
+Cholesky Decomposition, but this needs to be computed only once.
+
+4 Implementation
+
+We implemented both the n-slack algorithms and the 1-slack algorithms in soft-
+ware package called SVMstruct , which we make publicly available for download at
+http://svmlight.joachims.org. SVMstruct uses SVMlight as the optimizer
+for solving the QP sub-problems. Users may adapt SVM struct to their own struc-
+tural learning tasks by implementing API functions corresponding to task-specic
+, , separation oracle, and inference. User API functions are in C. A popular
+extension is SVM python, which allows users to write API functions in Python in-
+stead, and eliminates much of the drudge work of C including model serializa-
+tion/deserialization and memory management. This extension is available for down-
+load at http://www.cs.cornell.edu/tomf/svmpython2/.
+
+An efcient implementation of the algorithms required a variety of design deci-
+sions, which are summarized in the following. These design decisions have a sub-
+stantial inuence on the practical efciency of the algorithms.
+Restarting the QP Sub-Problem Solver from the Previous Solution. Instead of
+solving each QP subproblem from scratch, we restart the optimizer from the dual
+solution of the previous working set as the starting point. This applies to both the
+n-slack and the 1-slack algorithms.
+Batch Updates for the n-Slack Algorithm. Algorithm 1 recomputes the solution of
+the QP sub-problem after each update to the working set. While this allows the algo-
+rithm to potentially nd better constraints to be added in each step, it requires a lot
+of time in the QP solver. We found that it is more efcient to wait with recomputing
+the solution of the QP sub-problem until 100 constraints have been added.
+Managing the Accuracy of the QP Sub-Problem Solver. In the initial iterations,
+a relatively low precision solution of the QP sub-problems is sufcient for identify-
+ing the next violated constraint to add to the working set. We therefore adjust the
+precision of the QP sub-problem optimizer throughout the optimization process for
+all algorithms.
+Removing Inactive Constraints from the Working Set. For both the n-slack and
+the 1-slack algorithm, constraints that were added to the working set in early itera-
+tions often become inactive later in the optimization process. These constraints can
+be removed without affecting the theoretical convergence guarantees of the algo-
+rithm, leading to smaller QPs being solved in each iteration. At the end of each
+
+Cutting-Plane Training of Structural SVMs
+
+21
+
+iteration, we therefore remove constraints from the working set that have not been
+active in the last 50 QP sub-problems.
+Caching (xi,yi) (xi, yi) in the 1-Slack Algorithm. If the separation oracle
+returns a label yi for an example xi, the constraint added in the n-slack algorithm en-
+sures that this label will never again produce an -violated constraint in a subsequent
+iteration. This is different, however, in the 1-slack algorithm, where the same label
+can be involved in an -violated constraint over and over again. We therefore cache
+the f most recently used (xi,yi)(xi, yi) for each training example xi (typically
+f = 10 in the following experiments). Lets denote the cache for example x i with Ci.
+Instead of asking the separation oracle in every iteration, the algorithm rst tries to
+construct a sufciently violated constraint from the caches via
+
+for i=1,...,n do
+yi  max yCi
+end for
+
+{(yi, y) + wwwT(xi, y)}
+
+or the analogous variant for the case of slack-rescaling. Only if this fails will the
+algorithm ask the separation oracle and update the cache. The goal of this caching
+strategy is to decrease the number of calls to the separation oracle. Note that in many
+applications, the separation oracle is very expensive (e.g., CFG parsing).
+Parallelization. While currently not implemented, the loop in Lines 5-7 of the 1-
+slack algorithms can easily be parallelized. In principle, one could make use of up to
+n parallel threads, each computing the separation oracle for a subset of the training
+sample. For applications like CFG parsing, where more then 99% of the overall
+runtime is spent on the separation oracle (see Section 5), parallizing this loop will
+lead to a substantial speed-up that should be almost linear in the number of threads.
+Solving the Dual of the QP Sub-Problems in the 1-Slack Algorithm. As indi-
+cated by Theorems 5 and 6, the working sets in the 1-slack algorithm stay small
+independent of the size of the training set. In practice, typically less then 100 con-
+straints are active at the solutions and we never encountered a single instance where
+the working set grew beyond 1000 constraints. This makes it advantageous to store
+and solve the QP sub-problems in the dual instead of in the primal, since the dual
+is not affected by the dimensionality of (x,y). The algorithm explicitly stores the
+Hessian H of the dual and adds or deletes a row/column whenever a constraint is
+added or removed from the working set. Note that this is not feasible for the n-slack
+algorithm, since the working set size is typically orders of magnitude larger (often
+> 100,000 constraints).
+
+5 Experiments
+
+For the experiments in this paper we will consider the following four applications,
+namely binary classication, multi-class classication, sequence tagging with lin-
+ear chain HMMs, and CFG grammar learning. They cover the whole spectrum of
+possible applications, from multi-class classication involving a simple Y of low
+
+22
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+cardinality and with a very inexpensive separation oracle, to CFG parsing with large
+and complex structural objects and an expensive separation oracle. The particular
+setup for the different applications is as follows.
+Binary Classication. For binary classication X = N and Y = {1,+1}. Us-
+ing
+
+(cid:5)
+
+(x,y) = 1
+2
+
+yx and (y, y) = 100[y (cid:5)= y] =
+
+0 if y = y
+100 otherwise
+
+(29)
+
+in the 1-slack formulation, OP4 results in the algorithm presented in (Joachims,
+2006) and implemented in the SVM-perf software 3. In the n-slack formulation, one
+immediately recovers Vapnik et al.s original classication SVM formulation of OP1
+(Cortes and Vapnik, 1995; Vapnik, 1998) (up to the more convenient percentage-
+scale rescaling of the loss function and the absence of the bias term), which we
+solve using SVMlight.
+Multi-Class Classication. This is another simple instance of a structual SVM,
+where X = N and Y = {1, ...,k}. Using (y, y) = 100[y (cid:5)= y] and
+
+multi(x,y) =
+
+(30)
+
+
+
+
+
+
+
+
+
+0
+...
+0
+x
+0
+...
+0
+
+where the feature vector x is stacked into position y, the resulting n-slack prob-
+lem becomes identical to the multi-class SVM of Crammer and Singer (2001). Our
+SVM-multiclass (V2.13) implementation3 is also built via the SVMstruct API. The
+argmax for the separation oracle and the prediction are computed by explicit enu-
+meration.
+
+We use the Covertype dataset of Blackard, Jock & Dean as our benchmark for
+the multi-class SVM. It is a 7-class problem with n = 522,911 examples and 54
+features. This means that the dimensionality of (x,y) is N = 378.
+Sequence Tagging with Linear Chain HMMs. In sequence tagging (e.g., Part-of-
+Speech Tagging) each input x = (x1, ...,xl) is a sequence of feature vectors (one
+for each word), and y = (y1, ...,yl) is a sequence of labels yi  {1, ...,k} of match-
+ing length. Isomorphic to a linear chain HMM, we model dependencies between
+each yi and xi, as well as dependencies between yi and yi1. Using the denition of
+multi(x,y) from above, this leads to a joint feature vector of
+
+3 Available at svmlight.joachims.org
+
+multi(xi,yi)
+
+[yi = 1][yi1 = 1]
+[yi = 1][yi1 = 2]
+
+[yi = k][yi1 = k]
+
+...
+
+(cid:13)
+1
+
+Cutting-Plane Training of Structural SVMs
+
+HMM((x1, ...,xl),(y1, ...,yl)) =
+
+
+
+
+
+l
+i=1
+
+
+
+ .
+
+23
+
+(31)
+
+(cid:13)
+)) = l
+l
+
+[yi (cid:5)= y
+
+(cid:13)
+i
+
+i=1
+
+, ...,y
+
+We use the number of misclassied tags ((y1, ...,yl),(y
+] as
+the loss function. The argmax for prediction and the separation oracle are both com-
+puted via the Viterbi algorithm. Note that the separation oracle is equivalent to the
+prediction argmax after adding 1 to the node potentials of all incorrect labels. Our
+SVM-HMM (V3.10) implementation based on SVM struct is also available online3.
+We evaluate on the Part-of-Speech tagging dataset from the Penn Treebank cor-
+pus (Marcus et al, 1993). After splitting the dataset into training and test set, it has
+n = 35,531 training examples (i.e., sentences), leading to a total of 854,022 tags
+over k = 43 labels. The feature vectors x i describing each word consist of binary
+features, each indicating the presence of a particular prex or sufx in the current
+word, the previous word, and the following word. All prexes and sufxes observed
+in the training data are used as features. In addition, there are features encoding the
+length of the word. The total number of features is approximately 430,000, leading
+to a HMM(x,y) of dimensionality N = 18,573,781.
+Parsing with Context Free Grammars. We use natural language parsing as an
+example application where the cost of computing the separation oracle is compar-
+atively high. Here, each input x = (x1, ...,xl) is a sequence of feature vectors (one
+for each word), and y is a tree with x as its leaves. Admissible trees are those that
+can be constructed from a given set of grammar rules  in our case, all grammar
+rules observed in the training data. As the loss function, we use (y, y) = 100[y(cid:5)= y],
+and CFG(x,y) has one feature per grammar rule that counts how often this rule was
+applied in y. The argmax for prediction can be computed efciently using a CKY
+parser. We use the CKY parser implementation4 of Johnson (1998). For the separa-
+tion oracle the same CKY parser is used after extending it to also return the second
+best solution. Again, our SVM-CFG (V3.01) implementation based on SVM struct is
+available online3.
+
+For the following experiments, we use all sentences with at most 15 words from
+the Penn Treebank corpus (Marcus et al, 1993). Restricting the dataset to short sen-
+tences is not due to a limitation of SVMstruct , but due to the CKY implementation we
+are using. It becomes very slow for long sentences. Faster parsers that use pruning
+could easily handle longer sentences as well. After splitting the data into training
+and test set, we have n = 9,780 training examples (i.e., sentences) and CFG(x,y)
+has a dimensionality of N = 154,655.
+4 Available at http://www.cog.brown.edu/mj/Software.htm
+
+24
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+n
+MultiC 522,911
+HMM
+CFG
+
+378
+35,531 18,573,781
+154,655
+9,780
+
+N 1-slack
+
+n-slack
+
+1-slack
+
+n-slack 1-slack
+
+CPU-Time
+
+# Sep. Oracle
+
+1.05 1180.56 4,183,288 10,981,131
+0.90
+4,476,906
+479,220
+2.90
+
+177.00 1,314,647
+224,940
+
+8.52
+
+# Support Vec.
+n-slack
+98 334,524
+139
+83,126
+12,890
+70
+
+Table 1 Training CPU-time (in hours), number of calls to the separation oracle, and number of
+support vectors for both the 1-Slack (with caching) and the n-Slack Algorithm. n is the number of
+training examples and N is the number of features in (x, y).
+
+5.1 Experiment Setup
+
+Unless noted otherwise, the following parameters are used in the experiments re-
+ported below. Both the 1-slack algorithms (SVM struct options -w 3 and -w 4
+with caching) and the n-slack algorithms (option -w 0) use = 0.1 as the stop-
+ping criterion (option -e 0.1). Given the scaling of the loss for multi-class clas-
+sication and CFG parsing, this corresponds to a precision of approximately 0.1%
+of the empirical risk for the 1-slack algorithm, and it is slightly higher for the HMM
+problem. For the n-slack problem it is harder to interpret the meaning of this , but
+we will see in Section 5.7 that it gives solutions of comparable precision. As the
+value of C, we use the setting that achieves the best prediction performance on the
+test set when using the full training set (C = 10,000,000 for multi-class classi-
+cation, C = 5,000 for HMM sequence tagging, and C = 20,000 for CFG parsing)
+(option -c). As the cache size we use f = 10 (option -f 10). For multi-class
+classication, margin-rescaling and slack-rescaling are equivalent. For the others
+two problems we use margin-rescaling (option -o 2). Whenever possible, run-
+time comparisons are done on the full training set. All experiments are run on 3.6
+MHz Intel Xeon processors with 4GB of main memory under Linux.
+
+5.2 How Fast is the 1-Slack Algorithm Compared to the n-Slack
+
+Algorithm?
+
+We rst examine absolute runtimes of the 1-slack algorithm, and then analyze and
+explain various aspects of its scaling behavior in the following. Table 1 shows the
+CPU-time that both the 1-slack and the n-slack algorithm take on the multi-class,
+sequence tagging, and parsing benchmark problems. For all problems, the 1-slack
+algorithm is substantially faster, for multi-class and HMM by several orders of mag-
+nitude.
+
+The speed-up is largest for the multi-class problem, which has the least expensive
+separation oracle. Not counting constraints constructed from the cache, less than 1%
+of the time is spend on the separation oracle for the multi-class problem, while it
+is 15% for the HMM and 98% for CFG parsing. Therefore, it is interesting to also
+compare the number of calls to the separation oracle. In all cases, Table 1 shows that
+
+Cutting-Plane Training of Structural SVMs
+
+25
+
+Reuters CCAT
+Reuters C11
+ArXiv Astro-ph
+Covertype 1
+KDD04 Physics
+
+n
+
+N
+804,414 47,236
+804,414 47,236
+62,369 99,757
+522,911
+150,000
+
+0.16%
+0.16%
+0.08%
+54 22.22%
+78 38.42%
+
+CPU-Time
+
+# Support Vec.
+s 1-slack SVMlight 1-slack SVMlight
+230388
+60748
+11318
+279092
+99123
+
+58.0 20,075.5
+71.3
+5,187.4
+4.4
+80.1
+53.4 25,514.3
+9.2
+1,040.2
+
+8
+6
+9
+27
+13
+
+Table 2 Training CPU time (in seconds) for ve binary classication problems comparing the 1-
+slack algorithm (without caching) with SVMlight. n is the number of training examples, N is the
+number of features, and s is the fraction of non-zero elements of the feature vectors. The SVMlight
+results are quoted from (Joachims, 2006), the 1-slack results are re-run with the latest version of
+SVM-struct using the same experiment setup as in (Joachims, 2006).
+
+the 1-slack algorithm requires by a factor between 2 and 4 fewer calls, accounting
+for much of the time saved on the CFG problem.
+
+The most striking difference between the two algorithms lies in the number of
+support vectors they produce (i.e., the number of dual variables that are non-zero).
+For the n-slack algorithm, the number of support vectors lie in the tens or hundreds
+of thousands, while all solutions produced by the 1-slack algorithm have only about
+100 support vectors. This means that the working sets that need to be solved in each
+iteration are orders of magnitude smaller in the 1-slack algorithm, accounting for
+only 26% of the overall runtime in the multi-class experiment compared to more
+than 99% for the n-slack algorithm. We will further analyze this in the following.
+
+5.3 How Fast is the 1-Slack Algorithm Compared to Conventional
+
+SVM Training Algorithms?
+
+Since most work on training algorithms for SVMs was done for binary classi-
+cation, we compare the 1-slack algorithms against algorithms for the special case
+of binary classication. While there are training algorithms for linear SVMs that
+scale linearly with n (e.g., Lagrangian SVM (Mangasarian and Musicant, 2001)
+(using the 2
+loss), Proximal SVM (Fung and Mangasarian, 2001) (using an L 2
+i
+regression loss), and Interior Point Methods (Ferris and Munson, 2003)), they use
+the Sherman-Morrison-Woodbury formula (or similar matrix factorizations) for in-
+verting the Hessian of the dual. This requires operating on N  N matrices, which
+makes them applicable only for problems with small N. The L2-SVM-MFN method
+(Keerthi and DeCoste, 2005) avoids explicitly representing N  N matrices using
+conjugate gradient techniques. While the worst-case cost is still O(snmin(n,N)) per
+iteration for feature vectors with sparsity s, they observe that their method empiri-
+cally scales much better. The discussion in (Joachims, 2006) concludes that runtime
+is comparable to the 1-slack algorithm implemented in SVM-perf. The 1-slack al-
+gorithm scales linearly in both n and the sparsity s of the feature vectors, even if the
+
+26
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+total number N of features is large (Joachims, 2006). Note that it is unclear whether
+any of the conventional algorithms can be extended to structural SVM training.
+
+The most widely used algorithms for training binary SVMs are decomposition
+methods like SVMlight (Joachims, 1999), SMO (Platt, 1999), and others (Chang and
+Lin, 2001; Collobert and Bengio, 2001). Taskar et al (2003) extended the SMO al-
+gorithm to structured prediction problems based on their polynomial-size reformu-
+lation of the n-slack optimization problem OP2 for the special case of decomposable
+models and decomposable loss functions. In the case of binary classication, their
+SMO algorithm reduces to a variant of the traditional SMO algorithm, which can
+be seen as a special case of the SVMlight algorithm. We therefore use SVMlight as
+a representative of the class of decomposition methods. Table 2 compares the run-
+time of the 1-slack algorithm to SVMlight on ve benchmark problems with varying
+numbers of features, sparsity, and numbers of training examples. The benchmarks
+include two text classication problems from the Reuters RCV1 collection 5 (Lewis
+et al, 2004), a problem of classifying ArXiv abstracts, a binary classier for class 1
+of the Covertype dataset6 of Blackard, Jock & Dean, and the KDD04 Physics
+task from the KDD-Cup 2004 (Caruana et al, 2004). In all cases, the 1-slack algo-
+rithm is faster than SVMlight, which is highly optimized to binary classication. On
+large datasets, the difference spans several orders of magnitude.
+
+After the 1-slack algorithm was originally introduced, new stochastic subgradi-
+ent descent methods were proposed that are competitive in runtime for classication
+SVMs, especially the PEGASOS algorithm (Shalev-Shwartz et al, 2007). While
+currently only explored for classication, it should be possible to extend PEGA-
+SOS also to structured prediction problems. Unlike exponentiated gradient methods
+(Bartlett et al, 2004; Globerson et al, 2007), PEGASOS does not require the compu-
+tation of marginals, which makes it equally easy to apply as cutting-plane methods.
+However, unlike for our cutting-plane methods where the theory provides a practi-
+cally effective stopping criterion, it is less clear when to stop primal stochastic sub-
+gradient methods. Since they do not maintain a dual program, the duality gap cannot
+be used to characterize the quality of the solution at termination. Furthermore, there
+is a questions of how to incorporate caching into stochastic subgradient methods
+while still maintaining fast convergence. As shown in the following, caching is es-
+sential for problems where the separation oracle (or, equivalently, the computation
+of subgradients) is expensive (e.g. CFG parsing).
+
+5.4 How does Training Time Scale with the Number of Training
+
+Examples?
+
+A key question is the scalability of the algorithm for large datasets. While Corol-
+lary 1 shows that an upper bound on the training time scales linearly with the number
+
+5 http://jmlr.csail.mit.edu/papers/volume5/lewis04a/lyrl2004 rcv1v2 README.htm
+6 http://www.ics.uci.edu/mlearn/MLRepository.html
+
+Cutting-Plane Training of Structural SVMs
+
+Multi-Class
+
+HMM
+
+1e+07
+
+1e+06
+
+1e+07
+
+1e+06
+
+100000
+
+10000
+
+1000
+
+100
+
+s
+d
+n
+o
+c
+e
+S
+U
+P
+C
+
+-
+
+s
+d
+n
+o
+c
+e
+S
+U
+P
+C
+
+-
+
+100000
+
+10000
+
+1000
+
+100
+
+10
+
+1e+06
+
+100000
+
+s
+d
+n
+o
+c
+e
+S
+U
+P
+C
+
+-
+
+10000
+
+1000
+
+100
+
+10
+
+27
+
+CFG
+
+n-slack
+1-slack
+1-slack (cache)
+O(x)
+
+n-slack
+1-slack
+1-slack (cache)
+O(x)
+
+10
+
+1000  10000  100000  1e+06
+Number of Training Examples
+
+n-slack
+1-slack
+1-slack (cache)
+O(x)
+
+1000  10000  100000
+100
+Number of Training Examples
+
+1
+
+10
+
+100
+
+1000  10000
+Number of Training Examples
+
+Fig. 1 Training times for multi-class classication (left) HMM part-of-speech tagging (middle)
+and CFG parsing (right) as a function of n for the n-slack algorithm, the 1-slack algorithm, and the
+1-slack algorithm with caching.
+
+100000
+
+s
+d
+n
+o
+c
+e
+S
+U
+P
+C
+
+-
+
+10000
+
+1000
+
+100
+
+10
+
+1
+
+10
+
+1-Slack Algorithm
+
+Multi-Class
+HMM
+CFG
+O(x)
+
+100
+
+1000
+
+10000  100000  1e+06
+
+Number of Training Examples
+
+100000
+
+s
+d
+n
+o
+c
+e
+S
+U
+P
+C
+
+-
+
+10000
+
+1000
+
+100
+
+10
+
+1
+
+10
+
+1-Slack Algorithm with Caching
+
+Multi-Class
+HMM
+CFG
+O(x)
+
+100
+
+1000
+
+10000  100000  1e+06
+
+Number of Training Examples
+
+Fig. 2 Training times as a function of n using the optimal value of C at each training set size for
+the the 1-slack algorithm (left) and the 1-slack algorithm with caching (right).
+
+of training examples, the actual behavior underneath this bound could potentially be
+different. Figure 1 shows how training time relates to the number of training exam-
+ples for the three structural prediction problems. For the multi-class and the HMM
+problem, training time does indeed scale at most linearly as predicted by Corol-
+lary 1, both with and without using the cache. However, the cache helps for larger
+datasets, and there is a large advantage from using the cache over the whole range
+for CFG parsing. This is to be expected, given the high cost of the separation oracle
+in the case of parsing.
+
+As shown in Figure 2, the scaling behavior of the 1-slack algorithm remains
+largely unchanged even if the regularization parameter C is not held constant, but
+is set to the value that gives optimal prediction performance on the test set for each
+training set size. The scaling with C is analyzed in more detail in Section 5.9.
+
+1-Slack Algorithm
+
+28
+
+10000
+
+1000
+
+s
+n
+o
+
+i
+t
+
+a
+r
+e
+
+t
+I
+
+100
+
+10
+
+1
+
+10
+
+Multi-Class
+HMM
+CFG
+
+100
+
+1000
+
+10000  100000  1e+06
+
+Number of Training Examples
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+10000
+
+1000
+
+s
+n
+o
+
+i
+t
+
+a
+r
+e
+
+t
+I
+
+100
+
+10
+
+1
+
+10
+
+1-Slack Algorithm with Caching
+
+Multi-Class
+HMM
+CFG
+
+100
+
+1000
+
+10000  100000  1e+06
+
+Number of Training Examples
+
+Fig. 3 Number of iterations as a function of n for the the 1-slack algorithm (left) and the 1-slack
+algorithm with caching (right).
+
+The n-slack algorithm scales super-linearly for all problems, but so does the
+1-slack algorithm for CFG parsing. This can be explained as follows. Since the
+grammar is constructed from all rules observed in the training data, the number
+of grammar rules grows with the number of training examples. Even from the
+second-largest to the largest training set, the number of rules in the grammar still
+grows by almost 70% (3550 rules vs. 5182 rules). This has two effects. First, the
+separation oracle becomes slower, since its time scales with the number of rules
+in the grammar. In particular, the time the CFG parser takes to compute a sin-
+gle argmax increases more then six-fold from the smallest to the largest training
+set. Second, additional rules (in particular unary rules) introduce additional fea-
+tures and allow the construction of larger and larger wrong trees y, which means
+that R2 = maxi, y||(xi,yi)(xi, y)||2 is not constant but grows. Indeed, Figure 3
+shows that  consistent with Theorem 5  the number of iterations of the 1-slack
+algorithm is roughly constant for multi-class classication and the HMM 7, while it
+grows slowly for CFG parsing.
+
+Finally, note that in Figure 3 the difference in the number of iterations of the algo-
+rithm without caching (left) and with caching (right) is small. Despite the fact that
+the constraint from the cache is typically not the overall most violated constraint,
+but only a sufciently violated constraint, both versions of the algorithm appear to
+make similar progress in each iteration.
+
+7 Note that the HMM always considers all possible rules in the regular language, so that there is
+no growth in the number of rules once all symbols are added.
+
+Cutting-Plane Training of Structural SVMs
+
+29
+
+Multi-Class
+
+n-slack
+1-slack
+1-slack (cache)
+
+1e+07
+
+1e+06
+
+100000
+
+10000
+
+1000
+
+100
+
+s
+r
+o
+
+t
+c
+e
+V
+
+
+t
+r
+o
+p
+p
+u
+S
+
+CFG
+n-slack
+1-slack
+1-slack (cache)
+
+HMM
+n-slack
+1-slack
+1-slack (cache)
+
+1e+07
+
+1e+06
+
+100000
+
+10000
+
+1000
+
+100
+
+s
+r
+o
+
+t
+c
+e
+V
+
+
+t
+r
+o
+p
+p
+u
+S
+
+1e+07
+
+1e+06
+
+100000
+
+10000
+
+1000
+
+100
+
+s
+r
+o
+
+t
+c
+e
+V
+
+
+t
+r
+o
+p
+p
+u
+S
+
+10
+
+1000  10000  100000  1e+06
+Number of Training Examples
+
+10
+
+1000  10000  100000
+100
+Number of Training Examples
+
+10
+
+10
+
+100
+
+1000  10000
+Number of Training Examples
+
+Fig. 4 Number of support vectors for multi-class classication (left) HMM part-of-speech tagging
+(middle) and CFG parsing (right) as a function of n for the n-slack algorithm, the 1-slack algorithm,
+and the 1-slack algorithm with caching.
+
+5.5 What is the Size of the Working Set?
+
+As already noted above, the size of the working set and its scaling has a substantial
+inuence on the overall efciency of the algorithm. In particular, large (and grow-
+ing) working sets will make it expensive to solve the quadratic programs. While
+the number of iterations is an upper bound on the working set size for the 1-slack
+algorithm, the number of support vectors shown in Figure 4 gives a much better
+idea of its size, since we are removing inactive constraints from the working set.
+For the 1-slack algorithm, Figure 4 shows that the number of support vectors does
+not systematically grow with n for any of the problems, making it easy to solve
+the working set QPs even for large datasets. This is very much in contrast to the n-
+slack algorithm, where the growing number of support vectors makes each iteration
+increasingly costly, and is starting to push the limits of what can be kept in main
+memory.
+
+5.6 How often is the Separation Oracle Called?
+
+Next to solving the working set QPs in each iteration, computing the separation ora-
+cle is the other major expense in each iteration. We now investigate how the number
+of calls to the separation oracle scales with n, and how this is inuenced by caching.
+Figure 5 shows that for all algorithms the number of calls scales linearly with n for
+the multi-class problem and the HMM. It is slightly super-linear for CFG parsing
+due to the increasing number of interations as discussed above. For all problems and
+training set sizes, the 1-slack algorithm with caching requires the fewest calls.
+
+The size of the cache has a surprisingly little inuence on the reduction of calls to
+the separation oracle. Figure 6 shows that a cache of size f = 5 already provides all
+
+30
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+Multi-Class
+
+n-slack
+1-slack
+1-slack (cache)
+O(x)
+
+1e+10
+
+1e+09
+
+1e+08
+
+1e+07
+
+1e+06
+
+100000
+
+l
+
+e
+c
+a
+r
+O
+n
+o
+
+
+
+i
+t
+
+a
+r
+a
+p
+e
+S
+o
+
+
+
+t
+
+s
+
+l
+l
+
+a
+C
+
+HMM
+n-slack
+1-slack
+1-slack (cache)
+O(x)
+
+1e+09
+
+1e+08
+
+1e+07
+
+1e+06
+
+100000
+
+10000
+
+CFG
+n-slack
+1-slack
+1-slack (cache)
+O(x)
+
+1e+08
+
+1e+07
+
+1e+06
+
+l
+
+e
+c
+a
+r
+O
+n
+o
+
+
+
+i
+t
+
+a
+r
+a
+p
+e
+S
+o
+
+
+
+t
+
+s
+
+l
+l
+
+a
+C
+
+100000
+
+10000
+
+1000
+
+l
+
+e
+c
+a
+r
+O
+n
+o
+
+
+
+i
+t
+
+a
+r
+a
+p
+e
+S
+o
+
+
+
+t
+
+s
+
+l
+l
+
+a
+C
+
+10000
+
+1000  10000  100000  1e+06
+Number of Training Examples
+
+1000
+
+1000  10000  100000
+100
+Number of Training Examples
+
+100
+
+10
+
+100
+
+1000  10000
+Number of Training Examples
+
+Fig. 5 Number of calls to the separation oracle for multi-class classication (left) HMM part-of-
+speech tagging (middle) and CFG parsing (right) as a function of n for the n-slack algorithm, the
+1-slack algorithm, and the 1-slack algorithm with caching.
+
+1e+09
+
+1e+08
+
+Multi-Class
+HMM
+CFG
+
+l
+
+e
+c
+a
+r
+O
+n
+o
+
+
+
+i
+t
+
+a
+r
+a
+p
+e
+S
+o
+
+
+
+t
+
+s
+
+l
+l
+
+a
+C
+
+1e+07
+
+1e+06
+
+100000
+
+0
+
+2
+
+5
+
+10
+
+20
+
+Size of Cache
+
+Fig. 6 Number of calls to the separation oracle as a function of cache size for the the 1-slack
+algorithm.
+
+of the benets, and that larger cache sizes do not further reduce the number of calls.
+However, we conjecture that this might be an artifact of our simple least-recently-
+used caching strategy, and that improved caching methods that selectively call the
+separation oracle for only a well-chosen subset of the examples will provide further
+benets.
+
+5.7 Are the Solutions Different?
+
+Since the stopping criteria are different in the 1-slack and the n-slack algorithm, it
+remains to verify that they do indeed compute a solution of comparable effective-
+ness. The plot in Figure 7 shows the dual objective value of the 1-slack solution
+
+Cutting-Plane Training of Structural SVMs
+
+31
+
+Multi-Class
+HMM
+CFG
+
+j
+
+n
+_
+b
+O
+
+/
+)
+n
+_
+b
+O
+
+j
+
+
+-
+
+
+j
+
+1
+_
+b
+O
+
+(
+
+0.09
+0.08
+0.07
+0.06
+0.05
+0.04
+0.03
+0.02
+0.01
+0
+-0.01
+-0.02
+-0.03
+-0.04
+-0.05
+-0.06
+-0.07
+-0.08
+-0.09
+
+Task
+Measure
+MultiC Accuracy
+HMM
+CFG
+
+Token Accuracy
+Bracket F1
+
+1-slack n-slack
+72.35
+96.69
+70.09
+
+72.33
+96.71
+70.22
+
+100
+
+1000
+
+10000  100000  1e+06
+
+1e+07
+
+C
+
+Fig. 7 Relative difference in dual objective value of the solutions found by the 1-slack algorithm
+and by the n-slack algorithm as a function of C at the maximum training set size (left), and test-set
+prediction performance for the optimal value of C (right).
+
+relative to the n-slack solution. A value below zero indicates that the n-slack solu-
+tion has a better dual objective value, while a positive value shows by which fraction
+the 1-slack objective is higher than the n-slack objective. For all values of C the so-
+lutions are very close for the multi-class problem and for CFG parsing, and so are
+their prediction performances on the test set (see table in Figure 7). This is not sur-
+prising, since for both the n-slack and the 1-slack formulation the respective bound
+the duality gap by C.
+
+For the HMM, however, this C is a substantial fraction of the objective value
+at the solution, especially for large values of C. Since the training data is almost
+linearly separable for the HMM, C becomes a substantial part of the slack contri-
+bution to the objective value. Furthermore, note the different scaling of the HMM
+loss (i.e., number of misclassied tags in the sentence), which is roughly 5 time
+smaller than the loss function on the other problems (i.e., 0 to 100 scale). So, an
+= 0.1 on the HMM problem is comparable to an = 0.5 on the other problems.
+Nevertheless, the per-token test accuracy of 96.71% for the 1-slack solution is even
+slightly better than the 96.69% accuracy of the n-slack solution.
+
+5.8 How does the 1-Slack Algorithm Scale with ?
+
+While the scaling with n is the most important criterion from a practical perspective,
+it is also interesting to look at the scaling with . Theorem 5 shows that the number
+of iterations (and therefore the number of calls to the separation oracle) scales O( 1
+)
+in the worst cast. Figure 8, however, shows that the scaling is much better in practice.
+In particular, the number of calls to the separation oracle is largely independent of
+ and remains constant when caching is used. It seems like the additional iterations
+can be done almost entirely from the cache.
+
+32
+
+s
+n
+o
+
+i
+t
+
+a
+r
+e
+
+t
+I
+
+100000
+
+10000
+
+1000
+
+Thorsten Joachims, Thomas Finley, and Chun-Nam John Yu
+
+Multi-Class
+HMM
+CFG
+O(1/eps)
+
+1e+07
+
+1e+06
+
+l
+
+e
+c
+a
+r
+O
+n
+o
+
+
+
+i
+t
+
+a
+r
+a
+p
+e
+S
+o
+
+
+
+t
+
+s
+
+l
+l
+
+a
+C
+
+100000
+
+100
+
+0.01
+
+0.1
+
+1
+
+10
+
+Epsilon
+
+10000
+
+0.01
+
+Multi-Class
+HMM
+CFG
+
+0.1
+
+1
+
+10
+
+Epsilon
+
+Fig. 8 Number of iterations for the 1-slack algorithm (left) and number of calls to the separation
+oracle for the 1-slack algorithm with caching (right) as a function of at the maximum training set
+size.
+
+1e+06
+
+100000
+
+10000
+
+1000
+
+100
+
+10
+
+s
+n
+o
+
+i
+t
+
+a
+r
+e
+
+t
+I
+
+1
+100
+
+1e+07
+
+1e+06
+
+l
+
+e
+c
+a
+r
+O
+n
+o
+
+
+
+i
+t
+
+a
+r
+a
+p
+e
+S
+o
+
+
+
+t
+
+s
+
+l
+l
+
+a
+C
+
+100000
+
+10000
+
+100
+
+Multi-Class
+HMM
+CFG
+O(C)
+
+1000  10000  100000  1e+06  1e+07  1e+08
+
+C
+
+Multi-Class
+HMM
+CFG
+
+1000  10000  100000  1e+06  1e+07  1e+08
+
+C
+
+Fig. 9 Number of iterations for the 1-slack algorithm (left) and number of calls to the separation
+oracle for the 1-slack algorithm with caching (right) as a function of C at the maximum training
+set size.
+
+5.9 How does the 1-Slack Algorithm Scale with C?
+
+
+
+With increasing training set size n, the optimal value of C will typically change
+(some theoretical results suggest an increase on the order of
+n). In practice, nding
+the optimal value of C typically requires training for a large range of C values as
+part of a cross-validation experiment. It is therefore interesting to know how the
+algorithm scales with C. While Theorem 5 bounds the number of iterations with
+O(C), Figure 9 shows that the actual scaling is again much better. The number of
+iterations increases much more slowly on all problems. Furthermore, as already
+observed for above, the additional iterations are almost entirely based on the cache,
+so that C has hardly any inuence on the number of calls to the separation oracle.
+
+Cutting-Plane Training of Structural SVMs
+
+33
+
+6 Conclusions
+
+We presented a cutting-plane algorithm for training structural SVMs. Unlike ex-
+isting cutting-plane methods for this problems, the number of constraints that are
+generated does not depend on the number of training examples n, but only on C and
+the desired precision . Empirically, the new algorithm is substantially faster than
+existing methods, in particular decomposition methods like SMO and SVM light, and
+it includes the training algorithm of Joachims (2006) for linear binary classica-
+tion SVMs as a special case. An implementation of the algorithm is available at
+svmlight.joachims.org with instances for multi-class classication, HMM
+sequence tagging, CFG parsing, and binary classication.
+
+Acknowledgements We thank Evan Herbst for implementing a prototype of the HMM instance
+of SVMstruct, which was used in some of our preliminary experiments. This work was supported in
+part through the grant NSF IIS-0713483 from the National Science Foundation and through a gift
+from Yahoo!.
+

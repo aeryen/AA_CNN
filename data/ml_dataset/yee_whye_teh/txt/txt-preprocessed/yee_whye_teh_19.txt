@@ -1,0 +1,812 @@
+Abstract
+
+The innite hidden Markov model is a non-
+parametric extension of the widely used hid-
+den Markov model. Our paper introduces
+a new inference algorithm for the innite
+Hidden Markov model called beam sam-
+pling. Beam sampling combines slice sam-
+pling, which limits the number of states con-
+sidered at each time step to a nite number,
+with dynamic programming, which samples
+whole state trajectories eciently. Our algo-
+rithm typically outperforms the Gibbs sam-
+pler and is more robust. We present appli-
+cations of iHMM inference using the beam
+sampler on changepoint detection and text
+prediction problems.
+
+1. Introduction
+
+The hidden Markov model (HMM) (Rabiner, 1989) is
+one of the most widely used models in machine learn-
+ing and statistics for sequential or time series data.
+The HMM consists of a hidden state sequence with
+Markov dynamics, and independent observations at
+each time given the corresponding state. There are
+three learning related tasks associated with the HMM:
+inference of the hidden state sequence, learning of the
+parameters, and selection of the right model size.
+Inference for the hidden state trajectory can be
+performed exactly using the forward-backward algo-
+rithm (Rabiner, 1989), a dynamic programming algo-
+rithm with O(T K 2) computational costs where T is
+the number of time steps and K number of states.
+
+Appearing in Proceedings of the 25 th International Confer-
+ence on Machine Learning, Helsinki, Finland, 2008. Copy-
+right 2008 by the author(s)/owner(s).
+
+The standard approach to learning uses the Baum-
+Welch algorithm, a special instance of the EM al-
+gorithm (Dempster et al., 1977) which produces (lo-
+cally) maximum likelihood (ML) parameters. Such
+ML learning of parameters can potentially lead to over-
+tting if the model size is inappropriate for the amount
+of data available. This can be partially mitigated us-
+ing a more fully Bayesian learning procedure, e.g. using
+variational approximations (MacKay, 1997) or Markov
+chain Monte Carlo (MCMC) sampling (Scott, 2002).
+Such Bayesian approaches also produce estimates of
+the marginal probability of data, which can be used to
+select for the appropriate model size (or to average over
+model sizes if ones desires a more Bayesian analysis).
+Such model selection procedures can be computation-
+ally expensive since multiple HMMs of dierent sizes
+need to be explored.
+A new twist on the problem of model selection has
+emerged in recent years with the increasing popu-
+larity of nonparametric Bayesian models. These are
+models of innite capacity, a nite portion of which
+will be used to model a nite amount of observed
+data. The idea of searching/averaging over the space
+of nite models is replaced with Bayesian inference
+over the size of submodel used to explain data. Ex-
+amples of successful applications of nonparametric
+Bayesian methods include Gaussian Processes (Ras-
+mussen & Williams, 2005) for regression and classi-
+cation, Dirichlet Process (DP) mixture models (Es-
+cobar & West, 1995; Rasmussen, 2000) for cluster-
+ing heterogeneous data and density estimation, Indian
+Buet Processes for latent factor analysis (Griths
+& Ghahramani, 2006), and dening distributions over
+non-trivial combinatorial objects such as trees (Teh
+et al., 2008).
+The Innite Hidden Markov Model (iHMM), otherwise
+known as the HDP-HMM, (Beal et al., 2002) is a non-
+
+Beam Sampling for the Innite Hidden Markov Model
+
+parametric Bayesian extension of the HMM with an
+innite number of hidden states. Exact Bayesian in-
+ference for the iHMM is intractable. Specically, given
+a particular setting of the parameters the forward-
+backward algorithm cannot be applied since the num-
+ber of states K is innite, while with the parameters
+marginalized out all hidden state variables will be cou-
+pled and the forward-backward algorithm cannot be
+applied either. Currently the only approximate in-
+ference algorithm available is Gibbs sampling, where
+individual hidden state variables are resampled condi-
+tioned on all other variables (Teh et al., 2006). Unfor-
+tunately convergence of Gibbs sampling is notoriously
+slow in the HMM setting due to the strong dependen-
+cies between consecutive time steps often exhibited by
+time series data (Scott, 2002).
+In this paper we propose a new sampler for the iHMM
+called beam sampling. Beam sampling combines two
+ideasslice sampling and dynamic programmingto
+sample whole state trajectories eciently. Our ap-
+plication of slice sampling (Neal, 2003) is inspired
+by (Walker, 2007), who used it to limit the number
+of clusters considered when sampling assignment vari-
+ables in DP mixtures to a nite number. We apply
+slice sampling to limit to a nite number the states
+considered in each time step of the iHMM, so that dy-
+namic programming can be used to sample whole state
+trajectories eciently. We call our proposal beam
+sampling due to its similarity to beam search, a heuris-
+tic procedure for nding the maximum a posteriori
+trajectory given observations in non-linear dynamical
+systems. The underlying idea in both is to limit the
+search to a small number of states so that a good tra-
+jectory can be found using reasonable computational
+resources. However, ours is a MCMC sampling method
+with guaranteed convergence to the true posterior.
+We rst present a self-contained description of the
+iHMM using the Hierarchical Dirichlet process (HDP)
+formalism (Teh et al., 2006) in Section 2, followed
+by a discussion of Gibbs sampling in Section 3. We
+introduce beam sampling in Section 4 and compare
+it against Gibbs sampling on both articial and real
+datasets in Section 5. We nd that beam sampling
+is (1) at least as fast if not faster than Gibbs sam-
+pling; (2) more robust than Gibbs sampling as its
+performance is not as dependent on initialization and
+hyperparameter choice; (3) handles non-conjugacy in
+the model more naturally; (4) straightforward to im-
+plement. We conclude in Section 6 with a discus-
+sion and suggestions for other cases in which beam
+sampling might prove useful. All software is avail-
+able from http://mlg.eng.cam.ac.uk/jurgen to encour-
+age more widespread adoption of the iHMM and the
+beam sampler.
+
+2. The Innite Hidden Markov Model
+
+We start this section by describing the nite HMM,
+then taking the innite limit to obtain an intuition
+for the innite HMM, followed by a more precise def-
+inition. A nite HMM consists of a hidden state se-
+quence s = (s1, s2, . . . , sT ) and a corresponding ob-
+servation sequence y = (y1, y2, . . . , yT ). Each state
+variable st can take on a nite number of states, say
+1 . . . K. Transitions between states are governed by
+Markov dynamics parameterized by the transition ma-
+trix , where ij = p(st = j|st1 = i), while the ini-
+tial state probabilities are 0i = p(s1 = i). For each
+state st  {1 . . . K} there is a parameter st which
+parametrizes the observation likelihood for that state:
+yt|st  F (st). Given the parameters {0, , , K} of
+the HMM, the joint distribution over hidden states s
+and observations y can be written (with s0 = 0):
+
+T(cid:89)
+
+p(s, y|0, , , K) =
+
+p(st|st1)p(yt|st)
+
+t=1
+
+We complete the Bayesian description by specifying
+the priors. Let the observation parameters  be iid
+drawn from a prior distribution H. With no fur-
+ther prior knowledge on the state sequence, the typical
+prior for the transition (and initial) probabilities are
+symmetric Dirichlet distributions.
+A nave way to obtain a nonparametric HMM with an
+innite number of states might be to use symmetric
+Dirichlet priors over the transition probabilities with
+parameter /K and take K  . Such an approach
+has been successfully used to derive DP mixture mod-
+els (Rasmussen, 2000) but unfortunately does not work
+in the HMM context. The subtle reason is that there
+is no coupling across transitions out of dierent states
+since the transition probabilities are given indepen-
+dent priors (Beal et al., 2002). To introduce coupling
+across transitions, one may use a hierarchical Bayesian
+formalism where the Dirichlet priors have shared pa-
+rameters and given a higher level prior, e.g.
+
+k  Dirichlet () ,
+  Dirichlet (/K . . . /K)
+
+(1)
+
+where k are transition probabilities out of state k and
+ are the shared prior parameters. As K  , the hi-
+erarchical prior (1) approaches (with some alterations)
+a hierarchical Dirichlet process (Teh et al., 2006).
+A hierarchical Dirichlet process (HDP) is a set of
+Dirichlet processes (DPs) coupled through a shared
+random base measure which is itself drawn from a
+Specically, each Gk 
+DP (Teh et al., 2006).
+DP(, G0) with shared base measure G0, which can
+be understood as the mean of Gk, and concentration
+parameter  > 0, which governs variability around G0,
+
+Beam Sampling for the Innite Hidden Markov Model
+
+factor
+
+is
+
+the
+
+In order to resample st, we need to compute the prob-
+ability p(st|st, , y, , H)  p(yt|st, st, yt, H) 
+p(st|st, , ).
+con-
+given s, y and H:
+ditional
+
+(cid:82) p(yt|st, st)p(st|st, yt, H)dst. This is easy to
+
+likelihood of yt
+
+The rst
+
+compute when the base distribution H and likelihood
+F from equations (2) and (3) are conjugate. For
+the second factor we can use the fact that the hid-
+den state sequence is Markov. Let nij be the number
+of transitions from state i to state j excluding time
+steps t  1 and t. Let ni, ni be the number of tran-
+sitions in and out of state i. Finally, let K be the
+number of distinct states in st. Then we have that1
+p(st = k|st, , ) 
+
+(nst1,k + k) nk,st+1 +st+1
+(nst1,k + k) nk,st+1 +1+st+1
+(nst1,k + k) nk,st+1 +st+1
+
+nk+1+
+
+nk+
+
+nk+1+
+
+kst+1
+
+if k  K, k (cid:54)= st1
+if k = st1 = st+1
+if k = st1 (cid:54)= st+1
+if k = K + 1.
+
+For each 1  t  T we need to compute O(K)
+probabilities, hence the Gibbs sampler has an O(T K)
+computational complexity. Non-conjugate models can
+be handled using more sophisticated sampling tech-
+niques. In our experiments below, we used algorithm
+8 from (Neal, 2000).
+The Gibbs samplers success is due to its straightfor-
+ward implementation. However, it suers from one
+major drawback: sequential and time series data are
+likely to be strongly correlated. For example, if we
+know the value of a stock at time t then we can be
+reasonably sure that it will be similar at time t+1. As
+is well known, this is a situation which is far from ideal
+for the Gibbs sampler: strong correlations in the hid-
+den states will make it unlikely that individual updates
+to st can cause large blocks within s to be changed.
+We will now introduce the beam sampler which does
+not suer from this slow mixing behavior by sampling
+the whole sequence s in one go.
+
+4. The Beam Sampler
+
+The forward-backward algorithm does not apply to
+the iHMM because the number of states, and hence
+the number of potential state trajectories, are innite.
+The idea of beam sampling is to introduce auxiliary
+variables u such that conditioned on u the number
+of trajectories with positive probability is nite. Now
+dynamic programming can be used to compute the
+conditional probabilities of each of these trajectories
+and thus sample whole trajectories eciently. These
+
+1Recall that we ignored the ordering of states in . In
+this representation the K distinct states in s are labeled
+1 . . . K and K + 1 denotes a new state.
+
+Figure 1. iHMM Graphical Model
+
+can be expressed as follows: G0 =(cid:80)
+Gk =(cid:80)
+
+with small  implying greater variability. The shared
+base measure is itself given a DP prior: G0  DP(, H)
+with H a global base measure. The stick-breaking con-
+struction for HDPs shows that the random measures
+k(cid:48)=1 k(cid:48)k(cid:48) and
+k(cid:48)=1 kk(cid:48)k(cid:48) , where   GEM() is the stick-
+breaking construction for DPs (Sethuraman, 1994),
+k  DP(, ), and each k(cid:48)  H independently.
+Identifying each Gk as describing both the transition
+from state k to k(cid:48) and the emis-
+probabilities kk(cid:48)
+sion distributions parametrized by k(cid:48), we can now
+formally dene the iHMM as follows:
+k  H, (2)
+  GEM(),
+k|  DP(, ),
+yt|st  F (st). (3)
+st|st1  Multinomial(st1),
+The graphical model corresponding to this hierarchical
+model is shown in gure 1. Thus k(cid:48) is the prior mean
+for transition probabilities leading into state k(cid:48), and 
+governs the variability around the prior mean. If we x
+ = ( 1
+K , 0, 0 . . .) where the rst K entries are 1
+K
+and the remaining are 0, then transition probabilities
+into state k(cid:48) will be non-zero only if k(cid:48)  {1 . . . K}, and
+we recover the Bayesian HMM of (MacKay, 1997).
+Finally we place priors over the hyperparameters 
+and . A common solution, when we do not have
+strong beliefs about the hyperparameters, is to use
+gamma hyperpriors:   Gamma(a, b) and  
+Gamma(a, b). (Teh et al., 2006) describe how these
+hyperparameters can be sampled eciently, and we
+will use this in the experiments to follow.
+
+K . . . 1
+
+3. The Gibbs Sampler
+
+The Gibbs sampler was the rst sampling algorithm
+for the iHMM that converges to the true posterior.
+One proposal builds on the direct assignment sampling
+scheme for the HDP in (Teh et al., 2006) by marginal-
+izing out the hidden variables ,  from (2), (3) and
+ignoring the ordering of states implicit in . Thus we
+only need to sample the hidden trajectory s, the base
+DP parameters  and the hyperparameters , . Sam-
+pling , ,  is exactly the same as for the HDP so we
+refer to (Teh et al., 2006) for details.
+
+Beam Sampling for the Innite Hidden Markov Model
+
+ditional conditioning variables  and  for clarity):
+
+Figure 2. The auxiliary variable u partitions the probabil-
+ity distribution  (vertical bars) into a set of entries less
+than u and a set of entries larger than u.
+
+auxiliary variables do not change the marginal distri-
+bution over other variables hence MCMC sampling will
+converge to the true posterior. This idea of using aux-
+iliary variables to limit computation costs is inspired
+by (Walker, 2007), who applied it to limit the number
+of components in a DP mixture model that need be
+considered during sampling.
+As opposed to the sampler in the previous section,
+the beam sampler does not marginalize out  nor .
+Specically, the beam sampler iteratively samples the
+auxiliary variables u, the trajectory s, the transition
+probabilities , the shared DP parameters  and the
+hyperparameters  and  conditioned on all other vari-
+ables. In the following, we shall describe in more detail
+how to sample each set of variables, as well as how the
+auxiliary variables allow dynamic programming to be
+carried out over a nite number of trajectories without
+approximations.
+for each t we introduce an auxil-
+Sampling u:
+iary variable ut with conditional distribution ut 
+Uniform(0, st1st) depending on , st1 and st.
+Sampling s: we sample the whole trajectory s given
+the auxiliary variables u and other variables using a
+form of forward ltering-backward sampling. The im-
+portant observation here is that only trajectories s
+with st1st  ut for all t will have non-zero probabil-
+ity given u. There are only nitely many such trajec-
+tories2 and as a result we can compute the conditional
+distribution over all such trajectories eciently using
+dynamic programming.
+is
+First note that the probability density for ut
+p(ut|st1, st, ) =
+, where I(C) = 1
+if condition C is true and 0 otherwise. We compute
+p(st|y1:t, u1:t) for all t as follows (we omitted the ad-
+2To see this, note that ut > 0 with probability 1 for each
+t, since each kk(cid:48) > 0 with probability 1. Given the auxil-
+iary variable ut, note further that for each possible value of
+st1, ut partitions the set of transition probabilities out of
+state st1 into two sets: a nite set with st1k > ut and
+an innite set with st1k < ut, as illustrated in gure 2.
+Thus we can recursively show that for t = 1, 2 . . . T the set
+of trajectories s1:t with all st(cid:48)1st(cid:48) > ut is nite.
+
+I(0<ut<st1,st )
+
+st1,st
+
+p(st|y1:t, u1:t)
+p(st, ut, yt|y1:t1, u1:t1),
+
+p(yt|st)p(ut|st, st1)p(st|st1)
+p(st1|y1:t1, u1:t1),
+
+st1
+
+=(cid:88)
+=p(yt|st)(cid:88)
+=p(yt|st) (cid:88)
+
+st1
+
+I(ut < st1,st)p(st1|y1:t1, u1:t1),
+
+p(st1|y1:t1, u1:t1).
+
+(4)
+
+st1:ut<st1,st
+
+Note that we only need to compute (4) for the nitely
+many st values belonging to some trajectory with
+positive probability. Further, although the sum over
+st1 is technically a sum over an innite number of
+terms, the auxiliary variable ut truncates this summa-
+tion to the nitely many st1s that satisfy both con-
+straints st1,st > ut and p(st1|y1:t1, u1:t1) > 0.
+Finally, to sample the whole trajectory s, we sam-
+ple sT from p(sT|y1:T , u1:T ) and perform a backward
+pass where we sample st given the sample for st+1:
+p(st|st+1, y1:T , u1:T )  p(st|y1:t, u1:t)p(st+1|st, ut+1).
+
+these follow directly from the
+Sampling , , :
+theory of HDPs (Teh et al., 2006), but we briey de-
+scribe these for completeness.
+Let nij be the number of times state i transi-
+tions to state j in the trajectory s, where i, j 
+{1 . . . K}, K is the number of distinct states in s,
+and these states have been relabeled 1 . . . K. Merg-
+ing the innitely many states not represented in
+the conditional distribution of
+s into one state,
+k(cid:48)=K+1 kk(cid:48)) given its Markov blanket
+
+(k1 . . . kK,(cid:80)
+Dirichlet(cid:0)nk1 + 1 . . . nkK + K, (cid:80)
+
+s, ,  is
+
+(cid:1) ,
+
+i=K+1 i
+
+To sample  we introduce a further set of auxiliary
+variables mij which are independent with conditional
+distributions
+
+p(mij = m|s, , )  S(nij, m)(j)m,
+
+has conditional distribution
+
+where S(,) denotes Stirling numbers of the rst kind.
+k(cid:48)=K+1 k(cid:48))
+
+The shared DP parameter (1 . . . , K,(cid:80)
+where mk =(cid:80)K
+
+k(cid:48)=1 mk(cid:48)k. (Teh et al., 2006; Antoniak,
+
+Dirichlet (m1 . . . mK, ) ,
+
+1974) gives more details.
+Finally, each k is independent of others conditional on
+s, y and their prior distribution H, i.e. p(|s, y, H) =
+
+Beam Sampling for the Innite Hidden Markov Model
+
+Figure 3. iHMM performance on strong negatively corre-
+lated data. The top plot shows the error of the Gibbs and
+beam sampler for the rst 1500 iterations averaged over
+20 runs. The bottom plot shows the average number of
+previous states considered in equation (4) for the rst 100
+iterations of the beam sampler.
+
+(cid:81)
+k p(k|s, y, H). When the base distribution H is
+conjugate to the data distribution F each k can
+be sampled eciently. Otherwise we may resort to
+Metropolis-Hastings or other approaches. Note that in
+the non-conjugate case this is simpler than for Gibbs
+sampling. In the experimental section, we describe an
+application where the base distribution and likelihood
+are non-conjugate.
+To conclude our discussion of the beam sampler, it
+is useful to point out that there is nothing special
+about sampling ut from the uniform distribution on
+[0, st1,st]: by choosing a distribution over [0, st,st1]
+with higher mass near smaller values of ut, we will al-
+low more trajectories to have positive probability and
+hence considered by the forward ltering-backward
+sampling algorithm. Although this will typically im-
+prove mixing time, it also comes at additional compu-
+tational cost. This brings us to the issue of the com-
+putational cost of the beam sampler: since for each
+timestep and each state assignment we need to sum
+over all represented previous states, the worst case
+complexity is O(T K 2). However, the sum in (4) is only
+over previous states for which the transition probabil-
+ity is larger than ut; this means that in practice we
+might only need to sum over a few previous states.
+In our experiments below, we will give some empirical
+evidence for this average case behavior. Further, we
+have found that the drastically improved mixing of the
+beam sampler more than made up for the additional
+cost over Gibbs sampling. Finally, although we did not
+nd any advantage doing so, it is certainly possible to
+interleave the beam sampler and the Gibbs sampler.
+
+Figure 4. iHMM error on increasing positively correlated
+data. The blue curve shows the beam sampler while the red
+curve shows the Gibbs sampler performance. The dotted
+line show the one standard deviation error bars.
+
+5. Experiments
+
+We evaluate the beam sampler on two articial and
+two real datasets to illustrate the following properties:
+(1) the beam sampler mixes in much fewer iterations
+than the Gibbs sampler; (2) the actual complexity per
+iteration of the beam sampler is only marginally more
+than the Gibbs sampler; (3) the beam sampler mixes
+well regardless of strong correlations in the data; (4)
+the beam sampler is more robust with respect to vary-
+ing initialization and prior distribution; (5) the beam
+sampler handles non conjugate models naturally; (6)
+the iHMM is a viable alternative to the nite HMM.
+All datasets and a Matlab version of our software are
+available at http://mlg.eng.cam.ac.uk/jurgen.
+
+5.1. Articial Data
+Our rst experiment compares the performance of the
+iHMM on a sequence of length 800 generated by a 4
+state HMM. The hidden state sequence was almost
+cyclic (1-2-3-4-1-2-3-. . . ) with a 1% probability of self
+transition: i.o.w the true distribution of hidden states
+is strong negatively correlated. We use a multinomial
+output distribution with the following emission matrix
+
+ 0.0
+
+0.5
+
+0.6666
+
+0.1666
+
+0.1666
+
+0.3333
+
+0.3333
+
+0.3333
+
+ .
+
+0.5
+
+0.0
+
+0.5
+
+0.5
+
+Next we run the Gibbs and beam sampler 20 times
+from a random initialization with every state randomly
+chosen between 1 and 20. We test the performance
+of both samplers using three dierent hyperparame-
+ter settings: (1) vague gamma hyperpriors for  and
+
+05001000150000.20.40.60.81Iterationsp(Error)  Gibbs VagueGibbs StrongGibbs FixedBeam VagueBeam StrongBeam Fixed0204060801000510Iterations# transitions  Beam VagueBeam StrongBeam Fixed010020000.250.50.7510.750010020000.250.50.7510.950010020000.250.50.7510.999010020000.250.50.7510.750010020000.250.50.7510.950010020000.250.50.7510.999Beam Sampling for the Innite Hidden Markov Model
+
+Figure 5. The 40th sample of the beam sampler with every state represented by a dierent color on the well-log dataset.
+
+ (Gamma(1, 1) and Gamma(2, 1) respectively); (2)
+strong gamma hyperpriors for  and  (Gamma(6, 15)
+and Gamma(16, 4) respectively); (3) xed hyperparam-
+eters  = 0.4,  = 3.8. The latter were chosen using
+the values the beam and Gibbs samplers converged to.
+At every iteration, we greedily compute an assignment
+of sample states to true states to maximize overlap and
+use the resulting Hamming distance as our error mea-
+sure. The top plot in gure 3 clearly shows that the
+beam sampler discovers the underlying structure much
+faster than the Gibbs sampler. Also, the beam sam-
+pler is insensitive to the prior while the performance
+of the Gibbs sampler becomes worse as we strengthen
+our prior beliefs. The bottom plot of gure 3 shows
+how many states are summed over in equation (4) av-
+eraged per timestep, per state. We nd that after only
+about 20 iterations, the beam sampler on average con-
+siders a little more than one state. This implies that
+the actual complexity of the beam sampler is closer
+to O(T K) rather than the worst case complexity of
+O(T K 2). Although this behavior is dependent on the
+choice of distribution for the auxiliary variable ut and
+the sparsity of the transition matrix, we have veried
+that this behavior is consistent also for larger iHMMs.
+Our second experiment illustrates the performance of
+the beam sampler on data generated from HMMs
+with increasing positive correlation between the hid-
+den states. We generated sequences of length 4000
+from a 4 state HMM with self-transition probabilities
+increasing from 0.75 to 0.95 and nally 0.999. In one
+experiment (top plot of gure 4) we generated nor-
+mal distributed observation from an informative out-
+put model with means 2.0, 4.0, 1.0,0.5 and stan-
+dard deviation 0.5,
+in another experiment (bottom
+plot of gure 4) we generated normal distributed ob-
+servations from a less informative output model with
+means 1.0, 0.5,0.5, 0.0 and standard deviation 0.5.
+We initialize the experiment as above and set the base
+distribution for the state means to be a 0 mean normal
+with 2.0 standard deviation. Then, we greedily com-
+pute the error compared to ground truth and average
+the results over 60 dierent random starting positions.
+The top row shows that with an informative prior,
+both the Gibbs and beam sampler can reduce the ini-
+
+tial error by at least 50% independent of the correla-
+tion between hidden states. When the output model
+is less informative however and there is little corre-
+lation between the hidden states, the learning prob-
+lem is hardest: the lower left plot shows that both
+the beam and Gibbs sampler discover structure only
+slowly. When the correlation increases, the learning
+problem should become easier. However, as the lower
+right plot shows, although the beam sampler mixes in-
+creasingly well, the Gibbs sampler suers from slow
+random walk behavior.
+
+5.2. Well Data
+The next experiment illustrates the performance of
+the iHMM on a changepoint detection problem. The
+data consists of 4050 noisy measurements of nuclear-
+response of rock strata obtained via lowering a probe
+through a bore-hole. Figure 5 illustrates this datasets.
+The data has been previously analyzed in (Ruanaidh
+& Fitzgerald, 1996) by eliminating the forty great-
+est outliers and running a changepoint detection algo-
+rithm with a xed number of changepoints. This ap-
+proach works well as this one-dimensional dataset can
+be inspected visually to make a decision on whether
+to throw away datapoints and get a rough idea for
+the number of changepoints. However, we believe that
+with a nonparametric model, we can automatically
+adapt the number of changepoints. Moreover, by set-
+ting up a noise model with fat tails, we hope to auto-
+matically handle the outlier problem.
+We model the mean of the nuclear-response for every
+segment. First we normalize the data to have zero
+mean; then we specify a zero mean normal distribu-
+tion for the base distribution H. We choose the vari-
+ance of this normal to be the empirical variance of the
+dataset. For the output model, we let F correspond
+to a Student-t distribution with  = 1, also known
+as the Cauchy distribution. We set the scale parame-
+ter for the Cauchy distribution to twice the empirical
+standard deviation for the dataset. Since the Cauchy
+likelihood is not conjugate with respect to the nor-
+mal base distribution, we modied the Gibbs sampler
+based on algorithm 8 in (Neal, 2000). We use the aux-
+
+50010001500200025003000350040004202x 104NMR ResponseMeasurement #Beam Sampling for the Innite Hidden Markov Model
+
+5.3. Alice in Wonderland
+Another application domain for HMMs is the area of
+text prediction. One such task is that of predicting
+sequences of letters in text taken from Alices Adven-
+tures in Wonderland. We compare the performance of
+a nite HMM trained using variational Bayes (as de-
+scribed in (MacKay, 1997)) with two iHMMs trained
+using beam sampling and Gibbs sampling. Both sam-
+plers had a burn-in of 1000 iterations and an additional
+10000 iterations to collect 50 samples of hidden state
+sequences from the posterior (i.e. we sample every 200
+iterations).
+The training data for each HMM (whether nite or
+innite) was taken to be a single sequence of 1000
+characters from the rst chapter of the book. There
+were 31 dierent observation symbols (26 letters ignor-
+ing case plus space and basic punctuation characters).
+The test data was taken to be the subsequent 4000
+characters from the same chapter. For all nite HMMs
+we analyzed performance on models with the number
+of hidden states ranging from 1 to 50. For VB, we
+note that the true predictive distribution is intractable
+to compute. Therefore, we used the posterior param-
+eter distributions to sample 50 candidate parameter
+settings, and used these to compute an approximate
+predictive log-likelihood. For the iHMMs, we sam-
+pled 50 hidden state sequences from the stationary
+distribution after convergence and used these samples
+to compute an approximate predictive log-likelihood.
+For the VB-HMM we set the prior pseudo-counts for
+the transition matrix to 4/K across all states and
+the prior pseudo-counts for the emission matrix to 0.3
+across all symbols. Accordingly, we set the hyperprior
+for the iHMMs such that a = 4 and b = 1 and
+H  Dirichlet (() 0.3, 0.3). The results for VB and
+the iHMMs were averaged over 50 and 20 independent
+
+Figure 7. Comparing VB-HMM with the iHMM.
+
+Figure 6. The left plots show how frequent two datapoints
+were in the same cluster averaged over the rst 5 samples.
+The right plots show how frequently two datapoints were
+in the same cluster averaged over the last 30 samples.
+
+iliary variable sampling scheme discussed in (Gelman
+et al., 2004) to resample the segment means.
+Figure 5 shows the results of one sample from the beam
+sampler: the iHMM segments the dataset reasonably
+well and robustly handles the outliers. To compare the
+Gibbs and beam samplers, we compute 50 samples af-
+ter a burnin of 5000 iterations with 1000 iterations in
+between each sample. For every pair of datapoints we
+compute the probability that they are in the same seg-
+ment, averaged over the rst ve samples (left plots in
+gure 6) and the last thirty samples (right plots in
+gure 6). First, note that after the rst 10000 itera-
+tions, the Gibbs sampler hasnt discovered any struc-
+ture while the beam sampler has. This supports our
+claim that the beam sampler mixes faster than the
+Gibbs sampler. Moreover, we expect that the Gibbs
+sampler will have trouble to reassign the state assign-
+ment for whole segments because of slow random walk
+behavior. The beam sampler on the other hand re-
+samples whole hidden state sequences and should be
+able to reassign whole segments more easily. The right
+plots of gure 6 conrm our expectation: a careful in-
+spection of both plots shows that the Gibbs sampler
+is visually more black-white indicating that either two
+datapoints are always in the same cluster or never in
+the same cluster; the beam sampler, on the other hand,
+has gray areas which indicate that it averages over dif-
+ferent assignments of the segments: e.g. the Gibbs plot
+(upper right) suggests that the leftmost segment and
+rightmost segment are always in the same state, while
+the beam sampler plot (bottom right) indicates that
+only part of the time, the left and rightmost segments
+are in the same state (90% of the time).
+
+10203040501.161.141.121.11.081.06x 104Number of hidden states (K)Predictive Loglikelihood  iHMMsVBHMMBeam Sampling for the Innite Hidden Markov Model
+
+runs respectively. The plot includes error bars corre-
+sponding to 2 standard deviations.
+Figure 7 illustrates the estimated predictive log-
+likelihoods for the nite VB-HMM and the two iHMMs
+trained using beam and Gibbs sampling. We nd that
+the iHMMs have superior predictive power when com-
+pared to the VB-HMM, even when we select the best
+number of hidden states (around K = 16). Both the
+iHMMs converged to a posterior distribution over hid-
+den state sequences with around 16 states, showing
+that nonparametric Bayesian techniques are an eec-
+tive way to handle model selection. The nal perfor-
+mance of the Gibbs and beam sampler were not found
+to be signicantly dierent as we set the number of
+iterations high enough to ensure that both algorithms
+converge. Indeed, the aim of this experiment is not to
+compare the performance of individuals iHMM sam-
+pling schemes, rather, it is to further illustrate the rel-
+ative eectiveness of using models of innite capacity.
+
+6. Conclusion
+In this paper we introduced the beam sampler, a new
+inference algorithm for the iHMM that draws inspi-
+ration from slice sampling and dynamic programming
+to sample whole hidden state trajectories eciently.
+We showed that the beam sampler is a more robust
+sampling algorithm than the Gibbs sampler. We be-
+lieve that the beam sampler is the algorithm of choice
+for iHMM inference because it converges faster than
+the Gibbs sampler and is straightforward to imple-
+ment. Moreover, it conveniently allows us to learn
+non-conjugate models. To encourage adoption of the
+iHMM as an alternative to HMM learning, we have
+made the software and datasets used in this paper
+available at http://mlg.eng.cam.ac.uk/jurgen.
+The beam sampler idea is exible enough to do in-
+ference for various extensions of the iHMM: our cur-
+rent work involves an adaptation of the beam sampler
+to an extension of the iHMM that handles inputs, ef-
+fectively resulting in a nonparametric generalization
+of the input-output HMM (Bengio & Frasconi, 1995).
+We believe this is a promising model for nonparamet-
+ric Bayesian learning of POMDPs. Another project
+currently underway is to use the beam sampler for ef-
+ciently learning nite, but very large hidden Markov
+models. Finally, we are exploring the possibilities of
+using the embedded HMM construction (Neal et al.,
+2004) as an alternative for the beam sampler for e-
+cient inference in the iHMM.
+
+Acknowledgements
+We would like to thank the anonymous reviewers for their
+helpful comments. JVG is supported by a Microsoft Re-
+search PhD scholarship; ZG is also in the Machine Learning
+Department, CMU.
+

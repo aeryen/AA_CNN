@@ -1,0 +1,4516 @@
+Abstract
+
+This paper addresses the problem of planning under uncertainty in large Markov Decision
+Processes (MDPs). Factored MDPs represent a complex state space using state variables and
+the transition model using a dynamic Bayesian network. This representation often allows an
+exponential reduction in the representation size of structured MDPs, but the complexity of exact
+solution algorithms for such MDPs can grow exponentially in the representation size. In this paper,
+we present two approximate solution algorithms that exploit structure in factored MDPs. Both
+use an approximate value function represented as a linear combination of basis functions, where
+each basis function involves only a small subset of the domain variables. A key contribution of this
+paper is that it shows how the basic operations of both algorithms can be performed eciently
+in closed form, by exploiting both additive and context-specic structure in a factored MDP. A
+central element of our algorithms is a novel linear program decomposition technique, analogous to
+variable elimination in Bayesian networks, which reduces an exponentially large LP to a provably
+equivalent, polynomial-sized one. One algorithm uses approximate linear programming, and the
+second approximate dynamic programming. Our dynamic programming algorithm is novel in that
+it uses an approximation based on max-norm, a technique that more directly minimizes the terms
+that appear in error bounds for approximate MDP algorithms. We provide experimental results
+on problems with over 1040 states, demonstrating a promising indication of the scalability of our
+approach, and compare our algorithm to an existing state-of-the-art approach, showing, in some
+problems, exponential gains in computation time.
+
+1. Introduction
+
+Over the last few years, Markov Decision Processes (MDPs) have been used as the basic
+semantics for optimal planning for decision theoretic agents in stochastic environments. In
+the MDP framework, the system is modeled via a set of states which evolve stochastically.
+The main problem with this representation is that, in virtually any real-life domain, the
+state space is quite large. However, many large MDPs have signicant internal structure,
+and can be modeled compactly if the structure is exploited in the representation.
+
+Factored MDPs (Boutilier, Dearden, & Goldszmidt, 2000) are one approach to repre-
+senting large, structured MDPs compactly. In this framework, a state is implicitly described
+by an assignment to some set of state variables. A dynamic Bayesian network (DBN) (Dean
+& Kanazawa, 1989) can then allow a compact representation of the transition model, by
+exploiting the fact that the transition of a variable often depends only on a small number
+
+c(cid:176)2003 AI Access Foundation and Morgan Kaufmann Publishers. All rights reserved.
+
+Guestrin, Koller, Parr & Venkataraman
+
+of other variables. Furthermore, the momentary rewards can often also be decomposed as
+a sum of rewards related to individual variables or small clusters of variables.
+
+There are two main types of structure that can simultaneously be exploited in factored
+MDPs: additive and context-specic structure. Additive structure captures the fact that
+typical large-scale systems can often be decomposed into a combination of locally inter-
+acting components. For example, consider the management of a large factory with many
+production cells. Of course, in the long run, if a cell positioned early in the production line
+generates faulty parts, then the whole factory may be aected. However, the quality of the
+parts a cell generates depends directly only on the state of this cell and the quality of the
+parts it receives from neighboring cells. Such additive structure can also be present in the
+reward function. For example, the cost of running the factory depends, among other things,
+on the sum of the costs of maintaining each local cell.
+
+Context-specic structure encodes a dierent type of locality of inuence: Although a
+part of a large system may, in general, be inuenced by the state of every other part of this
+system, at any given point in time only a small number of parts may inuence it directly.
+In our factory example, a cell responsible for anodization may receive parts directly from
+any other cell in the factory. However, a work order for a cylindrical part may restrict this
+dependency only to cells that have a lathe. Thus, in the context of producing cylindrical
+parts, the quality of the anodized parts depends directly only on the state of cells with a
+lathe.
+
+Even when a large MDP can be represented compactly, for example, by using a factored
+representation, solving it exactly may still be intractable: Typical exact MDP solution al-
+gorithms require the manipulation of a value function, whose representation is linear in the
+number of states, which is exponential in the number of state variables. One approach is
+to approximate the solution using an approximate value function with a compact represen-
+tation. A common choice is the use of linear value functions as an approximation  value
+functions that are a linear combination of potentially non-linear basis functions (Bellman,
+Kalaba, & Kotkin, 1963; Sutton, 1988; Tsitsiklis & Van Roy, 1996b). Our work builds on
+the ideas of Koller and Parr (1999, 2000), by using factored (linear) value functions, where
+each basis function is restricted to some small subset of the domain variables.
+
+This paper presents two new algorithms for computing linear value function approxi-
+mations for factored MDPs: one that uses approximate dynamic programming and another
+that uses approximate linear programming. Both algorithms are based on the use of fac-
+tored linear value functions, a highly expressive function approximation method. This
+representation allows the algorithms to take advantage of both additive and context-specic
+structure, in order to produce high-quality approximate solutions very eciently. The ca-
+pability to exploit both types of structure distinguishes these algorithms dier from earlier
+approaches (Boutilier et al., 2000), which only exploit context-specic structure. We provide
+a more detailed discussion of the dierences in Section 10.
+
+We show that, for a factored MDP and factored value functions, various critical oper-
+ations for our planning algorithms can be implemented in closed form without necessarily
+enumerating the entire state space. In particular, both our new algorithms build upon a
+novel linear programming decomposition technique. This technique reduces structured LPs
+with exponentially many constraints to equivalent, polynomially-sized ones. This decompo-
+sition follows a procedure analogous to variable elimination that applies both to additively
+
+400
+
+Efficient Solution Algorithms for Factored MDPs
+
+structured value functions (Bertele & Brioschi, 1972) and to value functions that also ex-
+ploit context-specic structure (Zhang & Poole, 1999). Using these basic operations, our
+planning algorithms can be implemented eciently, even though the size of the state space
+grows exponentially in the number of variables.
+
+Our rst method is based on the approximate linear programming algorithm (Schweitzer
+& Seidmann, 1985). This algorithm generates a linear, approximate value function by
+solving a single linear program. Unfortunately, the number of constraints in the LP proposed
+by Schweitzer and Seidmann grows exponentially in the number of variables. Using our LP
+decomposition technique, we exploit structure in factored MDPs to represent exactly the
+same optimization problem with exponentially fewer constraints.
+
+In terms of approximate dynamic programming, this paper makes a twofold contribution.
+First, we provide a new approach for approximately solving MDPs using a linear value
+function. Previous approaches to linear function approximation typically have utilized a
+least squares (L2-norm) approximation to the value function. Least squares approximations
+are incompatible with most convergence analyses for MDPs, which are based on max-norm.
+We provide the rst MDP solution algorithms  both value iteration and policy iteration 
+that use a linear max-norm projection to approximate the value function, thereby directly
+optimizing the quantity that appears in our provided error bounds. Second, we show how
+to exploit the structure of the problem to apply this technique to factored MDPs, by again
+leveraging on our LP decomposition technique.
+
+Although approximate dynamic programming currently possesses stronger theoretical
+guarantees, our experimental results suggest that approximate linear programming is a
+good alternative. Whereas the former tends to generate better policies for the same set of
+basis functions, due to the simplicity and computational advantages of approximate linear
+programming, we can add more basis functions, obtaining a better policy and still requiring
+less computation than the approximate dynamic programming approach.
+
+Finally, we present experimental results comparing our approach to the work of Boutilier
+et al. (2000), illustrating some of the tradeos between the two methods. In particular, for
+problems with signicant context-specic structure in the value function, their approach
+can be faster due to their ecient handling of their value function representation. However,
+there are cases with signicant context-specic structure in the problem, rather than in
+the value function, in which their algorithm requires an exponentially large value function
+representation. In such classes of problems, we demonstrate that by using a value func-
+tion that exploits both additive and context-specic structure, our algorithm can obtain a
+polynomial-time near-optimal approximation of the true value function.
+
+This paper starts with a presentation of factored MDPs and approximate solution al-
+gorithms for MDPs. In Section 4, we describe the basic operations used in our algorithms,
+including our LP decomposition technique. In Section 5, we present the rst of our two
+algorithms: the approximate linear programming algorithm for factored MDPs. The second
+algorithm, approximate policy iteration with max-norm projection, is presented in Section 6.
+Section 7 describes an approach for eciently computing bounds on policy quality based on
+the Bellman error. Section 8 shows how to extend our methods to deal with context-specic
+structure. Our paper concludes with an empirical evaluation in Section 9 and a discussion
+of related work in Section 10.
+
+401
+
+Guestrin, Koller, Parr & Venkataraman
+
+This paper is a greatly expanded version of work that was published before in Guestrin
+
+et al. (2001a), and some of the work presented in Guestrin et al. (2001b, 2002).
+
+2. Factored Markov Decision Processes
+
+A Markov decision process (MDP) is a mathematical framework for sequential decision
+problems in stochastic domains. It thus provides an underlying semantics for the task of
+planning under uncertainty. We begin with a concise overview of the MDP framework, and
+then describe the representation of factored MDPs.
+
+2.1 Markov Decision Processes
+We briey review the MDP framework, referring the reader to the books by Bertsekas and
+Tsitsiklis (1996) or Puterman (1994) for a more in-depth review. A Markov Decision Process
+(MDP) is dened as a 4-tuple (X, A, R, P ) where: X is a nite set of |X| = N states; A is
+a nite set of actions; R is a reward function R : X  A (cid:55) R, such that R(x, a) represents
+the reward obtained by the agent in state x after taking action a; and P is a Markovian
+transition model where P (x(cid:48) | x, a) represents the probability of going from state x to state
+x(cid:48) with action a. We assume that the rewards are bounded, that is, there exists Rmax such
+that Rmax  |R(x, a)| ,x, a.
+
+Example 2.1 Consider the problem of optimizing the behavior of a system administrator
+(SysAdmin) maintaining a network of m computers.
+In this network, each machine is
+connected to some subset of the other machines. Various possible network topologies can be
+dened in this manner (see Figure 1 for some examples). In one simple network, we might
+connect the machines in a ring, with machine i connected to machines i + 1 and i  1. (In
+this example, we assume addition and subtraction are performed modulo m.)
+
+Each machine is associated with a binary random variable Xi, representing whether it
+is working or has failed. At every time step, the SysAdmin receives a certain amount of
+money (reward) for each working machine. The job of the SysAdmin is to decide which
+machine to reboot; thus, there are m+1 possible actions at each time step: reboot one of the
+m machines or do nothing (only one machine can be rebooted per time step). If a machine
+is rebooted, it will be working with high probability at the next time step. Every machine
+has a small probability of failing at each time step. However, if a neighboring machine fails,
+this probability increases dramatically. These failure probabilities dene the transition model
+P (x(cid:48) | x, a), where x is a particular assignment describing which machines are working or
+have failed in the current time step, a is the SysAdmins choice of machine to reboot and x(cid:48)
+is the resulting state in the next time step.
+
+We assume that the MDP has an innite horizon and that future rewards are discounted
+exponentially with a discount factor   [0, 1). A stationary policy  for an MDP is a
+mapping  : X (cid:55) A, where (x) is the action the agent takes at state x. In the computer
+network problem, for each possible conguration of working and failing machines, the policy
+would tell the SysAdmin which machine to reboot. Each policy is associated with a value
+function V  RN , where V(x) is the discounted cumulative value that the agent gets if
+it starts at state x and follows policy . More precisely, the value V of a state x under
+
+402
+
+Efficient Solution Algorithms for Factored MDPs
+
+Figure 1: Network topologies tested; the status of a machine is inuence by the status of
+
+its parent in the network.
+
+policy  is given by:
+
+(cid:34) (cid:88)
+
+t=0
+
+(cid:179)
+
+tR
+
+V(x) = E
+
+(cid:180)(cid:175)(cid:175)(cid:175)(cid:175)(cid:175) X(0) = x
+(cid:35)
+
+X(t), (X(t))
+
+,
+
+where X(t) is a random variable representing the state of the system after t steps. In our
+running example, the value function represents how much money the SysAdmin expects to
+collect if she starts acting according to  when the network is at state x. The value function
+for a xed policy is the xed point of a set of linear equations that dene the value of a
+state in terms of the value of its possible successor states. More formally, we dene:
+Denition 2.2 The DP operator, T, for a stationary policy  is:
+
+TV(x) = R(x, (x)) + 
+
+P (x(cid:48) | x, (x))V(x(cid:48)).
+
+(cid:88)
+
+x(cid:48)
+
+(cid:88)
+
+x(cid:48)
+
+The value function of policy , V, is the xed point of the T operator: V = TV.
+
+The optimal value function V describes the optimal value the agent can achieve for
+each starting state. V is also dened by a set of non-linear equations. In this case, the
+value of a state must be the maximal expected value achievable by any policy starting at
+that state. More precisely, we dene:
+Denition 2.3 The Bellman operator, T , is:
+
+T V(x) = max
+
+[R(x, a) + 
+
+a
+
+P (x(cid:48) | x, a)V(x(cid:48))].
+
+The optimal value function V is the xed point of T : V = T V.
+
+For any value function V, we can dene the policy obtained by acting greedily relative
+to V. In other words, at each state, the agent takes the action that maximizes the one-step
+
+403
+
+ServerBidirectionalRingRing and StarServerStarServer3 LegsRing of RingsGuestrin, Koller, Parr & Venkataraman
+
+utility, assuming that V represents our long-term utility achieved at the next state. More
+precisely, we dene:
+
+Greedy(V)(x) = arg max
+
+[R(x, a) + 
+
+a
+
+(cid:88)
+
+x(cid:48)
+
+P (x(cid:48) | x, a)V(x(cid:48))].
+
+(1)
+
+The greedy policy relative to the optimal value function V is the optimal policy  =
+Greedy(V).
+
+2.2 Factored MDPs
+Factored MDPs are a representation language that allows us to exploit problem structure
+to represent exponentially large MDPs very compactly. The idea of representing a large
+MDP using a factored model was rst proposed by Boutilier et al. (1995).
+In a factored MDP, the set of states is described via a set of random variables X =
+{X1, . . . , Xn}, where each Xi takes on values in some nite domain Dom(Xi). A state x
+denes a value xi  Dom(Xi) for each variable Xi. In general, we use upper case letters
+(e.g., X) to denote random variables, and lower case (e.g., x) to denote their values. We
+use boldface to denote vectors of variables (e.g., X) or their values (x). For an instantiation
+y  Dom(Y) and a subset of these variables Z  Y, we use y[Z] to denote the value of the
+variables Z in the instantiation y.
+
+In a factored MDP, we dene a state transition model  using a dynamic Bayesian
+network (DBN) (Dean & Kanazawa, 1989). Let Xi denote the variable Xi at the current
+time and X(cid:48)
+i, the same variable at the next step. The transition graph of a DBN is a
+two-layer directed acyclic graph G whose nodes are {X1, . . . , Xn, X(cid:48)
+n}. We denote
+the parents of X(cid:48)
+i in the graph by Parents (X(cid:48)
+i). For simplicity of exposition, we assume
+i)  X; thus, all arcs in the DBN are between variables in consecutive
+that Parents (X(cid:48)
+time slices. (This assumption is used for expository purposes only; intra-time slice arcs
+are handled by a small modication presented in Section 4.1.) Each node X(cid:48)
+i is associated
+with a conditional probability distribution (CPD) P (X(cid:48)
+i)). The transition
+probability P (x(cid:48) | x) is then dened to be:
+P (x(cid:48) | x) =
+
+i | Parents (X(cid:48)
+
+1, . . . , X(cid:48)
+
+P (x(cid:48)
+
+i | ui) ,
+
+(cid:89)
+
+i
+
+where ui is the value in x of the variables in Parents (X(cid:48)
+i).
+Example 2.4 Consider an instance of the SysAdmin problem with four computers, labelled
+M1, . . . , M4, in an unidirectional ring topology as shown in Figure 2(a). Our rst task in
+modeling this problem as a factored MDP is to dene the state space X. Each machine
+is associated with a binary random variable Xi, representing whether it is working or has
+failed. Thus, our state space is represented by four random variables: {X1, X2, X3, X4}.
+The next task is to dene the transition model, represented as a DBN. The parents of the
+next time step variables X(cid:48)
+i depend on the network topology. Specically, the probability that
+machine i will fail at the next time step depends on whether it is working at the current
+time step and on the status of its direct neighbors (parents in the topology) in the network
+at the current time step. As shown in Figure 2(b), the parents of X(cid:48)
+i in this example are Xi
+and Xi1. The CPD of X(cid:48)
+i = false with high probability;
+
+i is such that if Xi = false, then X(cid:48)
+
+404
+
+Efficient Solution Algorithms for Factored MDPs
+
+P (X(cid:48)
+
+i = t | Xi, Xi1, A):
+
+Xi1 = f 
+Xi1 = f 
+Xi1 = t 
+Xi1 = t 
+
+Xi = t
+
+Xi = f
+
+Xi = f
+
+(a)
+
+(b)
+
+Xi = t
+
+Action is reboot:
+
+machine i
+
+other machine
+
+0.0238
+
+0.475
+
+0.0475
+
+0.95
+
+1
+
+1
+
+1
+
+1
+
+(c)
+
+Figure 2: Factored MDP example:
+
+from a network topology (a) we obtain the factored
+
+MDP representation (b) with the CPDs described in (c).
+
+that is, failures tend to persist. If Xi = true, then X(cid:48)
+the unidirectional ring topology X(cid:48)
+of its neighbors can independently cause machine i to fail.
+
+i is a noisy or of its other parents (in
+i has only one other parent Xi1); that is, a failure in any
+
+We have described how to represent factored the Markovian transition dynamics arising
+from an MDP as a DBN, but we have not directly addressed the representation of actions.
+Generally, we can dene the transition dynamics of an MDP by dening a separate DBN
+model a = (cid:104)Ga, Pa(cid:105) for each action a.
+
+Example 2.5 In our system administrator example, we have an action ai for rebooting
+each one of the machines, and a default action d for doing nothing. The transition model
+described above corresponds to the do nothing action. The transition model for ai is
+dierent from d only in the transition model for the variable X(cid:48)
+i = true
+with probability one, regardless of the status of the neighboring machines. Figure 2(c) shows
+i = W orking | Xi, Xi1, A), with one entry for each assignment to
+the actual CPD for P (X(cid:48)
+the state variables Xi and Xi1, and to the action A.
+
+i, which is now X(cid:48)
+
+To fully specify an MDP, we also need to provide a compact representation of the reward
+function. We assume that the reward function is factored additively into a set of localized
+reward functions, each of which only depends on a small set of variables. In our example, we
+might have a reward function associated with each machine i, which depends on Xi. That
+is, the SysAdmin is paid on a per-machine basis: at every time step, she receives money for
+machine i only if it is working. We can formalize this concept of localized functions:
+Denition 2.6 A function f has a scope Scope[f] = C  X if f : Dom(C) (cid:55) R.
+If f has scope Y and Y  Z, we use f(z) as shorthand for f(y) where y is the part of the
+instantiation z that corresponds to variables in Y.
+
+405
+
+M4M1M3M2R3R3X4X4R2R2R1R1X1X1X3X3X2X2X3X3X4X4X2X2X1X1h3h3h4h4h2h2h1h1R4R4Guestrin, Koller, Parr & Venkataraman
+
+We can now characterize the concept of local rewards. Let Ra
+
+r be a set of
+i  {X1, . . . , Xn}.
+functions, where the scope of each Ra
+i )  R. In
+The reward for taking action a at state x is dened to be Ra(x) =
+i=1 Ra
+our example, we have a reward function Ri associated with each machine i, which depends
+only Xi, and does not depend on the action choice. These local rewards are represented
+by the diamonds in Figure 2(b), in the usual notation for inuence diagrams (Howard &
+Matheson, 1984).
+
+i is restricted to variable cluster Ua
+
+1, . . . , Ra
+
+(cid:80)r
+
+i (Ua
+
+3. Approximate Solution Algorithms
+
+There are several algorithms to compute the optimal policy in an MDP. The three most
+commonly used are value iteration, policy iteration, and linear programming. A key compo-
+nent in all three algorithms is the computation of value functions, as dened in Section 2.1.
+Recall that a value function denes a value for each state x in the state space. With an
+explicit representation of the value function as a vector of values for the dierent states,
+the solution algorithms all can be implemented as a series of simple algebraic steps. Thus,
+in this case, all three can be implemented very eciently.
+
+Unfortunately, in the case of factored MDPs, the state space is exponential in the number
+of variables in the domain. In the SysAdmin problem, for example, the state x of the system
+is an assignment describing which machines are working or have failed; that is, a state x
+is an assignment to each random variable Xi. Thus, the number of states is exponential in
+the number m of machines in the network (|X| = N = 2m). Hence, even representing an
+explicit value function in problems with more than about ten machines is infeasible. One
+might be tempted to believe that factored transition dynamics and rewards would result in
+a factored value function, which can thereby be represented compactly. Unfortunately, even
+in trivial factored MDPs, there is no guarantee that structure in the model is preserved in
+the value function (Koller & Parr, 1999).
+
+In this section, we discuss the use of an approximate value function, that admits a
+compact representation. We also describe approximate versions of these exact algorithms,
+that use approximate value functions. Our description in this section is somewhat abstract,
+and does not specify how the basic operations required by the algorithms can be performed
+explicitly. In later sections, we elaborate on these issues, and describe the algorithms in
+detail. For brevity, we choose to focus on policy iteration and linear programming; our
+techniques easily extend to value iteration.
+
+3.1 Linear Value Functions
+A very popular choice for approximating value functions is by using linear regression, as rst
+proposed by Bellman et al. (1963). Here, we dene our space of allowable value functions
+V  H  RN via a set of basis functions:
+Denition 3.1 A linear value function over a set of basis functions H = {h1, . . . , hk}
+is a function V that can be written as V(x) =
+j=1 wj hj(x) for some coecients w =
+(w1, . . . , wk)(cid:48).
+We can now dene H to be the linear subspace of RN spanned by the basis functions H.
+It is useful to dene an N  k matrix H whose columns are the k basis functions viewed as
+
+(cid:80)k
+
+406
+
+Efficient Solution Algorithms for Factored MDPs
+
+vectors. In a more compact notation, our approximate value function is then represented
+by Hw.
+
+The expressive power of this linear representation is equivalent, for example, to that
+of a single layer neural network with features corresponding to the basis functions dening
+H. Once the features are dened, we must optimize the coecients w in order to obtain a
+good approximation for the true value function. We can view this approach as separating
+the problem of dening a reasonable space of features and the induced space H, from the
+problem of searching within the space. The former problem is typically the purview of
+domain experts, while the latter is the focus of analysis and algorithmic design. Clearly,
+feature selection is an important issue for essentially all areas of learning and approximation.
+We oer some simple methods for selecting good features for MDPs in Section 11, but it is
+not our goal to address this large and important topic in this paper.
+
+Once we have a chosen a linear value function representation and a set of basis functions,
+the problem becomes one of nding values for the weights w such that Hw will yield
+a good approximation of the true value function.
+In this paper, we consider two such
+approaches: approximate dynamic programming using policy iteration and approximate
+linear programming. In this section, we present these two approaches. In Section 4, we
+show how we can exploit problem structure to transform these approaches into practical
+algorithms that can deal with exponentially large state spaces.
+
+3.2 Policy Iteration
+
+3.2.1 The Exact Algorithm
+The exact policy iteration algorithm iterates over policies, producing an improved policy at
+each iteration. Starting with some initial policy (0), each iteration consists of two phases.
+Value determination computes, for a policy (t), the value function V(t), by nding the
+xed point of the equation T(t)V(t) = V(t), that is, the unique solution to the set of linear
+equations:
+
+(cid:88)
+
+x(cid:48)
+
+V(t)(x) = R(x, (t)(x)) + 
+
+P (x(cid:48) | x, (t)(x))V(t)(x(cid:48)),x.
+
+The policy improvement step denes the next policy as
+(t+1) = Greedy(V(t)).
+
+It can be shown that this process converges to the optimal policy (Bertsekas & Tsitsiklis,
+1996). Furthermore, in practice, the convergence to the optimal policy is often very quick.
+
+3.2.2 Approximate Policy Iteration
+The steps in the policy iteration algorithm require a manipulation of both value functions
+and policies, both of which often cannot be represented explicitly in large MDPs. To dene
+a version of the policy iteration algorithm that uses approximate value functions, we use
+the following basic idea: We restrict the algorithm to using only value functions within the
+provided H; whenever the algorithm takes a step that results in a value function V that is
+outside this space, we project the result back into the space by nding the value function
+within the space which is closest to V. More precisely:
+
+407
+
+Guestrin, Koller, Parr & Venkataraman
+
+Denition 3.2 A projection operator  is a mapping  : RN  H.  is said to be a
+projection w.r.t. a norm (cid:107)(cid:107) if V = Hw such that w  arg minw (cid:107)Hw  V(cid:107).
+That is, V is the linear combination of the basis functions, that is closest to V with respect
+to the chosen norm.
+
+Our approximate policy iteration algorithm performs the policy improvement step ex-
+actly. In the value determination step, the value function  the value of acting according to
+the current policy (t)  is approximated through a linear combination of basis functions.
+We now consider the problem of value determination for a policy (t). At this point,
+it is useful to introduce some notation: Although the rewards are a function of the state
+and action choice, once the policy is xed, the rewards become a function of the state
+only, which we denote as R(t), where R(t)(x) = R(x, (t)(x)). Similarly, for the transition
+model: P(t)(x(cid:48) | x) = P (x(cid:48) | x, (t)(x)). We can now rewrite the value determination step
+in terms of matrices and vectors. If we view V(t) and R(t) as N-vectors, and P(t) as an
+N  N matrix, we have the equations:
+
+V(t) = R(t) + P(t)V(t).
+
+This is a system of linear equations with one equation for each state, which can only be
+solved exactly for relatively small N. Our goal is to provide an approximate solution, within
+H. More precisely, we want to nd:
+
+(cid:107)Hw  (R(t) + P(t)Hw)(cid:107) ;
+
+(cid:176)(cid:176)(cid:176)(H  P(t)H) w(t)  R(t)
+
+(cid:176)(cid:176)(cid:176) .
+
+w(t) = arg min
+w
+= arg min
+w
+
+Thus, our approximate policy iteration alternates between two steps:
+(cid:107)Hw  (R(t) + P(t)Hw)(cid:107) ;
+
+w(t) = arg min
+w
+
+(t+1) = Greedy(Hw(t)).
+
+(2)
+
+(3)
+
+3.2.3 Max-norm Projection
+An approach along the lines described above has been used in various papers, with several
+recent theoretical and algorithmic results (Schweitzer & Seidmann, 1985; Tsitsiklis & Van
+Roy, 1996b; Van Roy, 1998; Koller & Parr, 1999, 2000). However, these approaches suer
+from a problem that we might call norm incompatibility. When computing the projection,
+they utilize the standard Euclidean projection operator with respect to the L2 norm or a
+weighted L2 norm.1 On the other hand, most of the convergence and error analyses for MDP
+algorithms utilize max-norm (L). This incompatibility has made it dicult to provide
+error guarantees.
+We can tie the projection operator more closely to the error bounds through the use
+of a projection operator in L norm. The problem of minimizing the L norm has been
+studied in the optimization literature as the problem of nding the Chebyshev solution2 to
+1. Weighted L2 norm projections are stable and have meaningful error bounds when the weights correspond
+to the stationary distribution of a xed policy under evaluation (value determination) (Van Roy, 1998),
+but they are not stable when combined with T . Averagers (Gordon, 1995) are stable and non-expansive
+in L, but require that the mixture weights be determined a priori. Thus, they do not, in general,
+minimize L error.
+2. The Chebyshev norm is also referred to as max, supremum and L norms and the minimax solution.
+
+408
+
+Efficient Solution Algorithms for Factored MDPs
+
+an overdetermined linear system of equations (Cheney, 1982). The problem is dened as
+nding w such that:
+
+w  arg min
+
+(cid:107)Cw  b(cid:107) .
+
+w
+
+(4)
+
+We use an algorithm due to Stiefel (1960), that solves this problem by linear program-
+
+ming:
+
+Variables: w1, . . . , wk,  ;
+Minimize:
+
+Subject to:  (cid:80)k
+  bi (cid:80)k
+
+j=1 cijwj  bi
+j=1 cijwj,
+
+ ;
+
+and
+i = 1...N.
+
+(cid:175)(cid:175)(cid:175)(cid:80)k
+
+(5)
+
+(cid:175)(cid:175)(cid:175) for each i, or
+
+The constraints in this linear program imply that  
+equivalently, that   (cid:107)Cw  b(cid:107). The objective of the LP is to minimize . Thus, at the
+solution (w, ) of this linear program, w is the solution of Equation (4) and  is the L
+projection error.
+We can use the L projection in the context of the approximate policy iteration in the
+obvious way. When implementing the projection operation of Equation (2), we can use
+the L projection (as in Equation (4)), where C = (H  P(t)H) and b = R(t). This
+minimization can be solved using the linear program of (5).
+
+j=1 cijwj  bi
+
+A key point is that this LP only has k + 1 variables. However, there are 2N constraints,
+which makes it impractical for large state spaces. In the SysAdmin problem, for example,
+the number of constraints in this LP is exponential in the number of machines in the network
+(a total of 2 2m constraints for m machines). In Section 4, we show that, in factored MDPs
+with linear value functions, all the 2N constraints can be represented eciently, leading to
+a tractable algorithm.
+
+3.2.4 Error Analysis
+We motivated our use of the max-norm projection within the approximate policy iteration
+algorithm via its compatibility with standard error analysis techniques for MDP algorithms.
+We now provide a careful analysis of the impact of the L error introduced by the projec-
+tion step. The analysis provides motivation for the use of a projection step that directly
+minimizes this quantity. We acknowledge, however, that the main impact of this analysis
+is motivational. In practice, we cannot provide a priori guarantees that an L projection
+will outperform other methods.
+
+Our goal is to analyze approximate policy iteration in terms of the amount of error
+If the error is zero, then we are
+introduced at each step by the projection operation.
+performing exact value determination, and no error should accrue. If the error is small, we
+should get an approximation that is accurate. This result follows from the analysis below.
+More precisely, we dene the projection error as the error resulting from the approximate
+value determination step:
+
+(cid:176)(cid:176)(cid:176)Hw(t) 
+
+(cid:179)
+
+(t) =
+
+R(t) + P(t)Hw(t)
+
+(cid:180)(cid:176)(cid:176)(cid:176) .
+
+Note that, by using our max-norm projection, we are nding the set of weights w(t) that
+exactly minimizes the one-step projection error (t). That is, we are choosing the best
+
+409
+
+Guestrin, Koller, Parr & Venkataraman
+
+possible weights with respect to this error measure. Furthermore, this is exactly the error
+measure that is going to appear in the bounds of our theorem. Thus, we can now make the
+bounds for each step as tight as possible.
+
+We rst show that the projection error accrued in each step is bounded:
+
+Lemma 3.3 The value determination error is bounded: There exists a constant P  Rmax
+such that P  (t) for all iterations t of the algorithm.
+Proof: See Appendix A.1.
+
+Due to the contraction property of the Bellman operator, the overall accumulated error
+
+is a decaying average of the projection error incurred throughout all iterations:
+
+Denition 3.4 The discounted value determination error at iteration t is dened as: 
+(t) + 
+
+(t1); 
+
+(0) = 0.
+
+(t) =
+
+Lemma 3.3 implies that the accumulated error remains bounded in approximate policy
+iteration: 
+. We can now bound the loss incurred when acting according
+to the policy generated by our approximate policy iteration algorithm, as opposed to the
+optimal policy:
+
+(t)  P (1t)
+
+1
+
+Theorem 3.5 In the approximate policy iteration algorithm, let (t) be the policy generated
+at iteration t. Furthermore, let V(t) be the actual value of acting according to this policy.
+The loss incurred by using policy (t) as opposed to the optimal policy  with value V is
+bounded by:
+
+(cid:107)V  V(t)(cid:107)  t (cid:107)V  V(0)(cid:107) +
+
+(t)
+
+2
+(1  )2 .
+
+(6)
+
+Proof: See Appendix A.2.
+
+In words, Equation (6) shows that the dierence between our approximation at iteration
+t and the optimal value function is bounded by the sum of two terms. The rst term is
+present in standard policy iteration and goes to zero exponentially fast. The second is the
+discounted accumulated projection error and, as Lemma 3.3 shows, is bounded. This second
+term can be minimized by choosing w(t) as the one that minimizes:
+
+(cid:176)(cid:176)(cid:176)Hw(t) 
+
+(cid:179)
+
+(cid:180)(cid:176)(cid:176)(cid:176) ,
+
+R(t) + P(t)Hw(t)
+
+which is exactly the computation performed by the max-norm projection. Therefore, this
+theorem motivates the use of max-norm projections to minimize the error term that appears
+in our bound.
+
+The bounds we have provided so far may seem fairly trivial, as we have not provided
+a strong a priori bound on (t). Fortunately, several factors make these bounds interest-
+ing despite the lack of a priori guarantees. If approximate policy iteration converges, as
+
+occurred in all of our experiments, we can obtain a much tighter bound: If (cid:98) is the policy
+
+after convergence, then:
+
+where (cid:98) is the one-step max-norm projection error associated with estimating the value
+of (cid:98). Since the max-norm projection operation provides (cid:98), we can easily obtain an a
+
+(1  ) ,
+
+(cid:176)(cid:176)V  V(cid:98)
+
+(cid:176)(cid:176)  2(cid:98)
+
+410
+
+Efficient Solution Algorithms for Factored MDPs
+
+posteriori bound as part of the policy iteration procedure. More details are provided in
+Section 7.
+
+One could rewrite the bound in Theorem 3.5 in terms of the worst case projection er-
+ror P , or the worst projection error in a cycle of policies, if approximate policy iteration
+gets stuck in a cycle. These formulations would be closer to the analysis of Bertsekas and
+Tsitsiklis (1996, Proposition 6.2, p.276). However, consider the case where most policies
+(or most policies in the nal cycle) have a low projection error, but there are a few policies
+that cannot be approximated well using the projection operation, so that they have a large
+one-step projection error. A worst-case bound would be very loose, because it would be
+dictated by the error of the most dicult policy to approximate. On the other hand, using
+our discounted accumulated error formulation, errors introduced by policies that are hard
+to approximate decay very rapidly. Thus, the error bound represents an average case
+analysis: a decaying average of the projection errors for policies encountered at the succes-
+sive iterations of the algorithm. As in the convergent case, this bound can be computed
+easily as part of the policy iteration procedure when max-norm projection is used.
+
+The practical benet of a posteriori bounds is that they can give meaningful feedback on
+the impact of the choice of the value function approximation architecture. While we are not
+explicitly addressing the dicult and general problem of feature selection in this paper, our
+error bounds motivate algorithms that aim to minimize the error given an approximation
+architecture and provide feedback that could be useful in future eorts to automatically
+discover or improve approximation architectures.
+
+3.3 Approximate Linear Programming
+
+3.3.1 The Exact Algorithm
+Linear programming provides an alternative method for solving MDPs. It formulates the
+problem of nding a value function as a linear program (LP). Here the LP variables are
+V1, . . . , VN , where Vi represents V(xi): the value of starting at the ith state of the system.
+The LP is given by:
+
+(cid:80)
+
+V1, . . . , VN ;
+
+Variables:
+Minimize:
+Subject to: Vi  [R(xi, a) + 
+
+xi (xi) Vi ;
+
+(cid:80)
+
+j P (xj | xi, a)Vj] xi  X, a  A,
+
+(7)
+
+where the state relevance weights  are positive. Note that, in this exact case, the solution
+obtained is the same for any positive weight vector. It is interesting to note that steps of
+the simplex algorithm correspond to policy changes at single states, while steps of policy
+iteration can involve policy changes at multiple states. In practice, policy iteration tends
+to be faster than the linear programming approach (Puterman, 1994).
+
+3.3.2 Approximate Linear Program
+The approximate formulation for the LP approach, rst proposed by Schweitzer and Sei-
+dmann (1985), restricts the space of allowable value functions to the linear space spanned
+by our basis functions. In this approximate formulation, the variables are w1, . . . , wk: the
+weights for our basis functions. The LP is given by:
+
+411
+
+Guestrin, Koller, Parr & Venkataraman
+
+Variables: w1, . . . , wk ;
+Minimize:
+Subject to:
+
+(cid:80)
+(cid:80)
+x (x)
+i wi hi(x)  [R(x, a) + 
+
+(cid:80)
+
+i wi hi(x) ;
+
+(cid:80)
+i wi hi(x(cid:48))] x  X,a  A.
+(8)
+In other words, this formulation takes the LP in (7) and substitutes the explicit state
+value function by a linear value function representation
+i wi hi(x), or, in our more compact
+notation, V is replaced by Hw. This linear program is guaranteed to be feasible if a constant
+function  a function with the same constant value for all states  is included in the set
+of basis functions.
+
+(cid:80)
+x(cid:48) P (x(cid:48) | x, a)
+(cid:80)
+
+In this approximate linear programming formulation, the choice of state relevance weights,
+, becomes important. Intuitively, not all constraints in this LP are binding; that is, the
+constraints are tighter for some states than for others. For each state x, the relevance
+weight (x) indicates the relative importance of a tight constraint. Therefore, unlike the
+exact case, the solution obtained may dier for dierent choices of the positive weight vector
+. Furthermore, there is, in general, no guarantee as to the quality of the greedy policy
+generated from the approximation Hw. However, the recent work of de Farias and Van
+Roy (2001a) provides some analysis of the error relative to that of the best possible approx-
+imation in the subspace, and some guidance as to selecting  so as to improve the quality
+of the approximation. In particular, their analysis shows that this LP provides the best
+approximation Hw of the optimal value function V in a weighted L1 sense subject to the
+constraint that Hw  T Hw, where the weights in the L1 norm are the state relevance
+weights .
+
+The transformation from an exact to an approximate problem formulation has the ef-
+fect of reducing the number of free variables in the LP to k (one for each basis function
+coecient), but the number of constraints remains N  |A|. In our SysAdmin problem, for
+example, the number of constraints in the LP in (8) is (m + 1) 2m, where m is the number
+of machines in the network. Thus, the process of generating the constraints and solving the
+LP still seems unmanageable for more than a few machines. In the next section, we discuss
+how we can use the structure of a factored MDP to provide for a compact representation
+and an ecient solution to this LP.
+
+4. Factored Value Functions
+
+The linear value function approach, and the algorithms described in Section 3, apply to any
+choice of basis functions. In the context of factored MDPs, Koller and Parr (1999) suggest
+a particular type of basis function, that is particularly compatible with the structure of a
+factored MDP. They suggest that, although the value function is typically not structured,
+there are many cases where it might be close to structured. That is, it might be well-
+approximated using a linear combination of functions each of which refers only to a small
+number of variables. More precisely, we dene:
+
+Denition 4.1 A factored (linear) value function is a linear function over the basis set
+h1, . . . , hk, where the scope of each hi is restricted to some subset of variables Ci.
+
+Value functions of this type have a long history in the area of multi-attribute utility the-
+ory (Keeney & Raia, 1976). In our example, we might have a basis function hi for each
+
+412
+
+Efficient Solution Algorithms for Factored MDPs
+
+machine, indicating whether it is working or not. Each basis function has scope restricted
+to Xi. These are represented as diamonds in the next time step in Figure 2(b).
+
+Factored value functions provide the key to performing ecient computations over the
+exponential-sized state spaces we have in factored MDPs. The main insight is that re-
+stricted scope functions (including our basis functions) allow for certain basic operations to
+be implemented very eciently. In the remainder of this section, we show how structure in
+factored MDPs can be exploited to perform two crucial operations very eciently: one-step
+lookahead (backprojection), and the representation of exponentially many constraints in
+the LPs. Then, we use these basic building blocks to formulate very ecient approxima-
+tion algorithms for factored MDPs, each presented in its own self-contained section: the
+approximate linear programming for factored MDPs in Section 5, and approximate policy
+iteration with max-norm projection in Section 6.
+
+4.1 One-step Lookahead
+A key step in all of our algorithms is the computation of the one-step lookahead value of
+some action a. This is necessary, for example, when computing the greedy policy as in
+Equation (1). Lets consider the computation of a Q function, Qa(x), which represents the
+expected value the agent obtains after taking action a at the current time step and receiving
+a long-term value V thereafter. This Q function can be computed by:
+
+Qa(x) = R(x, a) + 
+
+P (x(cid:48) | x, a)V(x).
+
+(9)
+
+(cid:88)
+
+x(cid:48)
+
+That is, Qa(x) is given by the current reward plus the discounted expected future value.
+Using this notation, we can express the greedy policy as: Greedy(V)(x) = maxa Qa(x).
+functions: V(x) =
+
+Recall that we are estimating the long-term value of our policy using a set of basis
+
+i wi hi(x). Thus, we can rewrite Equation (9) as:
+
+(cid:80)
+
+Qa(x) = R(x, a) + 
+
+P (x(cid:48) | x, a)
+
+wi hi(x).
+
+(cid:88)
+
+x(cid:48)
+
+(cid:88)
+
+i
+
+(10)
+
+(cid:80)
+
+(cid:80)
+
+x(cid:48) P (x(cid:48) |
+The size of the state space is exponential, so that computing the expectation
+i wi hi(x) seems infeasible. Fortunately, as discussed by Koller and Parr (1999),
+x, a)
+this expectation operation, or backprojection, can be performed eciently if the transition
+model and the value function are both factored appropriately. The linearity of the value
+function permits a linear decomposition, where each summand in the expectation can be
+viewed as an independent value function and updated in a manner similar to the value
+iteration procedure used by Boutilier et al. (2000). We now recap the construction briey,
+by rst dening:
+
+Ga(x) =
+
+P (x(cid:48) | x, a)
+
+wi
+
+P (x(cid:48) | x, a)hi(x(cid:48)).
+
+Thus, we can compute the expectation of each basis function separately:
+
+(cid:88)
+
+x(cid:48)
+
+(cid:88)
+
+i
+
+(cid:88)
+
+x(cid:48)
+
+(cid:88)
+
+i
+
+wi hi(x(cid:48)) =
+(cid:88)
+
+i (x) =
+ga
+
+x(cid:48)
+
+P (x(cid:48) | x, a)hi(x(cid:48)),
+
+413
+
+Guestrin, Koller, Parr & Venkataraman
+
+i (x). The
+and then weight them by wi to obtain the total expectation Ga(x) =
+is called the backprojection of the basis function hi through the
+intermediate function ga
+i
+i = Pahi. Note that, in factored MDPs, the
+transition model Pa, which we denote by ga
+transition model Pa is factored (represented as a DBN) and the basis functions hi have
+scope restricted to a small set of variables. These two important properties allow us to
+compute the backprojections very eciently.
+
+i wi ga
+
+(cid:80)
+
+We now show how some restricted scope function h (such as our basis functions)
+can be backprojected through some transition model P represented as a DBN . Here
+h has scope restricted to Y; our goal is to compute g = P h. We dene the back-
+projected scope of Y through  as the set of parents of Y(cid:48) in the transition graph G ;
+ (Y(cid:48)) = Y (cid:48)
+i) 
+{X1, . . . , Xn, X(cid:48)
+n}, then the only change in our algorithm is in the denition of back-
+projected scope of Y through . The denition now includes not only direct parents of Y (cid:48),
+but also all variables in {X1, . . . , Xn} that are ancestors of Y (cid:48):
+
+i ). If intra-time slice arcs are included, so that Parents (X(cid:48)
+
+i Y(cid:48)Parents (Y (cid:48)
+
+1, . . . , X(cid:48)
+
+ (Y(cid:48)) = {Xj | there exist a directed path from Xj to any X(cid:48)
+
+i  Y(cid:48)}.
+
+Thus, the backprojected scope may become larger, but the functions are still factored.
+We can now show that, if h has scope restricted to Y, then its backprojection g has
+scope restricted to the parents of Y(cid:48), i.e.,  (Y(cid:48)). Furthermore, each backprojection can
+be computed by only enumerating settings of variables in  (Y(cid:48)), rather than settings of
+all variables X:
+
+g(x) = (P h)(x);
+
+(cid:88)
+(cid:88)
+(cid:88)
+(cid:88)
+
+y(cid:48)
+
+x(cid:48)
+
+x(cid:48)
+
+=
+
+=
+
+=
+
+=
+
+y(cid:48)
+
+= g(z);
+
+P (x(cid:48) | x)h(x(cid:48));
+P (x(cid:48) | x)h(y(cid:48));
+P (y(cid:48) | x)h(y(cid:48))
+
+P (y(cid:48) | z)h(y(cid:48));
+
+(cid:88)
+
+(cid:80)
+
+P (u(cid:48) | x);
+
+u(cid:48)(x(cid:48)y(cid:48))
+
+u(cid:48)(x(cid:48)y(cid:48)) P (u(cid:48) | x) = 1 as it is the
+where z is the value of  (Y(cid:48)) in x and the term
+sum of a probability distribution over a complete domain. Therefore, we see that (P h) is a
+function whose scope is restricted to  (Y(cid:48)). Note that the cost of the computation depends
+linearly on |Dom( (Y(cid:48)))|, which depends on Y (the scope of h) and on the complexity of
+the process dynamics. This backprojection procedure is summarized in Figure 3.
+
+Returning to our example, consider a basis function hi that is an indicator of variable Xi:
+it takes value 1 if the ith machine is working and 0 otherwise. Each hi has scope restricted to
+i) = {Xi1, Xi}.
+X(cid:48)
+i, thus, its backprojection gi has scope restricted to Parents (X(cid:48)
+
+i):  (X(cid:48)
+
+4.2 Representing Exponentially Many Constraints
+As seen in Section 3, both our approximation algorithms require the solution of linear pro-
+grams: the LP in (5) for approximate policy iteration, and the LP in (8) for the approximate
+
+414
+
+Efficient Solution Algorithms for Factored MDPs
+
+Backproja(h)  where basis function h has scope C.
+
+Dene the scope of the backprojection: a(C(cid:48)) = X(cid:48)
+For each assignment y  a(C(cid:48)):
+
+(cid:80)
+
+(cid:81)
+
+ga(y) =
+
+c(cid:48)C(cid:48)
+
+iC(cid:48) Pa(c(cid:48)[X(cid:48)
+
+i|X(cid:48)
+
+i] | y)h(c(cid:48)).
+
+iC(cid:48)Parentsa(X(cid:48)
+i).
+
+Return ga.
+
+Figure 3: Backprojection of basis function h.
+
+linear programming algorithm. These LPs have some common characteristics: they have
+a small number of free variables (for k basis functions there are k + 1 free variables in ap-
+proximate policy iteration and k in approximate linear programming), but the number of
+constraints is still exponential in the number of state variables. However, in factored MDPs,
+these LP constraints have another very useful property: the functionals in the constraints
+have restricted scope. This key observation allows us to represent these constraints very
+compactly.
+
+First, observe that the constraints in the linear programs are all of the form:
+
+ 
+
+wi ci(x)  b(x),x,
+
+(11)
+
+i
+
+where only  and w1, . . . , wk are free variables in the LP and x ranges over all states. This
+general form represents both the type of constraint in the max-norm projection LP in (5)
+and the approximate linear programming formulation in (8).3
+
+The rst insight in our construction is that we can replace the entire set of constraints
+
+in Equation (11) by one equivalent non-linear constraint:
+
+(cid:88)
+
+(cid:88)
+
+i
+
+  max
+
+x
+
+wi ci(x)  b(x).
+
+(12)
+
+The second insight is that this new non-linear constraint can be implemented by a set of
+linear constraints using a construction that follows the structure of variable elimination in
+cost networks. This insight allows us to exploit structure in factored MDPs to represent
+this constraint compactly.
+
+We tackle the problem of representing the constraint in Equation (12) in two steps:
+rst, computing the maximum assignment for a xed set of weights; then, representing the
+non-linear constraint by small set of linear constraints, using a construction we call the
+factored LP.
+
+4.2.1 Maximizing Over the State Space
+The key computation in our algorithms is to represent a non-linear constraint of the form
+in Equation (12) eciently by a small set of linear constraints. Before presenting this con-
+struction, lets rst consider a simpler problem: Given some xed weights wi, we would
+i wi ci(x)  b(x), that is, the state x, such
+like to compute the maximization:  = maxx
+i wi ci(x), can be formulated using an analogous
+construction to the one we present in this section by changing the sign of ci(x) and b(x). The approximate
+linear programming constraints of (8) can also be formulated in this form, as we show in Section 5.
+
+(cid:80)
+3. The complementary constraints in (5),   b(x) (cid:80)
+
+415
+
+Guestrin, Koller, Parr & Venkataraman
+
+(cid:80)
+
+that the dierence between
+i wi ci(x) and b(x) is maximal. However, we cannot explic-
+itly enumerate the exponential number of states and compute the dierence. Fortunately,
+structure in factored MDPs allows us to compute this maximum eciently.
+In the case of factored MDPs, our state space is a set of vectors x which are assign-
+ments to the state variables X = {X1, . . . , Xn}. We can view both Cw and b as functions
+(cid:80)
+of these state variables, and hence also their dierence. Thus, we can dene a function
+i wi ci(x)  b(x). Note that we have executed a
+F w(X1, . . . , Xn) such that F w(x) =
+representation shift; we are viewing F w as a function of the variables X, which is pa-
+rameterized by w. Recall that the size of the state space is exponential in the number
+of variables. Hence, our goal in this section is to compute maxx F w(x) without explicitly
+considering each of the exponentially many states. The solution is to use the fact that F w
+has a factored representation. More precisely, Cw has the form
+i wi ci(Zi), where Zi is
+a subset of X. For example, we might have c1(X1, X2) which takes value 1 in states where
+X1 = true and X2 = false and 0 otherwise. Similarly, the vector b in our case is also a sum
+of restricted scope functions. Thus, we can express F w as a sum
+j may
+(cid:80)
+or may not depend on w. In the future, we sometimes drop the superscript w when it is
+clear from context.
+i wi ci(x)
+b(x) = maxx F w(x), that is, to nd the state x over which F w is maximized. Recall that
+F w =
+j=1 fj(Zj). We can maximize such a function, F w, without enumerating every state
+using non-serial dynamic programming (Bertele & Brioschi, 1972). The idea is virtually
+identical to variable elimination in a Bayesian network. We review this construction here,
+as it is a central component in our solution LP.
+
+Using our more compact notation, our goal here is simply to compute maxx
+
+(cid:80)
+(cid:80)
+
+j f w
+
+j (Zj), where f w
+
+(cid:80)m
+
+Our goal is to compute
+
+max
+x1,...,xn
+
+fj(x[Zj]).
+
+(cid:88)
+
+j
+
+The main idea is that, rather than summing all functions and then doing the maximization,
+we maximize over variables one at a time. When maximizing over xl, only summands
+involving xl participate in the maximization.
+
+Example 4.2 Assume
+
+F = f1(x1, x2) + f2(x1, x3) + f3(x2, x4) + f4(x3, x4).
+
+We therefore wish to compute:
+
+max
+
+x1,x2,x3,x4
+
+f1(x1, x2) + f2(x1, x3) + f3(x2, x4) + f4(x3, x4).
+
+We can rst compute the maximum over x4; the functions f1 and f2 are irrelevant, so we
+can push them out. We get
+
+max
+x1,x2,x3
+
+f1(x1, x2) + f2(x1, x3) + max
+x4
+
+[f3(x2, x4) + f4(x3, x4)].
+
+The result of the internal maximization depends on the values of x2, x3; thus, we can intro-
+duce a new function e1(X2, X3) whose value at the point x2, x3 is the value of the internal
+max expression. Our problem now reduces to computing
+
+max
+x1,x2,x3
+
+f1(x1, x2) + f2(x1, x3) + e1(x2, x3),
+
+416
+
+Efficient Solution Algorithms for Factored MDPs
+
+VariableElimination (F, O)
+
+//F = {f1, . . . , fm} is the set of functions to be maximized;
+//O stores the elimination order.
+
+For i = 1 to number of variables:
+
+//Select the next variable to be eliminated.
+Let l = O(i) ;
+//Select the relevant functions.
+Let e1, . . . , eL be the functions in F whose scope contains Xl.
+//Maximize over current variable Xl.
+Dene a new function e = maxxl
+L
+j=1Scope[ej]  {Xl}.
+//Update set of functions.
+Update the set of functions F = F  {e} \ {e1, . . . , eL}.
+
+(cid:80)L
+
+j=1 ej
+
+; note that Scope[e] =
+
+(cid:80)
+
+//Now, all functions have empty scope and their sum is the maximum value of f1 +  + fm.
+Return the maximum value
+
+eiF ei.
+
+Figure 4: Variable elimination procedure for computing the maximum value f1 +  + fm,
+
+where each fi is a restricted scope function.
+
+having one fewer variable. Next, we eliminate another variable, say X3, with the resulting
+expression reducing to:
+
+max
+x1,x2
+
+f1(x1, x2) + e2(x1, x2),
+
+where
+
+e2(x1, x2) = max
+x3
+
+[f2(x1, x3) + e1(x2, x3)].
+
+Finally, we dene
+
+e3 = max
+x1,x2
+
+f1(x1, x2) + e2(x1, x2).
+
+The result at this point is a number, which is the desired maximum over x1, . . . , x4. While
+the naive approach of enumerating all states requires 63 arithmetic operations if all variables
+are binary, using variable elimination we only need to perform 23 operations.
+
+The general variable elimination algorithm is described in Figure 4. The inputs to
+the algorithm are the functions to be maximized F = {f1, . . . , fm} and an elimination
+ordering O on the variables, where O(i) returns the ith variable to be eliminated. As in
+the example above, for each variable Xl to be eliminated, we select the relevant functions
+e1, . . . , eL, those whose scope contains Xl. These functions are removed from the set F and
+j=1 ej. At this point, the scope of the functions in
+we introduce a new function e = maxxl
+F no longer depends on Xl, that is, Xl has been eliminated. This procedure is repeated
+until all variables have been eliminated. The remaining functions in F thus have empty
+scope. The desired maximum is therefore given by the sum of these remaining functions.
+
+(cid:80)L
+
+The computational cost of this algorithm is linear in the number of new function
+values introduced in the elimination process. More precisely, consider the computation of
+a new function e whose scope is Z. To compute this function, we need to compute |Dom[Z]|
+dierent values. The cost of the algorithm is linear in the overall number of these values,
+introduced throughout the execution. As shown by Dechter (1999), this cost is exponential
+
+417
+
+Guestrin, Koller, Parr & Venkataraman
+
+in the induced width of the cost network, the undirected graph dened over the variables
+X1, . . . , Xn, with an edge between Xl and Xm if they appear together in one of the original
+functions fj. The complexity of this algorithm is, of course, dependent on the variable
+elimination order and the problem structure. Computing the optimal elimination order
+is an NP-hard problem (Arnborg, Corneil, & Proskurowski, 1987) and elimination orders
+yielding low induced tree width do not exist for some problems. These issues have been
+confronted successfully for a large variety of practical problems in the Bayesian network
+community, which has beneted from a large variety of good heuristics which have been
+developed for the variable elimination ordering problem (Bertele & Brioschi, 1972; Kjaerul,
+1990; Reed, 1992; Becker & Geiger, 2001).
+
+(cid:80)
+
+4.2.2 Factored LP
+In this section, we present the centerpiece of our planning algorithms: a new, general
+approach for compactly representing exponentially large sets of LP constraints in problems
+with factored structure  those where the functions in the constraints can be decomposed
+as the sum of restricted scope functions. Consider our original problem of representing
+the non-linear constraint in Equation (12) compactly. Recall that we wish to represent
+the non-linear constraint   maxx
+i wi ci(x)  b(x), or equivalently,   maxx F w(x),
+without generating one constraint for each state as in Equation (11). The new, key insight
+is that this non-linear constraint can be implemented using a construction that follows the
+structure of variable elimination in cost networks.
+Consider any function e used within F (including the original fis), and let Z be its scope.
+For any assignment z to Z, we introduce variable ue
+z, whose value represents ez, into the
+linear program. For the initial functions f w
+i (z). As
+is linear in w, this constraint is linear in the LP variables. Now, consider a new function
+f w
+i
+e introduced into F by eliminating a variable Xl. Let e1, . . . , eL be the functions extracted
+from F, and let Z be the scope of the resulting e. We introduce a set of constraints:
+
+i , we include the constraint that ufi
+
+z = f w
+
+z  L(cid:88)
+
+ue
+
+j=1
+
+uej
+(z,xl)[Zj ]
+
+xl.
+
+(13)
+
+Let en be the last function generated in the elimination, and recall that its scope is empty.
+Hence, we have only a single variable uen. We introduce the additional constraint   uen.
+The complete algorithm, presented in Figure 5, is divided into three parts: First, we
+generate equality constraints for functions that depend on the weights wi (basis functions).
+In the second part, we add the equality constraints for functions that do not depend on the
+weights (target functions). These equality constraints let us abstract away the dierences
+between these two types of functions and manage them in a unied fashion in the third
+part of the algorithm. This third part follows a procedure similar to variable elimination
+described in Figure 4. However, unlike standard variable elimination where we would in-
+j=1 ej, in our factored LP procedure we
+troduce a new function e, such that e = maxxl
+z. To enforce the denition of e as the maximum over Xl of
+introduce new LP variables ue
+
+(cid:80)L
+
+j=1 ej, we introduce the new LP constraints in Equation (13).
+
+(cid:80)L
+
+Example 4.3 To understand this construction, consider our simple example above, and
+assume we want to express the fact that   maxx F w(x). We rst introduce a set of
+
+418
+
+Efficient Solution Algorithms for Factored MDPs
+
+FactoredLP (C, b,O)
+
+// C = {c1, . . . , ck} is the set of basis functions.
+// b = {b1, . . . , bm} is the set of target functions.
+//O stores the elimination order.
+
+//Return a (polynomial) set of constraints  equivalent to  (cid:80)
+
+(cid:80)
+
+j bj(x),x .
+
+i wici(x) +
+
+//Data structure for the constraints in factored LP.
+Let  = {} .
+//Data structure for the intermediate functions generated in variable elimination.
+Let F = {} .
+//Generate equality constraint to abstract away basis functions.
+For each ci  C:
+
+Let Z = Scope[ci].
+For each assignment z  Z, create a new LP variable ufi
+constraint to :
+
+z = wici(z).
+ufi
+
+z and add a
+
+Store new function fi to use in variable elimination step: F = F  {fi}.
+
+//Generate equality constraint to abstract away target functions.
+
+For each bj  b:
+
+Let Z = Scope[bj].
+For each assignment z  Z, create a new LP variable ufj
+constraint to :
+
+z and add a
+
+ufj
+z = bj(z).
+
+(cid:80)
+Store new function fj to use in variable elimination step: F = F {fj}.
+//Now, F contains all of the functions involved in the LP, our constraints become:  
+eiF ei(x),x , which we represent compactly using a variable elimination procedure.
+
+For i = 1 to number of variables:
+
+//Select the next variable to be eliminated.
+Let l = O(i) ;
+//Select the relevant functions.
+Let e1, . . . , eL be the functions in F whose scope contains Xl, and let
+Zj = Scope[ej].
+//Introduce linear constraints for the maximum over current variable Xl.
+j=1Zj  {Xl} to represent
+Dene a new function e with scope Z = L
+maxxl
+Add constraints to  to enforce maximum: for each assignment z  Z:
+
+(cid:80)L
+
+j=1 ej.
+
+z  L(cid:88)
+
+ue
+
+j=1
+
+uej
+(z,xl)[Zj ]
+
+xl.
+
+//Update set of functions.
+
+Update the set of functions F = F  {e} \ {e1, . . . , eL}.
+
+//Now, all variables have been eliminated and all functions have empty scope.
+Add last constraint to :
+
+Return .
+
+constraints  (cid:80)
+
+i wici(x) +
+
+Figure 5: Factored LP algorithm for the compact representation of the exponential set of
+
+(cid:88)
+
+eiF
+
+ 
+
+ei.
+
+(cid:80)
+j bj(x),x.
+
+419
+
+Guestrin, Koller, Parr & Venkataraman
+
+variables uf1
+x1,x2 for every instantiation of values x1, x2 to the variables X1, X2. Thus, if
+X1 and X2 are both binary, we have four such variables. We then introduce a constraint
+dening the value of uf1
+t,t = 0
+and uf1
+t,f = w1. We have similar variables and constraints for each fj and each value z in
+Zj. Note that each of the constraints is a simple equality constraint involving numerical
+constants and perhaps the weight variables w.
+
+x1,x2 appropriately. For example, for our f1 above, we have uf1
+
+Next, we introduce variables for each of the intermediate expressions generated by vari-
+able elimination. For example, when eliminating X4, we introduce a set of LP variables
+x2,x3; for each of them, we have a set of constraints
+ue1
+x2,x4 + uf4
+
+x2,x3  uf3
+ue1
+
+x3,x4
+
+one for each value x4 of X4. We have a similar set of constraint for ue2
+x1,x3 and ue1
+uf2
+
+x2,x3. Note that each constraint is a simple linear inequality.
+
+x1,x2 in terms of
+
+We can now prove that our factored LP construction represents the same constraint as
+
+non-linear constraint in Equation (12):
+Theorem 4.4 The constraints generated by the factored LP construction are equivalent to
+the non-linear constraint in Equation (12). That is, an assignment to (, w) satises the
+factored LP constraints if and only if it satises the constraint in Equation (12).
+Proof: See Appendix A.3.
+is Cw  b in the original
+(cid:80)
+set of constraints. Hence our new set of constraints is equivalent to the original set:  
+i wi ci(x)  b(x) in Equation (12), which in turn is equivalent to the exponential
+maxx
+i wi ci(x)  b(x),x in Equation (11). Thus, we can represent this
+exponential set of constraints by a new set of constraints and LP variables. The size of
+this new set, as in variable elimination, is exponential only in the induced width of the cost
+network, rather than in the total number of variables.
+
+set of constraints  (cid:80)
+
+Returning to our original formulation, we have that
+
+(cid:80)
+
+j f w
+j
+
+In this section, we presented a new, general approach for compactly representing expo-
+nentially-large sets of LP constraints in problems with factored structure. In the remainder
+of this paper, we exploit this construction to design ecient planning algorithms for factored
+MDPs.
+
+4.2.3 Factored Max-norm Projection
+We can now use our procedure for representing the exponential number of constraints in
+Equation (11) compactly to compute ecient max-norm projections, as in Equation (4):
+
+w  arg min
+
+(cid:107)Cw  b(cid:107) .
+
+w
+
+of constraints in this LP:   (cid:80)k
+
+j=1 cijwj  bi,i and   bi (cid:80)k
+
+The max-norm projection is computed by the linear program in (5). There are two sets
+j=1 cijwj,i. Each of
+these sets is an instance of the constraints in Equation (11), which we have just addressed
+in the previous section. Thus, if each of the k basis functions in C is a restricted scope
+function and the target function b is the sum of restricted scope functions, then we can
+use our factored LP technique to represent the constraints in the max-norm projection LP
+compactly. The correctness of our algorithm is a corollary of Theorem 4.4:
+
+420
+
+Efficient Solution Algorithms for Factored MDPs
+
+Corollary 4.5 The solution (, w) of a linear program that minimizes  subject to the
+constraints in FactoredLP(C, b,O) and FactoredLP(C, b,O), for any elimination
+order O satises:
+
+w  arg min
+
+w
+
+(cid:107)Cw  b(cid:107) ,
+
+and
+
+ = min
+
+w
+
+(cid:107)Cw  b(cid:107) .
+
+The original max-norm projection LP had k + 1 variables and two constraints for each
+state x; thus, the number of constraints is exponential in the number of state variables.
+On the other hand, our new factored max-norm projection LP has more variables, but
+exponentially fewer constraints. The number of variables and constraints in the new factored
+LP is exponential only in the number of state variables in the largest factor in the cost
+network, rather than exponential in the total number of state variables. As we show in
+Section 9, this exponential gain allows us to compute max-norm projections eciently when
+solving very large factored MDPs.
+
+5. Approximate Linear Programming
+
+We begin with the simplest of our approximate MDP solution algorithms, based on the
+approximate linear programming formulation in Section 3.3. Using the basic operations
+described in Section 4, we can formulate an algorithm that is both simple and ecient.
+
+(cid:80)
+
+5.1 The Algorithm
+As discussed in Section 3.3, approximate linear program formulation is based on the linear
+programming approach to solving MDPs presented in Section 3.3. However, in this ap-
+proximate version, we restrict the space of value functions to the linear space dened by
+our basis functions. More precisely, in this approximate LP formulation, the variables are
+w1, . . . , wk  the weights for our basis functions. The LP is given by:
+
+(cid:80)
+(cid:80)
+x (x)
+i wi hi(x)  [R(x, a) + 
+
+i wi hi(x) ;
+
+Variables: w1, . . . , wk ;
+Minimize:
+Subject to:
+
+(cid:80)
+x(cid:48) P (x(cid:48) | x, a)
+(cid:80)
+
+(cid:80)
+i wi hi(x(cid:48))] x  X,a  A.
+(14)
+In other words, this formulation takes the LP in (7) and substitutes the explicit state value
+function with a linear value function representation
+i wi hi(x). This transformation from
+an exact to an approximate problem formulation has the eect of reducing the number
+of free variables in the LP to k (one for each basis function coecient), but the number
+of constraints remains |X|  |A|. In our SysAdmin problem, for example, the number of
+constraints in the LP in (14) is (m + 1)  2m, where m is the number of machines in the
+network. However, using our algorithm for representing exponentially large constraint sets
+compactly we are able to compute the solution to this approximate linear programming
+algorithm in closed form with an exponentially smaller LP, as in Section 4.2.
+
+First, consider the objective function
+
+i wi hi(x) of the LP (14). Naively
+representing this objective function requires a summation over a exponentially large state
+space. However, we can rewrite the objective and obtain a compact representation. We
+rst reorder the terms:
+
+x (x)
+
+(cid:80)
+
+(cid:80)
+
+421
+
+Guestrin, Koller, Parr & Venkataraman
+
+FactoredALP (P , R, , H, O, )
+
+//P is the factored transition model.
+//R is the set of factored reward functions.
+// is the discount factor.
+//H is the set of basis functions H = {h1, . . . , hk}.
+//O stores the elimination order.
+// are the state relevance weights.
+//Return the basis function weights w computed by approximate linear programming.
+
+//Cache the backprojections of the basis functions.
+
+For each basis function hi  H; for each action a:
+
+Let ga
+
+i = Backproja(hi).
+
+//Compute factored state relevance weights.
+For each basis function hi, compute the factored state relevance weights
+
+i as in Equation (15) .
+//Generate approximate linear programming constraints
+Let  = {}.
+For each action a:
+
+Let  =   FactoredLP({ga
+
+1  h1, . . . , ga
+
+(cid:80)
+
+(cid:80)
+
+k  hk}, Ra,O).
+x(cid:48) P (x(cid:48)
+
+(cid:80)
+
+//So far, our constraints guarantee that   R(x, a) + 
+
+i wi hi(x(cid:48)) 
+i wi hi(x); to satisfy the approximate linear programming solution in (14) we must add
+
+| x, a)
+
+a nal constraint.
+Let  =   { = 0}.
+//We can now obtain the solution weights by solving an LP.
+Let w be the solution of the linear program: minimize
+
+the constraints .
+
+(cid:80)
+
+Return w.
+
+i iwi, subject to
+
+Figure 6: Factored approximate linear programming algorithm.
+
+422
+
+Efficient Solution Algorithms for Factored MDPs
+
+(cid:88)
+
+x
+
+(x)
+
+(cid:88)
+
+i
+
+wi hi(x) =
+
+(cid:88)
+
+(cid:88)
+
+wi
+
+i
+
+x
+
+(x) hi(x).
+
+(cid:80)
+
+Now, consider the state relevance weights (x) as a distribution over states, so that (x) > 0
+and
+
+x (x) = 1. As in backprojections, we can now write:
+
+i =
+
+(x) hi(x) =
+
+(ci) hi(ci);
+
+(15)
+
+(cid:88)
+
+x
+
+(cid:88)
+
+ciCi
+
+(cid:80)
+
+where (ci) represents the marginal of the state relevance weights  over the domain
+Dom[Ci] of the basis function hi. For example, if we use uniform state relevance weights as
+in our experiments  (x) = 1|X|  then the marginals become (ci) = 1|Ci|. Thus, we can
+rewrite the objective function as
+i wi i, where each basis weight i is computed as shown
+in Equation (15). If the state relevance weights are represented by marginals, then the cost
+of computing each i depends exponentially on the size of the scope of Ci only, rather than
+exponentially on the number of state variables. On the other hand, if the state relevance
+weights are represented by arbitrary distributions, we need to obtain the marginals over the
+Cis, which may not be an ecient computation. Thus, greatest eciency is achieved by
+using a compact representation, such as a Bayesian network, for the state relevance weights.
+Second, note that the right side of the constraints in the LP (14) correspond to the Qa
+
+functions:
+
+Qa(x) = Ra(x) + 
+
+Using the ecient backprojection operation in factored MDPs described in Section 4.1 we
+can rewrite the Qa functions as:
+
+(cid:88)
+
+i
+
+wi hi(x(cid:48)).
+
+(cid:88)
+
+x(cid:48)
+
+P (x(cid:48) | x, a)
+(cid:88)
+
+i
+
+Qa(x) = Ra(x) + 
+
+wi ga
+
+i (x);
+
+where ga
+discussed, if hi has scope restricted to Ci, then ga
+i
+
+i is the backprojection of basis function hi through the transition model Pa. As we
+is a restricted scope function of a(C(cid:48)
+i).
+i and the basis relevance weights i. The
+
+We can precompute the backprojections ga
+
+approximate linear programming LP of (14) can be written as:
+
+Variables: w1, . . . , wk ;
+Minimize:
+Subject to:
+
+(cid:80)
+(cid:80)
+i i wi ;
+i wi hi(x)  [Ra(x) + 
+
+(cid:80)
+
+i wi ga
+
+i (x)] x  X,a  A.
+
+(16)
+
+Finally, we can rewrite this LP to use constraints of the same form as the one in Equa-
+
+tion (12):
+
+(cid:80)
+
+Variables: w1, . . . , wk ;
+Minimize:
+Subject to: 0  maxx {Ra(x) +
+
+i i wi ;
+
+(cid:80)
+
+i wi [ga
+
+i (x)  hi(x)]} a  A.
+
+(17)
+
+We can now use our factored LP construction in Section 4.2 to represent these non-linear
+constraints compactly. Basically, there is one set of factored LP constraints for each action
+a. Specically, we can write the non-linear constraint in the same form as those in Equa-
+tion (12) by expressing the functions C as: ci(x) = hi(x)ga
+i (x). Each ci(x) is a restricted
+
+423
+
+Guestrin, Koller, Parr & Venkataraman
+
+i), which means that ci(x) has scope restricted to Ci  a(C(cid:48)
+
+i (x) has scope restricted
+scope function; that is, if hi(x) has scope restricted to Ci, then ga
+to a(C(cid:48)
+i). Next, the target
+function b becomes the reward function Ra(x) which, by assumption, is factored. Finally,
+in the constraint in Equation (12),  is a free variable. On the other hand, in the LP in (17)
+the maximum in the right hand side must be less than zero. This nal condition can be
+achieved by adding a constraint  = 0. Thus, our algorithm generates a set of factored
+LP constraints, one for each action. The total number of constraints and variables in this
+new LP is linear in the number of actions |A| and only exponential in the induced width
+of each cost network, rather than in the total number of variables. The complete factored
+approximate linear programming algorithm is outlined in Figure 6.
+
+5.2 An Example
+
+We now present a complete example of the operations required by the approximate LP algo-
+rithm to solve the factored MDP shown in Figure 2(a). Our presentation follows four steps:
+problem representation, basis function selection, backprojections and LP construction.
+
+First, we must fully specify the factored MDP model for the
+Problem Representation:
+problem. The structure of the DBN is shown in Figure 2(b). This structure is maintained
+for all action choices. Next, we must dene the transition probabilities for each action.
+There are 5 actions in this problem: do nothing, or reboot one of the 4 machines in the
+network. The CPDs for these actions are shown in Figure 2(c). Finally, we must dene the
+reward function. We decompose the global reward as the sum of 4 local reward functions,
+one for each machine, such that there is a reward if the machine is working. Specically,
+Ri(Xi = true) = 1 and Ri(Xi = false) = 0, breaking symmetry by setting R4(X4 = true) =
+2. We use a discount factor of  = 0.9.
+
+In this simple example, we use ve simple basis functions.
+Basis Function Selection:
+First, we include the constant function h0 = 1. Next, we add indicators for each machine
+which take value 1 if the machine is working: hi(Xi = true) = 1 and hi(Xi = false) = 0.
+
+The rst algorithmic step is computing the backprojection of the
+Backprojections:
+basis functions, as dened in Section 4.1. The backprojection of the constant basis is
+simple:
+
+0 =
+ga
+
+Pa(x(cid:48) | x)h0 ;
+Pa(x(cid:48) | x) 1 ;
+
+(cid:88)
+(cid:88)
+
+x(cid:48)
+
+=
+
+x(cid:48)
+= 1 .
+
+Next, we must backproject our indicator basis functions hi:
+
+(cid:88)
+Pa(x(cid:48) | x)hi(x(cid:48)
+(cid:88)
+Pa(x(cid:48)
+
+(cid:89)
+
+x(cid:48)
+
+x(cid:48)
+1,x(cid:48)
+
+2,x(cid:48)
+
+3,x(cid:48)
+
+4
+
+i =
+ga
+
+=
+
+i) ;
+j | xj1, xj)hi(x(cid:48)
+
+i) ;
+
+j
+
+424
+
+Efficient Solution Algorithms for Factored MDPs
+
+(cid:88)
+(cid:88)
+
+x(cid:48)
+
+i
+
+x(cid:48)
+
+i
+
+=
+
+=
+
+= Pa(X(cid:48)
+= Pa(X(cid:48)
+
+x(cid:48)[X(cid:48){X(cid:48)
+i}]
+
+Pa(x(cid:48)
+
+i | xi1, xi)hi(x(cid:48)
+i)
+i | xi1, xi)hi(x(cid:48)
+
+i) ;
+
+Pa(x(cid:48)
+i = true | xi1, xi) 1 + Pa(X(cid:48)
+i = true | xi1, xi) .
+
+(cid:88)
+
+(cid:89)
+
+j(cid:54)=i
+
+Pa(x(cid:48)
+
+j | xj1, xj) ;
+
+i = false | xi1, xi) 0 ;
+
+is a restricted scope function of {Xi1, Xi}. We can now use the CPDs in Fig-
+
+Thus, ga
+i
+ure 2(c) to specify ga
+i :
+
+greboot = i
+i
+
+(Xi1, Xi) =
+
+greboot (cid:54)= i
+
+i
+
+(Xi1, Xi) =
+
+Xi1 = true
+Xi1 = false
+
+Xi1 = true
+Xi1 = false
+
+1
+1
+
+0.9
+0.5
+
+1
+1
+
+0.09
+0.05
+
+Xi = true Xi = false
+
+Xi = true Xi = false
+
+To illustrate the factored LPs constructed by our algorithms, we
+LP Construction:
+dene the constraints for the approximate linear programming approach presented above.
+i  hi, as shown in Equation (17). In our example,
+First, we dene the functions ca
+0 =   1 = 0.1 for the constant basis, and for the indicator bases:
+these functions are ca
+
+i = ga
+
+;
+
+.
+
+;
+
+.
+
+creboot = i
+i
+
+(Xi1, Xi) =
+
+Xi1 = true
+Xi1 = false
+
+creboot (cid:54)= i
+
+i
+
+(Xi1, Xi) =
+
+Xi = true Xi = false
+
+0.1
+0.1
+
+0.9
+0.9
+
+Xi = true Xi = false
+0.19
+0.55
+
+0.081
+0.045
+
+Xi1 = true
+Xi1 = false
+
+(cid:88)
+
+(cid:88)
+
+x
+
+i
+
+j
+
+Using this denition of ca
+
+i , the approximate linear programming constraints are given by:
+(18)
+
+0  max
+
+, a .
+
+Ri +
+
+wjca
+j
+
+We present the LP construction for one of the 5 actions: reboot = 1. Analogous constructions
+can be made for the other actions.
+
+In the rst set of constraints, we abstract away the dierence between rewards and basis
+functions by introducing LP variables u and equality constraints. We begin with the reward
+functions:
+
+x1 = 1 , uR1
+uR1
+x3 = 1 , uR3
+uR3
+
+x1 = 0 ;
+x3 = 0 ;
+
+x2 = 1 , uR2
+uR2
+x4 = 2 , uR4
+uR4
+
+x2 = 0 ;
+x4 = 0 .
+
+We now represent the equality constraints for the ca
+j functions for the reboot = 1 action. Note
+that the appropriate basis function weight from Equation (18) appears in these constraints:
+
+425
+
+Guestrin, Koller, Parr & Venkataraman
+
+uc0 = 0.1 w0 ;
+x1,x4 = 0.1 w1 ,
+x1,x4 = 0.1 w1 ,
+uc1
+uc1
+uc1
+x1,x4 = 0.9 w1 ,
+x1,x4 = 0.9 w1 ;
+uc1
+x1,x2 = 0.19 w2 , uc2
+x1,x2 = 0.55 w2 , uc2
+x1,x2 = 0.081 w2 , uc2
+x1,x2 = 0.045 w2 ;
+uc2
+x2,x3 = 0.55 w3 , uc3
+x2,x3 = 0.19 w3 , uc3
+x2,x3 = 0.081 w3 , uc3
+x2,x3 = 0.045 w3 ;
+uc3
+x3,x4 = 0.55 w4 , uc4
+x3,x4 = 0.19 w4 , uc4
+x3,x4 = 0.081 w4 , uc4
+x3,x4 = 0.045 w4 .
+uc4
+
+Using these new LP variables, our LP constraint from Equation (18) for the reboot = 1 action
+becomes:
+
+0 
+
+max
+
+X1,X2,X3,X4
+
+uRi
+Xi
+
++ uc0 +
+
+ucj
+Xj1,Xj
+
+.
+
+i=1
+
+j=1
+
+We are now ready for the variable elimination process. We illustrate the elimination of
+variable X4:
+
+0  max
+
+X1,X2,X3
+
+uRi
+Xi
+
++ uc0 +
+
+ucj
+Xj1,Xj
+
++ max
+X4
+
+uR4
+X4
+
++ uc1
+
+X1,X4
+
++ uc4
+
+X3,X4
+
+.
+
+(cid:105)
+
+3(cid:88)
+
+i=1
+
+4(cid:88)
+
+3(cid:88)
+
+j=2
+
+(cid:104)
+
+4(cid:88)
+
+(cid:104)
+
+(cid:105)
+
+We can represent the term maxX4
+one for each assignment of X1 and X3, using the new LP variables ue1
+maximum:
+
++ uc4
+
++ uc1
+
+uR4
+X4
+
+X1,X4
+
+X3,X4
+
+by a set of linear constraints,
+to represent this
+
+X1,X3
+
+x1,x3  uR4
+ue1
+x1,x3  uR4
+ue1
+x1,x3  uR4
+ue1
+x1,x3  uR4
+ue1
+x1,x3  uR4
+ue1
+x1,x3  uR4
+ue1
+x1,x3  uR4
+ue1
+x1,x3  uR4
+ue1
+
+x4 + uc1
+x4 + uc1
+x4 + uc1
+x4 + uc1
+x4 + uc1
+x4 + uc1
+x4 + uc1
+x4 + uc1
+
+x1,x4 + uc4
+x1,x4 + uc4
+x1,x4 + uc4
+x1,x4 + uc4
+x1,x4 + uc4
+x1,x4 + uc4
+x1,x4 + uc4
+x1,x4 + uc4
+
+x3,x4 ;
+x3,x4 ;
+x3,x4 ;
+x3,x4 ;
+x3,x4 ;
+x3,x4 ;
+x3,x4 ;
+x3,x4 .
+
+We have now eliminated variable X4 and our global non-linear constraint becomes:
+
+3(cid:88)
+
+3(cid:88)
+
+0  max
+
+X1,X2,X3
+
+uRi
+Xi
+
++ uc0 +
+
+ucj
+Xj1,Xj
+
++ ue1
+
+X1,X3
+
+.
+
+i=1
+
+j=2
+
+Next, we eliminate variable X3. The new LP constraints and variables have the form:
+
+ue2
+X1,X2
+
++ uc3
+
+X2,X3
+
++ ue1
+
+X1,X3
+
+,  X1, X2, X3 ;
+
+thus, removing X3 from the global non-linear constraint:
+
+X3
+
+ uR3
+2(cid:88)
+
+0  max
+
+X1,X2
+
+uRi
+Xi
+
++ uc0 + uc2
+
+X1,X2
+
++ ue2
+
+X1,X2
+
+.
+
+i=1
+
+426
+
+Efficient Solution Algorithms for Factored MDPs
+
+Figure 7: Number of constraints in the LP generated by the explicit state representation
+versus the factored LP construction for the solution of the ring problem with
+basis functions over single variables and approximate linear programming as the
+solution algorithm.
+
+We can now eliminate X2, generating the linear constraints:
+
+ue3
+X1
+
+ uR2
+
+X2
+
++ uc2
+
+X1,X2
+
++ ue2
+
+X1,X2
+
+,  X1, X2 .
+
+Now, our global non-linear constraint involves only X1:
++ uc0 + ue3
+X1
+
+0  max
+
+uR1
+X1
+
+X1
+
+.
+
+As X1 is the last variable to be eliminated, the scope of the new LP variable is empty and
+the linear constraints are given by:
+
+ue4  uR1
+
+X1
+
++ ue3
+X1
+
+,  X1 .
+
+All of the state variables have now been eliminated, turning our global non-linear constraint
+into a simple linear constraint:
+
+0  uc0 + ue4 ,
+
+which completes the LP description for the approximate linear programming solution to
+the problem in Figure 2.
+
+In this small example with only four state variables, our factored LP technique generates
+a total of 89 equality constraints, 115 inequality constraints and 149 LP variables, while
+the explicit state representation in Equation (8) generates only 80 inequality constraints
+and 5 LP variables. However, as the problem size increases, the number of constraints and
+LP variables in our factored LP approach grow as O(n2), while the explicit state approach
+grows exponentially, at O(n2n). This scaling eect is illustrated in Figure 7.
+
+6. Approximate Policy Iteration with Max-norm Projection
+
+The factored approximate linear programming approach described in the previous section
+is both elegant and easy to implement. However, we cannot, in general, provide strong
+
+427
+
+0500001000001500002000002500000246810121416Number of machines in ringNumber of LP constraintsExplicit LPFactored LP# factored constraints = 12n  + 5n - 82# explicit constraints = (n+1) 2 nGuestrin, Koller, Parr & Venkataraman
+
+guarantees about the error it achieves. An alternative is to use the approximate policy
+iteration described in Section 3.2, which does oer certain bounds on the error. However,
+as we shall see, this algorithm is signicantly more complicated, and requires that we place
+additional restrictions on the factored MDP.
+
+In particular, approximate policy iteration requires a representation of the policy at each
+iteration. In order to obtain a compact policy representation, we must make an additional
+assumption: each action only aects a small number of state variables. We rst state this
+assumption formally. Then, we show how to obtain a compact representation of the greedy
+policy with respect to a factored value function, under this assumption. Finally, we describe
+our factored approximate policy iteration algorithm using max-norm projections.
+
+6.1 Default Action Model
+In Section 2.2, we presented the factored MDP model, where each action is associated with
+its own factored transition model represented as a DBN and with its own factored reward
+function. However, dierent actions often have very similar transition dynamics, only dif-
+fering in their eect on some small set of variables. In particular, in many cases a variable
+has a default evolution model, which only changes if an action aects it directly (Boutilier
+et al., 2000).
+
+This type of structure turns out to be useful for compactly representing policies, a prop-
+erty which is important in our approximate policy iteration algorithm. Thus, in this section
+of the paper, we restrict attention to factored MDPs that are dened using a default transi-
+tion model d = (cid:104)Gd, Pd(cid:105) (Koller & Parr, 2000). For each action a, we dene Eects[a]  X(cid:48)
+to be the variables in the next state whose local probability model is dierent from d, i.e.,
+those variables X(cid:48)
+Example 6.1 In our system administrator example, we have an action ai for rebooting
+each one of the machines, and a default action d for doing nothing. The transition model
+described above corresponds to the do nothing action, which is also the default transition
+model. The transition model for ai is dierent from d only in the transition model for the
+variable X(cid:48)
+i = true with probability one, regardless of the status of the
+neighboring machines. Thus, in this example, Eects[ai] = X(cid:48)
+i.
+
+i, which is now X(cid:48)
+
+i such that Pa(X(cid:48)
+
+i)).
+
+i | Parentsa(X(cid:48)
+
+i)) (cid:54)= Pd(X(cid:48)
+
+i | Parentsd(X(cid:48)
+
+(cid:80)r
+(cid:80)r
+
+As in the transition dynamics, we can also dene the notion of default reward model. In
+i=1 Ri(Ui) associated with the default action
+this case, there is a set of reward functions
+d. In addition, each action a can have a reward function Ra(Ua). Here, the extra reward of
+i  {X1, . . . , Xn}. Thus, the total reward
+action a has scope restricted to Rewards[a] = Ua
+associated with action a is given by Ra +
+i=1 Ri. Note that Ra can also be factored as a
+linear combination of smaller terms for an even more compact representation.
+
+We can now build on this additional assumption to dene the complete algorithm.
+Recall that the approximate policy iteration algorithm iterates through two steps: policy
+improvement and approximate value determination. We now discuss each of these steps.
+
+6.2 Computing Greedy Policies
+The policy improvement step computes the greedy policy relative to a value function V (t1):
+
+(t) = Greedy(V (t1)).
+
+428
+
+Efficient Solution Algorithms for Factored MDPs
+
+Recall that our value function estimates have the linear form Hw. As we described in
+Section 4.1, the greedy policy for this type of value function is given by:
+
+Greedy(Hw)(x) = arg max
+
+a
+
+Qa(x),
+
+(cid:80)
+
+where each Qa can be represented by: Qa(x) = R(x, a) +
+
+i wi ga
+
+i (x).
+
+If we attempt to represent this policy naively, we are again faced with the problem
+of exponentially large state spaces. Fortunately, as shown by Koller and Parr (2000), the
+greedy policy relative to a factored value function has the form of a decision list. More
+precisely, the policy can be written in the form (cid:104)t1, a1(cid:105),(cid:104)t2, a2(cid:105), . . . ,(cid:104)tL, aL(cid:105), where each ti
+is an assignment of values to some small subset Ti of variables, and each ai is an action.
+The greedy action to take in state x is the action aj corresponding to the rst event tj in
+the list with which x is consistent. For completeness, we now review the construction of
+this decision-list policy.
+
+The critical assumption that allows us to represent the policy as a compact decision list
+is the default action assumption described in Section 6.1. Under this assumption, the Qa
+functions can be written as:
+
+r(cid:88)
+
+(cid:88)
+
+Qa(x) = Ra(x) +
+
+Ri(x) +
+
+wi ga
+
+i (x),
+
+i=1
+
+i
+
+(cid:80)r
+
+(cid:80)
+
+where Ra has scope restricted to Ua. The Q function for the default action d is just:
+Qd(x) =
+
+i=1 Ri(x) +
+
+i wi gd
+
+i (x).
+
+is equal to gd
+
+i for most i. Intuitively, a component ga
+
+We now have a set of linear Q-functions which implicitly describes a policy .
+
+It is
+not immediately obvious that these Q functions result in a compactly expressible policy.
+An important insight is that most of the components in the weighted combination are
+identical, so that ga
+i corresponding
+i
+to the backprojection of basis function hi(Ci) is only dierent if the action a inuences
+one of the variables in Ci. More formally, assume that Eects[a]  Ci = . In this case,
+all of the variables in Ci have the same transition model in a and d. Thus, we have
+that ga
+i (x); in other words, the ith component of the Qa function is irrelevant
+when deciding whether action a is better than the default action d. We can dene which
+components are actually relevant: let Ia be the set of indices i such that Eects[a] Ci (cid:54)= .
+These are the indices of those basis functions whose backprojection diers in Pa and Pd.
+In our example DBN of Figure 2, actions and basis functions involve single variables, so
+Iai = i.
+
+i (x) = gd
+
+Let us now consider the impact of taking action a over the default action d. We can
+
+dene the impact  the dierence in value  as:
+(cid:88)
+a(x) = Qa(x)  Qd(x);
+wi
+
+= Ra(x) +
+
+iIa
+
+(cid:104)
+
+(cid:105)
+
+i (x)
+
+.
+
+This analysis shows that a(x) is a function whose scope is restricted to
+
+i (x)  gd
+ga
+(cid:164)
+
+i)
+
+.
+
+Ta = Ua (cid:163)iIaa(C(cid:48)
+
+429
+
+(19)
+
+(20)
+
+Guestrin, Koller, Parr & Venkataraman
+
+DecisionListPolicy (Qa)
+
+//Qa is the set of Q-functions, one for each action;
+//Return the decision list policy .
+
+//Initialize decision list.
+Let  = {}.
+//Compute the bonus functions.
+For each action a, other than the default action d:
+
+Compute the bonus for taking action a,
+
+a(x) = Qa(x)  Qd(x);
+
+as in Equation (19). Note that a has scope restricted to Ta, as in
+Equation (20).
+For each assignment t  Ta:
+
+//Add states with positive bonuses to the (unsorted) decision list.
+
+If a(t) > 0, add branch to decision list:
+
+ =   {(cid:104)t, a, a(t)(cid:105)}.
+
+//Add the default action to the (unsorted) decision list.
+Let  =   {(cid:104), d, 0(cid:105)}.
+//Sort decision list to obtain nal policy.
+Sort the decision list  in decreasing order on the  element of (cid:104)t, a, (cid:105).
+Return .
+
+Figure 8: Method for computing the decision list policy  from the factored representation
+
+of the Qa functions.
+
+In our example DBN, Ta2 = {X1, X2}.
+
+Intuitively, we now have a situation where we have a baseline value function Qd(x)
+which denes a value for each state x. Each action a changes that baseline by adding or
+subtracting an amount from each state. The point is that this amount depends only on Ta,
+so that it is the same for all states in which the variables in Ta take the same values.
+We can now dene the greedy policy relative to our Q functions. For each action a, dene
+a set of conditionals (cid:104)t, a, (cid:105), where each t is some assignment of values to the variables Ta,
+and  is a(t). Now, sort the conditionals for all of the actions by order of decreasing :
+
+(cid:104)t1, a1, 1(cid:105),(cid:104)t2, a2, 2(cid:105), . . . ,(cid:104)tL, aL, L(cid:105).
+
+Consider our optimal action in a state x. We would like to get the largest possible bonus
+over the default value. If x is consistent with t1, we should clearly take action a1, as it
+gives us bonus 1.
+If not, then we should try to get 2; thus, we should check if x is
+consistent with t2, and if so, take a2. Using this procedure, we can compute the decision-
+list policy associated with our linear estimate of the value function. The complete algorithm
+for computing the decision list policy is summarized in Figure 8.
+a |Dom(Ta)|; Ta, in turn, depends
+on the set of basis function clusters that intersect with the eects of a. Thus, the size
+of the policy depends in a natural way on the interaction between the structure of our
+
+Note that the number of conditionals in the list is
+
+(cid:80)
+
+430
+
+Efficient Solution Algorithms for Factored MDPs
+
+process description and the structure of our basis functions. In problems where the actions
+modify a large number of variables, the policy representation could become unwieldy. The
+approximate linear programming approach in Section 5 is more appropriate in such cases,
+as it does not require an explicit representation of the policy.
+
+6.3 Value Determination
+In the approximate value determination step our algorithm computes:
+(cid:107)Hw  (R(t) + P(t)Hw)(cid:107) .
+
+w(t) = arg min
+w
+
+By rearranging the expression, we get:
+
+w(t) = arg min
+w
+
+(cid:107)(H  P(t)H) w  R(t)(cid:107) .
+
+This equation is an instance of the optimization in Equation (4). If P(t) is factored, we can
+conclude that C = (H  P(t)H) is also a matrix whose columns correspond to restricted-
+scope functions. More specically:
+
+ci(x) = hi(x)  g(t)
+
+i
+
+(x),
+
+i
+
+where g(t)
+is the backprojection of the basis function hi through the transition model P(t),
+as described in Section 4.1. The target b = R(t) corresponds to the reward function, which
+for the moment is assumed to be factored. Thus, we can again apply our factored LP in
+Section 4.2.3 to estimate the value of the policy (t).
+
+Unfortunately, the transition model P(t) is not factored, as a decision list representa-
+tion for the policy (t) will, in general, induce a transition model P(t) which cannot be
+represented by a compact DBN. Nonetheless, we can still generate a compact LP by ex-
+ploiting the decision list structure of the policy. The basic idea is to introduce cost networks
+corresponding to each branch in the decision list, ensuring, additionally, that only states
+consistent with this branch are considered in the cost network maximization. Specically,
+we have a factored LP construction for each branch (cid:104)ti, ai(cid:105). The ith cost network only
+considers a subset of the states that is consistent with the ith branch of the decision list.
+Let Si be the set of states x such that ti is the rst event in the decision list for which x
+is consistent. That is, for each state x  Si, x is consistent with ti, but it is not consistent
+with any tj with j < i.
+
+imply that   (cid:80)
+i wi ci(x)  b(x) for each state x.
+(cid:80)r
+
+Recall that, as in Equation (11), our LP construction denes a set of constraints that
+Instead, we have a separate set of
+constraints for the states in each subset Si. For each state in Si, we know that action ai is
+taken. Hence, we can apply our construction above using Pai  a transition model which is
+factored by assumption  in place of the non-factored P(t). Similarly, the reward function
+becomes Rai(x) +
+
+i=1 Ri(x) for this subset of states.
+
+The only issue is to guarantee that the cost network constraints derived from this tran-
+sition model are applied only to states in Si. Specically, we must guarantee that they are
+applied only to states consistent with ti, but not to states that are consistent with some
+tj for j < i. To guarantee the rst condition, we simply instantiate the variables in Ti to
+take the values specied in ti. That is, our cost network now considers only the variables in
+
+431
+
+Guestrin, Koller, Parr & Venkataraman
+
+FactoredAPI (P , R, , H, O, , tmax)
+
+//P is the factored transition model.
+//R is the set of factored reward functions.
+// is the discount factor.
+//H is the set of basis functions H = {h1, . . . , hk}.
+//O stores the elimination order.
+// Bellman error precision.
+//tmax maximum number of iterations.
+//Return the basis function weights w computed by approximate policy iteration.
+
+//Initialize weights
+Let w(0) = 0.
+//Cache the backprojections of the basis functions.
+For each basis function hi  H; for each action a:
+
+Let ga
+
+i = Backproja(hi).
+
+//Main approximate policy iteration loop.
+Let t = 0.
+Repeat
+
+//Policy improvement part of the loop.
+
+(cid:80)
+
+//Compute decision list policy for iteration t weights.
+i w(t)
+Let (t) = DecisionListPolicy(Ra + 
+
+i ga
+
+i ).
+
+//Value determination part of the loop.
+
+//Initialize constraints for max-norm projection LP.
+Let + = {} and  = {}.
+//Initialize indicators.
+Let I = {}.
+//For every branch of the decision list policy, generate the relevant set of constraints, and
+
+update the indicators to constraint the state space for future branches.
+
+1 , . . . , hk  gaj
+
+For each branch (cid:104)tj, aj(cid:105) in the decision list policy (t):
+//Instantiate the variables in Tj to the assignment given in tj.
+Instantiate the set of functions {h1  gaj
+partial state assignment tj and store in C.
+
+k } with the
+Instantiate the target functions Raj with the partial state assign-
+ment tj and store in b.
+Instantiate the indicator functions I with the partial state as-
+signment tj and store in I(cid:48).
+//Generate the factored LP constraints for the current decision list branch.
+Let + = +  FactoredLP(C,b + I(cid:48),O).
+Let  =   FactoredLP(C, b + I(cid:48),O).
+//Update the indicator functions.
+Let Ij(x) = 1(x = tj) and update the indicators I = I  Ij.
+
+//We can now obtain the new set of weights by solving an LP, which corresponds to the
+
+max-norm projection.
+Let w(t+1) be the solution of the linear program: minimize , subject
+to the constraints {+, }.
+Let t = t + 1.
+
+Until BellmanErr(Hw(t))   or t  tmax or w(t1) = w(t).
+Return w(t).
+
+Figure 9: Factored approximate policy iteration with max-norm projection algorithm.
+
+432
+
+Efficient Solution Algorithms for Factored MDPs
+
+{X1, . . . , Xn}Ti, and computes the maximum only over the states consistent with Ti = ti.
+To guarantee the second condition, we ensure that we do not impose any constraints on
+states associated with previous decisions. This is achieved by adding indicators Ij for each
+previous decision tj, with weight . More specically, Ij is a function that takes value
+ for states consistent with tj and zero for other all assignments of Tj. The constraints
+for the ith branch will be of the form:
+
+(cid:88)
+
+(cid:88)
+
+  R(x, ai) +
+
+wl (gl(x, ai)  h(x)) +
+
+1(x = tj),
+
+x  [ti],
+
+(21)
+
+l
+
+j<i
+
+where x  [ti] denes the assignments of X consistent with ti. The introduction of these
+indicators causes the constraints associated with ti to be trivially satised by states in Sj
+for j < i. Note that each of these indicators is a restricted-scope function of Tj and can
+be handled in the same fashion as all other terms in the factored LP. Thus, for a decision
+list of size L, our factored LP contains constraints from 2L cost networks. The complete
+approximate policy iteration with max-norm projection algorithm is outlined in Figure 9.
+
+6.4 Comparisons
+It is instructive to compare our max-norm policy iteration algorithm to the L2-projection
+policy iteration algorithm of Koller and Parr (2000) in terms of computational costs per
+iteration and implementation complexity. Computing the L2 projection requires (among
+other things) a series of dot product operations between basis functions and backprojected
+basis functions (cid:104)hig
+j (cid:105). These expressions are easy to compute if P refers to the transition
+model of a particular action a. However, if the policy  is represented as a decision list, as is
+the result of the policy improvement step, then this step becomes much more complicated.
+In particular, for every branch of the decision list, for every pair of basis functions i and j,
+and for each assignment to the variables in Scope[hi]  Scope[ga
+j ], it requires the solution of
+a counting problem which is (cid:93)P -complete in general. Although Koller and Parr show that
+this computation can be performed using a Bayesian network (BN) inference, the algorithm
+still requires a BN inference for each one of those assignments at each branch of the decision
+list. This makes the algorithm very dicult to implement eciently in practice.
+
+The max-norm projection, on the other hand, relies on solving a linear program at every
+iteration. The size of the linear program depends on the cost networks generated. As we
+discuss, two cost networks are needed for each point in the decision list. The complexity
+of each of these cost networks is approximately the same as only one of the BN inferences
+in the counting problem for the L2 projection. Overall, for each branch in the decision
+list, we have a total of two of these inferences, as opposed to one for each assignment of
+Scope[hi]  Scope[ga
+j ] for every pair of basis functions i and j. Thus, the max-norm policy
+iteration algorithm is substantially less complex computationally than the approach based
+on L2-projection. Furthermore, the use of linear programming allows us to rely on existing
+LP packages (such as CPLEX), which are very highly optimized.
+
+It is also interesting to compare the approximate policy iteration algorithm to the ap-
+proximate linear programming algorithm we presented in Section 5. In the approximate
+linear programming algorithm, we never need to compute the decision list policy. The
+policy is always represented implicitly by the Qa functions. Thus, this algorithm does not
+
+433
+
+Guestrin, Koller, Parr & Venkataraman
+
+require explicit computation or manipulation of the greedy policy. This dierence has two
+important consequences: one computational and the other in terms of generality.
+
+First, not having to compute or consider the decision lists makes approximate linear
+programming faster and easier to implement. In this algorithm, we generate a single LP
+with one cost network for each action and never need to compute a decision list policy. On
+the other hand, in each iteration, approximate policy iteration needs to generate two LPs
+for every branch of the decision list of size L, which is usually signicantly longer than |A|,
+with a total of 2L cost networks. In terms of representation, we do not require the policies
+to be compact; thus, we do not need to make the default action assumption. Therefore, the
+approximate linear programming algorithm can deal with a more general class of problems,
+where each action can have its own independent DBN transition model. On the other hand,
+as described in Section 3.2, approximate policy iteration has stronger guarantees in terms
+of error bounds. These dierences will be highlighted further in our experimental results
+presented in Section 9.
+
+7. Computing Bounds on Policy Quality
+
+are the resulting basis function weights. In practice, the agent will dene its behavior by
+
+We have presented two algorithms for computing approximate solutions to factored MDPs.
+
+In Section 3, we showed some a priori bounds for the quality of the policy. Another
+possible procedure is to compute an a posteriori bound. That is, given our resulting weights
+
+All these algorithms generate linear value functions which can be denoted by H(cid:98)w, where (cid:98)w
+acting according to the greedy policy (cid:98) = Greedy(H(cid:98)w). One issue that remains is how this
+policy (cid:98) compares to the true optimal policy ; that is, how the actual value V(cid:98) of policy
+(cid:98) compares to V.
+(cid:98)w, we compute a bound on the loss of acting according to the greedy policy (cid:98) rather than
+the optimal policy. This can be achieved by using the Bellman error analysis of Williams
+and Baird (1993).
+policy (cid:98) = Greedy(V), their analysis provides the bound:
+The Bellman error is dened as BellmanErr(V) = (cid:107)T V  V(cid:107). Given the greedy
+(cid:176)(cid:176)  2BellmanErr(V)
+
+(cid:176)(cid:176)V  V(cid:98)
+
+(22)
+
+1  
+
+.
+
+Thus, we can use the Bellman error BellmanErr(H(cid:98)w) to evaluate the quality of our resulting
+
+greedy policy.
+
+Note that computing the Bellman error involves a maximization over the state space.
+Thus, the complexity of this computation grows exponentially with the number of state
+variables. Koller and Parr (2000) suggested that structure in the factored MDP can be
+exploited to compute the Bellman error eciently. Here, we show how this error bound can
+be computed by a set of cost networks using a similar construction to the one in our max-
+
+norm projection algorithms. This technique can be used for any (cid:98) that can be represented
+For some set of weights (cid:98)w, the Bellman error is given by:
+
+as a decision list and does not depend on the algorithm used to determine the policy. Thus,
+we can apply this technique to solutions determined approximate linear programming if the
+action descriptions permit a decision list representation of the policy.
+
+434
+
+Efficient Solution Algorithms for Factored MDPs
+
+FactoredBellmanErr (P , R, , H, O, (cid:98)w)
+
+//P is the factored transition model.
+//R is the set of factored reward functions.
+// is the discount factor.
+//H is the set of basis functions H = {h1, . . . , hk}.
+//O stores the elimination order.
+
+//(cid:98)w are the weights for the linear value function.
+//Return the Bellman error for the value function H(cid:98)w.
+//Compute decision list policy for value function H(cid:98)w.
+Let (cid:98) = DecisionListPolicy(Ra + 
+i (cid:98)wiga
+
+For each basis function hi  H; for each action a:
+
+//Cache the backprojections of the basis functions.
+
+i = Backproja(hi).
+
+(cid:80)
+
+Let ga
+
+i ).
+
+//Initialize indicators.
+Let I = {}.
+//Initialize Bellman error.
+Let  = 0.
+//For every branch of the decision list policy, generate the relevant cost networks, solve it with
+variable elimination, and update the indicators to constraint the state space for future branches.
+
+For each branch (cid:104)tj, aj(cid:105) in the decision list policy (cid:98):
+
+Instantiate the set of functions {(cid:98)w1(h1gaj
+
+partial state assignment tj and store in C.
+
+k )} with the
+Instantiate the target functions Raj with the partial state assignment
+tj and store in b.
+Instantiate the indicator functions I with the partial state assignment
+tj and store in I(cid:48).
+
+1 ), . . . ,(cid:98)wk(hkgaj
+
+//Instantiate the variables in Tj to the assignment given in tj.
+
+//Use variable elimination to solve rst cost network, and update Bellman error, if error
+for this branch is larger.
+Let  = max (, VariableElimination(C  b + I(cid:48),O)).
+//Use variable elimination to solve second cost network, and update Bellman error, if error
+for this branch is larger.
+Let  = max (, VariableElimination(C + b + I(cid:48),O)).
+//Update the indicator functions.
+Let Ij(x) = 1(x = tj) and update the indicators I = I  Ij.
+
+Return .
+
+Figure 10: Algorithm for computing Bellman error for factored value function H(cid:98)w.
+
+435
+
+Guestrin, Koller, Parr & Venkataraman
+
+(cid:195)
+
+BellmanErr(H(cid:98)w) = (cid:107)T H(cid:98)w  H(cid:98)w(cid:107) ;
+(cid:80)
+
+(cid:80)
+(cid:80)
+x(cid:48) P(cid:98)(x(cid:48) | x)
+i wihi(x)  R(cid:98)(x)  
+(cid:80)
+j wjhj(x(cid:48)) (cid:80)
+(cid:80)
+x(cid:48) P(cid:98)(x(cid:48) | x)
+j wjhj(x(cid:48)) ,
+i wihi(x)
+If the rewards R(cid:98) and the transition model P(cid:98) are factored appropriately, then we can
+network as described in Section 4.2.1. However, (cid:98) is a decision list policy and it does not
+
+compute each one of these two maximizations (maxx) using variable elimination in a cost
+
+maxx R(cid:98)(x) + 
+
+= max
+
+maxx
+
+(cid:33)
+
+.
+
+induce a factored transition model. Fortunately, as in the approximate policy iteration
+algorithm in Section 6, we can exploit the structure in the decision list to perform such
+maximization eciently. In particular, as in approximate policy iteration, we will generate
+two cost networks for each branch in the decision list. To guarantee that our maximization
+is performed only over states where this branch is relevant, we include the same type of
+indicator functions, which will force irrelevant states to have a value of , thus guaran-
+teeing that at each point of the decision list policy we obtain the corresponding state with
+the maximum error. The state with the overall largest Bellman error will be the maximum
+over the ones generated for each point the in the decision list policy. The complete factored
+algorithm for computing the Bellman error is outlined in Figure 10.
+
+One last interesting note concerns our approximate policy iteration algorithm with max-
+norm projection of Section 6.
+In all our experiments, this algorithm converged, so that
+w(t) = w(t+1) after some iterations. If such convergence occurs, then the objective function
+(t+1) of the linear program in our last iteration is equal to the Bellman error of the nal
+policy:
+
+Lemma 7.1 If approximate policy iteration with max-norm projection converges, so that
+w(t) = w(t+1) for some iteration t, then the max-norm projection error (t+1) of the last
+
+iteration is equal to the Bellman error for the nal value function estimate H(cid:98)w = Hw(t):
+
+BellmanErr(H(cid:98)w) = (t+1).
+
+Proof: See Appendix A.4.
+
+Thus, we can bound the loss of acting according to the nal policy (t+1) by substituting
+
+(t+1) into the Bellman error bound:
+
+Corollary 7.2 If approximate policy iteration with max-norm projection converges after
+
+t iterations to a nal value function estimate H(cid:98)w associated with a greedy policy (cid:98) =
+Greedy(H(cid:98)w), then the loss of acting according to (cid:98) instead of the optimal policy  is
+
+bounded by:
+
+(cid:176)(cid:176)V  V(cid:98)
+where V(cid:98) is the actual value of the policy (cid:98).
+
+(cid:176)(cid:176)  2(t+1)
+
+1  
+
+,
+
+Therefore, when approximate policy iteration converges we can obtain a bound on the
+quality of the resulting policy without needing to compute the Bellman error explicitly.
+
+436
+
+Efficient Solution Algorithms for Factored MDPs
+
+8. Exploiting Context-specic Structure
+
+Thus far, we have presented a suite of algorithms which exploit additive structure in the
+reward and basis functions and sparse connectivity in the DBN representing the transition
+model. However, there exists another important type of structure that should also be
+exploited for ecient decision making: context-specic independence (CSI). For example,
+consider an agent responsible for building and maintaining a house, if the painting task can
+only be completed after the plumbing and the electrical wiring have been installed, then
+the probability that the painting is done is 0, in all contexts where plumbing or electricity
+are not done, independently of the agents action. The representation we have used so far in
+this paper would use a table to represent this type of function. This table is exponentially
+large in the number of variables in the scope of the function, and ignores the context-specic
+structure inherent in the problem denition.
+
+Boutilier et al. (Boutilier et al., 1995; Dearden & Boutilier, 1997; Boutilier, Dean, &
+Hanks, 1999; Boutilier et al., 2000) have developed a set of algorithms which can exploit CSI
+in the transition and reward models to perform ecient (approximate) planning. Although
+this approach is often successful in problems where the value function contains sucient
+context-specic structure, the approach is not able to exploit the additive structure which
+is also often present in real-world problems.
+
+In this section, we extend the factored MDP model to include context-specic structure.
+We present a simple, yet eective extension of our algorithms which can exploit both CSI
+and additive structure to obtain ecient approximations for factored MDPs. We rst extend
+the factored MDP representation to include context-specic structure and then show how
+the basic operations from Section 4 required by our algorithms can be performed eciently
+in this new representation.
+
+8.1 Factored MDPs with Context-specic and Additive Structure
+There are several representations for context-specic functions. The most common are
+decision trees (Boutilier et al., 1995), algebraic decision diagrams (ADDs) (Hoey, St-Aubin,
+Hu, & Boutilier, 1999), and rules (Zhang & Poole, 1999). We choose to use rules as our
+basic representation, for two main reasons. First, the rule-based representation allows a
+fairly simple algorithm for variable elimination, which is a key operation in our framework.
+Second, rules are not required to be mutually exclusive and exhaustive, a requirement that
+can be restrictive if we want to exploit additive independence, where functions can be
+represented as a linear combination of a set of non-mutually exclusive functions.
+
+We begin by describing the rule-based representation (along the lines of Zhang and
+Pooles presentation (1999)) for the probabilistic transition model, in particular, the CPDs
+of our DBN model. Roughly speaking, each rule corresponds to some set of CPD entries
+that are all associated with a particular probability value. These entries with the same
+value are referred to as consistent contexts:
+Denition 8.1 Let C  {X, X(cid:48)} and c  Dom(C). We say that c is consistent with
+b  Dom(B), for B  {X, X(cid:48)}, if c and b have the same assignment for the variables in
+C  B.
+The probability of these consistent contexts will be represented by probability rules:
+
+437
+
+Guestrin, Koller, Parr & Venkataraman
+
+(a)
+
+(b)
+
+1 = (cid:104)Electrical : 0(cid:105)
+
+2 = (cid:104)Electrical   Plumbing : 0(cid:105)
+3 = (cid:104)Electrical  Plumbing : 0.95(cid:105)
+
+(c)
+
+4 = (cid:104)Electrical : 0(cid:105)
+
+5 = (cid:104)Electrical  Plumbing : 0(cid:105)
+
+6 = (cid:104)Electrical  Plumbing  Painting : 0(cid:105)
+7 = (cid:104)Electrical  Plumbing  Painting : 0.9(cid:105)
+
+(d)
+
+Figure 11: Example CPDs for variable the Painting = true represented as decision trees:
+(a) when the action is paint; (b) when the action is not paint. The same CPDs
+can be represented by probability rules as shown in (c) and (d), respectively.
+
+Denition 8.2 A probability rule  = (cid:104)c : p(cid:105) is a function  : {X, X(cid:48)} (cid:55) [0, 1], where the
+context c  Dom(C) for C  {X, X(cid:48)} and p  [0, 1], such that (x, x(cid:48)) = p if (x, x(cid:48)) is
+consistent with c and is equal to 1 otherwise.
+
+In this case, it is convenient to require that the rules be mutually exclusive and exhaus-
+
+tive, so that each CPD entry is uniquely dened by its association with a single rule.
+
+Denition 8.3 A rule-based conditional probability distribution (rule CPD) Pa is a func-
+tion Pa : ({X(cid:48)
+i}  X) (cid:55) [0, 1], composed of a set of probability rules {1, 2, . . . , m} whose
+contexts are mutually exclusive and exhaustive. We dene:
+
+where j is the unique rule in Pa for which cj is consistent with (x(cid:48)
+for all x,
+
+i, x). We require that,
+
+i | x) = j(x, x(cid:48)),
+
+Pa(x(cid:48)
+
+i | x) = 1.
+
+Pa(x(cid:48)
+(cid:88)
+
+x(cid:48)
+
+i
+
+We can dene Parentsa(X(cid:48)
+i) to be the union of the contexts of the rules in Pa(X(cid:48)
+example of a CPD represented by a set of probability rules is shown in Figure 11.
+
+i | X). An
+
+Rules can also be used to represent additive functions, such as reward or basis functions.
+
+We represent such context specic value dependencies using value rules:
+
+438
+
+Electrical Electrical PlumbingPlumbingP(Painting) = 0Not doneDoneDoneNot doneP(Painting) = 0P(Painting) = 0.95Electrical Electrical PlumbingPlumbingP(Painting) = 0Not doneDonePaintingPaintingDoneDoneNot doneNot doneP(Painting) = 0P(Painting) = 0P(Painting) = 0.9Efficient Solution Algorithms for Factored MDPs
+
+Denition 8.4 A value rule  = (cid:104)c : v(cid:105) is a function  : X (cid:55) R such that (x) = v when
+x is consistent with c and 0 otherwise.
+Note that a value rule (cid:104)c : v(cid:105) has a scope C.
+
+It is important to note that value rules are not required to be mutually exclusive and
+exhaustive. Each value rule represents a (weighted) indicator function, which takes on a
+value v in states consistent with some context c, and 0 in all other states. In any given state,
+the values of the zero or more rules consistent with that state are simply added together.
+
+Example 8.5 In our construction example, we might have a set of rules:
+
+1 = (cid:104)Plumbing = done : 100(cid:105);
+2 = (cid:104)Electricity = done : 100(cid:105);
+3 = (cid:104)Painting = done : 100(cid:105);
+4 = (cid:104)Action = plumb : 10(cid:105);
+
+...
+
+which, when summed together, dene the reward function R = 1 + 2 + 3 + 4 + .
+
+In general, our reward function Ra is represented as a rule-based function:
+
+(cid:80)n
+
+Denition 8.6 A rule-based function f : X (cid:55) R is composed of a set of rules {1, . . . , n}
+such that f(x) =
+
+i=1 i(x).
+
+In the same manner, each one of our basis functions hj is now represented as a rule-based
+function.
+
+This notion of a rule-based function is related to the tree-structure functions used by
+Boutilier et al. (2000), but is substantially more general. In the tree-structure value func-
+tions, the rules corresponding to the dierent leaves are mutually exclusive and exhaustive.
+Thus, the total number of dierent values represented in the tree is equal to the number
+of leaves (or rules). In the rule-based function representation, the rules are not mutually
+exclusive, and their values are added to form the overall function value for dierent settings
+of the variables. Dierent rules are added in dierent settings, and, in fact, with k rules,
+one can easily generate 2k dierent possible values, as is demonstrated in Section 9. Thus,
+the rule-based functions can provide a compact representation for a much richer class of
+value functions.
+
+Using this rule-based representation, we can exploit both CSI and additive independence
+in the representation of our factored MDP and basis functions. We now show how the basic
+operations in Section 4 can be adapted to exploit our rule-based representation.
+
+8.2 Adding, Multiplying and Maximizing Consistent Rules
+In our table-based algorithms, we relied on standard sum and product operators applied to
+tables. In order to exploit CSI using a rule-based representation, we must redene these
+standard operations. In particular, the algorithms will need to add or multiply rules that
+ascribe values to overlapping sets of states.
+
+We will start by dening these operations for rules with the same context:
+
+439
+
+Guestrin, Koller, Parr & Venkataraman
+
+Denition 8.7 Let 1 = (cid:104)c : v1(cid:105) and 2 = (cid:104)c : v2(cid:105) be two rules with context c. Dene the
+rule product as 1  2 = (cid:104)c : v1  v2(cid:105), and the rule sum as 1 + 2 = (cid:104)c : v1 + v2(cid:105).
+Note that this denition is restricted to rules with the same context. We will address this
+issue in a moment. First, we will introduce an additional operation which maximizes a
+variable from a set of rules, which otherwise share a common context:
+Denition 8.8 Let Y be a variable with Dom[Y ] = {y1, . . . , yk}, and let i, for each i =
+1, . . . , k, be a rule of the form i = (cid:104)c  Y = yi : vi(cid:105). Then for the rule-based function
+f = 1 +  + k, dene the rule maximization over Y as maxY f = (cid:104)c : maxi vi(cid:105) .
+After this operation, Y has been maximized out from the scope of the function f.
+
+These three operations we have just described can only be applied to sets of rules that
+satisfy very stringent conditions. To make our set of rules amenable to the application
+of these operations, we might need to rene some of these rules. We therefore dene the
+following operation:
+Denition 8.9 Let  = (cid:104)c : v(cid:105) be a rule, and Y be a variable. Dene the rule split
+Split((cid:54) Y ) of  on a variable Y as follows: If Y  Scope[C], then Split((cid:54) Y ) = {};
+otherwise,
+
+Split((cid:54) Y ) = {(cid:104)c  Y = yi : v(cid:105) | yi  Dom[Y ]} .
+
+Thus, if we split a rule  on variable Y that is not in the scope of the context of , then we
+generate a new set of rules, with one for each assignment in the domain of Y .
+In general, the purpose of rule splitting is to extend the context c of one rule  coincide
+with the context c(cid:48) of another consistent rule (cid:48). Naively, we might take all variables in
+Scope[C(cid:48)]  Scope[C] and split  recursively on each one of them. However, this process
+creates unnecessarily many rules: If Y is a variable in Scope[C(cid:48)]  Scope[C] and we split 
+on Y , then only one of the |Dom[Y ]| new rules generated will remain consistent with (cid:48): the
+one which has the same assignment for Y as the one in c(cid:48). Thus, only this consistent rule
+needs to be split further. We can now dene the recursive splitting procedure that achieves
+this more parsimonious representation:
+Denition 8.10 Let  = (cid:104)c : v(cid:105) be a rule, and b be a context such that b  Dom[B].
+Dene the recursive rule split Split((cid:54) b) of  on a context b as follows:
+
+1. {}, if c is not consistent with b; else,
+2. {}, if Scope[B]  Scope[C]; else,
+3. {Split(i(cid:54) b) | i  Split((cid:54) Y )}, for some variable Y  Scope[B]  Scope[C] .
+
+In this denition, each variable Y  Scope[B]  Scope[C] leads to the generation of k =
+|Dom(Y )| rules at the step in which it is split. However, only one of these k rules is used
+(cid:80)
+in the next recursive step because only one is consistent with b. Therefore, the size of the
+Y Scope[B]Scope[C](|Dom(Y )|  1). This size is independent of the
+split set is simply 1 +
+order in which the variables are split within the operation.
+
+440
+
+Efficient Solution Algorithms for Factored MDPs
+
+Note that only one of the rules in Split((cid:54) b) is consistent with b: the one with context
+c  b. Thus, if we want to add two consistent rules 1 = (cid:104)c1 : v1(cid:105) and 2 = (cid:104)c2 : v2(cid:105), then
+all we need to do is replace these rules by the set:
+
+Split(1(cid:54) c2)  Split(2(cid:54) c1),
+
+and then simply replace the resulting rules (cid:104)c1  c2 : v1(cid:105) and (cid:104)c2  c1 : v2(cid:105) by their sum
+(cid:104)c1  c2 : v1 + v2(cid:105). Multiplication is performed in an analogous manner.
+
+Example 8.11 Consider adding the following set of consistent rules:
+
+1 = (cid:104)a  b : 5(cid:105),
+2 = (cid:104)a  c  d : 3(cid:105).
+
+In these rules, the context c1 of 1 is a  b, and the context c2 of 2 is a  c  d.
+
+Rules 1 and 2 are consistent, therefore, we must split them to perform the addition
+
+ (cid:104)a  b  c : 5(cid:105),
+(cid:40)
+
+(cid:104)a  b  c  d : 5(cid:105),
+(cid:104)a  b  c  d : 5(cid:105).
+
+(cid:104)a  b  c  d : 3(cid:105),
+(cid:104)a  b  c  d : 3(cid:105).
+
+operation:
+
+Likewise,
+
+Split(1(cid:54) c2) =
+
+Split(2(cid:54) c1) =
+
+The result of adding rules 1 and 2 is
+
+(cid:104)a  b  c : 5(cid:105),
+(cid:104)a  b  c  d : 5(cid:105),
+(cid:104)a  b  c  d : 8(cid:105),
+(cid:104)a  b  c  d : 3(cid:105).
+
+8.3 Rule-based One-step Lookahead
+Using this compact rule-based representation, we are able to compute a one-step lookahead
+plan eciently for models with signicant context-specic or additive independence.
+
+As in Section 4.1 for the table-based case, the rule-based Qa function can be represented
+as the sum of the reward function and the discounted expected value of the next state.
+Due to our linear approximation of the value function, the expectation term is, in turn,
+represented as the linear combination of the backprojections of our basis functions. To
+exploit CSI, we are representing the rewards and basis functions as rule-based functions.
+To represent Qa as a rule-based function, it is sucient for us to show how to represent the
+backprojection gj of the basis function hj as a rule-based function.
+
+Each hj is a rule-based function, which can be written as hj(x) =
+
+(x), where
+. Each rule is a restricted scope function; thus, we can
+
+i
+
+i (hj )
+
+(cid:80)
+
+has the form
+
+(hj )
+: v(hj )
+i
+simplify the backprojection as:
+
+c(hj )
+i
+
+i
+
+(cid:68)
+
+(cid:69)
+
+441
+
+Guestrin, Koller, Parr & Venkataraman
+
+RuleBackproja() , where  is given by (cid:104)c : v(cid:105), with c  Dom[C].
+
+Let g = {}.
+Select the set P of relevant probability rules:
+i  C and c is consistent with cj}.
+P = {j  P (X(cid:48)
+Remove the X(cid:48) assignments from the context of all rules in P.
+// Multiply consistent rules:
+While there are two consistent rules 1 = (cid:104)c1 : p1(cid:105) and 2 = (cid:104)c2 : p2(cid:105):
+
+i | Parents(X(cid:48)
+
+i)) | X(cid:48)
+
+If c1 = c2, replace these two rules by (cid:104)c1 : p1p2(cid:105);
+Else replace these two rules by the set: Split(1(cid:54) c2)  Split(2(cid:54) c1).
+
+// Generate value rules:
+For each rule i in P:
+
+Return g.
+
+Update the backprojection g = g  {(cid:104)ci : piv(cid:105)}.
+
+Figure 12: Rule-based backprojection.
+
+j (x) =
+ga
+
+=
+
+=
+
+=
+
+(hj )
+i
+
+(cid:88)
+
+Pa(x(cid:48) | x)hj(x(cid:48)) ;
+Pa(x(cid:48) | x)
+(cid:88)
+
+Pa(x(cid:48) | x)(hj )
+| x);
+
+x(cid:48)
+v(hj )
+i Pa(c(hj )
+
+i
+
+i
+
+i
+
+(x(cid:48));
+
+(x(cid:48));
+
+x(cid:48)
+
+(cid:88)
+(cid:88)
+(cid:88)
+(cid:88)
+
+x(cid:48)
+
+i
+
+i
+
+where the term v(hj )
+projection operation by RuleBackproja((hj )
+
+i Pa(c(hj )
+
+i
+
+).
+
+i
+
+| x) can be written as a rule function. We denote this back-
+
+The backprojection procedure, described in Figure 12, follows three steps. First, the
+relevant rules are selected: In the CPDs for the variables that appear in the context of ,
+we select the rules consistent with this context, as these are the only rules that play a role
+in the backprojection computation. Second, we multiply all consistent probability rules to
+form a local set of mutually-exclusive rules. This procedure is analogous to the addition
+procedure described in Section 8.2. Now that we have represented the probabilities that
+can aect  by a mutually-exclusive set, we can simply represent the backprojection of 
+by the product of these probabilities with the value of . That is, the backprojection of  is
+a rule-based function with one rule for each one of the mutually-exclusive probability rules
+i. The context of this new value rule is the same as that of i, and the value is the product
+of the probability of i and the value of .
+
+Example 8.12 For example, consider the backprojection of a simple rule,
+
+ = (cid:104) Painting = done : 100(cid:105),
+
+through the CPD in Figure 11(c) for the paint action:
+
+RuleBackprojpaint() =
+
+(cid:88)
+
+x(cid:48)
+
+Ppaint(x(cid:48) | x)(x(cid:48));
+
+442
+
+Efficient Solution Algorithms for Factored MDPs
+
+(cid:88)
+
+=
+
+Painting(cid:48)
+
+3(cid:89)
+
+Ppaint(Painting
+
+(cid:48) | x)(Painting
+
+(cid:48));
+
+(cid:88)
+
+i
+
+= 100
+
+i(Painting = done, x) .
+
+i=1
+
+Note that the product of these simple rules is equivalent to the decision tree CPD shown in
+Figure 11(a). Hence, this product is equal to 0 in most contexts, for example, when electricity
+is not done at time t. The product in non-zero only in one context: in the context associated
+with rule 3. Thus, we can express the result of the backprojection operation by a rule-based
+function with a single rule:
+
+RuleBackprojpaint() = (cid:104)Plumbing  Electrical : 95(cid:105).
+
+Similarly, the backprojection of  when the action is not paint can also be represented by a
+single rule:
+
+RuleBackprojpaint() = (cid:104)Plumbing  Electrical  Painting : 90(cid:105).
+
+Using this algorithm, we can now write the backprojection of the rule-based basis func-
+
+tion hj as:
+
+j (x) =
+ga
+
+RuleBackproja((hj )
+
+i
+
+),
+
+(23)
+
+where ga
+simplicity of notation, we use ga
+jection. Using this notation, we can write Qa(x) = Ra(x) + 
+rule-based function.
+
+j is a sum of rule-based functions, and therefore also a rule-based function. For
+j = RuleBackproja(hj) to refer to this denition of backpro-
+j (x), which is again a
+
+j wjga
+
+(cid:80)
+
+8.4 Rule-based Maximization Over the State Space
+The second key operation required to extend our planning algorithms to exploit CSI is to
+modify the variable elimination algorithm in Section 4.2.1 to handle the rule-based rep-
+resentation.
+In Section 4.2.1, we showed that the maximization of a linear combination
+of table-based functions with restricted scope can be performed eciently using non-serial
+dynamic programming (Bertele & Brioschi, 1972), or variable elimination. To exploit struc-
+ture in rules, we use an algorithm similar to variable elimination in a Bayesian network with
+context-specic independence (Zhang & Poole, 1999).
+
+Intuitively, the algorithm operates by selecting the value rules relevant to the variable
+being maximized in the current iteration. Then, a local maximization is performed over
+this subset of the rules, generating a new set of rules without the current variable. The
+procedure is then repeated recursively until all variables have been eliminated.
+
+More precisely, our algorithm eliminates variables one by one, where the elimina-
+tion process performs a maximization step over the variables domain. Suppose that we
+are eliminating Xi, whose collected value rules lead to a rule function f, and f involves
+additional variables in some set B, so that fs scope is B  {Xi}. We need to compute
+the maximum value for Xi for each choice of b  Dom[B]. We use MaxOut (f, Xi) to de-
+note a procedure that takes a rule function f(B, Xi) and returns a rule function g(B) such
+
+443
+
+Guestrin, Koller, Parr & Venkataraman
+
+MaxOut (f, B)
+Let g = {}.
+Add completing rules to f : (cid:104)B = bi : 0(cid:105), i = 1, . . . , k.
+// Summing consistent rules:
+While there are two consistent rules 1 = (cid:104)c1 : v1(cid:105) and 2 = (cid:104)c2 : v2(cid:105):
+
+If c1 = c2, then replace these two rules by (cid:104)c1 : v1 + v2(cid:105);
+Else replace these two rules by the set: Split(1(cid:54) c2)  Split(2(cid:54) c1).
+
+// Maximizing out variable B:
+Repeat until f is empty:
+
+Then remove these rules from f and add rule (cid:104)c : maxi vi(cid:105) to g;
+
+If there are rules (cid:104)c  B = bi : vi(cid:105),bi  Dom(B) :
+Else select two rules: i = (cid:104)ci  B = bi : vi(cid:105) and j = (cid:104)cj  B = bj : vj(cid:105)
+such that ci is consistent with cj, but not identical, and replace
+them with Split(i(cid:54) cj)  Split(j(cid:54) ci) .
+
+Return g.
+
+Figure 13: Maximizing out variable B from rule function f.
+
+that: g(b) = maxxi f(b, xi). Such a procedure is an extension of the variable elimination
+algorithm of Zhang and Poole (Zhang & Poole, 1999).
+The rule-based variable elimination algorithm maintains a set F of value rules, initially
+containing the set of rules to be maximized. The algorithm then repeats the following steps
+for each variable Xi until all variables have been eliminated:
+
+1. Collect all rules which depend on Xi into fi  fi = {(cid:104)c : v(cid:105)  F | Xi  C}  and
+
+remove these rules from F.
+
+2. Perform the local maximization step over Xi: gi = MaxOut (fi, Xi);
+3. Add the rules in gi to F; now, Xi has been eliminated.
+The cost of this algorithm is polynomial in the number of new rules generated in the
+maximization operation MaxOut (fi, Xi). The number of rules is never larger and in many
+cases exponentially smaller than the complexity bounds on the table-based maximization in
+Section 4.2.1, which, in turn, was exponential only in the induced width of the cost network
+graph (Dechter, 1999). However, the computational costs involved in managing sets of rules
+usually imply that the computational advantage of the rule-based approach over the table-
+based one will only be signicant in problems that possess a fair amount of context-specic
+structure.
+
+In the remainder of this section, we present the algorithm for computing the local
+maximization MaxOut (fi, Xi). In the next section, we show how these ideas can be applied
+to extending the algorithm in Section 4.2.2 to exploit CSI in the LP representation for
+planning in factored MDPs.
+
+The procedure, presented in Figure 13, is divided into two parts: rst, all consistent
+rules are added together as described in Section 8.2; then, variable B is maximized. This
+maximization is performed by generating a set of rules, one for each assignment of B, whose
+contexts have the same assignment for all variables except for B, as in Denition 8.8. This
+set is then substituted by a single rule without a B assignment in its context and with value
+equal to the maximum of the values of the rules in the original set. Note that, to simplify
+
+444
+
+Efficient Solution Algorithms for Factored MDPs
+
+the algorithm, we initially need to add a set of value rules with 0 value, which guarantee
+that our rule function f is complete (i.e., there is at least one rule consistent with every
+context).
+
+The correctness of this procedure follows directly from the correctness of the rule-based
+variable elimination procedure described by Zhang and Poole, merely by replacing summa-
+tions with product with max, and products with products with sums. We conclude this
+section with a small example to illustrate the algorithm:
+Example 8.13 Suppose we are maximizing a for the following set of rules:
+
+1 = (cid:104)a : 1(cid:105),
+2 = (cid:104)a  b : 2(cid:105),
+3 = (cid:104)a  b  c : 3(cid:105),
+4 = (cid:104)a  b : 1(cid:105).
+
+When we add completing rules, we get:
+
+5 = (cid:104)a : 0(cid:105),
+6 = (cid:104)a : 0(cid:105).
+
+In the rst part of the algorithm, we need to add consistent rules: We add 5 to 1 (which
+remains unchanged), combine 1 with 4, 6 with 2, and then the split of 6 on the context
+of 3, to get the following inconsistent set of rules:
+
+2 = (cid:104)a  b : 2(cid:105),
+3 = (cid:104)a  b  c : 3(cid:105),
+7 = (cid:104)a  b : 2(cid:105),
+8 = (cid:104)a  b : 1(cid:105),
+9 = (cid:104)a  b  c : 0(cid:105),
+
+(from adding 4 to the consistent rule from Split(1(cid:54) b))
+(from Split(1(cid:54) b))
+(from Split(6(cid:54) a  b  c)).
+
+Note that several rules with value 0 are also generated, but not shown here because they are
+added to other rules with consistent contexts. We can move to the second stage (repeat loop)
+of MaxOut. We remove 2, and 8, and maximize a out of them, to give:
+
+10 = (cid:104)b : 2(cid:105).
+
+We then select rules 3 and 7 and split 7 on c (3 is split on the empty set and is not
+changed),
+
+11 = (cid:104)a  b  c : 2(cid:105),
+12 = (cid:104)a  b  c : 2(cid:105).
+
+Maximizing out a from rules 12 and 3, we get:
+
+13 = (cid:104)b  c : 3(cid:105).
+
+We are left with 11, which maximized over its counterpart 9 gives
+
+12 = (cid:104)b  c : 2(cid:105).
+
+Notice that, throughout this maximization, we have not split on the variable C when b  ci,
+giving us only 6 distinct rules in the nal result. This is not possible in a table-based
+representation, since our functions would then be over the 3 variables a,b,c, and therefore
+must have 8 entries.
+
+445
+
+Guestrin, Koller, Parr & Venkataraman
+
+(cid:80)
+
+constraints of the form:  (cid:80)
+
+8.5 Rule-based Factored LP
+(cid:80)
+In Section 4.2.2, we showed that the LPs used in our algorithms have exponentially many
+i wi ci(x)  b(x),x, which can be substituted by a single,
+i wi ci(x) b(x). We then showed that, using
+equivalent, non-linear constraint:   maxx
+variable elimination, we can represent this non-linear constraint by an equivalent set of
+linear constraints in a construction we called the factored LP. The number of constraints in
+the factored LP is linear in the size of the largest table generated in the variable elimination
+procedure. This table-based algorithm can only exploit additive independence. We now
+extend the algorithm in Section 4.2.2 to exploit both additive and context-specic structure,
+by using the rule-based variable elimination described in the previous section.
+Suppose we wish to enforce the more general constraint 0  maxy F w(y), where F w(y) =
+j (y) such that each fj is a rule. As in the table-based version, the superscript w means
+j f w
+that fj might depend on w. Specically, if fj comes from basis function hi, it is multiplied
+by the weight wi; if fj is a rule from the reward function, it is not.
+In our rule-based factored linear program, we generate LP variables associated with
+contexts; we call these LP rules. An LP rule has the form (cid:104)c : u(cid:105); it is associated with a
+context c and a variable u in the linear program. We begin by transforming all our original
+into LP rules as follows: If rule fj has the form (cid:104)cj : vj(cid:105) and comes from basis
+rules f w
+j
+function hi, we introduce an LP rule ej = (cid:104)cj : uj(cid:105) and the equality constraint uj = wivj.
+If fj has the same form but comes from a reward function, we introduce an LP rule of the
+same form, but the equality constraint becomes uj = vj.
+
+(cid:80)
+
+Now, we have only LP rules and need to represent the constraint: 0  maxy
+
+j ej(y).
+To represent such a constraint, we follow an algorithm very similar to the variable elimina-
+tion procedure in Section 8.4. The main dierence occurs in the MaxOut (f, B) operation in
+Figure 13. Instead of generating new value rules, we generate new LP rules, with associated
+new variables and new constraints. The simplest case occurs when computing a split or
+adding two LP rules. For example, when we add two value rules in the original algorithm,
+we instead perform the following operation on their associated LP rules: If the LP rules
+are (cid:104)c : ui(cid:105) and (cid:104)c : uj(cid:105), we replace these by a new rule (cid:104)c : uk(cid:105), associated with a new LP
+variable uk with context c, whose value should be ui + uj. To enforce this value constraint,
+we simply add an additional constraint to the LP: uk = ui + uj. A similar procedure can
+be followed when computing the split.
+
+More interesting constraints are generated when we perform a maximization.
+
+In the
+rule-based variable elimination algorithm in Figure 13, this maximization occurs when we
+replace a set of rules:
+
+(cid:104)c  B = bi : vi(cid:105),bi  Dom(B),
+
+(cid:191)
+
+(cid:192)
+
+by a new rule
+
+c : max
+
+i
+
+vi
+
+.
+
+Following the same process as in the LP rule summation above, if we are maximizing
+
+ei = (cid:104)c  B = bi : ui(cid:105),bi  Dom(B),
+
+we generate a new LP variable uk associated with the rule ek = (cid:104)c : uk(cid:105). However, we
+cannot add the nonlinear constraint uk = maxi ui, but we can add a set of equivalent linear
+
+446
+
+Efficient Solution Algorithms for Factored MDPs
+
+constraints
+
+Therefore, using these simple operations, we can exploit structure in the rule functions
+to represent the nonlinear constraint en  maxy
+j ej(y), where en is the very last LP
+rule we generate. A nal constraint un =  implies that we are representing exactly the
+constraints in Equation (12), without having to enumerate every state.
+
+uk  ui, i.
+(cid:80)
+
+The correctness of our rule-based factored LP construction is a corollary of Theorem 4.4
+and of the correctness of the rule-based variable elimination algorithm (Zhang & Poole,
+1999) .
+Corollary 8.14 The constraints generated by the rule-based factored LP construction are
+equivalent to the non-linear constraint in Equation (12). That is, an assignment to (, w)
+satises the rule-based factored LP constraints if and only if it satises the constraint in
+Equation (12).
+The number of variables and constraints in the rule-based factored LP is linear in the
+number of rules generated by the variable elimination process. In turn, the number of rules
+is no larger, and often exponentially smaller, than the number of entries in the table-based
+approach.
+
+To illustrate the generation of LP constraints as just described, we now present a small
+
+example:
+Example 8.15 Let e1, e2, e3, and e4 be the set of LP rules which depend on the variable
+b being maximized. Here, rule ei is associated with the LP variable ui:
+
+e1 = (cid:104)a  b : u1(cid:105),
+e2 = (cid:104)a  b  c : u2(cid:105),
+e3 = (cid:104)a  b : u3(cid:105),
+e4 = (cid:104)a  b  c : u4(cid:105).
+
+In this set, note that rules e1 and e2 are consistent. We combine them to generate the
+following rules:
+
+e5 = (cid:104)a  b  c : u5(cid:105),
+e6 = (cid:104)a  b  c : u1(cid:105).
+
+and the constraint u1 + u2 = u5. Similarly, e6 and e4 may be combined, resulting in:
+
+e7 = (cid:104)a  b  c : u6(cid:105).
+
+with the constraint u6 = u1 + u4. Now, we have the following three inconsistent rules for
+the maximization:
+
+e3 = (cid:104)a  b : u3(cid:105),
+e5 = (cid:104)a  b  c : u5(cid:105),
+e7 = (cid:104)a  b  c : u6(cid:105).
+
+Following the maximization procedure, since no pair of rules can be eliminated right away,
+we split e3 and e5 to generate the following rules:
+
+e8 = (cid:104)a  b  c : u3(cid:105),
+e9 = (cid:104)a  b  c : u3(cid:105),
+e5 = (cid:104)a  b  c : u5(cid:105).
+
+447
+
+Guestrin, Koller, Parr & Venkataraman
+
+We can now maximize b out from e8 and e5, resulting in the following rule and constraints
+respectively:
+
+e10 = (cid:104)a  c : u7(cid:105),
+u7  u5,
+u7  u3.
+
+Likewise, maximizing b out from e9 and e6, we get:
+
+e11 = (cid:104)a  c : u8(cid:105),
+u8  u3,
+u8  u6;
+
+which completes the elimination of variable b in our rule-based factored LP.
+
+We have presented an algorithm for exploiting both additive and context-specic struc-
+ture in the LP construction steps of our planning algorithms. This rule-based factored LP
+approach can now be applied directly in our approximate linear programming and approx-
+imate policy iteration algorithms, which were presented in Sections 5 and 6.
+
+The only additional modication required concerns the manipulation of the decision
+list policies presented in Section 6.2. Although approximate linear programming does not
+require any explicit policy representation (or the default action model), approximate pol-
+icy iteration require us to represent such policy. Fortunately, no major modications are
+In particular, the conditionals (cid:104)ti, ai, i(cid:105) in the decision
+required in the rule-based case.
+list policies are already context-specic rules. Thus, the policy representation algorithm in
+Section 6.2 can be applied directly with our new rule-based representation. Therefore, we
+now have a complete framework for exploiting both additive and context-specic structure
+for ecient planning in factored MDPs.
+
+9. Experimental Results
+
+The factored representation of a value function is most appropriate in certain types of
+systems: Systems that involve many variables, but where the strong interactions between
+the variables are fairly sparse, so that the decoupling of the inuence between variables
+does not induce an unacceptable loss in accuracy. As argued by Herbert Simon (1981)
+in Architecture of Complexity, many complex systems have a nearly decomposable,
+hierarchical structure, with the subsystems interacting only weakly between themselves. To
+evaluate our algorithm, we selected problems that we believe exhibit this type of structure.
+In this section, we perform various experiments intended to explore the performance
+of our algorithms. First, we compare our factored approximate linear programming (LP)
+and approximate policy iteration (PI) algorithms. We also compare to the L2-projection
+algorithm of Koller and Parr (2000). Our second evaluation compares a table-based im-
+plementation to a rule-based implementation that can exploit CSI. Finally, we present
+comparisons between our approach and the algorithms of Boutilier et al. (2000).
+
+9.1 Approximate LP and Approximate PI
+In order to compare our approximate LP and approximate PI algorithms, we tested both on
+the SysAdmin problem described in detail in Section 2.1. This problem relates to a system
+
+448
+
+Efficient Solution Algorithms for Factored MDPs
+
+administrator who has to maintain a network of computers; we experimented with various
+network architectures, shown in Figure 1. Machines fail randomly, and a faulty machine
+increases the probability that its neighboring machines will fail. At every time step, the
+SysAdmin can go to one machine and reboot it, causing it to be working in the next time
+step with high probability. Recall that the state space in this problem grows exponentially
+in the number of machines in the network, that is, a problem with m machines has 2m states.
+Each machine receives a reward of 1 when working (except in the ring, where one machine
+receives a reward of 2, to introduce some asymmetry), a zero reward is given to faulty
+machines, and the discount factor is  = 0.95. The optimal strategy for rebooting machines
+will depend upon the topology, the discount factor, and the status of the machines in the
+network. If machine i and machine j are both faulty, the benet of rebooting i must be
+weighed against the expected discounted impact of delaying rebooting j on js successors.
+For topologies such as rings, this policy may be a function of the status of every single
+machine in the network.
+
+The basis functions used included independent indicators for each machine, with value
+1 if it is working and zero otherwise (i.e., each one is a restricted scope function of a single
+variable), and the constant basis, whose value is 1 for all states. We selected straightforward
+variable elimination orders: for the Star and Three Legs topologies, we rst eliminated
+the variables corresponding to computers in the legs, and the center computer (server) was
+eliminated last; for Ring, we started with an arbitrary computer and followed the ring
+order; for Ring and Star, the ring machines were eliminated rst and then the center one;
+nally, for the Ring of Rings topology, we eliminated the computers in the outer rings
+rst and then the ones in the inner ring.
+
+We implemented the factored policy iteration and linear programming algorithms in
+Matlab, using CPLEX as the LP solver. Experiments were performed on a Sun UltraSPARC-
+II, 359 MHz with 256MB of RAM. To evaluate the complexity of the approximate policy
+iteration with max-norm projection algorithm, tests were performed with increasing the
+number of states, that is, increasing number of machines on the network. Figure 14 shows
+the running time for increasing problem sizes, for various architectures. The simplest one
+is the Star, where the backprojection of each basis function has scope restricted to two
+variables and the largest factor in the cost network has scope restricted to two variables.
+The most dicult one was the Bidirectional Ring, where factors contain ve variables.
+
+Note that the number of states is growing exponentially (indicated by the log scale in
+Figure 14), but running times increase only logarithmically in the number of states, or
+polynomially in the number of variables. We illustrate this behavior in Figure 14(d), where
+we t a 3rd order polynomial to the running times for the unidirectional ring. Note that
+the size of the problem description grows quadratically with the number of variables: adding
+a machine to the network also adds the possible action of xing that machine. For this
+problem, the computation cost of our factored algorithm empirically grows approximately
+, for a problem with n variables, as opposed to the exponential complexity
+as O
+ poly (2n,|A|)  of the explicit algorithm.
+For further evaluation, we measured the error in our approximate value function relative
+to the true optimal value function V. Note that it is only possible to compute V for small
+problems; in our case, we were only able to go up to 10 machines. For comparison, we
+also evaluated the error in the approximate value function produced by the L2-projection
+
+(n  |A|)1.5(cid:162)
+(cid:161)
+
+449
+
+Guestrin, Koller, Parr & Venkataraman
+
+(a)
+
+(b)
+
+(c)
+
+(d)
+
+Figure 14: (a)(c) Running times for policy iteration with max-norm projection on variants
+of the SysAdmin problem; (d) Fitting a polynomial to the running time for the
+Ring topology.
+
+algorithm of Koller and Parr (2000). As we discussed in Section 6.4, the L2 projections in
+factored MDPs by Koller and Parr are dicult and time consuming; hence, we were only
+able to compare the two algorithms for smaller problems, where an equivalent L2-projection
+can be implemented using an explicit state space formulation. Results for both algorithms
+are presented in Figure 15(a), showing the relative error of the approximate solutions to
+the true value function for increasing problem sizes. The results indicate that, for larger
+problems, the max-norm formulation generates a better approximation of the true optimal
+value function V than the L2-projection. Here, we used two types of basis functions: the
+same single variable functions, and pairwise basis functions. The pairwise basis functions
+contain indicators for neighboring pairs of machines (i.e., functions of two variables). As
+expected, the use of pairwise basis functions resulted in better approximations.
+
+450
+
+01002003004005001E+001E+021E+041E+061E+081E+101E+121E+14number of statesTotal Time (minutes)Ring3 LegsStar010020030040011001000010000001000000001E+10number of statesTotal Time (minutes)Ring of RingsRing and Star01002003004005006001E+001E+021E+041E+061E+081E+101E+121E+14number of statesTotal Time (minutes)UnidirectionalBidirectionalRing:Fitting a polynomial:time = 0.0184|X|3 - 0.6655|X|2 + 9.2499|X| - 31.922Quality of the fit: R2 = 0.9990200400600800100012000102030405060number of variables  |X|Total Time (minutes)Efficient Solution Algorithms for Factored MDPs
+
+(a)
+
+(b)
+
+Figure 15: (a) Relative error to optimal value function V and comparison to L2 projection
+for Ring; (b) For large models, measuring Bellman error after convergence.
+
+For these small problems, we can also compare the actual value of the policy generated
+by our algorithm to the value of the optimal policy. Here, the value of the policy generated
+by our algorithm is much closer to the value of the optimal policy than the error implied by
+the dierence between our approximate value function and V. For example, for the Star
+architecture with one server and up to 6 clients, our approximation with single variable
+basis functions had relative error of 12%, but the policy we generated had the same value
+as the optimal policy. In this case, the same was true for the policy generated by the L2
+projection.
+In a Unidirectional Ring with 8 machines and pairwise basis, the relative
+error between our approximation and V was about 10%, but the resulting policy only had
+a 6% loss over the optimal policy. For the same problem, the L2 approximation has a value
+function error of 12%, and a true policy loss was 9%. In other words, both methods induce
+policies that have lower errors than the errors in the approximate value function (at least
+for small problems). However, our algorithm continues to outperform the L2 algorithm,
+even with respect to actual policy loss.
+For large models, we can no longer compute the correct value function, so we cannot
+evaluate our results by computing (cid:107)V  Hw(cid:107). Fortunately, as discussed in Section 7,
+the Bellman error can be used to provide a bound on the approximation error and can be
+computed eciently by exploiting problem-specic structure. Figure 15(b) shows that the
+Bellman error increases very slowly with the number of states.
+
+It is also valuable to look at the actual decision-list policies generated in our experiments.
+First, we noted that the lists tended to be short, the length of the nal decision list policy
+grew approximately linearly with the number of machines. Furthermore, the policy itself
+is often fairly intuitive. In the Ring and Star architecture, for example, the decision list
+says: If the server is faulty, x the server; else, if another machine is faulty, x it.
+
+Thus far, we have presented scaling results for running times and approximation error for
+our approximate PI approach. We now compare this algorithm to the simpler approximate
+
+451
+
+00.10.20.3345678910number of variablesRelative error:Max norm, single basisL2, single basisMax norm, pair basisL2, pair basis00.10.20.30.41E+001E+021E+041E+061E+081E+101E+121E+14number of statesBellman Error / RmaxRing3 LegsStarGuestrin, Koller, Parr & Venkataraman
+
+(a)
+
+(b)
+
+Figure 16: Approximate LP versus approximate PI on the SysAdmin problem with a Ring
+
+topology: (a) running time; (b) estimated value of policy.
+
+LP approach of Section 5. As shown in Figure 16(a), the approximate LP algorithm for
+factored MDPs is signicantly faster than the approximate PI algorithm. In fact, approxi-
+mate PI with single-variable basis functions variables is more costly computationally than
+the LP approach using basis functions over consecutive triples of variables. As shown in
+Figure 16(b), for singleton basis functions, the approximate PI policy obtains slightly better
+performance for some problem sizes. However, as we increase the number of basis functions
+for the approximate LP formulation, the value of the resulting policy is much better. Thus,
+in this problem, our factored approximate linear programming formulation allows us to use
+more basis functions and to obtain a resulting policy of higher value, while still maintaining
+a faster running time. These results, along with the simpler implementation, suggest that
+in practice one may rst try to apply the approximate linear programming algorithm before
+deciding to move to the more elaborate approximate policy iteration approach.
+
+9.2 Comparing Table-based and Rule-based Implementations
+
+Our next evaluation compares a table-based representation, which exploits only additive
+independence, to the rule-based representation presented in Section 8, which can exploit
+both additive and context-specic independence. For these experiments, we implemented
+our factored approximate linear programming algorithm with table-based and rule-based
+representations in C++, using CPLEX as the LP solver. Experiments were performed on
+a Sun UltraSPARC-II, 400 MHz with 1GB of RAM.
+
+To evaluate and compare the algorithms, we utilized a more complex extension of the
+SysAdmin problem. This problem, dubbed the Process-SysAdmin problem, contains three
+state variables for each machine i in the network: Loadi, Statusi and Selectori. Each com-
+puter runs processes and receives rewards when the processes terminate. These processes
+are represented by the Loadi variable, which takes values in {Idle, Loaded, Success}, and the
+computer receives a reward when the assignment of Loadi is Success. The Statusi variable,
+
+452
+
+02040608010012014016018020005101520253035number of machinesTotal running time (minutes)PI single basisLP single basisLP pair basisLP triple basis0100200300400010203040number of machinesDiscounted reward of final policy (averaged over 50 trials of 100 steps)PI single basisLP single basisLP pair basisLP triple basisEfficient Solution Algorithms for Factored MDPs
+
+(a)
+
+(b)
+
+(c)
+
+Figure 17: Running time for Process-SysAdmin problem for various topologies: (a) Star;
+
+(b) Ring; (c) Reverse star (with t function).
+
+453
+
+0501001502001E+001E+071E+141E+211E+281E+351E+42number of statestotal running time (minutes)Table-based, single+ basisRule-based, single+ basisTable-based, pair basisRule-based, pair basis0501001502002501E+001E+041E+081E+121E+161E+201E+241E+28number of statestotal running time (minutes)Table-based, single+ basisRule-based, single+ basisTable-based, pair basisRule-based, pair basis010020030040050060005101520number of machinestotal running time (minutes)Table-based, single+ basisRule-based, single+ basisy = 0.2294x - 4.5415x  + 30.974x - 67.851R  = 0.99952y = 7E-17 x * 18     + 2E-06 x * 18     + 0.1124R  = 0.995(x-1)232(x-1)2Guestrin, Koller, Parr & Venkataraman
+
+Figure 18: Fraction of total running time spent in CPLEX for the Process-SysAdmin prob-
+
+lem with a Ring topology.
+
+representing the status of machine i, takes values in {Good, Faulty, Dead}; if its value is
+Faulty, then processes have a smaller probability of terminating and if its value is Dead,
+then any running process is lost and Loadi becomes Idle. The status of machine i can be-
+come Faulty and eventually Dead at random; however, if machine i receives a packet from
+a dead machine, then the probability that Statusi becomes Faulty and then Dead increases.
+The Selectori variable represents this communication by selecting one of the neighbors of i
+uniformly at random at every time step. The SysAdmin can select at most one computer
+to reboot at every time step.
+If computer i is rebooted, then its status becomes Good
+with probability 1, but any running process is lost, i.e., the Loadi variable becomes Idle.
+Thus, in this problem, the SysAdmin must balance several conicting goals: rebooting a
+machine kills processes, but not rebooting a machine may cause cascading faults in network.
+Furthermore, the SysAdmin can only choose one machine to reboot, which imposes the ad-
+ditional tradeo of selecting only one of the (potentially many) faulty or dead machines in
+the network to reboot.
+
+We experimented with two types of basis functions: single+ includes indicators over
+all of the joint assignments of Loadi, Statusi and Selectori, and pair which, in addition,
+includes a set of indicators over Statusi, Statusj, and Selectori = j, for each neighbor j
+of machine i in the network. The discount factor was  = 0.95. The variable elimination
+order eliminated all of the Loadi variables rst, and then followed the same patterns as in
+the simple SysAdmin problem, eliminating rst Statusi and then Selectori when machine i
+is eliminated.
+
+Figure 17 compares the running times for the table-based implementation to the ones
+for the rule-based representation for three topologies: Star, Ring, and Reverse star.
+The Reverse star topology reverses the direction of the inuences in the Star: rather
+than the central machine inuencing all machines in the topology, all machines inuence
+the central one. These three topologies demonstrate three dierent levels of CSI: In the
+
+454
+
+00.20.40.60.8105101520number of machinesCPLEX time / Total timeTable-based, single+ basisRule-based, single+ basisEfficient Solution Algorithms for Factored MDPs
+
+Star topology, the factors generated by variable elimination are small. Thus, although the
+running times are polynomial in the number of state variables for both methods, the table-
+based representation is signicantly faster than the rule-based one, due to the overhead of
+managing the rules. The Ring topology illustrates an intermediate behavior: single+
+basis functions induce relatively small variable elimination factors, thus the table-based
+approach is faster. However, with pair basis the factors are larger and the rule-based
+approach starts to demonstrate faster running times in larger problems. Finally, the Re-
+verse star topology represents the worst-case scenario for the table-based approach. Here,
+the scope of the backprojection of a basis function for the central machine will involve all
+computers in the network, as all machines can potentially inuence the central one in the
+next time step. Thus, the size of the factors in the table-based variable elimination ap-
+proach are exponential in the number of machines in the network, which is illustrated by
+the exponential growth in Figure 17(c). The rule-based approach can exploit the CSI in this
+problem; for example, the status of the central machine Status0 only depends on machine
+j if the value selector is j, i.e., if Selector0 = j. By exploiting CSI, we can solve the same
+problem in polynomial time in the number of state variables, as seen in the second curve in
+Figure 17(c).
+
+It is also instructive to compare the portion of the total running time spent in CPLEX
+for the table-based as compared to the rule-based approach. Figure 18 illustrates this
+comparison. Note that amount of time spent in CPLEX is signicantly higher for the
+table-based approach. There are two reasons for this dierence: rst, due to CSI, the LPs
+generated by the rule-based approach are smaller than the table-based ones; second, rule-
+based variable elimination is more complex than the table-based one, due to the overhead
+introduced by rule management. Interestingly, the proportion of CPLEX time increases as
+the problem size increases, indicating that the asymptotic complexity of the LP solution is
+higher than that of variable elimination, thus suggesting that, for larger problems, additional
+large-scale LP optimization procedures, such as constraint generation, may be helpful.
+
+9.3 Comparison to Apricodd
+
+The most closely related work to ours is a line of research that began with the work of
+Boutilier et al. (1995).
+In particular, the approximate Apricodd algorithm of Hoey et
+al. (1999), which uses analytic decision diagrams (ADDs) to represent the value function
+is a strong alternative approach for solving factored MDPs. As discussed in detail in Sec-
+tion 10, the Apricodd algorithm can successfully exploit context-specic structure in the
+value function, by representing it with the set of mutually-exclusive and exhaustive branches
+of the ADD. On the other hand, our approach can exploit both additive and context-specic
+structure in the problem, by using a linear combination of non-mutually-exclusive rules. To
+better understand this dierence, we evaluated both our rule-based approximate linear
+programming algorithm and Apricodd in two problems, Linear and Expon, designed by
+Boutilier et al. (2000) to illustrate respectively the best-case and the worst-case behavior
+of their algorithm.
+In these experiments, we used the web-distributed version of Apri-
+codd (Hoey, St-Aubin, Hu, & Boutilier, 2002), running it locally on a Linux Pentium III
+700MHz with 1GB of RAM.
+
+455
+
+Guestrin, Koller, Parr & Venkataraman
+
+(a)
+
+(b)
+
+Figure 19: Comparing Apricodd to rule-based approximate linear programming on the (a)
+
+Linear and (b) Expon problems.
+
+These two problems involve n binary variables X1, . . . , Xn and n deterministic actions
+a1, . . . , an. The reward is 1 when all variables Xk are true, and is 0 otherwise. The problem
+is discounted by a factor  = 0.99. The dierence between the Linear and the Expon
+problems is in the transition probabilities. In the Linear problem, the action ak sets the
+variable Xk to true and makes all succeeding variables, Xi for i > k, false. If the state space
+of the Linear problem is seen as a binary number, the optimal policy is to set repeatedly the
+largest bit (Xk variable) which has all preceding bits set to true. Using an ADD, the optimal
+value function for this problem can be represented in linear space, with n+1 leaves (Boutilier
+et al., 2000). This is the best-case for Apricodd, and the algorithm can compute this value
+function quite eciently. Figure 19(a) compares the running time of Apricodd to that of
+one of our algorithms with indicator basis functions between pairs of consecutive variables.
+Note that both algorithms obtain the same policy in polynomial time in the number of
+variables. However, in such structured problems, the ecient implementation of the ADD
+package used in Apricodd makes it faster in this problem.
+
+On the other hand, the Expon problem illustrates the worst-case for Apricodd. In this
+problem, the action ak sets the variable Xk to true, if all preceding variables, Xi for i < k, are
+true, and it makes all preceding variables false. If the state space is seen as a binary number,
+the optimal policy goes through all binary numbers in sequence, by repeatedly setting the
+largest bit (Xk variable) which has all preceding bits set to true. Due to discounting, the
+optimal value function assigns a value of 2nj1 to the jth binary number, so that the
+value function contains exponentially many dierent values. Using an ADD, the optimal
+value function for this problem requires an exponential number of leaves (Boutilier et al.,
+2000), which is illustrated by the exponential running time in Figure 19(b). However,
+the same value function can be approximated very compactly as a factored linear value
+function using n + 1 basis functions: an indicator over each variable Xk and the constant
+base. As shown in Figure 19(b), using this representation, our factored approximate linear
+programming algorithm computes the value function in polynomial time. Furthermore, the
+
+456
+
+y = 0.1473x3 - 0.8595x2 + 2.5006x - 1.5964R2 = 0.9997y = 0.0254x2 + 0.0363x + 0.0725R2 = 0.99830102030405068101214161820Number of variablesTime (in seconds)ApricoddRule-basedy = 5.275x3 - 29.95x2 + 53.915x - 28.83R2 = 10100200300400500681012Number of variables Time  (in seconds)ApricoddRule-basedy = 3E-05 * 2  - 0.0026 * 2  + 5.6737R2 = 0.9999xx2Efficient Solution Algorithms for Factored MDPs
+
+(a)
+
+(c)
+
+(b)
+
+(d)
+
+Figure 20: Comparing Apricodd to rule-based approximate linear programming with sin-
+gle+ basis functions on the Process-SysAdmin problem with Ring topology
+(a) running time and (b) value of the resulting policy; and with Star topology
+(c) running time and (d) value of the resulting policy.
+
+policy obtained by our approach was optimal for this problem. Thus, in this problem, the
+ability to exploit additive independence allows an ecient polynomial time solution.
+
+We have also compared Apricodd to our rule-based approximate linear programming
+algorithm on the Process-SysAdmin problem. This problem has signicant additive struc-
+ture in the reward function and factorization in the transition model. Although this type of
+structure is not exploited directly by Apricodd, the ADD approximation steps performed by
+the algorithm can, in principle, allow Apricodd to nd approximate solutions to the prob-
+lem. We spent a signicant amount of time attempting to nd the best set of parameters
+for Apricodd for these problems.4 We settled on the sift method of variable reordering
+and the round approximation method with the size (maximum ADD size) criteria. To
+
+4. We are very grateful to Jesse Hoey and Robert St-Aubin for their assistance in selecting the parameters.
+
+457
+
+0102030405060024681012Number of machinesRunning time (minutes)Rule-based LPApricodd051015202530024681012Number of machinesDiscounted value of policy (avg. 50 runs of 100 steps)Rule-based LPApricodd05101520253035404550024681012Number of machinesRunning time (minutes)Rule-based LPApricodd051015202530024681012Number of machinesDiscounted value of policy (avg. 50 runs of 100 steps)Rule-based LPApricoddGuestrin, Koller, Parr & Venkataraman
+
+allow the value function representation to scale with the problem size, we set the maximum
+ADD size to 4000 + 400n for a network with n machines. (We experimented with a variety
+of dierent growth rates for the maximum ADD size; here, as for the other parameters,
+we selected the choice that gave the best results for Apricodd.) We compared Apricodd
+with these parameters to our rule-based approximate linear programming algorithm with
+single+ basis functions on a Pentium III 700MHz with 1GB of RAM. These results are
+summarized in Figure 20.
+
+On very small problems (up to 45 machines), the performance of the two algorithms is
+fairly similar in terms of both the running time and the quality of the policies generated.
+However, as the problem size grows, the running time of Apricodd increases rapidly, and
+becomes signicantly higher than that of our algorithm . Furthermore, as the problem size
+increases, the quality of the policies generated by Apricodd also deteriorates. This dierence
+in policy quality is caused by the dierent value function representation used by the two
+algorithms. The ADDs used in Apricodd represent k dierent values with k leaves; thus,
+they are forced to agglomerate many dierent states and represent them using a single value.
+For smaller problems, such agglomeration can still represent good policies. Unfortunately,
+as the problem size increases and the state space grows exponentially, Apricodds policy
+representation becomes inadequate, and the quality of the policies decreases. On the other
+hand, our linear value functions can represent exponentially many values with only k basis
+functions, which allows our approach to scale up to signicantly larger problems.
+
+10. Related Work
+
+The most closely related work to ours is a line of research that began with the work of
+Boutilier et al. (1995). We address this comparison separately below, but we begin this

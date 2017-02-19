@@ -1,0 +1,1145 @@
+Abstract
+
+The hierarchical Dirichlet process (HDP) is a
+Bayesian nonparametric model that can be used
+to model mixed-membership data with a poten-
+tially innite number of components. It has been
+applied widely in probabilistic topic modeling,
+where the data are documents and the compo-
+nents are distributions of terms that reect recur-
+ring patterns (or topics) in the collection. Given
+a document collection, posterior inference is used
+to determine the number of topics needed and to
+characterize their distributions. One limitation
+of HDP analysis is that existing posterior infer-
+ence algorithms require multiple passes through
+all the datathese algorithms are intractable for
+very large scale applications. We propose an on-
+line variational inference algorithm for the HDP,
+an algorithm that is easily applicable to massive
+and streaming data. Our algorithm is signicantly
+faster than traditional inference algorithms for the
+HDP, and lets us analyze much larger data sets.
+We illustrate the approach on two large collections
+of text, showing improved performance over on-
+line LDA, the nite counterpart to the HDP topic
+model.
+
+1
+
+INTRODUCTION
+
+The hierarchical Dirichlet process (HDP) [1] is a powerful
+mixed-membership model for the unsupervised analysis of
+grouped data. Applied to document collections, the HDP
+provides a nonparametric topic model where documents are
+viewed as groups of observed words, mixture components
+(called topics) are distributions over terms, and each docu-
+ment exhibits the topics with different proportions. Given
+a collection of documents, the HDP topic model nds a
+low-dimensional latent structure that can be used for tasks
+
+like classication, exploration, and summarization. Unlike
+its nite counterpart, latent Dirichlet allocation [2], the HDP
+topic model infers the number of topics from the data.
+Posterior inference for the HDP is intractable, and much
+research is dedicated to developing approximate inference
+algorithms [1, 3, 4]. These methods are limited for massive
+scale applications, however, because they require multiple
+passes through the data and are not easily applicable to
+streaming data.1 In this paper, we develop a new approx-
+imate inference algorithm for the HDP. Our algorithm is
+designed to analyze much larger data sets than the existing
+state-of-the-art allows and, further, can be used to analyze
+streams of data. This is particularly apt to the HDP topic
+model. Topic models promise to help summarize and orga-
+nize large archives of texts that cannot be easily analyzed
+by hand and, further, could be better exploited if available
+on streams of texts such as web APIs or news feeds.
+Our methodonline variational Bayes for the HDP was
+inspired by the recent online variational Bayes algorithm
+for LDA [7]. Online LDA allows LDA models to be t to
+massive and streaming data, and enjoys signicant improve-
+ments in computation time without sacricing model quality.
+Our motivation for extending this algorithm to the HDP is
+that LDA requires choosing the number of topics in advance.
+In a traditional setting, where tting multiple models might
+be viable, the number of topics can be determined with cross
+validation or held-out likelihood. However, these techniques
+become impractical when the data set size is large, and they
+become impossible when the data are streaming. Online
+HDP provides the speed of online variational Bayes with
+the modeling exibility of the HDP.
+The idea behind online variational Bayes in general is to opti-
+mize the variational objective function of [8] with stochastic
+optimization [9]. Optimization proceeds by iteratively tak-
+ing a random subset of the data, and updating the variational
+parameters with respect to the subset. Online variational
+Bayes is particularly efcient when using the natural gradi-
+ent [10] on models in which traditional variational Bayes
+
+Appearing in Proceedings of the 14th International Conference on
+Articial Intelligence and Statistics (AISTATS) 2011, Fort Laud-
+erdale, FL, USA. Volume 15 of JMLR: W&CP 15. Copyright 2011
+by the authors.
+
+1One exception that may come to mind is the particle lter [5,
+6]. However, this algorithm still requires periodically resampling
+a variable for every data point. Data cannot be thrown away as in
+a true streaming algorithm.
+
+752Online Variational Inference for the Hierarchical Dirichlet Process
+
+can be performed by simple coordinate ascent [11]. (This
+is the property that allowed [7] to derive an efcient online
+variational Bayes algorithm for LDA.) In this setting, on-
+line variational Bayes is signicantly faster than traditional
+variational Bayes [12], which must make multiple passes
+through the data.
+The challenge we face is that the existing coordinate as-
+cent variational Bayes algorithms for the HDP require com-
+plicated approximation methods or numerical optimiza-
+tion [3, 4, 13]. We will begin by reviewing Sethuramans
+stick-breaking construction of the HDP [14]. We show that
+this construction allows for coordinate-ascent variational
+Bayes without numerical approximation, which is a new
+and simpler variational inference algorithm for the HDP. We
+will then use this approach in an online variational Bayes
+algorithm, allowing the HDP to be applied to massive and
+streaming data. Finally, on two large archives of scientic
+articles, we will show that the online HDP topic model pro-
+vides a signicantly better t than online LDA. Online vari-
+ational Bayes lets us apply Bayesian nonparametric models
+at much larger scales.
+
+2 A STICK BREAKING CONSTRUCTION
+
+OF THE HDP
+
+We describe the stick-breaking construction of the HDP [14]
+using the Sethuramans construction for the DP [15]. This is
+amenable to simple coordinate-ascent variational inference,
+and we will use it to develop online variational inference for
+the HDP.
+A two-level hierarchical Dirichlet process (HDP) [1] (the
+focus of this paper) is a collection of Dirichlet processes
+(DP) [16] that share a base distribution G0, which is also
+drawn from a DP. Mathematically,
+
+G0  DP(H)
+Gj  DP(0G0), for each j,
+
+(1)
+(2)
+
+where j is an index for each group of data. A notable feature
+of the HDP is that all DPs Gj share the same set of atoms
+and only the atom weights differ. This is a result of the
+almost sure discreteness of the top-level DP.
+In the HDP topic modelwhich is the focus of this paper
+we model groups of words organized into documents. The
+variable wjn is the nth word in the jth document; the base
+distribution H is a symmetric Dirichlet over the vocabulary
+simplex; and the atoms of G0, which are independent draws
+from H, are called topics.
+The HDP topic model contains two additional steps to gener-
+ate the data. First we generate the topic associated with the
+nth word in the jth document; then we generate the word
+from that topic,
+
+jn  Gj, wjn  Mult(jn).
+
+(3)
+
+The discreteness of the corpus-level draw G0 ensures that
+all documents share the same set of topics. The document-
+level draw Gj inherits the topics from G0, but weights them
+according to document-specic topic proportions.
+
+Tehs Stick-breaking Construction. The denition of
+the HDP in Eq. 1 is implicit. [1] propose a more construc-
+tive representation of the HDP using two stick-breaking
+representations of a Dirichlet distribution [15]. For the
+corpus-level DP draw, this representation is
+
+(cid:81)k1
+k  Beta(1, ),
+(cid:48)
+l=1 (1  (cid:48)
+k = (cid:48)
+G0 =(cid:80)
+l),
+k  H,
+
+k=1 kk .
+
+k
+
+(4)
+
+jk  Beta
+(cid:48)
+jk = (cid:48)
+
+Gj =(cid:80)
+
+k=1 with weights  = (k)
+
+Thus, G0 is discrete and has support at the atoms  =
+(k)
+k=1. The distribution for 
+is also written as   GEM() [17].
+The construction of each document-level Gj is
+
+(cid:16)
+(cid:16)
+1 (cid:80)k
+(cid:81)k1
+0k, 0
+l=1 (1  (cid:48)
+
+jl),
+
+(cid:17)(cid:17)
+
+l=1 l
+
+,
+
+(5)
+
+jk
+k=1 jkk ,
+k=1 are the same atoms as G0 in Eq. 4.
+
+where  = (k)
+This construction is difcult to use in an online variational
+inference algorithm. Online variational inference is partic-
+ularly efcient when the model is also amenable to coordi-
+nate ascent variational inference, and where each update is
+available in closed form. In the construction above, the stick-
+breaking weights are tightly coupled between the bottom
+and top-level DPs. As a consequence, it is not amendable to
+closed form variational updates [3, 4].
+
+Sethuramans Stick-breaking Construction. To ad-
+dress this issue, we describe an alternative stick-breaking
+construction for the HDP that allows for closed-form
+coordinate-ascent variational inference due to its full conju-
+gacy. (This construction was also briey described in [14].)
+The construction is formed by twice applying Sethuramans
+stick-breaking construction of the DP. We again construct
+the corpus-level base distribution G0 as in Eq. 4. The differ-
+ence is in the document-level draws. We use Sethuramans
+construction for each Gj,
+jt  G0,
+(cid:81)t1
+jt  Beta(1, 0),
+(cid:48)
+Gj =(cid:80)
+l=1 (1  (cid:48)
+jt = (cid:48)
+jt
+t=1 jtjt,
+
+jl),
+
+(6)
+
+Notice that each document-level atom (i.e., topic) jt maps
+to a corpus-level atom k in G0 according to the distribution
+
+753Chong Wang
+
+John Paisley
+
+David M. Blei
+
+3 ONLINE VARIATIONAL INFERENCE
+
+FOR THE HDP
+
+With Sethuramans construction of the HDP in hand, we now
+turn to our original aimapproximate posterior inference
+in the HDP for massive and streaming data. Given a large
+collection of documents, our goal is to approximate the
+posterior distribution of its latent topic structure.
+We will use online variational inference [11]. Traditional
+variational inference approximates the posterior over the
+hidden variables by positing a simpler distribution which is
+optimized to be close in Kullback-Leibler (KL) divergence
+to the true posterior [8]. This problem is (approximately)
+solved by optimizing a function equal up to a constant to the
+KL of interest. In online variational inference, we optimize
+that function with stochastic approximation.
+Online variational inference enjoys a close relationship with
+coordinate-ascent variational inference. Consider a model
+with latent variables and observations for which the poste-
+rior is intractable to compute. One strategy for variational
+inference is the mean-eld approach: posit a distribution
+where each latent variable is independent and governed by
+its own parameter, and optimize the variational parameters
+with coordinate ascent.
+Now, suppose that those coordinate ascent updates are avail-
+able in closed form and consider updating them in parallel.
+(Note this is no longer coordinate ascent.) It turns out that
+the vector of parallel coordinate updates is exactly the nat-
+ural gradient of the variational objective function under
+conjugate priors [11]. This insight makes stochastic opti-
+mization of the variational objective, based on a subset of
+the data under analysis, a simple and efcient alternative to
+traditional coordinate-ascent.
+Let us now return to the HDP topic model. We will rst
+show that Sethuramans representation of the HDP above
+allows for closed-form coordinate-ascent updates for vari-
+ational inference. Then, we will derive the corresponding
+online algorithm, which provides a scalable method for HDP
+posterior inference.
+
+3.1 A New Coordinate-ascent Variational Inference
+
+When applied to Bayesian nonparametric models, vari-
+ational methods are usually based on stick-breaking
+representationsthese representations provide a concrete
+set of hidden variables on which to place an approximate
+posterior [18, 19, 3]. Furthermore, the approximate pos-
+terior is usually truncated. The user rst sets a truncation
+on the number of topics to allow, and then relies on vari-
+ational inference to infer a smaller number that are used
+in the data. (Two exceptions are found in [20, 21], who
+developed methods that allow the truncation to grow.) Note
+that setting a truncation level is different from asserting a
+number of components in a model. When set large, the
+
+Figure 1: Illustration of the Sethuramans stick-breaking
+construction of the two-level HDP. In the rst level, k  H
+and   GEM(); in the second level, j  GEM(0),
+cjt  Mult() and jt = cjt.
+
+dened by G0. Further note there will be multiple document-
+level atoms jt which map to the same corpus-level atom
+k, but we can verify that Gj contains all of the atoms in
+G0 almost surely.
+A second way to represent the document-level atoms j =
+(jt)
+t=1 is to introduce a series of indicator variables, cj =
+(cjt)
+t=1, which are drawn i.i.d.,
+
+cjt  Mult(),
+
+where   GEM() (as mentioned above). Then let
+
+jt = cjt,
+
+(7)
+
+(8)
+
+Thus, we do not need to explicitly represent the document
+atoms j. This further simplies online inference.
+The property that multiple document-level atoms jt can
+map to the same corpus-level atom k in this representa-
+tion is similar in spirit to the Chinese restaurant franchise
+(CRF) [1], where each restaurant can have multiple tables
+serving the same dish k. In the CRF representation, a
+hierarchical Chinese restaurant process allocates dishes to
+tables. Here, we use a series of random indicator variables
+cj to represent this structure. Figure 1 illustrates the concept.
+
+Given the representation in Eq. 6, the generative process for
+the observed words in jth document, wjn, is as follows,
+
+zjn  Mult(j),
+jn = jzjn = cjzjn
+wjn  Mult(jn).
+
+,
+
+(9)
+(10)
+(11)
+
+The indicator zjn selects topic parameter jt, which maps
+to one topic k through the indicators cj. This also provides
+the mapping from topic jn to k, which we need in Eq. 3.
+
+754Online Variational Inference for the Hierarchical Dirichlet Process
+
+HDP assumptions encourage the approximate posterior to
+use fewer components.
+We use a fully factorized variational distribution and per-
+form mean-eld variational inference. The hidden vari-
+ables that we are interested in are the top-level stick propor-
+tions (cid:48) = ((cid:48)
+k)
+k=1, bottom-level stick proportions (cid:48)
+j =
+((cid:48)
+jt)
+t=1 for each
+Gj. We also infer atom/topic distributions  = (k)
+k=1,
+topic index zjn for each word wjn. Thus our variational
+distribution has the following form,
+
+t=1 and the vector of indicators cj = (cjt)
+
+q((cid:48), (cid:48), c, z, ) = q((cid:48))q((cid:48))q(c)q(z)q().
+
+(12)
+
+This further factorizes into
+
+q(c) =(cid:81)
+q(z) =(cid:81)
+q() =(cid:81)
+
+(cid:81)
+(cid:81)
+k q(k|k),
+
+t q(cjt|jt),
+n q(zjn|jn),
+
+j
+
+j
+
+where the variational parameters are jt (multinomial), jn
+(multinomial) and k (Dirichlet). The factorized forms of
+q((cid:48)) and q((cid:48)) are
+
+q((cid:48)) =(cid:81)K1
+q((cid:48)) =(cid:81)
+(cid:81)T1
+k=1 q((cid:48)
+t=1 q((cid:48)
+
+j
+
+k|uk, vk),
+
+jt|ajt, bjt),
+
+(13)
+
+K = 1) = 1 and q((cid:48)
+
+where (uk, bk) and (ajt, bjt) are parameters of beta distri-
+butions. We set the truncations for the corpus and document
+levels to K and T . Here, T can be set much smaller than
+K, because in practice each document Gj requires far fewer
+topics than those needed for the entire corpus (i.e., the atoms
+of G0). With this truncation, our variational distribution has
+q((cid:48)
+Using standard variational theory [8], we lower bound the
+marginal log likelihood of the observed data D = (wj)D
+using Jensens inequality,
+log p(D|, 0, )  Eq [log p(D, (cid:48), (cid:48), c, z, )] + H(q)
+j)p((cid:48)
+
+(cid:2)log(cid:0)p(wj|cj, zj, )p(cj|(cid:48))p(zj|(cid:48)
+j))(cid:9)
+
++ H(q(cj)) + H(q(zj)) + H(q((cid:48)
+
+jT = 1) = 1, for all j.
+
+=(cid:80)
+
+(cid:8)Eq
+
+j=1
+
+j
+
++ Eq [log p((cid:48))p()] + H(q((cid:48))) + H(q())
+
+= L(q),
+(14)
+where H() is the entropy term for the variational distribu-
+tion. This is the variational objective function, which up to a
+constant is equivalent to the KL to the true posterior. Taking
+derivatives of this lower bound with respect to each vari-
+ational parameter, we can derive the following coordinate
+ascent updates.
+Document-level Updates: At the document level we up-
+date the parameters to the per-document stick, the parame-
+ters to the per word topic indicators, and the parameters to
+
+j|0)(cid:1)(cid:3)
+
+(cid:17)
+
+.
+
+n
+
+n jnt,
+
+s=t+1 jns,
+
+jnt  exp
+
+the per document topic indices,
+
+ajt = 1 +(cid:80)
+bjt = 0 +(cid:80)
+jtk  exp ((cid:80)
+(cid:16)(cid:80)K
+
+uk = 1 +(cid:80)
+vk =  +(cid:80)
+kw =  +(cid:80)
+
+(cid:80)T
+(15)
+(16)
+n jntEq [log p(wjn|k)] + Eq [log k]) ,
+(17)
+k=1 jtkEq [log p(wjn|k)] + Eq [log jt]
+(18)
+Corpus-level Updates: At the corpus level, we update the
+parameters to top-level sticks and the topics,
+
+(cid:80)T
+(cid:80)T
+(cid:80)K
+t=1 jtk ((cid:80)
+(cid:80)T
+k] +(cid:80)k1
+(cid:3) +(cid:80)t1
+(cid:2)log (cid:48)
+(cid:3) = (ajt)  (ajt + bjt),
+(cid:2)log (cid:48)
+(cid:2)log(1  (cid:48)
+jt)(cid:3) = (bjt)  (ajt + bjt),
+Eq [log p(wjn = w|k)] = (kw)  ((cid:80)
+
+The expectations involved above are taken under the varia-
+tional distribution q, and are
+Eq [log k] = Eq [log (cid:48)
+Eq [log (cid:48)
+Eq [log(1  (cid:48)
+Eq [log jt] = Eq
+Eq
+Eq
+
+(cid:2)log(1  (cid:48)
+js)(cid:3) ,
+
+k)] = (vk)  (uk + vk),
+
+k] = (uk)  (uk + vk),
+
+Eq [log(1  (cid:48)
+
+n jntI[wjn = w]) ,
+
+(19)
+
+(20)
+
+(21)
+
+l=k+1 jtl,
+
+t=1 jtk,
+
+l)] ,
+
+Eq
+
+s=1
+
+j
+
+j
+
+j
+
+t=1
+
+l=1
+
+jt
+
+jt
+
+w kw),
+
+where () is the digamma function.
+Unlike previous variational inference methods for the
+HDP [3, 4], this method only contains simple closed-form
+updates due to the full conjugacy of the stick-breaking con-
+struction. (We note that, even in the batch setting, this is a
+new posterior inference algorithm for the HDP.)
+
+3.2 Online Variational Inference
+
+We now develop online variational inference for an HDP
+topic model.
+In online variational inference, we apply
+stochastic optimization to the variational objective. We
+subsample the data (in this case, documents), compute an
+approximation of the gradient based on the subsample, and
+follow that gradient with a decreasing step-size. The key in-
+sight behind efcient online variational inference is that co-
+ordinate ascent updates applied in parallel precisely form the
+natural gradient of the variational objective function [11, 7].
+Our approach is similar to that described in [7]. Let D be
+the total number of documents in the corpus, and dene the
+variational lower bound for document j as
+Lj = Eq
+
+(cid:2)log(cid:0)p(wj|cj, zj, )p(cj|(cid:48))p(zj|(cid:48)
+
+j|0)(cid:1)(cid:3)
+
+j)p((cid:48)
+
++ H(q(cj)) + H(q(zj)) + H(q((cid:48)
++ 1
+
+D [Eq [log p((cid:48))p()] + H(q((cid:48))) + H(q())] .
+
+j))
+
+755Chong Wang
+
+John Paisley
+
+David M. Blei
+
+We have taken the corpus-wide terms and multiplied them
+by 1/D. With this expression, we can see that the lower
+bound L in Eq. 14 can be written as
+
+L =(cid:80)
+
+j Lj = Ej[DLj],
+
+where the expectation is taken over the empirical distribution
+of the data set. The expression DLj is the variational lower
+bound evaluated with D duplicate copies of document j.
+With the objective construed as an expectation over our
+data, online HDP proceeds as follows. Given the exist-
+ing corpus-level parameters, we rst sample a document
+j and compute its optimal document-level variational pa-
+rameters (aj, bj, j, j) by coordinate ascent (see Eq. 15
+to 18.). Then, take the gradient of the corpus-level param-
+eters (, u, v) of DLj, which is a noisy estimate of the
+gradient of the expectation above. We follow that gradient
+according to a decreasing learning rate, and repeat.
+Natural Gradients. The gradient of the variational objec-
+tive contains, as a component, the covariance matrix of the
+variational distribution. This is a computational problem
+in topic modeling because each set of topic parameters in-
+volves a V V covariance matrix, where V is the size of the
+vocabulary (e.g., 5,000). The natural gradient [10]which
+is the inverse of the Riemannian metric multiplied by the
+gradienthas a simple form in the variational setting [11]
+that allows for fast online inference.
+Multiplying the gradient by the inverse of Riemannian met-
+ric cancels the covariance matrix of the variational distri-
+bution, leaving a natural gradient which is much easier to
+work with. Specically, the natural gradient is structurally
+equivalent to the coordinate updates of Eq 19 to 21 taken
+in parallel. (And, in stochastic optimization, we treat the
+sampled document j as though it is the whole corpus.) Let
+(j), u(j) and v(j) be the natural gradients for DLj.
+Using the analysis in [11, 7], the components of the natural
+gradients are
+
+kw(j) = kw +  + D(cid:80)T
+uk(j) = uk + 1 + D(cid:80)T
+vk(j) = vk +  + D(cid:80)T
+
+t=1 jtk ((cid:80)
+(cid:80)K
+
+t=1 jtk,
+
+t=1
+
+l=k+1 jtl.
+
+(22)
+(23)
+(24)
+
+In online inference, an appropriate learning rate to is
+needed to ensure the parameters to converge to a stationary
+point [11, 7]. Then the updates of , u and v become
+
+   + to(j),
+u  u + tou(j)
+v  v + tov(j),
+where the learning rate to should satisfy
+
+(cid:80)
+to=1 to = , (cid:80)
+
+to=1 2
+to
+
+(25)
+(26)
+(27)
+
+(28)
+
+< ,
+
+n jntI[wjn = w]) ,
+
+1: Initialize  = (k)K
+
+k=1, u = (uk)K1
+
+k=1 and v =
+
+(vk)K1
+
+k=1 randomly. Set to = 1.
+
+2: while Stopping criterion is not met do
+3:
+4:
+
+Fetch a random document j from the corpus.
+Compute aj, bj, j and j using variational infer-
+ence using document-level updates, Eq. 15 to 18.
+Compute the natural gradients, (j), u(j) and
+v(j) using Eq. 22 to 24.
+Set to = (0 + to), to  to + 1.
+Update , u and v using Eq. 25 to 27.
+
+5:
+
+6:
+7:
+8: end while
+
+Figure 2: Online variational inference for the HDP
+
+which ensures convergence [9]. In our experiments, we use
+to = (0 + to), where   (0.5, 1] and 0 > 0. Note
+that the natural gradient is essential to the efciency of the
+algorithm. The online variational inference algorithm for
+the HDP topic model is illustrated in Figure 2.
+Mini-batches. To improve stability of the online learning
+algorithm, practitioners typically use multiple samples to
+compute gradients at a timea small set of documents in
+our case. Let S be a small set of documents and S = |S|
+be its size. In this case, rather than computing the natural
+jS Lj. The update
+
+gradients using DLj, we use (D/S)(cid:80)
+
+equations can then be similarly derived.
+
+4 EXPERIMENTAL RESULTS
+
+In this section, we evaluate the performance of online varia-
+tional HDP compared with batch variational HDP and online
+variational LDA.2
+
+4.1 Data and Metric
+
+Data Sets. Our experiments are based on two datasets:
+ Nature: This dataset contains 352,549 documents, with
+about 58 million tokens and a vocabulary size of 4,253.
+These articles are from the years 1869 to 2008.
+
+ PNAS: The Proceedings of the National Academy of
+Sciences (PNAS) dataset contains 82,519 documents,
+with about 46 million tokens and a vocabulary size of
+6,500. These articles are from the years 1914 to 2004.
+
+Standard stop words and those words that appear too fre-
+quently or too rarely are removed.
+
+Evaluation Metric. We use the following evaluation met-
+ric to compare performance. For each dataset, we held out
+2000 documents as a test set Dtest, with the remainder as
+training data Dtrain. For testing, we split document wj
+in Dtest into two parts, wj = (wj1, wj2), and compute
+2http://www.cs.princeton.edu/blei/downloads/onlineldavb.tar
+
+756Online Variational Inference for the Hierarchical Dirichlet Process
+
+the predictive likelihood of the second part wj2 (10% of
+the words) conditioned on the rst part wj1 (90% of the
+words) and on the training data. This is similar to the met-
+rics used in [3, 22], which tries to avoid comparing different
+hyperparameters. The metric is
+
+likelihoodpw =
+
+(cid:80)
+
+jDtest
+
+(cid:80)
+
+log p(wj2|wj1,Dtrain)
+jDtest
+
+|wj2|
+
+,
+
+where |wj2| is the number of tokens in wj2 and pw means
+per-word. Exact computation is intractable, and so we use
+the following approximation. For all algorithms, let  be
+the variational expectation of  given Dtrain. For LDA,
+let j be the variational expectation given wj2 and  be
+its Dirichlet hyperparameter for topic proportions. The
+predictive marginal probability of wj1 is approximated by
+
+p(wj2|wj1,Dtrain) (cid:81)
+
+wwj2
+
+k jk
+
+kw.
+
+(cid:80)
+
+To use this approximation for the HDP, we set the Dirichlet
+, where  is the variational
+hyperparameter to  = 0
+expectation of , obtained from the variational expectation
+of (cid:48).
+
+4.2 Results
+
+Experimental Settings. For the HDP, we set  =
+0 = 1, although using priors is also an option. We
+set the top-level truncation K = 150 and the second
+level truncation T = 15. Here T (cid:28) K, since docu-
+ments usually dont have many topics. For online vari-
+ational LDA, we set its Dirichlet hyperparameter  =
+(1/K, . . . , 1/K), where K is the number of topics; we set
+K = {20, 40, 60, 80, 100, 150}.3 We set 0 = 64 based
+on the suggestions in [7], and vary  = {0.6, 0.8, 1.0} and
+the batch size S = {16, 64, 256, 1024, 2048}. We collected
+experimental results during runs of 6 hours each.4
+
+Nature Corpus.
+In Figure 3, we plot the per-word log
+likelihood as a function of computation time for online HDP,
+online LDA, and batch HDP. (For the online algorithms,
+we set  = 0.6 and the batch size was S = 256.) This
+gure shows that online HDP performs better than online
+LDA. The HDP uses about 110 topics out of its potential
+150. In contrast, online LDA uses almost all the topics and
+exhibits overtting at 150 topics. Note that batch HDP is
+only trained on a subset of 20, 000 documentsotherwise
+it is too slowand its performance suffers.
+In Figure 4, we plot the per-word likelihood after 6 hours of
+computation, exploring the effect of batch size and values
+of . We see that, overall, online HDP performs better
+than online LDA. (This matches the reported results in [3],
+which compares batch variational inference for the HDP and
+
+3This is different from the top level truncation K in the HDP.
+4The python package will be available at rst authors home-
+
+page.
+
+Figure 3: Experimental results on Nature with  = 0.6 and
+batch size S = 256 (for the online algorithms). Points are
+sub-sampled for better view. The label oLDA-20 indicates
+online LDA with 20 topics. (Not all numbers of topics are
+shown; see Figure 4 for more details.) Online HDP performs
+better than online LDA and batch HDP.
+
+LDA.) Further, we found that small  favors larger batch
+sizes. (This matches the results seen for online LDA in [7].)
+We also ran online HDP on the full Nature dataset using
+only one pass (with  = 0.6 and a batch size S = 1024) by
+sequentially processing the articles from the year 1869 to
+2008. Table 1 tracks the most probable ten words from two
+topics as we encounter more articles in the collection. Note
+that the HDP here is not a dynamic topic model [23, 24];
+we show these results to demonstrate the online inference
+process.
+These results show that online inference for streaming data
+nds different topics at different speeds, since the relevant
+information for each topic does not come at the same time.
+In this sequential setting, some topics are rarely used until
+there are documents that can provide enough information to
+update them (see the top topic in Table 1). Other topics are
+updated throughout the stream because relevant documents
+occur throughout the whole collection (see the bottom topic
+in Table 1).
+
+PNAS Corpus We ran the same experiments on the PNAS
+corpus. Since PNAS is smaller than Nature, we were able
+to run batch HDP on the whole data set. Figure 5 shows
+the result with  = 0.6 and batch size S = 2048. Online
+HDP performs better than online LDA. Here batch HDP
+performs a little better than online HDP, but online HDP is
+much faster. Figure 6 plots the comparison between online
+HDP and online LDA across different batch sizes and values
+of .
+
+5 DISCUSSION
+
+We developed an online variational inference algorithm for
+the hierarchical Dirichlet process topic model. Our algo-
+
+757naturetime (in seconds, log scale)perword log likelihood8.07.87.67.47.27.0lllllllllllllllllllllllllllllllllllll101.5102102.5103103.5104algorithmlllllloHDPbHDPoLDA20oLDA60oLDA100oLDA150Chong Wang
+
+John Paisley
+
+David M. Blei
+
+Figure 4: Comparisons of online LDA and online HDP on the Nature corpus under various settings of batch size S and
+parameter  (kappa), run for 6 hours each. (Some lines for online HDP and points for online LDA do not appear due to
+gure limits.) The best result among all is achieved by online HDP.
+
+Figure 6: Comparisons of online LDA and online oHDP on the PNAS corpus under various settings of batch size S and
+parameter  (kappa), run for 6 hours each. (Some lines for online HDP and points for online LDA do not appear due to
+gure limits.) The best result among all is achieved by online HDP.
+
+758naturetopiclikelihood7.37.27.17.06.96.87.37.27.17.06.96.87.37.27.17.06.96.8S=16lllllllllllllll20406080100120140S=64lllllllllllllllll20406080100120140S=256llllllllllllllllll20406080100120140S=1024llllllllllllllllll20406080100120140S=2048llllllllllllllllll20406080100120140kappa=0.6kappa=0.8kappa=1algorithmloLDAloHDPpnastopiclikelihood8.28.18.07.97.88.28.18.07.97.88.28.18.07.97.8S=16lllllllllllll20406080100120140S=64llllllllllllllllll20406080100120140S=256llllllllllllllllll20406080100120140S=1024llllllllllllllllll20406080100120140S=2048lllllllllllllllll20406080100120140kappa=0.6kappa=0.8kappa=1algorithmloLDAloHDPOnline Variational Inference for the Hierarchical Dirichlet Process
+
+40,960
+author
+series
+vol
+due
+your
+latter
+think
+sun
+sea
+feet
+
+81,920
+author
+series
+due
+sea
+vol
+latter
+hand
+carried
+fact
+appear
+
+stars
+star
+observatory
+sun
+magnitude
+solar
+comet
+spectrum
+motion
+photographs
+
+stars
+observatory
+star
+sun
+magnitude
+solar
+motion
+comet
+eclipse
+spectrum
+
+122,880
+due
+series
+distribution
+author
+sea
+carried
+statistical
+sample
+average
+soil
+
+stars
+observatory
+sun
+star
+solar
+astronomical
+greenwich
+earth
+eclipse
+magnitude
+
+163,840
+weight
+due
+birds
+response
+series
+average
+sample
+soil
+population
+frequency
+
+204,800
+rats
+response
+blood
+sec
+weight
+dose
+mice
+average
+food
+controls
+
+245,760
+rats
+mice
+response
+dose
+drug
+brain
+injection
+food
+saline
+females
+
+286,720
+rats
+response
+dose
+saline
+injection
+brain
+females
+treated
+food
+rat
+
+stars
+observatory
+solar
+sun
+astronomical
+star
+greenwich
+eclipse
+instrument
+royal
+
+stars
+observatory
+solar
+sun
+astronomical
+star
+earth
+radio
+greenwich
+motion
+
+stars
+observatory
+radio
+star
+optical
+objects
+magnitude
+solar
+positions
+
+star
+arc
+emission
+stars
+optical
+spectrum
+image
+images
+ray
+plates magnitude
+
+327,680
+rats
+brain
+memory
+dopamine
+mice
+subjects
+neurons
+drug
+induced
+response
+
+stars
+galaxy
+star
+emission
+galaxies
+optical
+redshift
+images
+image
+objects
+
+352,549
+neurons
+rats
+memory
+brain
+dopamine
+response
+mice
+behavioural
+training
+responses
+
+galaxies
+stars
+galaxy
+star
+emission
+optical
+redshift
+spectrum
+images
+objects
+
+Table 1: The top ten words from two topics, displayed after different numbers of documents have been processed for
+inference. The two topics are separated by the dashed line. The rst line of the table indicates the number of articles seen so
+far (beginning from the year 1869). The topic on the top (which could be labeled neuroscience research on rats) does
+not have a clear meaning until we have analyzed 204,800 documents. This topic is rarely used in the earlier part of the
+corpus and few documents provide useful information about it. In contrast, the topic on the bottom (which could be labeled
+astronomy research) has a clearer meaning from the beginning. This subject is discussed earlier in Nature history.
+
+rithm is based on a stick-breaking construction of the HDP
+that allows for closed-form coordinate ascent variational
+inference, which is a key factor in developing the online al-
+gorithm. Our experimental results show that for large-scale
+applications, the online variational inference for the HDP
+can address the model selection problem for LDA and avoid
+overtting.
+The application of natural gradient learning to online vari-
+ational inference may be generalized to other Bayesian
+nonparametric models, as long as we can construct varia-
+tional inference algorithms with closed form updates un-
+der conjugacy. For example, the Indian Buffet process
+(IBP) [25, 26, 27] might be another model that can use
+an efcient online variational inference algorithm for large
+and streaming data sets.
+
+Acknowledgement. Chong Wang is supported by Google
+PhD fellowship. David M. Blei is supported by ONR 175-
+6343, NSF CAREER 0745520, AFOSR 09NL202, the Al-
+fred P. Sloan foundation, and a grant from Google.
+

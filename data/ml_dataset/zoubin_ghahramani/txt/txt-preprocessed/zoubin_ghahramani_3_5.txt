@@ -1,0 +1,904 @@
+Abstract
+
+Inspired by Google Sets, we consider the problem of retrieving items
+from a concept or cluster, given a query consisting of a few items from
+that cluster. We formulate this as a Bayesian inference problem and de-
+scribe a very simple algorithm for solving it. Our algorithm uses a model-
+based concept of a cluster and ranks items using a score which evaluates
+the marginal probability that each item belongs to a cluster containing
+the query items. For exponential family models with conjugate priors
+this marginal probability is a simple function of sufcient statistics. We
+focus on sparse binary data and show that our score can be evaluated ex-
+actly using a single sparse matrix multiplication, making it possible to
+apply our algorithm to very large datasets. We evaluate our algorithm on
+three datasets: retrieving movies from EachMovie, nding completions
+of author sets from the NIPS dataset, and nding completions of sets of
+words appearing in the Grolier encyclopedia. We compare to Google
+Sets and show that Bayesian Sets gives very reasonable set completions.
+
+1
+
+Introduction
+
+What do Jesus and Darwin have in common? Other than being associated with two
+different views on the origin of man, they also have colleges at Cambridge Univer-
+sity named after them.
+If these two names are entered as a query into Google Sets
+(http://labs.google.com/sets) it returns a list of other colleges at Cambridge.
+Google Sets is a remarkably useful tool which encapsulates a very practical and interest-
+ing problem in machine learning and information retrieval.1 Consider a universe of items
+D. Depending on the application, the set D may consist of web pages, movies, people,
+words, proteins, images, or any other object we may wish to form queries on. The user
+provides a query in the form of a very small subset of items Dc  D. The assumption
+is that the elements in Dc are examples of some concept / class / cluster in the data. The
+algorithm then has to provide a completion to the set Dcthat is, some set D0
+c  D which
+presumably includes all the elements in Dc and other elements in D which are also in this
+concept / class / cluster2.
+
+ZG is also at CALD, Carnegie Mellon University, Pittsburgh PA 15213.
+1Google Sets is a large-scale clustering algorithm that uses many millions of data instances
+extracted from web data (Simon Tong, personal communication). We are unable to describe any
+details of how the algorithm works due its proprietary nature.
+
+2From here on, we will use the term cluster to refer to the target concept.
+
+We can view this problem from several perspectives. First, the query can be interpreted
+as elements of some unknown cluster, and the output of the algorithm is the completion
+of that cluster. Whereas most clustering algorithms are completely unsupervised, here the
+query provides supervised hints or constraints as to the membership of a particular cluster.
+We call this view clustering on demand, since it involves forming a cluster once some
+elements of that cluster have been revealed. An important advantage of this approach over
+traditional clustering is that the few elements in the query can give useful information as
+to the features which are relevant for forming the cluster. For example, the query Bush,
+Nixon, Reagan suggests that the features republican and US President are relevant to
+the cluster, while the query Bush, Putin, Blair suggests that current and world leader
+are relevant. Given the huge number of features in many real world data sets, such hints as
+to feature relevance can produce much more sensible clusters.
+Second, we can think of the goal of the algorithm to be to solve a particular information re-
+trieval problem [2, 3, 4]. As in other retrieval problems, the output should be relevant to the
+query, and it makes sense to limit the output to the top few items ranked by relevance to the
+query. In our experiments, we take this approach and report items ranked by relevance. Our
+relevance criterion is closely related to a Bayesian framework for understanding patterns of
+generalization in human cognition [5].
+
+2 Bayesian Sets
+Let D be a data set of items, and x  D be an item from this set. Assume the user provides
+a query set Dc which is a small subset of D. Our goal is to rank the elements of D by how
+well they would t into a set which includes Dc. Intuitively, the task is clear: if the set
+D is the set of all movies, and the query set consists of two animated Disney movies, we
+expect other animated Disney movies to be ranked highly.
+We use a model-based probabilistic criterion to measure how well items t into Dc. Having
+observed Dc as belonging to some concept, we want to know how probable it is that x also
+belongs with Dc. This is measured by p(x|Dc). Ranking items simply by this probability
+is not sensible since some items may be more probable than others, regardless of Dc. For
+example, under most sensible models, the probability of a string decreases with the number
+of characters, the probability of an image decreases with the number of pixels, and the
+probability of any continuous variable decreases with the precision to which it is measured.
+We want to remove these effects, so we compute the ratio:
+
+score(x) = p(x|Dc)
+p(x)
+
+(1)
+
+where the denominator is the prior probability of x and under most sensible models will
+scale exactly correctly with number of pixels, characters, discretization level, etc. Using
+Bayes rule, this score can be re-written as:
+
+score(x) = p(x,Dc)
+p(x) p(Dc)
+
+(2)
+which can be interpreted as the ratio of the joint probability of observing x and Dc, to the
+probability of independently observing x and Dc. Intuitively, this ratio compares the prob-
+ability that x and Dc were generated by the same model with the same, though unknown,
+parameters , to the probability that x and Dc came from models with different parameters
+ and 0 (see gure 1). Finally, up to a multiplicative constant independent of x, the score
+can be written as: score(x) = p(Dc|x), which is the probability of observing the query set
+given x (i.e. the likelihood of x).
+From the above discussion, it is still not clear how one would compute quantities such
+as p(x|Dc) and p(x). A natural model-based way of dening a cluster is to assume that
+
+Figure 1: Our Bayesian score compares the hypotheses that the data was generated by each of the
+above graphical models.
+
+the data points in the cluster all come independently and identically distributed from some
+simple parameterized statistical model. Assume that the parameterized model is p(x|)
+where  are the parameters. If the data points in Dc all belong to one cluster, then under
+this denition they were generated from the same setting of the parameters; however, that
+setting is unknown, so we need to average over possible parameter values weighted by
+some prior density on parameter values, p(). Using these considerations and the basic
+rules of probability we arrive at:
+
+(3)
+
+(4)
+
+(5)
+
+(6)
+
+p(x) =
+p(Dc) =
+
+Z
+Z Y
+Z
+
+p(x|) p() d
+
+p(xi|) p() d
+
+xiDc
+p(x|) p(|Dc) d
+
+p(x|Dc) =
+p(|Dc) = p(Dc|) p()
+
+p(Dc)
+
+We are now fully equipped to describe the Bayesian Sets algorithm:
+
+Bayesian Sets Algorithm
+
+x  D, a prior on the model parameters p()
+
+background: a set of items D, a probabilistic model p(x|) where
+input: a query Dc = {xi}  D
+for all x  D do
+
+compute
+
+score(x) = p(x|Dc)
+p(x)
+
+end for
+output: return elements of D sorted by decreasing score
+
+We mention two properties of this algorithm to assuage two common worries with Bayesian
+methodstractability and sensitivity to priors:
+
+1. For the simple models we will consider, the integrals (3)-(5) are analytical. In fact,
+for the model we consider in section 3 computing all the scores can be reduced to
+a single sparse matrix multiplication.
+
+2. Although it clearly makes sense to put some thought into choosing sensible mod-
+els p(x|) and priors p(), we will show in 5 that even with very simple models
+and almost no tuning of the prior one can get very competitive retrieval results. In
+practice, we use a simple empirical heuristic which sets the prior to be vague but
+centered on the mean of the data in D.
+
+3 Sparse Binary Data
+
+We now derive in more detail the application of the Bayesian Sets algorithm to sparse
+binary data. This type of data is a very natural representation for the large datasets we used
+in our evaluations (section 5). Applications of Bayesian Sets to other forms of data (real-
+valued, discrete, ordinal, strings) are also possible, and especially practical if the statistical
+model is a member of the exponential family (section 4).
+Assume each item xi  Dc is a binary vector xi = (xi1, . . . , xiJ) where xij  {0, 1}, and
+that each element of xi has an independent Bernoulli distribution:
+
+p(xi|) =
+
+(1  j)1xij
+
+xij
+j
+
+(7)
+
+JY
+
+j=1
+
+JY
+
+j=1
+
+The conjugate prior for the parameters of a Bernoulli distribution is the Beta distribution:
+
+p(|, ) =
+
+(j + j)
+(j)(j) j1
+
+j
+
+(1  j)j1
+
+(8)
+
+where  and  are hyperparameters, and the Gamma function is a generalization of the
+factorial function. For a query Dc = {xi} consisting of N vectors it is easy to show that:
+
+p(Dc|, ) =Y
+i=1 xij and j = j + N PN
+
+(j + j)
+(j)(j)
+
+j
+
+where j = j +PN
+
+(j)( j)
+(j + j)
+
+(9)
+
+i=1 xij. For an item x = (x1 . . . xJ)
+
+the score, written with the hyperparameters explicit, can be computed as follows:
+( j +xj )( j +1xj )
+
+(j +j +N )
+
+score(x) = p(x|Dc, , )
+p(x|, )
+
+=Y
+
+j
+
+(j +j +N +1)
+
+(j +j )
+
+(j +j +1)
+
+( j )( j )
+
+(j +xj )(j +1xj )
+
+(j )(j )
+
+(10)
+
+This daunting expression can be dramatically simplied. We use the fact that (x) =
+(x  1) (x  1) for x > 1. For each j we can consider the two cases xj = 0 and xj = 1
+and separately. For xj = 1 we have a contribution
+. For xj = 0 we have a
+contribution j +j
+
+. Putting these together we get:
+
+j +j +N
+
+j +j
+
+j
+j
+
+j +j +N
+
+j
+j
+
+score(x) =Y
+
+!1xj
+
+j + j
+
+(cid:18) j
+log score(x) = c +X
+
+j + j + N
+
+j
+
+(cid:19)xj  j
+
+j
+
+qjxj
+
+j
+The log of the score is linear in x:
+
+where
+
+c =X
+
+j
+
+log(j + j)  log(j + j + N) + log j  log j
+
+j
+
+(11)
+
+(12)
+
+(13)
+
+and
+(14)
+If we put the entire data set D into one large matrix X with J columns, we can compute
+the vector s of log scores for all points using a single matrix vector multiplication
+
+qj = log j  log j  log j + log j
+
+(15)
+For sparse data sets this linear operation can be implemented very efciently. Each query
+Dc corresponds to computing the vector q and scalar c. This can also be done efciently if
+the query is also sparse, since most elements of q will equal log j  log(j + N) which
+is independent of the query.
+
+s = c + Xq
+
+4 Exponential Families
+
+We generalize the above result to models in the exponential family. The distribution for
+such models can be written in the form p(x|) = f(x)g() exp{>u(x)}, where u(x) is a
+K-dimensional vector of sufcient statistics,  are the natural parameters, and f and g are
+non-negative functions. The conjugate prior is p(|, ) = h(, )g() exp{>}, where
+ and  are hyperparameters, and h normalizes the distribution.
+Given a query Dc = {xi} with N items, and a candidate x, it is not hard to show that the
+score for the candidate is:
+
+score(x) = h( + 1,  + u(x)) h( + N,  +P
+h(, ) h( + N + 1,  + u(x) +P
+
+i u(xi))
+i u(xi))
+
+(16)
+
+This expression helps us understand when the score can be computed efciently. First of
+all, the score only depends on the size of the query (N), the sufcient statistics computed
+from each candidate, and from the whole query. It therefore makes sense to precompute U,
+a matrix of sufcient statistics corresponding to X. Second, whether the score is a linear
+operation on U depends on whether log h is linear in the second argument. This is the case
+for the Bernoulli distribution, but not for all exponential family distributions. However,
+for many distributions, such as diagonal covariance Gaussians, even though the score is
+nonlinear in U, it can be computed by applying the nonlinearity elementwise to U. For
+sparse matrices, the score can therefore still be computed in time linear in the number of
+non-zero elements of U.
+
+5 Results
+
+We ran our Bayesian Sets algorithm on three different datasets:
+the Groliers Encyclo-
+pedia dataset, consisting of the text of the articles in the Encyclopedia, the EachMovie
+dataset, consisting of movie ratings by users of the EachMovie service, and the NIPS au-
+thors dataset, consisting of the text of articles published in NIPS volumes 0-12 (spanning
+the 1987-1999 conferences). The Groliers dataset is 30991 articles by 15276 words, where
+the entries are the number of times each word appears in each document. We preprocess
+(binarize) the data by column normalizing each word, and then thresholding so that a (ar-
+ticle,word) entry is 1 if that word has a frequency of more than twice the article mean.
+We do essentially no tuning of the hyperparameters. We use broad empirical priors, where
+ = cm,  = c  (1m) where m is a mean vector over all articles, and c = 2. The
+analogous priors are used for both other datasets.
+The EachMovie dataset was preprocessed, rst by removing movies rated by less than 15
+people, and people who rated less than 200 movies. Then the dataset was binarized so that a
+(person, movie) entry had value 1 if the person gave the movie a rating above 3 stars (from
+a possible 0-5 stars). The data was then column normalized to account for overall movie
+popularity. The size of the dataset after preprocessing was 1813 people by 1532 movies.
+
+Finally the NIPS author dataset (13649 words by 2037 authors), was preprocessed very
+similarly to the Grolier dataset. It was binarized by column normalizing each author, and
+then thresholding so that a (word,author) entry is 1 if the author uses that word more fre-
+quently than twice the word mean across all authors.
+The results of our experiments, and comparisons with Google Sets for word and movie
+queries are given in tables 2 and 3. Unfortunately, NIPS authors have not yet achieved the
+kind of popularity on the web necessary for Google Sets to work effectively. Instead we
+list the top words associated with the cluster of authors given by our algorithm (table 4).
+The running times of our algorithm on all three datasets are given in table 1. All experi-
+ments were run in Matlab on a 2GHz Pentium 4, Toshiba laptop. Our algorithm is very fast
+both at pre-processing the data, and answering queries (about 1 sec per query).
+
+SIZE
+
+NON-ZERO ELEMENTS
+
+PREPROCESS TIME
+
+QUERY TIME
+
+GROLIERS
+
+30991  15276
+
+EACHMOVIE
+1813  1532
+
+NIPS
+
+13649  2037
+
+2,363,514
+
+6.1S
+1.1S
+
+517,709
+0.56S
+0.34S
+
+933,295
+3.22S
+0.47S
+
+Table 1: For each dataset we give the size of that dataset along with the time taken to do the (one-
+time) preprocessing and the time taken to make a query (both in seconds).
+
+QUERY: WARRIOR, SOLDIER
+BAYES SETS
+
+GOOGLE SETS
+
+QUERY: ANIMAL
+
+GOOGLE SETS
+
+BAYES SETS
+
+QUERY: FISH, WATER, CORAL
+GOOGLE SETS
+
+BAYES SETS
+
+WARRIOR
+SOLDIER
+
+SPY
+
+ENGINEER
+
+MEDIC
+SNIPER
+
+DEMOMAN
+
+PYRO
+SCOUT
+
+PYROMANIAC
+
+HWGUY
+
+SOLDIER
+WARRIOR
+
+MERCENARY
+
+CAVALRY
+BRIGADE
+
+COMMANDING
+
+SAMURAI
+BRIGADIER
+INFANTRY
+COLONEL
+
+SHOGUNATE
+
+ANIMAL
+PLANT
+FREE
+LEGAL
+FUNGAL
+HUMAN
+
+ANIMAL
+ANIMALS
+
+PLANT
+HUMANS
+
+FOOD
+
+SPECIES
+
+HYSTERIA
+VEGETABLE
+
+MINERAL
+
+INDETERMINATE
+
+FOZZIE BEAR
+
+MAMMALS
+
+AGO
+
+ORGANISMS
+VEGETATION
+
+PLANTS
+
+FISH
+
+WATER
+CORAL
+
+AGRICULTURE
+
+FOREST
+
+RICE
+
+SILK ROAD
+RELIGION
+
+HISTORY POLITICS
+
+DESERT
+
+ARTS
+
+WATER
+
+FISH
+
+SURFACE
+SPECIES
+WATERS
+MARINE
+
+FOOD
+
+TEMPERATURE
+
+OCEAN
+
+SHALLOW
+
+FT
+
+Table 2: Clusters of words found by Google Sets and Bayesian Sets based on the given queries.
+The top few are shown for each query and each algorithm. Bayesian Sets was run using Grolier
+Encyclopedia data.
+
+It is very difcult to objectively evaluate our results since there is no ground truth for this
+task. One persons idea of a good query cluster may differ drastically from another persons.
+We chose to compare our algorithm to Google Sets since it was our main inspiration and it
+is currently the most public and commonly used algorithm for performing this task.
+Since we do not have access to the Google Sets algorithm it was impossible for us to run
+their method on our datasets. Moreover, Google Sets relies on vast amounts of web data,
+which we do not have. Despite those two important caveats, Google Sets clearly knows
+a lot about movies3 and words, and the comparison to Bayesian Sets is informative.
+We found that Google Sets performed very well when the query consisted of items which
+can be found listed on the web (e.g. Cambridge colleges). On the other hand, for more
+abstract concepts (e.g. soldier and warrior, see Table 2) our algorithm returned more
+sensible completions.
+While we believe that most of our results are self-explanatory, there are a few details that we
+would like to elaborate on. The top query in table 3 consists of two classic romantic movies,
+
+3In fact, one of the example queries on the Google Sets website is a query of movie titles.
+
+QUERY: GONE WITH THE WIND, CASABLANCA
+
+GOOGLE SETS
+
+BAYES SETS
+
+CASABLANCA (1942)
+
+GONE WITH THE WIND (1939)
+
+ERNEST SAVES CHRISTMAS (1988)
+
+CITIZEN KANE (1941)
+PET DETECTIVE (1994)
+
+VACATION (1983)
+
+WIZARD OF OZ (1939)
+THE GODFATHER (1972)
+
+LAWRENCE OF ARABIA (1962)
+ON THE WATERFRONT (1954)
+QUERY: MARY POPPINS, TOY STORY
+
+GONE WITH THE WIND (1939)
+
+CASABLANCA (1942)
+
+THE AFRICAN QUEEN (1951)
+
+THE PHILADELPHIA STORY (1940)
+
+MY FAIR LADY (1964)
+
+THE ADVENTURES OF ROBIN HOOD (1938)
+
+THE MALTESE FALCON (1941)
+
+REBECCA (1940)
+
+SINGING IN THE RAIN (1952)
+
+IT HAPPENED ONE NIGHT (1934)
+
+QUERY: CUTTHROAT ISLAND, LAST ACTION HERO
+
+GOOGLE SETS
+
+TOY STORY
+
+MARY POPPINS
+TOY STORY 2
+MOULIN ROUGE
+
+THE FAST AND THE FURIOUS
+
+BAYES SETS
+MARY POPPINS
+
+TOY STORY
+
+WINNIE THE POOH
+
+CINDERELLA
+THE LOVE BUG
+
+GOOGLE SETS
+
+LAST ACTION HERO
+CUTTHROAT ISLAND
+
+GIRL
+
+END OF DAYS
+
+HOOK
+
+PRESQUE RIEN
+
+BEDKNOBS AND BROOMSTICKS
+
+THE COLOR OF NIGHT
+
+SPACED
+
+BUT IM A CHEERLEADER
+
+MULAN
+
+DAVY CROCKETT
+THE PARENT TRAP
+
+DUMBO
+
+WHO FRAMED ROGER RABBIT
+
+THE SOUND OF MUSIC
+
+CONEHEADS
+
+ADDAMS FAMILY I
+ADDAMS FAMILY II
+
+SINGLES
+
+BAYES SETS
+
+CUTTHROAT ISLAND
+LAST ACTION HERO
+
+KULL THE CONQUEROR
+VAMPIRE IN BROOKLYN
+
+SPRUNG
+
+JUDGE DREDD
+
+WILD BILL
+
+HIGHLANDER III
+
+VILLAGE OF THE DAMNED
+
+FAIR GAME
+
+Table 3: Clusters of movies found by Google Sets and Bayesian Sets based on the given queries. The
+top 10 are shown for each query and each algorithm. Bayesian Sets was run using the EachMovie
+dataset.
+
+and while most of the movies returned by Bayesian Sets are also classic romances, hardly
+any of the movies returned by Google Sets are romances, and it would be difcult to call
+Ernest Saves Christmas either a romance or a classic. Both Cutthroat Island and Last
+Action Hero are action movie ops, as are many of the movies given by our algorithm
+for that query. All the Bayes Sets movies associated with the query Mary Poppins and
+Toy Story are childrens movies, while 5 of Google Sets movies are not. But Im
+a Cheerleader, while appearing to be a childrens movie, is actually an R rated movie
+involving lesbian and gay teens.
+
+QUERY: A.SMOLA, B.SCHOLKOPF
+TOP MEMBERS
+TOP WORDS
+
+QUERY: L.SAUL, T.JAAKKOLA
+TOP WORDS
+
+TOP MEMBERS
+
+A.SMOLA
+
+B.SCHOLKOPF
+
+S.MIKA
+G.RATSCH
+
+R.WILLIAMSON
+
+K.MULLER
+J.WESTON
+
+J.SHAWE-TAYLOR
+
+V.VAPNIK
+T.ONODA
+
+VECTOR
+SUPPORT
+KERNEL
+PAGES
+
+MACHINES
+QUADRATIC
+
+SOLVE
+
+REGULARIZATION
+
+MINIMIZING
+
+MIN
+
+L.SAUL
+
+T.JAAKKOLA
+
+M.RAHIM
+M.JORDAN
+
+N.LAWRENCE
+
+T.JEBARA
+
+W.WIEGERINCK
+
+M.MEILA
+S.IKEDA
+
+D.HAUSSLER
+
+LOG
+
+LIKELIHOOD
+
+MODELS
+MIXTURE
+
+CONDITIONAL
+PROBABILISTIC
+EXPECTATION
+PARAMETERS
+DISTRIBUTION
+ESTIMATION
+
+QUERY: A.NG, R.SUTTON
+
+TOP MEMBERS
+
+R.SUTTON
+
+A.NG
+
+Y.MANSOUR
+B.RAVINDRAN
+
+D.KOLLER
+D.PRECUP
+C.WATKINS
+
+R.MOLL
+T.PERKINS
+
+D.MCALLESTER
+
+TOP WORDS
+DECISION
+
+REINFORCEMENT
+
+ACTIONS
+REWARDS
+REWARD
+
+START
+RETURN
+RECEIVED
+
+MDP
+
+SELECTS
+
+Table 4: NIPS authors found by Bayesian Sets based on the given queries. The top 10 are shown for
+each query along with the top 10 words associated with that cluster of authors. Bayesian Sets was
+run using NIPS data from vol 0-12 (1987-1999 conferences).
+
+The NIPS author dataset is rather small, and co-authors of NIPS papers appear very similar
+to each other. Therefore, many of the authors found by our algorithm are co-authors of a
+NIPS paper with one or more of the query authors. An example where this is not the case is
+Wim Wiegerinck, who we do not believe ever published a NIPS paper with Lawrence Saul
+or Tommi Jaakkola, though he did have a NIPS paper on variational learning and graphical
+models.
+
+As part of the evaluation of our algorithm, we showed 30 nave subjects the unlabeled
+results of Bayesian Sets and Google Sets for the queries shown from the EachMovie and
+Groliers Encyclopedia datasets, and asked them to choose which they preferred. The results
+of this study are given in table 5.
+
+QUERY
+WARRIOR
+ANIMAL
+
+FISH
+
+GONE WITH THE WIND
+
+MARY POPPINS
+
+CUTTHROAT ISLAND
+
+% BAYES SETS
+
+P-VALUE
+
+96.7
+93.3
+90.0
+86.7
+96.7
+81.5
+
+< 0.0001
+< 0.0001
+< 0.0001
+< 0.0001
+< 0.0001
+
+0.0008
+
+Table 5: For each evaluated query (listed by
+rst query item), we give the percentage of re-
+spondents who preferred the results given by
+Bayesian Sets and the p-value rejecting the null
+hypothesis that Google Sets is preferable to
+Bayesian Sets on that particular query.
+
+Since, in the case of binary data, our method reduces to a matrix-vector multiplication, we
+also came up with ten heuristic matrix-vector methods which we ran on the same queries,
+using the same datasets. Descriptions and results can be found in supplemental material on
+the authors websites.
+6 Conclusions
+We have described an algorithm which takes a query consisting of a small set of items,
+and returns additional items which belong in this set. Our algorithm computes a score
+for each item by comparing the posterior probability of that item given the set, to the prior
+probability of that item. These probabilities are computed with respect to a statistical model
+for the data, and since the parameters of this model are unknown they are marginalized out.
+For exponential family models with conjugate priors, our score can be computed exactly
+and efciently. In fact, we show that for sparse binary data, scoring all items in a large
+data set can be accomplished using a single sparse matrix-vector multiplication. Thus, we
+get a very fast and practical Bayesian algorithm without needing to resort to approximate
+inference. For example, a sparse data set with over 2 million nonzero entries (Grolier) can
+be queried in just over 1 second.
+Our method does well when compared to Google Sets in terms of set completions, demon-
+strating that this Bayesian criterion can be useful in realistic problem domains. One of the
+problems we have not yet addressed is deciding on the size of the response set. Since the
+scores have a probabilistic interpretation, it should be possible to nd a suitable threshold
+to these probabilities. In the future, we will incorporate such a threshold into our algorithm.
+The problem of retrieving sets of items is clearly relevant to many application domains.
+Our algorithm is very exible in that it can be combined with a wide variety of types of
+data (e.g. sequences, images, etc.) and probabilistic models. We plan to explore efcient
+implementations of some of these extensions. We believe that with even larger datasets the
+Bayesian Sets algorithm will be a very useful tool for many application areas.
+Acknowledgements: Thanks to Avrim Blum and Simon Tong for useful discussions, and to Sam
+Roweis for some of the data. ZG was partially supported at CMU by the DARPA CALO project.

@@ -1,0 +1,2229 @@
+Abstract
+
+A large portion of real-world data is stored in com-
+mercial relational database systems.
+In contrast,
+most statistical learning methods work only with
+at data representations. Thus, to apply these
+methods, we are forced to convert our data into
+a at form, thereby losing much of the relational
+structure present in our database. This paper builds
+on the recent work on probabilistic relational mod-
+els (PRMs), and describes how to learn them from
+databases. PRMs allow the properties of an object
+to depend probabilistically both on other proper-
+ties of that object and on properties of related ob-
+jects. Although PRMs are signicantly more ex-
+pressive than standard models, such as Bayesian
+networks, we show how to extend well-known sta-
+tistical methods for learning Bayesian networks to
+learn these models. We describe both parameter
+estimation and structure learning  the automatic
+induction of the dependency structure in a model.
+Moreover, we show how the learning procedure can
+exploit standard database retrieval techniques for
+efcient learning from large datasets. We present
+experimental results on both real and synthetic re-
+lational databases.
+
+1 Introduction
+Relational models are the most common representation of
+structured data. Enterprise business information, marketing
+and sales data, medical records, and scientic datasets are all
+stored in relational databases. Indeed, relational databases are
+a multi-billion dollar industry. Recently, there has been grow-
+ing interest in making more sophisticated use of these huge
+amounts of data, in particular mining these databases for cer-
+tain patterns and regularities. By explicitly modeling these
+regularities, we can gain a deeper understanding of our do-
+main and may discover useful relationships. We can also use
+our model to ll in unknown but important information. For
+
+ The Institute of Computer Science, Hebrew University,
+
+Jerusalem 91904, ISRAEL
+
+ Computer Science Department, Stanford University, Gates
+
+Building 1A, Stanford CA 94305-9010
+
+example, we may be interested in predicting whether a person
+is a potential money-launderer based on their bank deposits,
+international travel, business connections and arrest records
+of known associates [Jensen, 1997]. In another case, we may
+be interested in classifying web pages as belonging to a stu-
+dent, a faculty member, a project, etc., using attributes of the
+web page and of related pages [Craven et al., 1998].
+
+Unfortunately, few inductive learning algorithms are capa-
+ble of handling data in its relational form. Most are restricted
+to dealing with a at set of instances, each with its own sepa-
+rate attributes. To use these methods, one typically attens
+the relational data, removing its richer structure. This pro-
+cess, however, loses information which might be crucial in
+understanding the data. Consider, for example, the problem
+of predicting the value of an attribute of a certain entity, e.g.,
+whether a person is a money-launderer. This attribute will
+be correlated with other attributes of this entity, as well as
+with attributes of related entities, e.g., of nancial transac-
+tions conducted by this person, of other people involved in
+these transactions, of other transactions conducted by these
+people, etc. In order to atten this problem, we would need
+to decide in advance on a xed set of attributes that the learn-
+ing algorithm can use in this task. Thus, we want a learning
+algorithm that can deal with multiple entities and their prop-
+erties, and can reach conclusions about an entitys character-
+istics based on the properties of the entities to which it is re-
+lated. Until now, inductive logic programming (ILP) [Lavrac
+and Dzeroski, 1994] has been the primary learning frame-
+work with this capability. ILP algorithms learn logical Horn
+rules for determining when some rst-order predicate holds.
+While ILP is an excellent solution in many settings, it may be
+inappropriate in others. The main limitation is the determin-
+istic nature of the rules discovered. In many domains, such
+as the examples above, we encounter interesting correlations
+that are far from being deterministic.
+
+Our goal in this paper is to learn more rened probabilis-
+tic models, that represent statistical correlations both between
+the properties of an entity and between the properties of re-
+lated entities. Such a model can then be used for reasoning
+about an entity using the entire rich structure of knowledge
+encoded by the relational representation.
+
+The starting point for our work is the structured representa-
+tion of probabilistic models, as exemplied in Bayesian net-
+works (BNs). A BN allows us to provide a compact rep-
+
+resentation of a complex probability distribution over some
+xed set of attributes or random variables. The representa-
+tion exploits the locality of inuence that is present in many
+domains. We build on two recent developments in the eld
+of Bayesian networks. The rst is the deep understanding
+of the statistical learning problem in such models [Hecker-
+man, 1998; Heckerman et al., 1995] and the role of struc-
+ture in providing an appropriate bias for the learning task.
+The second is the recent development of representations that
+extend the attribute-based BN representation to incorporate
+a much richer relational structure [Koller and Pfeffer, 1998;
+Ngo and Haddawy, 1996; Poole, 1993].
+
+In this paper, we combine these two advances. Indeed, one
+of our key contributions is to show that many of the tech-
+niques of Bayesian network learning can be extended to the
+task of learning these more complex models. This contribu-
+tion generalizes [Koller and Pfeffer, 1997]s preliminary work
+on this topic. We start by describing the semantics of proba-
+bilistic relational models. We then examine the problems of
+parameter estimation and structure selection for this class of
+models. We deal with some crucial technical issues that dis-
+tinguish the problem of learning relational probabilistic mod-
+els from that of learning Bayesian networks. We provide a
+formulation of the likelihood function appropriate to this set-
+ting, and show how it interacts with the standard assumptions
+of BN learning. The search over coherent dependency struc-
+tures is signicantly more complex than in the case of learn-
+ing BN structure and we introduce the necessary tools and
+concepts to do this effectively. We then describe experimen-
+tal results on synthetic and real-world datasets, and nally
+discuss possible extensions and applications.
+
+2 Underlying framework
+2.1 Relational model
+We describe our relational model in generic terms, closely re-
+lated to the language of entity-relationship models. This gen-
+erality allows our framework to be mapped into a variety of
+specic relational systems, including the probabilistic logic
+programs of [Ngo and Haddawy, 1996; Poole, 1993], and the
+probabilistic frame systems of [Koller and Pfeffer, 1998]. Our
+learning results apply to all of these frameworks.
+
+. Each relation
+
+and a set of relations
+
+The vocabulary of a relational model consists of a set of
+. Each
+. Each
+takes on values in some xed domain
+is typed. This vocabulary
+
+classes
+entity type is associated with a set of attributes
+attribute
+of values
+denes a schema for our relational model.
+
+	
+
+
+!
+
+
+
+
+
+Consider a simple genetic model of the inheritance of a
+single gene that determines a persons blood type. Each per-
+son has two copies of the chromosome containing this gene,
+one inherited from her mother, and one inherited from her fa-
+ther. There is also a possibly contaminated test that attempts
+to recognize the persons blood type. Our schema contains
+two classes Person and Blood-Test, and three relations Father,
+Mother, and Test-of . Attributes of Person are Name, Gender,
+P-Chromosome (the chromosome inherited from the father),
+M-Chromosome (inherited from the mother). The attributes
+
+An instance
+
+for each entity type
+each attribute
+tribute
+
+. For each entity
+
+of a schema denes a set of entities
+, and
+&'(#)$*
+, the instance has an associated at-
+is denoted
+. For each relation
+
+#
+$%
+
+)+
+; its value in
+and each
+species whether
+
+&,
+-.
+,
+
+"0/21
+354
+8&92&:72;<=#
+	&
+
+B&
+
+6	7
+?>A@@@,>
+holds.
+#)$%
+We are interested in describing a probability model over
+instances of a relational schema. However, some attributes,
+such as a name or social security number, are fully deter-
+mined. We label such attributes as xed. We assume that
+they are known in any instantiation of the schema. The other
+attributes are called probabilistic. A skeleton structure
+of
+a relational schema is a partial specication of an instance of
+the schema. It species the set of objects
+for each
+class, the values of the xed attributes of these objects, and
+the relations that hold between the objects. However, it leaves
+the values of probabilistic attributes unspecied. A comple-
+extends the skeleton by also
+tion
+specifying the values of the probabilistic attributes.
+
+of the skeleton structure
+
+#ED9
+
+	
+
+One nal denition which will turn out to be useful is the
+is any relation, we
+notion of a slot chain. If
+B
+-th and
+-th arguments to obtain a
+can project
+onto its
+, which we can then view as a slot
+binary relation
+HIJEK
+of
+, we let
+. For any
+in
+holds. (In relational algebra notation
+in
+such that
+M
+HI&,LN
+-relatives
+HBOQPSR%4CTR%U!V0/.
+&,
+. We can concatenate slots to form longer slot chains
+of
+, dened by composition of binary relations.
+OXHN@@@
+s in the chain must be appropriately typed.)
+(Each of the
+
+.) Objects in this set are called
+
+denote all the elements
+
+&,
+
+of Blood-Test are Serial-Number, Date, Contaminated, and
+Result.
+
+HY
+HY
+
+2.2 Probabilistic Relational Models
+We now proceed to the denition of probabilistic relational
+models (PRMs). The basic goal here is to model our uncer-
+tainty about the values of the non-xed, or probabilistic, at-
+tributes of the objects in our domain of discourse. In other
+words, given a skeleton structure, we want to dene a proba-
+bility distribution over all completions of the skeleton.
+
+Our probabilistic model consists of two components: the
+, and the parameters as-
+qualitative dependency structure,
+. The dependency structure is dened by
+sociated with it,
+.
+associating with each attribute
+_
+These correspond to formal parents; they will be instantiated
+in different ways for different objects in
+. Intuitively, the
+parents are attributes that are direct inuences on
+
+a set of parents Pa
+
+^
+.
+
+]
+
+[\
+
+We distinguish between two types of formal parents. The
+
+in
+
+]
+
+. The attribute
+
+will depend probabilistically on
+
+can depend on another probabilistic attribute
+
+attribute
+of
+pendency for individual objects: for any object
+&,
+can also depend on attributes of related objects
+dependence for an individual object
+
+. This formal dependence induces a corresponding de-
+,
+a
+^
+&,cb
+, where
+^
+is a slot chain. To understand the semantics of this formal
+repre-
+, recall that
+&,
+. Except in
+cases where the slot chain is guaranteed to be single-valued,
+we must specify the probabilistic dependence of
+on the
+multiset
+database theory gives us precisely the right tool to address
+
+sents the set of objects that are W -relatives of
+
+WIi . The notion of aggregation from
+
+&,
+
+dKL:cbfe+Lgh&,
+
+^
+
+
+
+
+"
+
+
+
+
+
+
+"
+$
+7
+
+"
+
+7
+
+C
+"
+C
+
+7
+
+
+F
+G
+
+
+&
+
+
+H
+L
+H
+&
+W
+Z
+
+
+
+
+`
+
+&
+#
+D
+-
+
+W
+
+`
+W
+&
+W
+&
+-
+Person
+
+Person
+
+name
+mother
+father
+
+M-chromosome
+P-chromosome
+
+blood type
+
+Person
+
+name
+mother
+father
+
+M-chromosome
+P-chromosome
+
+blood type
+
+name
+mother
+father
+
+M-chromosome
+P-chromosome
+
+blood type
+
+Blood Test
+
+test-id
+name
+
+contaminated
+
+result
+
+Figure 1: The PRM structure for a simple genetics domain.
+Fixed attributes are shown in regular font and probabilistic
+attributes are shown in italic. Dotted lines indicate relations
+between entities and solid arrows indicate probabilistic de-
+pendencies.
+
+this issue; i.e.,
+will depend probabilistically on some ag-
+gregate property of this multiset. There are many natural and
+useful notions of aggregation: the mode of the set (most fre-
+quently occurring value); mean value of the set (if values are
+numerical); median, maximum, or minimum (if values are
+ordered); cardinality of the set; etc.
+
+,
+
+; 
+
+More formally, our language allows a notion of an aggre-
+takes a multiset of values of some ground type, and
+gate 
+returns a summary of it. The type of the aggregate can be the
+same as that of its arguments. However, we allow other types
+as well, e.g., an aggregate that reports the size of the multiset.
+; the semantics is
+We allow
+^
+that for any
+.
+b
+&+
+We dene
+
+Returning to our genetics example, consider the attribute
+Result. Since the result of a blood test depends on
+Blood-Test
+whether it was contaminated, it has Blood-Test
+Contaminated
+The result also depends on the ge-
+as a parent.
+netic material of the person tested.
+is
+single-valued, we add Blood-Test
+M-Chromosome
+and Blood-Test
+P-Chromosome as parents. Figure 1
+shows the structure of a simple PRM for this domain.
+
+to have as a parent 
+^
+
+`B
+will depend on the value of 
+in the obvious way.
+
+Since Test-of
+
+&,
+cb	
+
+Test-of
+
+Test-of
+
+^
+
+&
+
+Pa
+
+for
+
+_
+
+_	
+
+^
+^
+
+. We associate
+
+^
+. More precisely, let
+
+, we can dene
+Given a set of parents Pa
+a local probability model for
+with
+^
+a conditional probability distribution (CPD) that species
+be the set of par-
+
+]
+ents of
+ whether
+^
+a simple attribute in the same relation or an aggregate of a set
+of W
+in some ground
+relatives  has a set of values
+
+, the CPD species
+type. For each tuple of values
+a distribution 
+. The parameters in
+
+*
+all of these CPDs comprise
+
+^
+. Recall that each of these parents
+
+A
+over
+]
+.
+
+Given a skeleton structure for our schema, we want to use
+these local probability models to dene a probability distri-
+bution over completions of the skeleton. First, note that the
+skeleton determines the set of objects in our model. We asso-
+ciate a random variable
+with each probabilistic attribute
+. The skeleton also determines the relations
+
+
+	<
+
+
+of each object
+
+^
+
+between objects, and thereby the set of W -relatives associated
+with every object for each relationship chain W
+
+. Also note
+that by assuming that the relations between objects are al-
+ways specied by
+, we are disallowing uncertainty over the
+relational structure of the model.
+
+To dene a coherent probabilistic model over this skele-
+ton, we must ensure that our probabilistic dependencies are
+acyclic, so that a random variable does not depend, directly
+or indirectly, on its own value. Consider the parents of an
+attribute
+, we dene an
+is a parent of
+^
+]
+edge
+and
+&,cb
+
+^
+. We say that a
+, we dene an edge
+&,
+&,
+dependency structure
+if
+the directed graph dened by
+is
+acyclic. In this case, we can dene a coherent probabilistic
+model over complete instantiations
+
+]
+is acyclic relative to a skeleton
+over the variables
+
+. When
+&,
+
+^
+; when 
+
+consistent with
+
+is a parent of
+
+`E
+L:cb
+
+:
+
+"CI	ZS	[
+
+
+Proposition 2.1: If
+a distribution over completions
+
+3"
+"9/.1
+U
+is acyclic relative to
+
+(1)
+
+/.1
+
+Pa
+, then (1) denes
+
+U	
+of
+
+.
+
+&,
+
+ZS	[
+
+We briey sketch a proof of this proposition, by showing
+how to construct a BN over the probabilistic attributes of a
+. This construction is reminiscent of
+skeleton using
+the knowledge-based model construction approach [Wellman
+et al., 1992]. Here, however, the construction is merely a
+thought-experiment; our learning algorithm never constructs
+this network. In this network there is a node for each vari-
+and for aggregate quantities required by parents. The
+able
+parents of these aggregate random variables are all of the at-
+tributes that participate in the aggregation, according to the
+. The CPDs of random variables that
+relations specied by
+correspond to probabilistic attributes are simply the CPDs de-
+, and the CPDs of random variables that corre-
+scribed by
+spond to aggregate nodes capture the deterministic function
+of the particular aggregate operator. It is easy to verify that
+if the probabilistic dependencies are acyclic, then so is the
+induced Bayesian network. This construction also suggests
+one way of answering queries about a relational model. We
+can compile the corresponding Bayesian network and use
+standard tools for answering queries about it.
+
+[\
+
+Although for each skeleton, we can compile a PRM into a
+Bayesian network, a PRM expresses much more information
+than the resulting BN. A BN denes a probability distribution
+over a xed set of attributes. A PRM species a distribution
+over any skeleton; in different skeletons, the set (and num-
+ber) of entities in the domain will vary, as will the relations
+between the entities. In a way, PRMs are to BNs as a set of
+rules in rst-order logic is to a set of rules in propositional
+logic: A rule such as
+	LI"!T
+Grandparent
+(propositional) instantiations.
+
+induces a potentially innite set of ground
+
+LI"!Y%$
+
+&,LN#
+
+Parent
+
+Parent
+
+:&
+
+&,&!
+
+3 Parameter Estimation
+We now move to the task of learning PRMs. We begin with
+learning the parameters for a PRM where the dependency
+
+&
+
+-
+
+W
+
+
+-
+
+W
+
+
+W
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[
+\
+&
+
+-
+
+&
+C
+
+`
+
+D
+-
+W
+
+
+L
+
+W
+D
+-
+Z
+C
+
+D
+&
+
+-
+"
+C
+
+
+\
+
+O
+
+R
+U
+
+R
+
+/
+R
+
+
+3
+
+
+Z
+C
+"
+C
+\
+
+-
+C
+
+structure is known. In other words, we are given the structure
+that determines the set of parents for each attribute, and our
+task is to learn the parameters
+that dene the CPDs for
+this structure. Our learning is based on a particular training
+set, which we will take to be a complete instance
+. While
+this task is relatively straightforward, it is of interest in and
+of itself. In addition, it is a crucial component in the structure
+learning algorithm described in the next section.
+
+[\
+
+The key ingredient in parameter estimation is the likelihood
+function, the probability of the data given the model. This
+function captures the response of the probability distribution
+to changes in the parameters. As usual, the likelihood of a
+parameter set is dened to be the probability of the data given
+As usual, we
+
+CIJZ_	[
+typically work with the log of this function:
+
+CIJZ
+
+_O
+
+"
+
+5
+
+the model:S[
+
+5"
+
+CIJZ
+
+[
+
+O
+
+"CI	ZS	[
+
+
+
+
+
+R*U
+
+
+
+R*U
+
+"9/.1
+
+"
+
+Pa
+
+/.1
+
+(2)
+
+
+
+^
+
+The key insight is that this equation is very similar to
+the log-likelihood of data given a Bayesian network [Heck-
+erman, 1998].
+In fact, it is the likelihood function of the
+Bayesian network induced by the structure given the skele-
+ton. The main difference from standard Bayesian network
+parameter learning is that parameters for different nodes in
+the network are forced to be identical. Thus, we can use the
+well-understood theory of learning from Bayesian networks.
+Consider the task of performing maximum likelihood param-
+eter estimation. Here, our goal is to nd the parameter set-
+for a
+ting
+given
+. This estimation is simplied by the de-
+composition of log-likelihood function into a summation of
+terms corresponding to the various attributes of the different
+classes. Each of the terms in the square brackets in (2) can be
+maximized independently of the rest. Hence, maximal likeli-
+hood estimation reduces to independent maximization prob-
+lems, one for each CPD.
+
+that maximizes the likelihoodS[
+
+:"
+
+CIJZ
+
+and
+
+,
+
+For multinomial CPDs, maximum likelihood estimation
+can be done via sufcient statistics which in this case are just
+that the at-
+the counts C
+tribute
+
+and its parents can jointly take.
+
+Proposition 3.1: Assuming multinomial CPDs, the maximum
+
+
+
+^
+
+likelihood parameter setting
+
+Pa
+
+^
+
+QO
+
+&
+
+& of the different values
+ C
+
+^
+
+_
+
+%
+
+is
+
+C
+
+As a consequence of this proposition, parameter learning
+in PRMs is reduced to counting sufcient statistics. We need
+to count one vector of sufcient statistics for each CPD. Such
+counting can be done in a straightforward manner using stan-
+dard databases queries.
+
+Note that this proposition shows that learning parameters in
+PRMs is very similar to learning parameters in Bayesian net-
+works. In fact, we might view this as learning parameters for
+the BN that the PRM induces given the skeleton. However, as
+
+&
+
+
+
+"
+
+discussed above, the learned parameters can then be used for
+reasoning about other skeletons, which induce a completely
+different BN.
+
+In many cases, maximum likelihood parameter estimation
+is not robust, as it overts the training data. The Bayesian ap-
+proach uses a prior distribution over the parameters to smooth
+the irregularities in the training data, and is therefore sig-
+nicantly more robust. As we will see in Section 4.2, the
+Bayesian framework also gives us a good metric for evaluat-
+ing the quality of different candidate structures. Due to space
+limitations, we only briey describe this alternative approach.
+Roughly speaking, the Bayesian approach introduces a
+prior over the unknown parameters, and performs Bayesian
+conditioning, using the data as evidence, to compute a poste-
+rior distribution over these parameters. To apply this idea in
+our setting, recall that the PRM parameters
+are composed
+of a set of individual probability distribution
+for each
+conditional distribution of the form 
+aO
+. Following the work on Bayesian approaches for learn-
+*
+ing Bayesian networks [Heckerman, 1998], we make two as-
+sumptions. First, we assume parameter independence: the
+and
+priors over the parameters
+are independent. Second, we assume that the prior over
+is a Dirichlet distribution. Briey, a Dirichlet prior for
+is specied by a set
+
+
+
+a multinomial distribution of a variable!
+e
+!
+is Dirichlet if&('K[)
+
+For a parameter prior satisfying these two assumptions, the
+posterior also has this form. That is, it is a product of inde-
+,
+pendent Dirichlet distributions over the parameters
+which can be computed easily.
+Proposition 3.2: If
+is a complete assignment, and the prior
+satises parameter independence and Dirichlet with hyper-
+
+of hyperparameters
+the parameters of 
+(For more details see [DeGroot, 1970].)
+
+.43
++*-,/.M[021
+
+
+i . A distribution on
+
+for the different
+
+d#"
+%!
+
+
+
+^
+
+^
+
+]
+
+Pa
+
+.
+
+is a product of Dirichlet distributions with hyperparameters
+
+[
+
+"
+
+CIJZ
+
+parameters"%R
+&9O"%R
+
+& , then the posterior 
+& .
+"65 C
+
+Once we have updated the posterior, how do we evaluate
+the probability of new data? In the case of BN learning, we
+assume that instances are IID, which implies that they are in-
+dependent given the value of the parameters. Thus, to evalu-
+ate a new instance, we only need the posterior over the param-
+eters. The probability of the new instance is then the proba-
+bility given every possible parameter value, weighted by the
+posterior probability over these values. In the case of BNs,
+this term can be rewritten simply as the instance probabil-
+ity according to the expected value of the parameters (i.e., the
+mean of the posterior Dirichlet for each parameter). This sug-
+gests that we might use the expected parameters for evaluat-
+ing new data. Indeed, the formula for the expected parameters
+is analogous to the one for BNs:
+Proposition 3.3 : Assuming multinomial CPDs, prior in-
+dependence, and Dirichlet priors, with hyperparameters
+
+7
+
+Pa
+
+^
+
+" , we have that:
+
+
+_
+
+:
+
+^
+C
+
+ C
+
+*
+
+5"99O
+7
+"65;"
+&<5="%R
+
+"
+
+"
+
+Z
+"
+\
+
+
+"
+
+\
+
+\
+
+
+
+\
+
+O
+
+R
+U
+
+
+
+
+
+
+/
+
+
+
+
+
+3
+3
+
+[
+\
+\
+
+"
+C
+Z
+R
+1
+
+
+[
+\
+
+
+
+O
+O
+R
+1
+
+
+
+R
+1
+[
+\
+[
+R
+1
+
+
+
+[
+R
+1
+
+
+[
+R
+1
+
+
+$
+$
+
+
+
+
+.
+[
+R
+1
+
+"
+1
+
+
+
+\
+
+
+"
+
+R
+1
+
+
+
+1
+
+
+
+R
+1
+
+
+
+"
+R
+1
+
+8
+
+
+
+O
+
+
+O
+R
+1
+
+R
+1
+
+R
+1
+
+
+
+
+1
+
+
+
+
+Unfortunately, the expected parameters are not the proper
+Bayesian solution for computing probability of new data.
+There are two possible complications.
+
+already in the database. In this case, the introduction
+
+ of some per-
+ also changes our probability about the
+ . We therefore cannot simply use our old pos-
+
+The rst problem is that, in our setting, the assumption of
+IID data is often violated. Specically, a new instance might
+not be conditionally independent of old ones given the param-
+eters. Consider the genetics domain, and assume that our new
+data involves information about the mother
+son
+of the new object
+attributes of
+terior about the parameters to reason about the new instance.
+This problem does not occur if the new data is not related to
+the training data, that is, when the new data is essentially a
+disjoint database with the same scheme. More interestingly,
+the problem also disappears when attributes of new objects
+are not parents of any attribute in the training set. In the ge-
+netics example, this means that we can insert new people into
+our database, as long as they are not ancestors of people al-
+ready in the database.
+
+The second problem involves the formal justication for
+using expected parameters values. This argument depends on
+the fact that the probability of a new instance is linear in the
+value of each parameter. That is, each parameter is used
+at most once. This assumption is violated when we consider
+the probability of a complex database involving multiple in-
+stances from the same class. In this case, our integral of the
+probability of the new data given the parameters can no longer
+be reduced to computing the probability relative to the ex-
+pected parameter value. The correct expression is called the
+marginal likelihood of the (new) data; we use it in Section 4.2
+for scoring structures. For now, we note that if the posterior is
+sharply peaked (i.e., we have seen many training instances),
+we can approximate this term by using the expected parame-
+ters of Proposition 3.3, as we could for a single instance. In
+practice, we will often use these expected parameters as our
+learned model.
+
+4 Structure selection
+We now move to the more challenging problem of learning a
+dependency structure automatically, as opposed to having it
+given by the user. There are three important issues that need
+to be addressed. We must determine which dependency struc-
+tures are legal; we need to evaluate the goodness of differ-
+ent candidate structures; and we need to dene an effective
+search procedure that nds a good structure.
+
+4.1 Legal structures
+When we consider different dependency structures, it is im-
+portant to be sure that the dependency structure
+we choose
+results in coherent probability models. To guarantee this
+property, we see from Proposition 2.1 that the skeleton
+must
+. Of course, we can easily verify for
+be acyclic relative to
+a given candidate structure
+that it is acyclic relative to the
+skeleton
+of our training database. However, we also want
+to guarantee that it will be acyclic relative to other databases
+that we may encounter in our domain. How do we guarantee
+acyclicity for an arbitrary database? A simple approach is to
+
+Here,
+
+O
+
+if either (a)
+
+is a parent of
+
+and
+^
+
+ensure that dependencies among attributes respect some order
+(i.e., are stratied). More precisely, we say that
+directly
+^
+depends on 
+is a parent of
+^
+, or (b) 
+and the W -relatives
+`B
+^
+^
+of
+directly de-
+. We then require that
+are of class 
+^
+pends only on attributes that precede it in the order.
+While this simple approach clearly ensures acyclicity,
+it is too limited to cover many important cases. Con-
+sider again our genetic model.
+the genotype
+of a person depends on the genotype of her parents;
+thus, we have Person
+P-Chromosome depending directly on
+P-Chromosome, which clearly violates the require-
+Person
+ments of our simple approach.
+In this model, the appar-
+ent cyclicity at the attribute level is resolved at the level of
+individual objects, as a person cannot be his/her own an-
+cestor. That is, the resolution of acyclicity relies on some
+prior knowledge that we have about the domain. To allow
+our learning algorithm to deal with dependency models such
+as this we must allow the user to give our algorithm prior
+knowledge. We allow the user to assert that certain slots
+
+3XO
+guaranteed that there is a partial ordering 
+is a
+say that W
+
+dKH
+-relative for some
+is guaranteed acyclic if each of its components
+
+i are guaranteed acyclic; i.e., we are
+
+such that if
+. We
+s
+
+is guaranteed acyclic.
+
+	H
+
+, then
+
+L
+
+Hg
+
+of
+
+if
+
+`E
+
+^
+
+^
+
+^
+^
+
+edge 
+
+is a parent of
+
+. If 
+^
+
+^
+^
+which is green if W
+
+We use this prior knowledge determine the legality of cer-
+tain dependency models. We start by building a graph that
+describes the direct dependencies between the attributes. In
+is a
+this graph, we have a yellow edge
+parent of
+, we have an
+is guaranteed acyclic
+and red otherwise. (Note that there might be several edges,
+of different colors, between two attributes). The intuition is
+that dependency along green edges relates objects that are or-
+dered by an acyclic order. Thus these edges by themselves or
+combined with intra-object dependencies (yellow edges) can-
+not cause a cyclic dependency. We must take care with other
+dependencies, for which we do not have prior knowledge, as
+these might form a cycle. This intuition suggests the follow-
+ing denition: A (colored) dependency graph is stratied if
+every cycle in the graph contains at least one green edge and
+no red edges.
+
+is stratied, then for any skeleton
+
+Proposition 4.1: If the colored dependency graph of
+
+in 
+distribution over assignments to
+
+and
+for which the slots
+denes a coherent probability
+
+are jointly acyclic,
+
+.
+
+This notion of stratication generalizes the two special
+cases we considered above. When we do not have any guaran-
+teed acyclic relations, all the edges in the dependency graph
+are colored either yellow or red. Thus, the graph is strati-
+ed if and only if it is acyclic. In the genetics example, all
+the relations would be in 
+. Thus, it sufces to check that
+dependencies within objects (yellow edges) are acyclic.
+Proposition 4.2: Stratication of a colored graph can be de-
+termined in time linear in the number of edges in the graph.
+
+We omit the details of the algorithm for lack of space, but it
+relies on standard graph algorithms. Finally, we note that it
+
+&
+&
+&
+&
+Z
+C
+Z
+Z
+C
+
+
+`
+
+`
+
+W
+
+
+
+
+
+
+
+7
+
+3
+L
+H
+
+
+3
+&
+
+3
+&
+H
+`
+
+
+`
+
+W
+
+
+
+`
+
+
+Z
+3
+C
+
+3
+Z
+C
+3
+is easy to expand this denition of stratication for situations
+where our prior knowledge involves several sets of guaran-
+teed acyclic relations, each set with its own order (e.g., ob-
+jects on a grid with a north-south ordering and an east-west
+ordering). We simply color the graph with several colors, and
+check that each cycle contains edges with exactly one color
+other than yellow, except for red.
+
+Z
+
+KZ
+
+Z
+
+.
+
+Z
+
+C0
+
+"
+
+C0
+
+%C0
+
+4.2 Evaluating different structures
+Now that we know which structures are legal, we need to de-
+cide how to evaluate different structures in order to pick one
+that ts the data well. We adapt Bayesian model selection
+methods to our framework. Formally, we want to compute
+the posterior probability of a structure
+given an instantia-
+tion
+. Using Bayes rule we have that 
+. This score is composed of two main parts:
+C0
+ZS
+the prior probability of the structure, and the probability of
+the data assuming that structure.
+The rst component is 
+
+, which denes a prior
+C0
+over structures. We assume that the choice of structure is in-
+dependent of the skeleton, and thus 
+. In the
+context of Bayesian networks, we often use a simple uniform
+prior over possible dependency structures. Unfortunately, this
+assumption does not work in our setting. The problem is that
+there may be innitely many possible structures. In our ge-
+netics example, a persons genotype can depend on the geno-
+type of his parents, or of his grandparents, or of his great-
+grandparents, etc. A simple and natural solution penalizes
+proportional to
+
+The second component is the marginal likelihood:
+
+long indirect slot chains, by having
+
+the sum of the lengths of the chains W appearing in
+.[
+
+If we use a parameter independent Dirichlet prior (as above,
+this integral decomposes into a product of integrals each of
+which has a simple closed form solution.
+(This is a sim-
+ple generalization of the ideas used in the Bayesian score for
+Bayesian networks.)
+Proposition 4.3: If
+
+"KZS	[
+
+KZ_C0
+
+is a complete assignment, and 
+
+, is equal to
+
+likelihood of
+
+&
+
+"
+
+
+where
+DM
+
+satises parameter independence and is Dirichlet with hy-
+, the marginal
+
+perparameters"*R
+:
+
+C
+3
+C1
+d
+
+and
+O
+
+the marginal likelihood is a product of simple
+terms, each of which corresponds to a distribution 
+. Moreover, the term for 
+depends only on the hyperparameters"
+g
+*
+*
+sufcient statistics C
+The marginal likelihood term is the dominant term in the
+probability of a structure. It balances the complexity of the
+
+:
+3
+C1
+021
+" and the
+
+" , then, 
+
+	
+021
+& for
+
+is the Gamma function.
+
+
+:
+
+&:
+Hence,
+
+d#"
+
+:
+
+]
+^
+
+^
+
+^O
+
+
+^
+
+_
+
+ZS
+
+C0
+
+DM
+
+C
+
+.
+
+_
+
+C0
+
+[
+
+where
+
+ Pa
+
+/
+
+Pa
+
+[
+
+,
+
+
+
+given
+
+U
+
+Jd
+
+structure with its t to the data. This balance can be made
+explicitly via the asymptotic relation of the marginal likeli-
+hood to explicit penalization, such as the MDL score (see,
+e.g., [Heckerman, 1998]).
+
+Finally, we note that the Bayesian score requires that we
+assign a prior over parameter values for each possible struc-
+ture. Since there are many (perhaps innitely many) alter-
+native structures, this is a formidable task.
+In the case of
+Bayesian networks, there is a class of priors that can be de-
+scribed by a single network [Heckerman et al., 1995]. These
+priors have the additional property of being structure equiva-
+lent, that is, they guarantee that the marginal likelihood is the
+same for structures that are, in some strong sense, equivalent.
+These notions have not yet been dened for our richer struc-
+tures, so we defer the issue to future work. Instead, we simply
+assume that some simple Dirichlet prior (e.g., a uniform one)
+has been dened for each attribute and parent set.
+
+4.3 Structure search
+Now that we have a test for determining whether a structure is
+legal, and a scoring function that allows us to evaluate dif-
+ferent structures, we need only provide a procedure for nd-
+ing legal high-scoring structures. For Bayesian networks, we
+know that this task is NP-Hard [Chickering, 1996]. As PRM
+learning is at least as hard as BN learning (a BN is simply a
+PRM with one class and no relations), we cannot hope to nd
+an efcient procedure that always nds the highest scoring
+structure. Thus, we must resort to heuristic search. The sim-
+plest such algorithm is greedy hill-climbing search, using our
+score as a metric. We maintain our current candidate structure
+and iteratively improve it. At each iteration, we consider a set
+of simple local transformations to that structure, score all of
+them, and pick the one with highest score. We deal with local
+maxima using random restarts.
+
+As in Bayesian networks, the decomposability property
+of the score has signicant impact on the computational ef-
+ciency of the search algorithm. First, we decompose the
+score into a sum of local scores corresponding to individual
+attributes and their parents. Now, if our search algorithm con-
+siders a modication to our current structure where the parent
+set of a single attribute
+is different, only the component
+^
+will change. Thus, we need
+of the score associated with
+^
+only reevaluate this particular component, leaving the others
+unchanged; this results in major computational savings.
+
+There are two problems with this simple approach. First,
+as discussed in the previous section, we have innitely many
+possible structures. Second, even the atomic steps of the
+search are expensive; the process of computing sufcient
+statistics requires expensive database operations. Even if we
+restrict the set of candidate structures at each step of the
+search, we cannot afford to do all the database operations nec-
+essary to evaluate all of them.
+
+We propose a heuristic search algorithm that addresses
+both these issues. At a high level, the algorithm proceeds
+, we have a set of potential parents
+. We then do a standard
+Pot
+structure search restricted to the space of structures in which
+. The advantage of
+the parents of each
+this approach is that we can precompute the view correspond-
+
+in phases. At each phase
+^
+
+^
+are in Pot
+
+for each attribute
+
+^
+
+^
+
+
+
+_
+
+Z
+"
+
+Z
+*
+
+
+"
+
+
+
+Z
+
+O
+
+
+
+
+Z
+
+Z
+
+
+"
+O
+
+
+
+\
+
+\
+\
+"
+\
+
+Z
+
+1
+
+
+
+
+"
+
+"
+Z
+
+
+
+R
+
+
+
+
+R
+U
+1
+
+
+
+R
+U
+1
+
+i
+R
+U
+1
+
+i
+
+
+d
+
+
+i
+"
+
+
+
+i
+
+
+0
+1
+
+3
+
+
+
+
+
+
+3
+
+
+,
+
+
+
+
+
+3
+
+
+
+0
+1
+
+3
+
+
+
+
+
+
+
+R
+1
+
+R
+1
+
+
+
+
+7
+
+
+7
+
+
+Pot
+
+
+
+
+^
+
+]
+
+ing to
+; most of the expensive computations
+ the joins and the aggregation required in the denition of
+the parents  are precomputed in these views. The suf-
+cient statistics for any subset of potential parents can easily
+be derived from this view. The above construction, together
+with the decomposability of the score, allows the steps of the
+search (say, greedy hill-climbing) to done very efciently.
+
+The success of this approach depends on the choice of the
+potential parents. Clearly, a wrong initial choice can result to
+poor structures. Following [Friedman et al., 1999], which ex-
+amines a similar approach in the context of learning Bayesian
+networks, we propose an iterative approach that starts with
+some structure (possibly one where each attribute does not
+have any parents), and select the sets Pot
+based on
+this structure. We then apply the search procedure and get a
+new, higher scoring, structure. We choose new potential par-
+ents based on this new structure and reiterate, stopping when
+no further improvement is made.
+
+^
+
+_
+
+It remains only to discuss the choice of Pot
+
+at the
+_
+^
+different phases. Perhaps the simplest approach is to begin by
+setting Pot
+. In succes-
+^
+
+sive phases, Pot
+,
+would consist of all of Pa
+_
+as well as all attributes that are related to
+via slot chains
+. Of course, these new attributes would require
+of length
+
+aggregation; we sidestep the issue by predening possible ag-
+gregates for each attribute.
+
+to be the set of attributes in
+2^
+
+^
+
+
+
+_
+
+
+
+]
+
+2^
+
+This scheme expands the set of potential parents at each
+iteration. However, it usually results in large set of poten-
+tial parents. Thus, we actually use a more rened algorithm
+if they seem to add
+that only adds parents to Pot
+. There are several reasonable ways
+value beyond Pa
+of evaluating the additional value provided by new parents.
+Some of these are discussed in [Friedman et al., 1999] in the
+context of learning Bayesian networks. Their results suggest
+that we should evaluate a new potential parent by measur-
+if we add the
+ing the change of score for the family of
+to its current parents. We then choose the highest
+^
+scoring of these, as well as the current parents, to be the new
+set of potential parents. This approach allows us to signi-
+cantly reduce the size of the potential parent set, and thereby
+of the resulting view, while being unlikely to cause signicant
+degradation in the quality of the learned model.
+
+^
+
+`E
+
+5 Implementation and experimental results
+We implemented our learning algorithm on top of the Post-
+gres object-relational database management system. All re-
+quired counts were obtained simply through database selec-
+tion queries, and cached to avoid performing the same query
+twice. During the search process, we created temporary ma-
+terialized views corresponding to joins between different re-
+lations, and these views were then used for computing the
+counts.
+
+We tested our proposed learning algorithm on two do-
+mains, one real and one synthetic. The two domains have
+very different characteristics. The rst is a movie database
+that contains three relations: Movie, Actor and Appears,
+which relates actors to movies in which they played. The
+
+ Obtained from http://www-db.stanford.edu/pub/movies/doc.html
+
+database contains about 11000 movies and 7000 actors.
+While this database has a simple structure, it presents the
+kind of problems one often encounters when dealing with real
+data: missing values, large domains for attributes, and incon-
+sistent use of values. The fact that our algorithm was able
+to deal with this kind of real-world problem is quite promis-
+ing. Our algorithm learned the model shown in Figure 2(a).
+This model is reasonable, and close to one that we would con-
+sider to be correct. It learned that the Genre of a movie
+depended on its Decade and its lm Process (color, black &
+white, technicolor etc.) and that the Decade depended on its
+lm Process. It also learned an interesting dependency com-
+bining all three relations: the Role-Type played by an actor in
+a movie depends on the Gender of the actor and the Genre of
+the movie.
+
+The second database, an articial genetic database similar
+to the example in this paper, presented quite different chal-
+lenges. For one thing, the recursive nature of this domain
+allows arbitrarily complex joins to be dened. In addition,
+the probabilistic model in this domain is fairly subtle. Each
+person has three relevant attributes  P-Chromosome, M-
+Chromosome, and BloodType  all with the same domain
+and all related somehow to the same attributes of the persons
+mother and father. The gold standard is the model used to
+generate the data; the structure of that model was shown ear-
+lier in Figure 1. We trained our algorithm on datasets of var-
+ious sizes ranging up to 800. A data set of size
+consisted
+of a family tree containing
+people, with an average of 0.6
+blood tests per person. We evaluated our algorithm on a test
+set of size 10,000. Figure 2(b) shows the log-likelihood of the
+test set for the learned models. In most cases, our algorithm
+learned a model with the correct structure, and scored well.
+However, in a small minority of cases, the algorithm got stuck
+in local maxima, learning a model with incorrect structure
+that scored quite poorly. This can be seen in the scatter plots
+of Figure 2(b) which show that the median log-likelihood of
+the learned models is quite reasonable, but there are a few
+outliers. Standard techniques such as random restarts can be
+used to deal with local maxima.
+
+6 Discussion and conclusions
+In this paper, we dened a new statistical learning task: learn-
+ing probabilistic relational models from data. We have shown
+that many of the ideas from Bayesian network learning carry
+over to this new task. However, we have also shown that it
+also raises many new challenges.
+
+Scaling these ideas to large databases is an important issue.
+We believe that this can be achieved by a closer integration
+with the technology of database systems, including indices
+and query optimization. Furthermore, there has been a lot of
+recent work on extracting information from massive data sets,
+including work on nding frequently occurring combinations
+of values for attributes. We believe that these ideas will help
+signicantly in the computation of sufcient statistics.
+
+There are also several important possible extensions to this
+work. Perhaps the most obvious one is the treatment of miss-
+ing data and hidden variables. We can extend standard tech-
+niques (such as Expectation Maximization for missing data)
+
+7
+7
+7
+
+
+7
+
+
+7
+
+7
+
+
+7
+
+
+W
+
+
+
+Movie
+movie-id
+
+title
+
+process
+decade
+genre
+
+-18000
+
+-20000
+
+-22000
+
+-24000
+
+-26000
+
+-28000
+
+-30000
+
+-32000
+
+Actor
+actor-id
+gender
+
+e
+r
+o
+c
+S
+
+Appears
+appears-id
+
+movie
+actor
+roletype
+
+relationship
+probabilistic dependency
+
+(a)
+
+Median Likelihood
+Gold Standard
+
+200
+
+300
+
+400
+
+500
+
+Dataset Size
+(b)
+
+600
+
+700
+
+800
+
+Figure 2: (a) The PRM learned for the movie domain, a real-world database containing about 11000 movies and 7000 actors.
+(b) Learning curve showing the generalization performance of PRMs learned in the genetic domain. The
+-axis shows the
+databases size; the
+-axis shows log-likelihood of a test set of size 10,000. For each sample size, we show 10 independent
+learning experiments. The curve shows median log-likelihood of the models as a function of the sample size.
+
+to this task (see [Koller and Pfeffer, 1997] for some prelim-
+inary work on related models.) However, the complexity of
+inference on large databases with many missing values make
+the cost of a naive application of such algorithms prohibitive.
+Clearly, this domain calls both for new inference algorithms
+and for new learning algorithms that avoid repeated calls to
+inference over these very large problems. Even more interest-
+ing is the issue of automated discovery of hidden variables.
+There are some preliminary answers to this question in the
+context of Bayesian networks [Friedman, 1997], in the con-
+text of ILP [Lavrac and Dzeroski, 1994], and very recently in
+the context of simple binary relations [Hofmann et al., 1998].
+Combining these ideas and extending them to this more com-
+plex framework is a signicant and interesting challenge.
+
+Another direction extends the class of models we consider.
+Here, we assumed that the relational structure is specied be-
+fore the probabilistic attribute values are determined. A richer
+class of PRMs (e.g., that of [Koller and Pfeffer, 1998]) would
+allow probabilities over the structure of the model; for ex-
+ample: uncertainty over the set of objects in the model, e.g.,
+the number of children a couple has, or over the relations be-
+tween objects, e.g., whose is the blood that was found on a
+crime scene. Ultimately, we would want these techniques to
+help us automatically discover interesting entities and rela-
+tionships that hold in the world.
+
+Acknowledgments
+
+Nir Friedman was supported by a grant from the Michael
+Sacher Trust. Lise Getoor, Daphne Koller, and Avi Pfef-
+fer were supported by ONR contract N66001-97-C-8554 un-
+der DARPAs HPKB program, by ONR grant N00014-96-1-
+0718, by the ARO under the MURI program Integrated Ap-
+proach to Intelligent Systems, and by the generosity of the
+Sloan Foundation and of the Powell foundation.
+

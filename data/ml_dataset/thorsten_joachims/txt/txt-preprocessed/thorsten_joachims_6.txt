@@ -1,0 +1,1428 @@
+Abstract
+
+We present a new method for transductive
+learning, which can be seen as a transductive
+version of the k nearest-neighbor classier.
+Unlike for many other transductive learning
+methods, the training problem has a mean-
+ingful relaxation that can be solved glob-
+ally optimally using spectral methods. We
+propose an algorithm that robustly achieves
+good generalization performance and that
+can be trained eciently. A key advantage of
+the algorithm is that it does not require ad-
+ditional heuristics to avoid unbalanced splits.
+Furthermore, we show a connection to trans-
+ductive Support Vector Machines, and that
+an eective Co-Training algorithm arises as
+a special case.
+
+1. Introduction
+
+For some applications, the examples for which a pre-
+diction is needed are already known when training the
+classier. This kind of prediction is called Transduc-
+tive Learning (Vapnik, 1998). An example of such a
+task is relevance feedback in information retrieval. In
+relevance feedback, users can give positive and neg-
+ative examples for the kinds of documents they are
+interested in. These documents are the training ex-
+amples, while the rest of the collection is the test set.
+The goal is to generalize from the training examples
+and nd all remaining documents in the collection that
+match the users information need.
+Why is the transductive setting dierent from the reg-
+ular inductive setting?
+In the transductive setting,
+the learner can observe the examples in the test set
+and potentially exploit structure in their distribution.
+Several methods have been designed with this goal in
+mind. Vapnik introduced transductive SVMs (Vap-
+nik, 1998) which were later rened by (Bennett, 1999)
+and (Joachims, 1999). Other methods are based on
+s-t mincuts (Blum & Chawla, 2001) or on multi-way
+cuts (Kleinberg & Tardos, 1999). Related is also the
+idea of Co-Training (Blum & Mitchell, 1998), which
+
+exploits structure resulting from two redundant repre-
+sentations. We will study what these approaches have
+in common and where they have problems. In partic-
+ular, we will focus on s-t Mincuts, Co-Training, and
+TSVMs and show that they have undesirable biases
+that require additional, dicult to control heuristics.
+To overcome this problem, we rst propose and moti-
+vate a set of design principles for transductive learn-
+ers. Following these principles, we introduce a new
+transductive learning method that can be viewed as a
+transductive version of the k nearest-neighbor (kNN)
+rule. One key advantage is that it does not require
+greedy search, but leads to an optimization problem
+that can be solved eciently and globally optimally
+via spectral methods. We evaluate the algorithm em-
+pirically on 6 benchmarks, showing improved and more
+robust performance than for transductive SVMs. Fur-
+thermore, we show that Co-Training emerges as a spe-
+cial case and that the new algorithm performs substan-
+tially better than the original Co-Training algorithm.
+
+2. Transductive Learning Model
+
+The setting of transductive inference was introduced
+by V. Vapnik (see (Vapnik, 1998)). The learning task
+is dened on a xed array X of n points ((cid:1)x1, (cid:1)x2, ..., (cid:1)xn).
+Each data point has a desired classication Y =
+(y1, y2, ..., yn). For simplicity, lets assume the labels
+yi are binary, i.e. yi  {+1, 1}, and that the data
+points (cid:1)x are vectors in (cid:2)N . For training, the learner
+receives the labels for a random subset
+|Yl| = l
+
+Yl  [1..n]
+
+(1)
+
+of l < n (training) data points. The goal of the learner
+is to predict the labels of the remaining (test) points
+in X as accurately as possible.
+Vapnik gives bounds on the deviation of error rates
+observed in the training sample and in the test sam-
+ple (Vapnik, 1998). The bounds depend on the ca-
+L
+pacity d
+X, which can be
+measured, for example, as the number of dierent la-
+belings the learner L can potentially produce on X.
+L
+The smaller d
+X, the smaller the bound. Following
+
+L
+X of the hypothesis space H
+
+Proceedings of the Twentieth International Conference on Machine Learning (ICML-2003), Washington DC, 2003.
+
+the idea of structural risk minimization (SRM) (Vap-
+nik, 1998), one can consider a sequence of learners
+L1, L2, ... with nested hypothesis spaces so that their
+L2
+X < ... < 2n. If the struc-
+capacity increases d
+ture is well aligned with the learning task, the bound
+limits the generalization error. What information can
+we exploit to built a good structure?
+
+L1
+X < d
+
+3. Principles for Designing a
+
+Transductive Learner
+
+In contrast to inductive learning, the transductive
+learner can analyze the location of all data points
+(cid:1)xi  X, in particular those in the test set. Therefore, a
+transductive learner can structure its hypothesis space
+based on X. How can the location of the test points
+help design a good hypothesis space?
+Imagine we knew the labels of all examples (cid:1)xi  X, in-
+cluding both the training and the test examples. Lets
+call this the perfect classication. If we gave all these
+examples to an inductive learner Lind,
+it would be
+learning from a large training set and it might be rea-
+sonable to assume that Lind learns an accurate classi-
+er. For example, our experience might tell us that for
+text classication, SVMs typically achieve low predic-
+tion error if we have at least 10,000 training examples.
+Therefore, if X contains 10,000 data points, we would
+expect that an SVM given all labels Y achieves low
+leave-one-out cross-validation error Err
+(X, Y ) on
+L
+(X, Y ), since Err
+loo(X, Y ) is an (almost) unbiased es-
+timate of the prediction error that typically has low
+variability.
+How can this help a transductive learner that has ac-
+cess to only a small subset Yl of the labels? Assum-
+ing that an inductive learner Lind achieves low pre-
+diction error when trained on the full X implies that
+the perfect classication of the test set is highly self-
+consistent in terms of leave-one-out error. If a trans-
+ductive learner Ltrans uses only those labelings of the
+test set for which the corresponding inductive learner
+Ltrans has low leave-one-out error, the transductive
+learner will not exclude the perfect classication, while
+potentially excluding bad labelings. This suggests the
+following SRM structure for a transductive learner
+
+LSV M
+loo
+
+(cid:1)
+(y1, ..., yn)|Err
+
+Ltrans
+k
+X
+
+H
+
+=
+
+loo (X, Y )  k
+Lind
+n
+
+(2)
+
+(cid:2)
+
+leading to a general principle for dening a transduc-
+tive learner from an inductive learner. A transductive
+learner should label the test set so that
+
+Postulate 1: it achieves low training error, and
+
+Postulate 2: the corresponding inductive learner is
+
+highly self-consistent (e.g. low leave-one-out).
+
+While initially not phrased in these terms, a trans-
+ductive SVM (Vapnik, 1998)(Joachims, 1999) follows
+these two postulates (Joachims, 2002). A trans-
+ductive SVM labels the test examples so that the
+margin is maximized. A large-margin SVM can be
+shown to have low leave-one-out error (Vapnik, 1998).
+Other transductive learning algorithms like transduc-
+tive ridge-regression (Chapelle et al., 1999) and min-
+cuts (Blum & Chawla, 2001) minimize leave-one-out
+error as well. However, leave-one-out is not the only
+measure of self-consistency. The co-training algorithm
+(Blum & Mitchell, 1998) maximizes consistency be-
+tween two classiers. It will be discussed in more detail
+in Section 5.2.
+However, the following shows that Postulates 1 and
+2 are not enough to dene an eective transductive
+learner. Consider the case of k-Nearest Neighbor
+(kNN) (k odd). The kNN-rule makes a leave-one-out
+error on example ((cid:1)xi, yi), if the majority of the nearest
+neighbors are not from the same class. For a similarity-
+weighted kNN, we can dene a margin-like quantity
+
+i = yi
+
+jkNN((cid:1)xi) yj wij
+mkNN((cid:1)xi ) wim
+
+(3)
+
+where wij reects the similarity between xi and xj.
+The similarity weighted kNN-rule makes a leave-one-
+out error whenever i  0. Therefore, an upper bound
+on the leave-one-out error is
+
+(X, Y )  n(cid:4)
+
+i=1
+
+LkNN
+loo
+
+Err
+
+(1  i).
+
+(4)
+
+While it is computationally dicult to nd a label-
+ing of the test examples that minimizes the leave-one-
+out error of kNN while having a low training error,
+there are ecient algorithms for minimizing the upper
+bound (4). We can write this as the following opti-
+mization problem:
+
+(cid:3)
+(cid:3)
+
+max(cid:1)y
+
+s.t.
+
+n(cid:4)
+
+(cid:4)
+
+(cid:3)
+
+yiyj
+
+wij
+
+mkNN((cid:1)xi ) wim
+
+i=1
+
+jkNN((cid:1)xi)
+
+yi = 1, if i  Yl and positive
+yi = 1, if i  Yl and negative
+j : yj  {+1, 1}
+(cid:3)
+
+wij
+
+(5)
+
+(6)
+(7)
+(8)
+
+In matrix notation, the objective can be written equiv-
+alently as (cid:1)yT A(cid:1)y where Aij =
+if (cid:1)xj is
+among the k nearest neighbors of (cid:1)xi and zero oth-
+erwise. While the problem is typically not convex,
+there are ecient methods for its solution.
+In par-
+ticular, A can be thought of as the adjacency ma-
+trix of a graph, so that vertices represent examples
+and edges represent similarities (see Figure 1). At
+
+kkNN((cid:1)xi )
+
+wik
+
++
+
+-
+
+1 and 2 do not yet specify a transductive learner su-
+ciently. One other reasonable constraint to put on the
+transductive solution is the following postulate.
+
+Figure 1. Mincut example.
+
+iG+
+
+) =
+
+, denote with G+ the set of examples
+the solution (cid:1)y
+ those with
+(i.e. vertices) with yi = 1, and with G
+yi = 1. G+ and G
+ dene a cut (bi-partitioning)
+(cid:3)
+(cid:3)
+of the graph. For an undirected graph, the cut-value
+cut(G+, G
+iG Aij is the sum of the
+(cid:3)
+edge-weights across the cut. Since the maximum of
+(5) is determined by the matrix entries Aij with yiyj =
+1, minimizing
+yiyj =1 Aij = 2 cut(G+, G
+) maxi-
+mizes (5). Therefore, for undirected graphs, maximiz-
+ing (5) subject to (6)-(8) is equivalent to nding the s-t
+mincut where the positive examples form the source,
+and the negative examples form the sink. The s-t min-
+cut is a cut that separates positive and negative exam-
+ples while minimizing the cut value. This connects to
+the transduction method of Blum and Chawla (Blum
+& Chawla, 2001). They use mincut/maxow algo-
+rithms, starting from the intuition that the separation
+of positive and negative examples should put strongly
+connected examples into the same class. Blum and
+Chawla discuss the connection to leave-one-out error
+in the case of 1-NN.
+While the s-t mincut algorithm is intuitively appeal-
+ing, it easily leads to degenerate cuts. Consider the
+graph in Figure 1, where line thickness indicates edge
+weight Aij. The graph contains two training examples
+which are labeled as indicated. All other nodes repre-
+sent test examples. While we would like to split the
+graph according to the two dominant clusters, the s-t
+mincut leads to a degenerate solution that just cuts o
+the positive example. The behavior is due to the fact
+that s-t mincut minimizes the sum of the weight, and
+that balanced cuts have more potential edges to cut.
+While using a sparser graph would help in the example,
+this degenerate behavior also occurs for kNN graphs
+whenever the correct partitioning has more wrong
+neighbors than edges connecting the training exam-
+ples to the unlabeled examples. This is practically
+always the case for suciently large numbers of un-
+labeled examples. Consider an (undirected) 100-NN
+graph, where each example has 99 of its neighbors in
+the correct class, and 1 in the incorrect class. If there
+is one positive training example, then this example
+will on average have 200 in/out edges. So, if there
+are more than 200 unlabeled examples, s-t mincut will
+return a degenerate cut even for such a strongly clus-
+tered graph. Since these degenerate cuts fulll Postu-
+late 1 (i.e. zero training error) and Postulate 2 (high
+self consistency in terms of leave-one-out), Postulates
+
+Postulate 3: Averages over examples (e.g. average
+margin, pos/neg ratio) should have the same ex-
+pected value in the training and in the test set.
+
+Again, this postulate can be motivated using the per-
+fect classication. For example, the average margin of
+kNN should fulll
+
+
+ 1
+n  l
+
+(cid:4)
+
+Yl
+
+(cid:4)
+
+i
+
+i(cid:3)Yl
+
+
+ P (Yl)
+
+(9)
+
+(cid:6)
+
+(cid:5)
+
+(cid:4)
+
+Yl
+
+(cid:4)
+
+iYl
+
+1
+l
+
+i
+
+P (Yl) =
+
+for the perfect classication, since the distribution
+P (Yl) of drawing a training set is uniform over all sub-
+sets.
+The s-t mincut violates Postulate 3 both for the
+pos/neg ratio, as well as for the average margin.
+In particular, training examples have negative mar-
+gins, while test examples have large margin. Other
+functions are conceivable as well (Joachims, 2002).
+Blum and Chawla experiment with dierent heuris-
+tics for pre-processing the graph to avoid degener-
+ate cuts. However, none appears to work well across
+all problems they study. Other transductive learning
+algorithms have similar degeneracies. For example,
+in transductive SVMs (Joachims, 1999) and in Co-
+Training (Blum & Mitchell, 1998) the fraction of pos-
+itive examples in the test set has to be xed a priori.
+Such constraints are problematic, since for small train-
+ing sets an estimated pos/neg-ratio can be unreliable.
+How can the problem of degenerate cuts be avoided in
+a more principled way?
+
+4. Normalized Graph Cuts with
+
+Constraints
+
+The problem of s-t mincut can be traced to its objec-
+tive function (5), which aims to minimize the sum of
+the edge weights cut through. The number of elements
+in the sum depends directly on the size of the two cut
+sets.
+In particular, the number of edges a cut with
+|G+| vertices on one side and |G
+| vertices on the other
+side can potentially cut through is |G+||G
+|. The s-
+t mincut objective is inappropriate, since it does not
+account for the dependency on the cut size. A natural
+way to normalize for cut size is by dividing the objec-
+tive with |G+||G
+|. Instead of minimizing the sum of
+the weights, the following optimization problem mini-
+mizes the average weight of the cut.
+
+max(cid:1)y
+
+s.t.
+
+cut(G+, G
+
+)
+
+|{i : yi = 1}||{i : yi = 1}|
+yi = 1, if i  Yl and positive
+yi = 1, if i  Yl and negative
+(cid:1)y  {+1, 1}n
+
+(10)
+
+(11)
+(12)
+(13)
+
+This problem is related to the ratiocut (Hagen &
+Kahng, 1992). However, the traditional ratiocut prob-
+lem is unsupervised, i.e. there are no constraints (11)
+and (12). Solving the unconstrained ratiocut is known
+to be NP hard (Shi & Malik, 2000). However, e-
+cient methods based on the spectrum of the graph
+exist that give good approximations to the solution
+(Hagen & Kahng, 1992). The following will generalize
+these methods to the case of constrained ratiocuts for
+transduction.
+Lets denote with L = BA the Laplacian of the graph
+with adjacency matrix A and diagonal degree matrix
+B, Bii =
+j Aij. We require that the graph is undi-
+rected, so that L is symmetric positive semi-denite.
+Following (Dhillon, 2001) and ignoring the constraints,
+the unsupervised ratiocut optimization problem can
+equivalently be written as
+
+(cid:3)
+
+min(cid:1)z
+
+(cid:11)
+
+with zi  {+, }
+
+(cid:1)zT L(cid:1)z
+(cid:11)
+(cid:1)zT (cid:1)z
+|{i:zi>0}| and  = 
+|{i:zi<0}|
+
+|{i:zi>0}|
+where + =
+|{i:zi<0}|. It is
+straightforward to verify that (cid:1)zT (cid:1)z = n and (cid:1)zT 1 = 0
+for every feasible point. While this problem is still NP
+hard, the minimum of its real relaxation
+
+(14)
+
+min(cid:1)z
+s.t.
+
+(cid:1)zT L(cid:1)z
+(cid:1)zT 1 = 0 and (cid:1)zT (cid:1)z = n
+
+(15)
+(16)
+
+is equal to the second eigenvalue of L and the corre-
+sponding eigenvector is the solution. Using this solu-
+tion of the relaxed problem as an approximation to the
+solution of (14) is known to be eective in practice.
+Moving to the supervised ratiocut problem, we pro-
+pose to include constraints (11) and (12) by adding a
+quadratic penalty to the objective function.
+(cid:1)zT L(cid:1)z + c((cid:1)z  (cid:1))T C((cid:1)z  (cid:1))
+(cid:1)zT 1 = 0 and (cid:1)zT (cid:1)z = n
+
+min(cid:1)z
+s.t.
+
+(17)
+(18)
+
+For each labeled example, the corresponding element
+of (cid:1) is equal to + () for positive (negative) exam-
+ples, and it is zero for test examples. + and  are
+estimates of + and  (e.g. based on the number of
+observed positive and negative examples in the train-
+ing data). We will see later that these estimates do
+not need to be very precise.
+c is a parameter that
+trades o training error versus cut-value, and C is
+
+a diagonal cost matrix that allows dierent misclas-
+sication costs for each example. Taking the eigen-
+decomposition L = UU T of the Laplacian, one can
+introduce a new parameter vector (cid:1)w and substitute
+(cid:1)z = U (cid:1)w. Since the eigenvector of the smallest eigen-
+value of a Laplacian is always (cid:1)1, the constraint (16) be-
+comes equivalent to setting w1 = 0. Let V (D) be the
+matrix with all eigenvectors U (eigenvalues ) except
+the smallest one, then we get the following equivalent
+optimization problem.
+
+min (cid:1)w
+s.t.
+
+(cid:1)wT D (cid:1)w + c(V (cid:1)w  (cid:1))T C(V (cid:1)w  (cid:1)) (19)
+(cid:1)wT (cid:1)w = n
+(20)
+
+Dening G = (D + cV T CV ) and (cid:1)b = cV T C(cid:1), the
+objective function can also be written as (cid:1)wT G (cid:1)w 
+2(cid:1)bT (cid:1)w + c(cid:1)T C(cid:1), where the last term can be dropped
+since it is constant. Following the argument in (Gan-
+der et al., 1989), Problem (19)-(20) is minimized for
+ = (G
+ is the smallest eigenvalue
+
+(cid:1)w
+of
+I
+G
+ 1
+(cid:1)b(cid:1)bT G
+
+I)1(cid:1)b, where 
+(cid:12)
+
+(21)
+
+(cid:13)
+
+.
+
+n
+
+ = V (cid:1)w
+
+I is the identity matrix. From this we can compute the
+, producing
+optimal value of (17) and (18) as (cid:1)z
+a predicted value for each example. We can use this
+value to rank the test examples, or use a threshold to
+make hard class assignment. An obvious choice for the
+threshold is the midpoint  = 1
+2(+ + ) which we
+will use in the following, but more rened methods are
+probably more appropriate.
+
+5. Spectral Graph Transducer
+
+The basic method for computing supervised rati-
+ocuts suggests the following algorithm for trans-
+ductive learning, which we call a Spectral Graph
+Transducer (SGT). An implementation is available at
+http://sgt.joachims.org.
+Input to the algorithm
+are the training labels Yl, and a weighted undirected
+graph on X with adjacency matrix A. In the following,
+we will use the similarity-weighted k nearest-neighbor
+graph
+
+(cid:14)
+
+(cid:3)
+
+(cid:4)
+ij =
+A
+
+sim((cid:1)xi,(cid:1)xj )
+
+sim((cid:1)xi,(cid:1)xk)
+
+(cid:1)xkknn((cid:1)xi )
+0
+
+if (cid:1)xj  knn((cid:1)xi)
+else
+(cid:4) + A
+
+(22)
+
+(cid:4)T . The rst
+over X symmetricized by A = A
+step preprocesses the graph, which has to be done only
+once:
+
+ Compute diagonal degree matrix B, Bii =
+j Aij
+ Compute Laplacian L = B  A, or compute nor-
+1(BA) corresponding
+malized Laplacian L = B
+to the normalized-cut criterion of (Shi & Malik,
+2000).
+
+(cid:3)
+
+ Compute the smallest 2 to d + 1 eigenvalues and
+
+eigenvectors of L and store them in D and V .
+
+ To normalize the spectrum of the graph, replace
+the eigenvalues in D with some monotonically in-
+creasing function. We use Dii = i2 (see also
+(Chapelle et al., 2002)). Fixing the spectrum of
+the graph in this way abstracts, for example, from
+dierent magnitudes of edge weights, and focuses
+on the ranking among the smallest cuts.
+
+(cid:11)
+
+(cid:11)
+l+ and  = 
+
+l
+
+The following steps have to be done for each new train-
+ing set:
+
+ Estimate + =
+
+l+
+l , where l+
+(l) is the number of positive (negative) training
+examples. Set i = + (i = ) for positive
+(negative) examples.
+
+ To give equal weight to positive and negative ex-
+amples, set cost of positive (negative) training ex-
+amples to Cii = l
+2l ). Cii = 0 for all
+test examples.
+
+2l+ (Cii = l
+
+ Compute G = (D+cV T CV ) and (cid:1)b = cV T C(cid:1) and
+
+nd smallest eigenvalue 
+ Compute predictions as (cid:1)z
+
+ of Equation (21).
+ = V (G  
+
+
+I)1(cid:1)b,
+
+which can be used for ranking.
+
+ Threshold (cid:1)z
+
+ wrt.  = 1
+
+class assignments yi = sign(zi  ).
+
+2 (+ + ) to get hard
+
+5.1. Connection to Transductive SVMs
+
+The following argument shows the relationship of the
+SGT to a TSVM. We consider the TSVM as described
+in (Joachims, 1999). For hyperplanes passing through
+the origin, the TSVM optimizes
+min(cid:1)y max(cid:1)0 1T   1
+
+s.t. yi = 1, if i  Yl and positive
+
+2 (cid:1)T diag((cid:1)y) A diag((cid:1)y)(cid:1) (23)
+(24)
+yi = 1, if i  Yl and negative (25)
+(cid:1)y  {+1, 1}n
+(26)
+|{i : yi = 1}| = p.
+(27)
+
+For our analysis, we simplify this problem by adding
+the constraint 1 = 2 = ... = n. Since the objective
+(23) can now be written as n  1
+2 2(cid:1)yT A(cid:1)y where 
+is a scalar, the maximum is achieved for 
+(cid:1)yT A(cid:1)y .
+Substituting the solution into the objective shows that
+n2
+the value of the maximum is 1
+(cid:1)yA(cid:1)y . This shows that
+2
+the simplied TSVM problem is equivalent to an s-t
+mincut on graph A, where the balance of the cut is
+xed by (27). The SGT removes the need for xing
+the exact cut size a priori.
+
+ = n
+
+5.2. Connection to Co-Training
+
+Co-training can be applied, if there are two redun-
+dant representations A and B of all training exam-
+ples (Blum & Mitchell, 1998). The goal is to train
+two classiers hA and hB, one for each representation,
+so that their predictions are maximally consistent, i.e.
+hA((cid:1)x) = hB((cid:1)x) for most examples (cid:1)x. With this goal,
+Blum and Mitchell propose a greedy algorithm that it-
+eratively labels examples for which one of the current
+classiers is most condent. However, also for this al-
+gorithm the ratio of predicted positive and negative
+examples in the test set must be xed a priori to avoid
+degenerate solutions.
+Co-training emerges as a special case of the SGT. Con-
+sider a kNN classiers for each of the two representa-
+tions and note that
+i ) (see Eq. (3))
+is an upper bound on the number of inconsistent pre-
+dictions. Therefore, to maximize consistency, we can
+apply the SGT to the graph that contains k links for
+the kNN from representation A, as well as another k
+links per example for the kNN from representation B.
+
+(cid:3)n
+i=1(2  A
+
+i  B
+
+5.3. Connections to other Work
+
+Several other approaches to using unlabeled data for
+supervised learning exist. Most related is the approach
+to image segmentation described in (Yu et al., 2002).
+They aim to segment images under higher level con-
+straints. One dierence is that they arrive at con-
+strained cut problems where all the constraints are
+homogeneous, leading to a dierent technique for their
+solution. The spectrum of the Laplacian is also consid-
+ered in the recent work in (Chapelle et al., 2002) and
+(Belkin & Niyogi, 2002). They use the leading eigen-
+vectors for feature extraction and the design of kernels.
+In addition, Chapelle et al. use the same normaliza-
+tion of the spectrum. Szummer and Jaakkola apply
+short random walks on the kNN graph for labeling
+test examples, exploiting that a random walk will less
+likely cross cluster boundaries, but stay within clusters
+(Szummer & Jaakkola, 2001). There might be an in-
+teresting connection to the SGT, since the normalized
+cut minimizes the transition probability of a random
+walk over the cut (Meila & Shi, 2001). This might
+also lead to a connection to the generative modeling
+approach of Nigam et al., where the label of each test
+example is a latent variable (Nigam et al., 2000).
+
+6. Experiments
+
+To evaluate the SGT, we performed experiments on
+six datasets and report results for all of them. The
+datasets are the ten most frequent categories from
+the Reuters-21578 text classication collection follow-
+ing the setup in (Joachims, 1999), the UCI Reposi-
+
+Table 1. PRBEP (macro-) averages for ve datasets and
+training sets of size l. n is the total number of examples,
+and N is the number of features.
+
+Task
+
+N
+
+n
+
+l SGT kNN TSVM SVM
+
+Optdigits
+Reuters
+Isolet
+Adult
+Ionosphere
+
+1797 10 83.4 62.4
+64
+3299 17 57.0 46.7
+11846
+617
+7797 20 55.4 47.4
+123 32561 10 54.5 46.0
+351 10 79.6 76.7
+
+34
+
+61.5
+51.5
+-
+
+47.3
+80.6
+
+61.6
+49.1
+46.3
+46.2
+80.6
+
+tory datasets OPTDIGITS (digit recognition), ISO-
+LET (speech recognition), IONOSPHERE, as well as
+the ADULT data in a representation produced by John
+Platt. To evaluate the Co-Training connection, we use
+the WebKB data of Blum and Mitchell with TFIDF
+weighting.
+The goal of the empirical evaluation is threefold. First,
+we will evaluate whether the SGT can make use of
+the transductive setting by comparing it against induc-
+tive learning methods, in particular kNN and a linear
+SVM. Second, we compare against existing transduc-
+tion methods, in particular a TSVM. And third, we
+evaluate how robustly the SGT performs over dier-
+ent data sets and parameter settings.
+For all learning tasks, both kNN and the SGT (with
+1(B  A)) use the cosine
+normalized Laplacian L = B
+as the similarity measure. While this is probably sub-
+optimal for some tasks, the following results indicate
+that it is a reasonable choice. Furthermore, it equally
+aects both kNN and the SGT, so that relative com-
+parisons between the two remain valid. If an example
+has zero cosine with all other examples, it is randomly
+connected to k nodes with uniform weight.
+To make sure that performance dierences against the
+other learning methods are not due to bad choices for
+their parameters, we give the conventional learning
+methods (i.e. kNN, SVM, TSVM) an unfair advan-
+tage. For these methods we report the results for the
+parameter setting with the best average performance
+on the test set. For the SGT, on the other hand, we
+chose c = 3200 and d = 80 constant over all datasets.
+The choice of k for building the k nearest-neighbor
+graph is discussed below.
+All results reported in the following are averages over
+100 stratied transductive samples1. So, all substan-
+tial dierences are also signicant with respect to this
+distribution. Samples are chosen so that they contain
+at least one positive example. While we report er-
+ror rate where appropriate, we found it too unstable
+
+1An exception is the TSVM on Adult and Isolet, where
+
+100 samples would have been prohibitively expensive.
+
+Table 2. PRBEP / error rate on the WebKB course data
+averaged over training sets of size 12.
+
+Features
+
+SGT
+
+kNN
+
+TSVM SVM B&M
+
+93.4/3.3
+
+-/-
+
+-/-
+
+cotrain
+page+link 87.1/5.9 79.7/10.1 92.0/4.3 82.3/20.3
+page
+link
+
+86.2/6.2 73.2/13.3 91.4/4.6 75.4/21.6 -/12.9
+75.9/22.1 71.9/13.1 79.9/8.9 75.0/18.5 -/12.4
+
+-/5.0
+-/-
+
+-/-
+
+for a fair comparison with very unbalanced class ra-
+tios. We therefore use rank-based measures for most
+comparisons. The most popular such measure in infor-
+mation retrieval is the Precision/Recall curve, which
+we summarize by its Break-Even Point (PRBEP) (see
+e.g. (Joachims, 1999)). For tasks with multiple classes
+(i.e. Reuters, OPTDIGITS, and ISOLET), we summa-
+rize the performance by reporting an average over all
+classes (i.e. macro-averaging).
+Does the Unlabeled Data Help Improve Predic-
+tion Performance? The results are summarized in
+Table 1. On all tasks except Ionosphere, the SGT
+gives substantially improved prediction performance
+compared to the inductive methods. Also, the SGT
+performs better than kNN (as its inductive variant),
+on each individual binary task of Reuters and Optdig-
+its. For Isolet, the SGT performs better than kNN on
+23 of the 26 binary tasks.
+The improvements of the TSVM are typically smaller.
+On Adult, the TSVM was too inecient to be applied
+to the full dataset, so that we give the results for a
+subsample of size 2265. The TSVM failed to produce
+reasonable results for Isolet. While the TSVM does
+improve performance on Reuters, the improvement is
+less than reported in (Joachims, 1999). There, the as-
+sumption is made that the ratio of positive to negative
+examples in the test set is known accurately. However,
+this is typically not the case and we use an estimate
+based on the training set in this work.
+If the true
+fraction is used, the TSVM achieves a performance of
+62.3. While (Joachims, 2002) proposes measures to de-
+tect when the wrong fraction was used, this can only
+be done after running the TSVM. Repeatedly trying
+dierent fractions is prohibitively expensive.
+How Eective is the SGT for Co-Training? Ta-
+ble 2 shows the results for the co-training on WebKB.
+We built the graph with 200NN from the page and
+200NN from the links. The table compares the co-
+training setting with just using the page or the links,
+and a combined representation where both feature sets
+are concatenated. The SGT in the co-training set-
+ting achieves the highest performance. The TSVM
+also gives large improvements compared to the induc-
+tive methods, outperforming the SGT. However, the
+TSVM cannot take advantage of the co-training set-
+
+adult
+cotrain
+ionosphere
+isolet
+optdigits
+reuters
+
+25
+
+20
+
+15
+
+10
+
+5
+
+0
+
+P
+E
+B
+R
+P
+n
+
+
+
+i
+
+
+e
+c
+n
+e
+r
+e
+
+f
+f
+i
+
+D
+
+-5
+
+0
+
+100
+
+200
+
+300
+
+400
+Number of Training Examples
+
+500
+
+600
+
+P
+E
+B
+R
+P
+n
+
+
+
+i
+
+
+e
+c
+n
+e
+r
+e
+
+f
+f
+i
+
+D
+
+0
+
+-5
+
+-10
+
+-15
+
+-20
+
+adult
+cotrain
+ionosphere
+isolet
+optdigits
+reuters
+
+400
+
+800
+
+1600
+
+3200
+
+6400
+
+12800
+
+Value of c
+
+Figure 2. Amount by which the PRBEP of the SGT ex-
+ceeds the PRBEP of the optimal kNN.
+
+Figure 4. Amount by which the PRBEP of the SGT is
+lower for a particular value of c compared to the best c.
+
+0
+
+-5
+
+-10
+
+-15
+
+-20
+
+-25
+
+adult
+cotrain
+ionosphere
+isolet
+optdigits
+reuters
+
+P
+E
+B
+R
+P
+n
+
+
+
+i
+
+
+e
+c
+n
+e
+r
+e
+
+f
+f
+i
+
+D
+
+100
+
+90
+
+80
+
+70
+
+60
+
+50
+
+40
+
+30
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+P
+E
+B
+R
+P
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+adult
+cotrain
+ionosphere
+isolet
+optdigits
+reuters
+
+l
+
+
+
+j
+
+e
+u
+a
+V
+e
+v
+i
+t
+c
+e
+b
+O
+d
+e
+a
+c
+S
+
+
+
+l
+
+
+-
+
+
+0
+
+10
+
+20
+
+30
+
+40
+
+50
+
+60
+
+70
+
+80
+
+90
+
+3
+
+5
+
+10
+
+Number of Eigenvectors
+
+30
+
+100
+Number of Nearest Neighbors
+
+50
+
+200
+
+400
+
+800
+
+Figure 3. Amount by which the PRBEP of the SGT is
+lower for a particular number of eigenvectors d compared
+to the PRBEP of the best d (l as in Tables 1 and 2).
+
+ting. The results from (Blum & Mitchell, 1998) are
+added in the last column.
+
+For which Training Set Sizes is Transductive
+Learning most Eective? Figure 2 shows the dif-
+ference in average PRBEP between the SGT and
+kNN for dierent training set sizes. For all learn-
+ing tasks, the performance improvement is largest for
+small training sets. For larger sets, the performance of
+the SGT approaches that of kNN. The negative values
+are largely due to the bias from selecting the param-
+eters of kNN based on the test set.
+If this is also
+allowed for the SGT, the dierences vanish or become
+substantially smaller.
+
+How Sensitive is the SGT to the Choice of the
+Number of Eigenvectors? Figure 3 plots the loss
+of PRBEP compared to the PRBEP achieved on the
+test set for the optimal number of eigenvectors. On all
+tasks, the SGT achieves close to optimal performance,
+if more than 40 eigenvectors are included. We conclude
+that d  40 should be sucient for most tasks.
+
+Figure 5. Average PRBEP and the average normalized
+value of the objective function (vertically ipped and po-
+sitioned to t the graph) for the SGT depending on the
+number of nearest neighbors (l as in Tables 1 and 2).
+
+How Sensitive is the SGT to the Choice of the
+Error Parameter? Analogous to Figure 3, Figure
+4 plots the loss of PRBEP compared to the best value
+of c. Due to the normalization of the spectrum of the
+Laplacian, the optimum values of c are comparable
+between datasets. For most tasks, the performance is
+less than two PRBEP points away from the optimum
+for any c between 1600 and 12800. An exception is
+Isolet, which requires larger values. We conclude that
+any c between 3200 and 12800 should give reasonable
+performance for most tasks.
+
+How Sensitive is the SGT to the Choice of the
+Graph? Unlike c and d, the choice of k for building
+the k nearest-neighbor graph has a strong inuence on
+the performance. The top part of Figure 5 shows aver-
+age PRBEP depending on k. How should we select k?
+For small training set sizes (often only one positive ex-
+ample), cross-validation is not feasible. However, the
+value of the objective function can be interpreted as a
+
+ik
+
+= oik
+
+measure of capacity and might be suitable for model
+selection. The bottom half of Figure 5 shows the aver-
+age value of the objective function after normalization.
+In particular, the objective value oik for training set
+i and choice of k is normalized to onorm
+minkoik .
+The average normalized objective tracks the perfor-
+mance curve very well, suggesting that there might be
+an interesting connection between this value and the
+capacity of the SGT. For all experiments reported in
+the previous section, we used the value of k that min-
+imizes the average normalized objective. For Adult,
+this is k = 100, for Reuters k = 800, for Optdigits
+k = 10, for Isolet k = 100, for Ionosphere k = 100,
+and for Co-Training k = 2 200. Such a kind of model
+selection might be particularly useful for tasks like rel-
+evance feedback in information retrieval, where there
+are many learning tasks with few examples on the same
+collection of objects.
+How Eciently can the SGT be Trained? Due
+to our naive implementation, most of the time is spent
+on computing the k-NN graph. However, this can be
+sped up using appropriate data structures like inverted
+indices or KD-trees. Computing the 81 smallest eigen-
+values takes approximately 1.5 minutes for a task with
+10,000 examples and 100 neighbors on a 1.7GHz CPU
+using Matlab. However, these preprocessing steps have
+to be performed only once. Training on a particular
+training set and predicting 10,000 test examples takes
+less than one second.
+
+7. Conclusions
+
+We studied existing transductive learning methods
+and abstracted their principles and problems. Based
+on this, we introduced a new transductive learning
+method, which can be seen as the a transductive ver-
+sion of the kNN classier. The new method can be
+trained eciently using spectral methods. We evalu-
+ated the classier on a variety of test problems showing
+substantial improvements over inductive methods for
+small training sets. Unlike most other algorithms that
+use unlabeled data, it does not need additional heuris-
+tics to avoid unbalanced splits. Furthermore, since
+it does not require greedy search, it is more robust
+than existing methods, outperforming the TSVM on
+most tasks. Modeling the learning problem as a graph
+oers a large degree of exibility for encoding prior
+knowledge about the relationship between individual
+examples. In particular, we showed that Co-Training
+arises as a special case and that the new algorithm
+outperforms the original Co-Training algorithm. The
+algorithm opens interesting areas for research. In par-
+ticular, is it possible to derive tight, sample dependent
+capacity bounds based on the cut value? Furthermore,
+it is interesting to consider other settings beyond co-
+training that can be modeled as a graph (e.g. temporal
+
+drifts in the distribution, co-training with more than
+two views, etc.).
+This research was supported in part by the NSF
+projects IIS-0121175 and IIS-0084762 and by a gift
+from Google. Thanks to Lillian Lee, Filip Radlinski,
+Bo Pang, and Eric Breck for their insightful comments.
+

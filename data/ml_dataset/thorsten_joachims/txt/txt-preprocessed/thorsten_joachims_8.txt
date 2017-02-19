@@ -1,0 +1,1472 @@
+Abstract
+
+Training a support vector machine (SVM) leads to a quadratic optimization problem with
+bound constraints and one linear equality constraint. Despite the fact that this type of
+problem is well understood, there are many issues to be considered in designing an SVM
+learner. In particular, for large learning tasks with many training examples, o(cid:11)-the-shelf
+optimization techniques for general quadratic programs quickly become intractable in their
+memory and time requirements. SV M light is an implementation of an SVM learner which
+addresses the problem of large tasks. This chapter presents algorithmic and computational
+results developed for SV M lightV., which make large-scale SVM training more practical.
+The results give guidelines for the application of SVMs to large domains.
+
+Also published in:
+
+Advances in Kernel Methods - Support Vector Learning,
+Bernhard Sch(cid:127)olkopf, Christopher J. C. Burges, and Alexander J. Smola (eds.),
+MIT Press, Cambridge, USA, 		.
+
+SV M lightis available at http://www-ai.cs.uni-dortmund.de/svm light
+
+
+
+ Introduction
+
+Vapnik [		] shows how training a support vector machine for the pattern recognition
+problem leads to the following quadratic optimization problem (QP) OP.
+
+(OP) minimize:
+
+W ((cid:11)) = (cid:0)
+
+
+
+X
+
+i=
+
+(cid:11)i +
+
+
+
+
+
+
+
+
+X
+
+i=
+
+X
+
+j=
+
+yiyj(cid:11)i(cid:11)j k(xi; xj)
+
+()
+
+
+
+subject to:
+
+X
+
+yi(cid:11)i = 
+
+i=
+i :  (cid:20) (cid:11)i (cid:20) C
+
+()
+
+()
+
+The number of training examples is denoted by . (cid:11) is a vector of  variables, where
+each component (cid:11)i corresponds to a training example (xi; yi). The solution of OP is the
+vector (cid:11)
+(cid:3) for which () is minimized and the constraints () and () are ful(cid:12)lled. De(cid:12)ning
+the matrix Q as (Q)ij = yiyj k(xi; xj), this can equivalently be written as
+
+minimize:
+
+W ((cid:11)) = (cid:0)(cid:11)
+
+T  +
+
+(cid:11)
+
+TQ(cid:11)
+
+
+
+
+subject to:
+
+(cid:11)
+
+T y = 
+
+ (cid:20) (cid:11) (cid:20) C
+
+()
+
+()
+
+()
+
+The size of the optimization problem depends on the number of training examples .
+Since the size of the matrix Q is , for learning tasks with  training examples and
+more it becomes impossible to keep Q in memory. Many standard implementations of QP
+solvers require explicit storage of Q which prohibits their application. An alternative would
+be to recompute Q every time it is needed. But this becomes prohibitively expensive, if
+Q is needed often.
+
+One approach to making the training of SVMs on problems with many training exam-
+ples tractable is to decompose the problem into a series of smaller tasks. SV M lightuses the
+decomposition idea of Osuna et al. [		b]. This decomposition splits OP in an inactive
+and an active part - the so call \working set". The main advantage of this decomposition
+is that it suggests algorithms with memory requirements linear in the number of training
+examples and linear in the number of SVs. One potential disadvantage is that these algo-
+rithms may need a long training time. To tackle this problem, this chapter proposes an
+algorithm which incorporates the following ideas:
+
+(cid:15) An e(cid:14)cient and e(cid:11)ective method for selecting the working set.
+
+(cid:15) Successive \shrinking" of the optimization problem. This exploits the property that
+
+many SVM learning problems have
+
+{ much less support vectors (SVs) than training examples.
+
+{ many SVs which have an (cid:11)i at the upper bound C.
+
+(cid:15) Computational improvements like caching and incremental updates of the gradient
+
+and the termination criteria.
+
+
+
+ GENERAL DECOMPOSITION ALGORITHM
+
+This chapter is structured as follows. First, a generalized version of the decompositon
+algorithm of Osuna et al. [		a] is introduced. This identi(cid:12)es the problem of selecting
+the working set, which is addressed in the following section. In section  a method for
+\shrinking" OP is presented and section  describes the computational and implementa-
+tional approach of SV M light. Finally, experimental results on two benchmark tasks, a text
+classi(cid:12)cation task, and an image recognition task are discussed to evaluate the approach.
+
+ General Decomposition Algorithm
+
+This section presents a generalized version of the decomposition strategy proposed by
+Osuna et al. [		a]. This strategy uses a decomposition similar to those used in active
+set strategies (see Gill et al. [	]) for the case that all inequality constraints are simple
+bounds. In each iteration the variables (cid:11)i of OP are split into two categories.
+
+(cid:15) the set B of free variables
+
+(cid:15) the set N of (cid:12)xed variables
+
+Free variables are those which can be updated in the current iteration, whereas (cid:12)xed
+variables are temporarily (cid:12)xed at a particular value. The set of free variables will also be
+referred to as the working set. The working set has a constant size q much smaller than .
+
+The algorithm works as follows:
+
+(cid:15) While the optimality conditions are violated
+
+{ Select q variables for the working set B.
+
+The remaining
+
+ (cid:0) q variables are fixed at their current value.
+
+{ Decompose problem and solve QP-subproblem: optimize W ((cid:11)) on B.
+
+(cid:15) Terminate and return (cid:11).
+
+How can the algorithm detect that it has found the optimal value for (cid:11)? Since OP is
+guaranteed to have a positive-semide(cid:12)nite Hessian Q and all constraints are linear, OP
+is a convex optimization problem. For this class of problems the following Kuhn-Tucker
+conditions are necessary and su(cid:14)cient conditions for optimality. Denoting the Lagrange
+multiplier for the equality constraint  with (cid:21)eq and the Lagrange multipliers for the lower
+and upper bounds  with (cid:21)lo and (cid:21)up, (cid:11) is optimal for OP, if there exist (cid:21)eq, (cid:21)lo, and
+(cid:21)up, so that (Kuhn-Tucker Conditions, see Werner [	]):
+
+i  [::n] :
+
+i  [::n] :
+
+ (cid:20)
+
+g((cid:11)) + ((cid:21)eqy (cid:0) (cid:21)lo + (cid:21)up) = 
+= 
+
+i ((cid:0)(cid:11)i)
+
+(cid:21)lo
+(cid:21)up
+i ((cid:11)i (cid:0) C)
+
+(cid:21)lo
+(cid:21)up
+T y
+
+(cid:11)
+
+(cid:11)
+
+= 
+
+(cid:21) 
+
+(cid:21) 
+
+= 
+
+(cid:20) C
+
+()
+
+()
+
+(	)
+
+()
+
+()
+
+()
+
+()
+
+g((cid:11)) is the vector of partial derivatives at (cid:11). For OP this is
+
+g((cid:11)) = (cid:0) + Q(cid:11)
+
+
+
+()
+
+If the optimality conditions do not hold, the algorithm decomposes OP and solves
+the smaller QP-problem arising from this. The decomposition assures that this will lead
+to progress in the objective function W ((cid:11)), if the working set B ful(cid:12)lls some minimum
+requirements (see Osuna et al. [		b]). In particular, OP is decomposed by separating
+the variables in the working set B from those which are (cid:12)xed (N ). Lets assume (cid:11), y,
+and Q are properly arranged with respect to B and N , so that
+
+(cid:11) = (cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:11)B
+
+(cid:11)N
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+yB
+yN
+
+y = (cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+QBB QBN
+QN B QN N
+
+Q = (cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+Since Q is symmetric (in particular QBN = QT
+
+N B), we can write
+
+(OP) minimize:
+
+T
+W ((cid:11)) = (cid:0)(cid:11)
+B( (cid:0) QBN(cid:11)N) +
+
+
+
+
+(cid:11)
+
+T
+BQBB(cid:11)B +
+
+subject to:
+
+
+
+T
+ByB + (cid:11)
+
+(cid:11)
+
+ (cid:20) (cid:11) (cid:20) C
+
+(cid:11)
+
+T
+N QN N (cid:11)N (cid:0) (cid:11)
+
+T
+N 
+
+T
+NyN = 
+
+()
+
+()
+
+()
+
+()
+
+Since the variables in N are (cid:12)xed, the terms 
+
+
+T
+N  are constant.
+They can be omitted without changing the solution of OP. OP is a positive semide(cid:12)nite
+quadratic programming problem which is small enough be solved by most o(cid:11)-the-shelf
+methods. It is easy to see that changing the (cid:11)i in the working set to the solution of OP
+is the optimal step on B. So fast progress depends heavily on whether the algorithm can
+select good working sets.
+
+(cid:11)
+
+T
+N QN N (cid:11)N and (cid:0)(cid:11)
+
+ Selecting a Good Working Set
+
+When selecting the working set, it is desirable to select a set of variables such that the
+current iteration will make much progress towards the minimum of W ((cid:11)). The following
+proposes a strategy based on Zoutendijks method (see Zoutendijk [	]), which uses a
+(cid:12)rst-order approximation to the target function. The idea is to (cid:12)nd a steepest feasible
+direction d of descent which has only q non-zero elements. The variables corresponding
+to these elements will compose the current working set.
+
+This approach leads to the following optimization problem:
+
+(OP) minimize:
+
+V (d) = g((cid:11)(t))Td
+
+subject to:
+
+yTd = 
+
+di (cid:21) 
+
+di (cid:20) 
+
+for i: (cid:11)i = 
+
+for i: (cid:11)i = C
+
+(cid:0) (cid:20) d (cid:20) 
+
+jfdi : di = gj = q
+
+(	)
+
+()
+
+()
+
+()
+
+()
+
+()
+
+
+
+ SHRINKING: REDUCING THE SIZE OF OP
+
+The objective (	) states that a direction of descent is wanted. A direction of descent
+has a negative dot-product with the vector of partial derivatives g((cid:11)(t)) at the current
+point (cid:11)(t). Constraints (), (), and () ensure that the direction of descent is projected
+along the equality constraint () and obeys the active bound constraints. Constraint ()
+normalizes the descent vector to make the optimization problem well-posed. Finally, the
+last constraint () states that the direction of descent shall only involve q variables. The
+variables with non-zero di are included into the working set B. This way we select the
+working set with the steepest feasible direction of descent.
+
+. Convergence
+
+The selection strategy, the optimality conditions, and the decomposition together specify
+the optimization algorithm. A minimum requirement this algorithm has to ful(cid:12)ll is that
+it
+
+(cid:15) terminates only when the optimal solution is found
+
+(cid:15) if not at the solution, takes a step towards the optimum
+
+The (cid:12)rst requirement can easily be ful(cid:12)lled by checking the (necessary and su(cid:14)cient)
+optimality conditions () to () in each iteration. For the second one, lets assume the
+current (cid:11)(t) is not optimal. Then the selection strategy for the working set returns an
+optimization problem of type OP. Since by construction for this optimization problem
+there exists a d which is a feasible direction for descent, we know using the results of
+Zoutendijk [	] that the current OP is non-optimal. So optimizing OP will lead to a
+lower value of the objective function of OP. Since the solution of OP is also feasible for
+OP and due to the decomposition (), we also get a lower value for OP. This means
+we get a strict descent in the objective function of OP in each iteration.
+
+. How to Solve OP
+
+The solution to OP is easy to compute using a simple strategy. Let !i = yigi((cid:11)(t)) and
+sort all (cid:11)i according to !i in decreasing order. Lets futhermore require that q is an even
+number. Successively pick the q= elements from the top of the list for which  < (cid:11)(t)
+i < C,
+or di = (cid:0)yi obeys () and (). Similarly, pick the q= elements from the bottom of the
+list for which  < (cid:11)(t)
+i < C, or di = yi obeys () and (). These q variables compose the
+working set.
+
+ Shrinking: Reducing the Size of OP
+
+For many tasks the number of SVs is much smaller than the number of training examples.
+If it was known a priori which of the training examples turn out as SVs, it would be
+su(cid:14)cient to train just on those examples and still get to the same result. This would make
+OP smaller and faster to solve, since we could save time and space by not needing parts
+of the Hessian Q which do not correspond to SVs.
+
+Similarly, for noisy problems there are often many SVs with an (cid:11)i at the upper bound
+C. Lets call these support vectors \bounded support vectors" (BSVs). Similar arguments
+
+
+
+as for the non-support vectors apply to BSVs. If it was known a priori which of the training
+examples turn out as BSVs, the corresponding (cid:11)i could be (cid:12)xed at C leading to a new
+optimization problem with fewer variables.
+
+During the optimization process it often becomes clear fairly early that certain ex-
+amples are unlikely to end up as SVs or that they will be BSVs. By eliminating these
+variables from OP, we get a smaller problem OP of size . From OP we can construct
+the solution of OP. Let X denote those indices corresponding to unbounded support vec-
+tors, Y those indexes which correspond to BSVs, and Z the indices of non-support vectors.
+The transformation from OP to OP can be done using a decomposition similar to ().
+Lets assume (cid:11), y, and Q are properly arranged with respect to X, Y , and Z, so that we
+can write
+
+(cid:11) =
+
+(cid:11)X
+
+(cid:11)Y
+
+(cid:11)Z
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+=
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:11)X
+C
+
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+y =
+
+yX
+yY
+yZ
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+QX X QX Y QX Z
+QY X QY Y QY Z
+QZX QZY QZZ
+
+Q =
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+The decomposition of W ((cid:11)) is
+
+minimize:
+
+W ((cid:11)X ) = (cid:0)(cid:11)
+
+T
+X( (cid:0) (QXY) (cid:1) C) +
+
+
+
+
+(cid:11)
+
+T
+XQXX(cid:11)X +
+
+CTQYYC (cid:0) jYjC
+
+
+
+
+subject to:
+
+(cid:11)
+
+T
+
+X yX + CTyY = 
+
+ (cid:20) (cid:11)X (cid:20) C
+
+()
+
+()
+
+()
+
+()
+
+Since 
+
+ CTQYYC (cid:0) jYjC is constant, it can be dropped without changing the
+solution. So far it is not clear how the algorithm can identify which examples can be
+eliminated.
+It is desirable to (cid:12)nd conditions which indicate early in the optimization
+process that certain variables will end up at a bound. Since su(cid:14)cient conditions are not
+known, a heuristic approach based on Lagrange multiplier estimates is used.
+
+At the solution, the Lagrange multiplier of a bound constraint indicates, how much
+the variable \pushes" against that constraint. A strictly positive value of a Lagrange
+multiplier of a bound constraint indicates that the variable is optimal at that bound. At
+non-optimal points, an estimate of the Lagrange multiplier can be used. Let A be the
+current set of (cid:11)i ful(cid:12)lling  < (cid:11)i < C. By solving () for (cid:21)eq and averaging over all (cid:11)i in
+A, we get the estimate (	) for (cid:21)eq.
+
+(cid:21)eq =
+
+
+jAj X
+
+iA
+
+
+
+
+yi (cid:0)
+
+
+
+X
+
+j=
+
+(cid:11)jyj k(xi; xj)
+
+
+
+
+(	)
+
+Note the equivalence of (cid:21)eq and the threshold b in the decision function. Since variables
+(cid:11)i cannot be both at the upper and the lower bound simultanously, the multipliers of the
+bound constraints can now be estimated by
+
+(cid:21)lo
+
+i = yi
+
+
+@
+
+
+
+
+
+
+X
+
+j=
+
+(cid:11)jyj k(xi; xj)
+
+
+
+
++ (cid:21)eq
+
+A (cid:0) 
+
+()
+
+
+
+ EFFICIENT IMPLEMENTATION
+
+for the lower bounds and by
+
+(cid:21)up
+i = (cid:0)yi
+
+
+@
+
+
+
+
+
+
+X
+
+j=
+
+(cid:11)j yjk(xi; xj)
+
+
+
+ + (cid:21)eq
+
+A + 
+
+()
+
+for the upper bounds. Lets consider the history of the Lagrange multiplier estimates over
+the last h iterations. If the estimate () or () was positive (or above some threshold)
+at each of the last h iterations, it is likely that this will be true at the optimal solution,
+too. These variables are eliminated using the decomposition from above. This means
+that these variables are (cid:12)xed and neither the gradient, nor the optimality conditions are
+computed. This leads to a substantial reduction in the number of kernel evaluations.
+
+Since this heuristic can fail, the optimality conditions for the excluded variables are
+checked after convergence of OP. If necessary, the full problem is reoptimized starting
+from the solution of OP.
+
+ E(cid:14)cient Implementation
+
+While the previous sections dealt with algorithmic issues, there are still a lot of open
+questions to be answered before having an e(cid:14)cient implementation. This section addresses
+these implementational issues.
+
+. Termination Criteria
+
+There are two obvious ways to de(cid:12)ne termination criteria which (cid:12)t nicely into the algo-
+rithmic framework presented above. First, the solution of OP can be used to de(cid:12)ne a
+necessary and su(cid:14)cient condition for optimality. If (	) equals , OP is solved with the
+current (cid:11)(t) as solution.
+
+SV M lightgoes another way and uses a termination criterion derived from the optimality
+conditions ()-(). Using the same reasoning as for (	)-(), the following conditions
+with (cid:15) =  are equivalent to ()-().
+
+i with  < (cid:11)i < C:
+
+(cid:21)eq
+
+i with (cid:11)i = :
+
+i with (cid:11)i = C:
+
+(cid:0) (cid:15) (cid:20) yi (cid:0) [P
+yi([P
+yi([P
+
+(cid:11)
+
+T y = 
+
+j= (cid:11)jyjk(xi; xj)] (cid:20) (cid:21)eq + (cid:15)
+
+j= (cid:11)jyj k(xi; xj)] + (cid:21)eq) (cid:21)  (cid:0) (cid:15)
+j= (cid:11)jyj k(xi; xj)] + (cid:21)eq) (cid:20)  + (cid:15)
+
+()
+
+()
+
+()
+
+()
+
+The optimality conditions (), (), and () are very natural since they re(cid:13)ect the
+constraints of the primal optimization problem. In practice these conditions need not be
+ful(cid:12)lled with high accuracy. Using a tolerance of (cid:15) = : is acceptable for most tasks.
+Using a higher accuracy did not show improved generalization performance on the tasks
+tried, but lead to considerably longer training time.
+
+. Computing the Gradient and the Termination Criteria E(cid:14)ciently
+
+The e(cid:14)ciency of the optimization algorithm greatly depends on how e(cid:14)ciently the \house-
+keeping" in each iteration can be done. The following quantities are needed in each itera-
+tion.
+
+. What are the Computational Resources Needed in each Iteration?
+
+
+
+(cid:15) The vector of partial derivatives g((cid:11)(t)) for selecting the working set.
+
+(cid:15) The values of the expressions (), (), and () for the termination criterion.
+
+(cid:15) The matrices QBB and QBN for the QP subproblem.
+
+Fortunately, due to the decompositon approach, all these quantities can be computed or
+updated knowing only q rows of the Hessian Q. These q rows correspond to the variables in
+the current working set. The values in these rows are computed directly after the working
+set is selected and they are stored throughout the iteration. It is useful to introduce s(t)
+
+s(t)
+i =
+
+
+
+X
+
+j=
+
+(cid:11)jyjk(xi; xj)
+
+()
+
+Knowing s(t), the gradient () as well as in the termination criteria ()-() can be
+computed very e(cid:14)ciently. When (cid:11)(t(cid:0)) changes to (cid:11)(t) the vector s(t) needs to be updated.
+This can be done e(cid:14)ciently and with su(cid:14)cient accuracy as follows
+
+s(t)
+i = s(t(cid:0))
+
+i
+
++ X
+
+jB
+
+((cid:11)(t)
+
+j (cid:0) (cid:11)(t(cid:0))
+
+j
+
+)yjk(xi; xj)
+
+()
+
+Note that only those rows of Q are needed which correspond to variables in the working
+set. The same is true for QBB and QBN , which are merely subsets of columns from these
+rows.
+
+. What are the Computational Resources Needed in each Iteration?
+
+Most time in each iteration is spent on the kernel evaluations needed to compute the q
+rows of the Hessian. This step has a time complexity of O(qlf ), where f is the maximum
+number of non-zero features in any of the training examples. Using the stored rows of Q,
+updating s(t) is done in time O(ql). Setting up the QP subproblem requires O(ql) as well.
+Also the selection of the next working set, which includes computing the gradient, can be
+done in O(ql).
+
+The highest memory requirements are due to storing the q rows of Q. Here O(ql)
+(cid:13)oating point numbers need to be stored. Besides this, O(q) is needed to store QBB and
+O(l) to store s(t).
+
+. Caching Kernel Evaluations
+
+As pointed out in the last section, the most expensive step in each iteration is the evalua-
+tion of the kernel to compute the q rows of the Hessian Q. Throughout the optimization
+process, eventual support vectors enter the working set multiple times. To avoid recom-
+putation of these rows, SV M lightuses caching. This allows an elegant trade-o(cid:11) between
+memory consumption and training time.
+
+SV M lightuses a least-recently-used caching strategy. When the cache is full, the ele-
+ment which has not been used for the greatest number of iterations, is removed to make
+room for the current row.
+
+Only those columns are computed and cached which correspond to active variables.
+
+After shrinking, the cache is reorganized accordingly.
+
+
+
+ EXPERIMENTS
+
+. How to Solve OP (QP Subproblems)
+
+Currently a primal-dual interior-point solver (see Vanderbei [		]) implemented by A.
+Smola is used to solve the QP subproblems OP. Nevertheless, other optimizers can easily
+be incorporated into SV M lightas well.
+
+ Related Work
+
+The (cid:12)rst approach to splitting large SVM learning problems into a series of smaller op-
+timization tasks was proposed by Boser et al. [		].
+It is known as the \chunking"
+algorithm (see also Kaufman [		]). The algorithm starts with a random subset of the
+data, solves this problem, and iteratively adds examples which violate the optimality con-
+ditions. Osuna et al. [		b] prove formally that this strategy converges to the optimal
+solution. One disadvantage of this algorithm is that it is necessary to solve QP-problems
+scaling with the number of SVs. The decomposition of Osuna et al. [		a], which is used
+in the algorithm presented here, avoids this.
+
+Currently, an approach called Sequential Minimal Optimization (SMO) is explored for
+SVM training (see Platt [		a] and Platt [		b]). It can be seen a special case of the
+algorithm presented in this chapter, allowing only working sets of size . The algorithms
+di(cid:11)er in their working set selection strategies.
+Instead of the steepest feasible descent
+approach presented here, SMO uses a set of heuristics. Nevertheless, these heuristics
+are likely to produce similar decisions in practice. Another di(cid:11)erence is that SMO treats
+linear SVMs in a special way, which produces a great speedup for training linear separators.
+Although possible, this is not implemented in SV M light. On the other hand, SV M lightuses
+caching, which could be a valuable addition to SMO.
+
+ Experiments
+
+The following experiments evaluate the approach on four datasets. The experiments are
+conducted on a SPARC Ultra/Mhz with MB of RAM running Solaris II. If not
+stated otherwise, in the following experiments the cache size is  megabytes, the number
+of iterations h for the shrinking heuristic is , and OP is solved up to a precision of
+(cid:15) = : in ()-().
+
+. How does Training Time Scale with the Number of Training Exam-
+
+ples?
+
+..
+
+Income Prediction
+
+This task was compiled by John Platt (see Platt [		a]) from the UCI \adult" data set.
+The goal is to predict whether a household has an income greater than $,. After
+discretization of the continuous attributes, there are  binary features. On average,
+there are (cid:25) non-zero attributes per example.
+
+Table  and the left graph in (cid:12)gure  show training times for an RBF-kernel
+
+k(x; y) = exp (cid:16)(cid:0)kx (cid:0) yk
+
+=( (cid:27))(cid:17) ;
+
+()
+
+. How does Training Time Scale with the Number of Training Examples?
+
+
+
+with (cid:27) =  and C = . The results for SMO and Chunking are taken from Platt
+[		a]. When comparing absolute training times, one should keep in mind that SMO and
+Chunking were run on a faster computer (Mhz Pentium II).
+
+Examples SV M light
+.
+.
+.
+.
+.
+.
+.
+.
+.
+.
+
+
+
+
+
+
+
+
+	
+
+Scaling
+
+SMO Chunking Minimum total SV
+.
+	
+
+.
+	
+.
+
+.
+.
+
+
+.
+	
+.
+
+.
+	.
+
+.
+
+.
+.
+.
+.
+.
+	.
+N/A
+N/A
+N/A
+.
+
+.
+.
+.
+.
+.
+.
+.
+.
+	.
+.
+
+BSV
+
+
+
+
+
+
+	
+
+
+
+Table : Training times and number of SVs for the income prediction data.
+
+Both SV M lightand SMO are substantially faster than the conventional chunking algo-
+rithm, whereas SV M lightis about twice as fast as SMO. The best working set size is q = .
+By (cid:12)tting lines to the log-log plot we get an empirical scaling of : for both SV M lightand
+SMO. The scaling of the chunking algorithm is :	.
+
+The column \minimum" gives a lower bound on the training time. This bound makes
+the conjecture that in the general case any optimization algorithms needs to at least once
+look at the rows of the Hessian Q which correspond to the support vectors. The column
+\minimum" shows the time to compute those rows once (exploiting symmetry). This time
+scales with :, showing the complexity inherent in the classi(cid:12)cation task. For the training
+set sizes considered, SV M lightis both close to this minimum scaling as well as within a
+factor of approximately two in terms of absolute runtime.
+
+.. Classifying Web Pages
+
+The second data set - again compiled by John Platt (see Platt [		a]) - is a text clas-
+si(cid:12)cation problem with a binary representation based on  keyword features. This
+representation is extremely sparse. On average there are only (cid:25) non-zero features per
+example.
+
+Table  shows training times on this data set for an RBF-kernel () with (cid:27) =  and
+C = . Again, the times for SMO and Chunking are taken from Platt [		a]. SV M lightis
+faster than SMO and Chunking on this data set as well, scaling with :. The best working
+set size is q = .
+
+The Pentium II takes only (cid:25)% of the time for running SV M light. Many thanks to John Platt for
+
+the comparison.
+
+
+
+ EXPERIMENTS
+
+Examples SV M light
+.
+.
+.
+.
+.
+.
+.
+.
+.
+
+
+
+	
+
+
+
+	
+	
+Scaling
+
+SMO Chunking Minimum total SV BSV
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		
+
+
+.
+.
+.
+.
+.
+.
+	.
+.
+.
+
+.
+.
+.
+.
+.
+.
+.
+.
+.
+
+.
+.
+.
+.
+.
+.
+.
+.
+.
+
+Table : Training times and number of SVs for the Web data.
+
+s
+d
+n
+o
+c
+e
+s
+
+n
+i
+
+e
+m
+
+i
+t
+-
+
+U
+P
+C
+
+8000
+
+7000
+
+6000
+
+5000
+
+4000
+
+3000
+
+2000
+
+1000
+
+0
+
+0
+
+chunking
+SMO
+SVM-Light
+minimum
+
+chunking
+SMO
+SVM-Light
+minimum
+
+4000
+
+3500
+
+3000
+
+2500
+
+2000
+
+1500
+
+1000
+
+500
+
+s
+d
+n
+o
+c
+e
+s
+
+n
+i
+
+e
+m
+
+i
+t
+-
+
+U
+P
+C
+
+5000
+
+10000
+
+15000
+20000
+Number of examples
+
+25000
+
+30000
+
+35000
+
+0
+
+0
+
+5000
+
+10000
+
+15000
+
+20000
+
+25000
+
+30000
+
+Number of examples
+
+35000
+
+40000
+
+45000
+
+50000
+
+Figure : Training times from tables  (left) and  (right) as graphs.
+
+.. Ohsumed Data Set
+
+The task in this section is a text classi(cid:12)cation problem which uses a di(cid:11)erent represen-
+tation. Support vector machines have shown very good generalisation performance using
+this representation (see Joachims [		]). Documents are represented as high dimensional
+vectors, where each dimension contains a (TFIDF-scaled) count of how often a particular
+word occurs in the document. More details can be found in Joachims [		]. The par-
+ticular task is to learn \Cardiovascular Diseases" category of the Ohsumed dataset. It
+involves the (cid:12)rst  documents from 		 using  features. On average, there are
+(cid:25) non-zero features per example. An RBF-kernel with (cid:27) = :	 and C =  is used.
+
+Table  shows that this tasks involves many SVs which are not at the upper bound.
+Relative to this high number of SVs the cache size is small. To avoid frequent recomputa-
+tions of the same part of the Hessian Q, an additional heuristic is incorporated here. The
+working set is selected with the constraint that at least for half of the selected variables
+the kernel values are already cached. Unlike for the previous tasks, optimum performance
+is achieved with a working set size of q = . For the training set sizes considered here,
+runtime is within a factor of  from the minimum.
+
+. What is the In(cid:13)uence of the Working Set Selection Strategy?
+
+
+
+Examples SV M light Minimum total SV BSV
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Scaling
+
+.
+.
+.
+	.
+.
+
+.
+.
+.
+.
+.
+
+Table : Training time (in minutes) and number of SVs for the Ohsumed data.
+
+.. Dectecting Faces in Images
+
+In this last problem the task is to classify images according to whether they contain a
+human face or not. The data set was collected by Shumeet Baluja. The images consist of
+x pixels of continuous gray values. So the average number of non-zero attributes per
+example is . An RBF-kernel with (cid:27) = : and C =  is used. The working set size is
+q = .
+
+Examples SV M light Minimum total SV BSV
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Scaling
+
+.
+.
+	.
+.
+		.
+.
+
+.
+.
+.
+.
+.
+.
+
+Table : Training time and number of SVs for the face detection data.
+
+Table  shows the training time (in seconds). For this task, the training time is
+very close to the minimum. This shows that the working set selection strategy is very
+well suited for avoiding unnecessary kernel evaluations. The scaling is very close to the
+optimum scaling.
+
+Lets now evaluate, how particular strategies of the algorithm in(cid:13)uence the perfor-
+
+mance.
+
+. What is the In(cid:13)uence of the Working Set Selection Strategy?
+
+The left of (cid:12)gure  shows training time dependent on the size of the working set q for the
+smallest Ohsumed task. The selection strategy from section  (lower curve) is compared
+to a basic strategy similar to that proposed in Osuna et al. [		] (upper curve). In each
+iteration the basic strategy simply replaces half of the working set with variables that
+do not ful(cid:12)ll the optimality conditions. The graph shows that the new selection strategy
+reduces time by a factor of more than .
+
+
+
+ CONCLUSIONS
+
+s
+e
+
+t
+
+i
+
+u
+n
+m
+n
+
+
+
+i
+
+
+e
+m
+
+i
+t
+-
+
+U
+P
+C
+
+90
+
+80
+
+70
+
+60
+
+50
+
+40
+
+30
+
+20
+
+10
+
+0
+
+0
+
+10
+
+20
+
+30
+
+45
+
+40
+
+35
+
+30
+
+25
+
+20
+
+15
+
+10
+
+5
+
+0
+
+0
+
+10
+
+20
+
+30
+
+40
+
+Cache-size in MB
+
+50
+
+60
+
+70
+
+80
+
+s
+e
+
+t
+
+i
+
+u
+n
+m
+n
+
+
+
+i
+
+
+e
+m
+
+i
+t
+-
+
+U
+P
+C
+
+70
+
+80
+
+90
+
+100
+
+40
+
+Size of working set
+
+50
+
+60
+
+Figure : Training time dependent on working set size and cache size for the Ohsumed
+task.
+
+. What is the In(cid:13)uence of Caching?
+
+The curves in the graph on the right hand side of (cid:12)gure  shows that caching has a strong
+impact on training time. The lower curve shows training time (for an RBF-kernel with
+(cid:27) =  and C =  on the 	 examples of the Ohsumed data) dependent on the cache
+size when shrinking is used. With the cache size ranging from  megabytes to  megabytes
+a speedup factor of . is achieved. The speedup generally increases with an increasing
+density of the feature vectors xi.
+
+. What is the In(cid:13)uence of Shrinking?
+
+All experiments above use the shrinking strategy from section . The upper curve in (cid:12)gure
+ (right) shows training time without shrinking. It can be seen that shrinking leads to a
+substantial improvement when the cache is small in relation to the size of the problem.
+The gain generally increases the smaller the fraction of unbounded SVs is compared to
+the number of training examples  (here  unbounded SVs,  BSVs, and a total of
+ examples).
+
+ Conclusions
+
+This chaper presents an improved algorithm for training SVMs on large-scale problems
+and describes its e(cid:14)cient implementation in SV M light. The algorithm is based on a
+decomposition strategy and addresses the problem of selecting the variables for the working
+set in an e(cid:11)ective and e(cid:14)cient way. Furthermore, a technique for \shrinking" the problem
+during the optimization process is introduced. This is found particularly e(cid:11)ective for
+large learning tasks where the fraction of SVs is small compared to the sample size, or
+when many SVs are at the upper bound. The chapter also describes how this algorithm is
+e(cid:14)ciently implemented in SV M light. It has a memory requirement linear in the number of
+training examples and in the number of SVs. Nevertheless, the algorithms can bene(cid:12)t from
+additional storage space, since the caching strategy allows an elegant trade-o(cid:11) between
+training time and memory consumption.
+
+
+
+Acknowledgements
+
+This work was supported by the DFG Collaborative Research Center on Complexity Re-
+duction in Multivariate Data (SFB). Thanks to Alex Smola for letting me use his
+solver. Thanks also to Shumeet Baluja and to John Platt for the data sets.
+

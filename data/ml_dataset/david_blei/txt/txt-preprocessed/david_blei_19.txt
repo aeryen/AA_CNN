@@ -1,0 +1,1086 @@
+1. Introduction. Large collections of documents are readily available on-
+line and widely accessed by diverse communities. As a notable example, schol-
+arly articles are increasingly published in electronic form, and historical archives
+are being scanned and made accessible. The not-for-prot organization JSTOR
+(www.jstor.org) is currently one of the leading providers of journals to the schol-
+arly community. These archives are created by scanning old journals and running
+an optical character recognizer over the pages. JSTOR provides the original scans
+on-line, and uses their noisy version of the text to support keyword search. Since
+the data are largely unstructured and comprise millions of articles spanning cen-
+turies of scholarly work, automated analysis is essential. The development of new
+tools for browsing, searching and allowing the productive use of such archives
+is thus an important technological challenge, and provides new opportunities for
+statistical modeling.
+
+Received March 2007; revised April 2007.
+1Supported in part by NSF Grants IIS-0312814 and IIS-0427206, the DARPA CALO project and
+
+a grant from Google.
+
+Supplementary material and code are available at http://imstat.org/aoas/supplements
+Key words and phrases. Hierarchical models, approximate posterior inference, variational meth-
+
+ods, text analysis.
+
+17
+
+18
+
+D. M. BLEI AND J. D. LAFFERTY
+
+The statistical analysis of documents has a tradition that goes back at least to
+the analysis of the Federalist papers by Mosteller and Wallace [21]. But document
+modeling takes on new dimensions with massive multi-author collections such as
+the large archives that now are being made accessible by JSTOR, Google and other
+enterprises. In this paper we consider topic models of such collections, by which
+we mean latent variable models of documents that exploit the correlations among
+the words and latent semantic themes. Topic models can extract surprisingly inter-
+pretable and useful structure without any explicit understanding of the language
+by computer. In this paper we present the correlated topic model (CTM), which
+explicitly models the correlation between the latent topics in the collection, and
+enables the construction of topic graphs and document browsers that allow a user
+to navigate the collection in a topic-guided manner.
+
+The main application of this model that we present is an analysis of the JS-
+TOR archive for the journal Science. This journal was founded in 1880 by Thomas
+Edison and continues as one of the most inuential scientic journals today. The
+variety of material in the journal, as well as the large number of articles ranging
+over more than 100 years, demonstrates the need for automated methods, and the
+potential for statistical topic models to provide an aid for navigating the collection.
+The correlated topic model builds on the earlier latent Dirichlet allocation
+(LDA) model of Blei, Ng and Jordan [8], which is an instance of a general family of
+mixed membership models for decomposing data into multiple latent components.
+LDA assumes that the words of each document arise from a mixture of topics,
+where each topic is a multinomial over a xed word vocabulary. The topics are
+shared by all documents in the collection, but the topic proportions vary stochasti-
+cally across documents, as they are randomly drawn from a Dirichlet distribution.
+Recent work has used LDA as a building block in more sophisticated topic models,
+such as author-document models [19, 24], abstract-reference models [12] syntax-
+semantics models [16] and image-caption models [6]. The same kind of modeling
+tools have also been used in a variety of nontext settings, such as image process-
+ing [26, 13], recommendation systems [18], the modeling of user proles [14] and
+the modeling of network data [1]. Similar models were independently developed
+for disability survey data [10, 11] and population genetics [22].
+
+In the parlance of the information retrieval literature, LDA is a bag of words
+model. This means that the words of the documents are assumed to be exchange-
+able within them, and Blei, Ng and Jordan [8] motivate LDA from this assumption
+with de Finettis exchangeability theorem. As a consequence, models like LDA
+represent documents as vectors of word counts in a very high dimensional space,
+ignoring the order in which the words appear. While it is important to retain the
+exact sequence of words for reading comprehension, the linguistically simplistic
+exchangeability assumption is essential to efcient algorithms for automatically
+eliciting the broad semantic themes in a collection.
+
+The starting point for our analysis here is a perceived limitation of topic models
+such as LDA: they fail to directly model correlation between topics. In most text
+
+A CORRELATED TOPIC MODEL OF SCIENCE
+
+19
+
+corpora, it is natural to expect that subsets of the underlying latent topics will be
+highly correlated. In Science, for instance, an article about genetics may be likely
+to also be about health and disease, but unlikely to also be about X-ray astronomy.
+For the LDA model, this limitation stems from the independence assumptions im-
+plicit in the Dirichlet distribution on the topic proportions. Under a Dirichlet, the
+components of the proportions vector are nearly independent, which leads to the
+strong and unrealistic modeling assumption that the presence of one topic is not
+correlated with the presence of another. The CTM replaces the Dirichlet by the
+more exible logistic normal distribution, which incorporates a covariance struc-
+ture among the components [4]. This gives a more realistic model of the latent
+topic structure where the presence of one latent topic may be correlated with the
+presence of another.
+
+However, the ability to model correlation between topics sacrices some of the
+computational conveniences that LDA affords. Specically, the conjugacy between
+the multinomial and Dirichlet facilitates straightforward approximate posterior in-
+ference in LDA. That conjugacy is lost when the Dirichlet is replaced with a logis-
+tic normal. Standard simulation techniques such as Gibbs sampling are no longer
+possible, and MetropolisHastings based MCMC sampling is prohibitive due to
+the scale and high dimension of the data.
+
+Thus, we develop a fast variational inference procedure for carrying out approx-
+imate inference with the CTM model. Variational inference [17, 29] trades the un-
+biased estimates of MCMC procedures for potentially biased but computationally
+efcient algorithms whose numerical convergence is easy to assess. Variational
+inference algorithms have been effective in LDA for analyzing large document
+collections [8]. We extend their use to the CTM.
+
+The rest of this paper is organized as follows. We rst present the correlated
+topic model and discuss its underlying modeling assumptions. Then, we present
+an outline of the variational approach to inference (the technical details are col-
+lected in the Appendix) and the variational expectationmaximization procedure
+for parameter estimation. Finally, we analyze the performance of the model on the
+JSTOR Science data. Quantitatively, we show that it gives a better t than LDA, as
+measured by the accuracy of the predictive distributions over held out documents.
+Qualitatively, we present an analysis of all of Science from 19901999, including
+examples of topically related articles found using the inferred latent structure, and
+topic graphs that are constructed from a sparse estimate of the covariance structure
+of the model. The paper concludes with a brief discussion of the results and future
+work that it suggests.
+
+2. The correlated topic model. The correlated topic model (CTM) is a hi-
+erarchical model of document collections. The CTM models the words of each
+document from a mixture model. The mixture components are shared by all doc-
+uments in the collection; the mixture proportions are document-specic random
+
+20
+
+D. M. BLEI AND J. D. LAFFERTY
+
+variables. The CTM allows each document to exhibit multiple topics with differ-
+ent proportions. It can thus capture the heterogeneity in grouped data that exhibit
+multiple latent patterns.
+
+We use the following terminology and notation to describe the data, latent vari-
+ables and parameters in the CTM.
+ Words and documents. The only observable random variables that we consider
+are words that are organized into documents. Let wd,n denote the nth word in
+the dth document, which is an element in a V -term vocabulary. Let wd denote
+the vector of Nd words associated with document d.
+ Topics. A topic  is a distribution over the vocabulary, a point on the V  1
+simplex. The model will contain K topics 1:K .
+ Topic assignments. Each word is each assumed drawn from one of the K topics.
+The topic assignment zd,n is associated with the nth word and dth document.
+ Topic proportions. Finally, each document is associated with a set of topic pro-
+portions  d, which is a point on the K  1 simplex. Thus,  d is a distribution
+over topic indices, and reects the probabilities with which words are drawn
+from each topic in the collection. We will typically consider a natural parame-
+terization of this multinomial  = log(i /K ).
+Specically, the correlated topic model assumes that an N-word document
+arises from the following generative process. Given topics 1:K , a K-vector 
+and a K  K covariance matrix :
+|{, }  N (, ).
+
+1. Draw d
+2. For n  {1, . . . , Nd}:
+(a) Draw topic assignment Zd,n|d from Mult(f (d )).
+(b) Draw word Wd,n|{zd,n, 1:K
+
+} from Mult( zd,n
+
+),
+
+where f () maps a natural parameterization of the topic proportions to the mean
+parameterization,
+
+(1)
+
+(cid:1)
+
+ = f () = exp{}
+i exp{i} .
+
+(Note that  does not index a minimal exponential family. Adding any constant
+to  will result in an identical mean parameter.) This process is illustrated as a
+probabilistic graphical model in Figure 1. (A probabilistic graphical model is a
+graph representation of a family of joint distributions with a graph. Nodes denote
+random variables; edges denote possible dependencies between them.)
+
+The CTM builds on the latent Dirichlet allocation (LDA) model [8]. Latent
+Dirichlet allocation assumes a nearly identical generative process, but one where
+the topic proportions are drawn from a Dirichlet. In LDA and its variants, the
+Dirichlet is a computationally convenient distribution over topic proportions be-
+cause it is conjugate to the topic assignments. But, the Dirichlet assumes near
+
+A CORRELATED TOPIC MODEL OF SCIENCE
+
+21
+
+FIG. 1. Top: Probabilistic graphical model representation of the correlated topic model. The lo-
+gistic normal distribution, used to model the latent topic proportions of a document, can represent
+correlations between topics that are impossible to capture using a Dirichlet. Bottom: Example den-
+sities of the logistic normal on the 2-simplex. From left: diagonal covariance and nonzero-mean,
+negative correlation between topics 1 and 2, positive correlation between topics 1 and 2.
+
+independence of the components of the proportions. In fact, one can simulate a
+draw from a Dirichlet by drawing from K independent Gamma distributions and
+normalizing the resulting vector. (Note that there is slight negative correlation due
+to the constraint that the components sum to one.)
+
+Rather than use a Dirichlet, the CTM draws a real valued random vector from a
+multivariate Gaussian and then maps it to the simplex to obtain a multinomial para-
+meter. This is the dening characteristic of the logistic Normal distribution [24].
+The covariance of the Gaussian induces dependencies between the components of
+the transformed random simplicial vector, allowing for a general pattern of vari-
+ability between its components. The logistic normal was originally studied in the
+context of analyzing observed compositional data, such as the proportions of min-
+erals in geological samples. In the CTM, we use it to model the latent composition
+of topics associated with each document.
+
+The drawback of using the logistic normal is that it is not conjugate to the
+multinomial, which complicates the corresponding approximate posterior infer-
+ence procedure. The advantage, however, is that it provides a more expressive
+document model. The strong independence assumption imposed by the Dirichlet
+is not realistic when analyzing real document collections, where one nds strong
+correlations between the latent topics. For example, a document about geology is
+
+22
+
+D. M. BLEI AND J. D. LAFFERTY
+
+more likely to also be about archeology than genetics. We aim to use the covari-
+ance matrix of the logistic normal to capture such relationships.
+
+In Section 4 we illustrate how the higher order structure given by the covari-
+ance can be used as an exploratory tool for better understanding and navigating
+a large corpus of documents. Moreover, modeling correlation can lead to better
+predictive distributions. In some applications, such as automatic recommendation
+systems, the goal is to predict unseen items conditioned on a set of observations.
+A Dirichlet-based model will predict items based on the latent topics that the obser-
+vations suggest, but the CTM will predict items associated with additional topics
+that are correlated with the conditionally probable topics.
+
+3. Computation with the correlated topic model. We address two com-
+putational problems that arise when using the correlated topic model to analyze
+data. First, given a collection of topics and distribution over topic proportions
+
+{1:K , , }, we estimate the posterior distribution of the latent variables con-
+ditioned on the words of a document p(, z|w, 1:K , , ). This lets us embed
+
+newly observed documents into the low dimensional latent thematic space that the
+model represents. We use a fast variational inference algorithm to approximate this
+posterior, which lets us quickly analyze large document collections under these
+complicated modeling assumptions.
+Second, given a collection of documents {w1, . . . , wD}, we nd maximum like-
+lihood estimates of the topics and the underlying logistic normal distribution un-
+der the modeling assumptions of the CTM. We use a variant of the expectation-
+maximization algorithm, where the E-step is the per-document posterior inference
+problem described above. Furthermore, we seek sparse solutions of the inverse
+covariance matrix between topics, and we adapt (cid:3)1-regularized covariance estima-
+tion [20] for this purpose.
+
+3.1. Posterior inference with variational methods. Given a document w and a
+
+model {1:K , , }, the posterior distribution of the per-document latent variables
+
+is
+
+(2)
+
+p(, z|w, 1:K , , )
+(cid:2)
+p(|, )
+n=1
+
+p(|, )
+
+=
+
+(cid:3)
+
+(cid:2)
+(cid:1)
+n=1 p(zn|)p(wn|zn, 1:K )
+zn=1 p(zn|)p(wn|zn, 1:K ) d
+
+K
+
+N
+
+N
+
+,
+
+which is intractable to compute due to the integral in the denominator, that is, the
+marginal probability of the document that we are conditioning on. There are two
+reasons for this intractability. First, the sum over the K values of zn occurs inside
+the product over words, inducing a combinatorial number of terms. Second, even
+if K N stays within the realm of computational tractability, the distribution of topic
+proportions p(|, ) is not conjugate to the distribution of topic assignments
+p(zn|). Thus, we cannot analytically compute the integrals of each term.
+
+A CORRELATED TOPIC MODEL OF SCIENCE
+
+23
+
+The nonconjugacy further precludes using many of the Monte Carlo Markov
+chain (MCMC) sampling techniques that have been developed for computing with
+Dirichlet-based mixed membership models [10, 15]. These MCMC methods are
+all based on Gibbs sampling, where the conjugacy between the latent variables
+lets us compute coordinate-wise posteriors analytically. To employ MCMC in the
+logistic normal setting considered here, we have to appeal to a tailored Metropolis
+Hastings solution. Such a technique will not enjoy the same convergence properties
+and speed of the Gibbs samplers, which is particularly hindering for the goal of
+analyzing collections that comprise millions of words.
+
+Thus, to approximate this posterior, we appeal to variational methods as a deter-
+ministic alternative to MCMC. The idea behind variational methods is to optimize
+the free parameters of a distribution over the latent variables so that the distrib-
+ution is close in KullbackLeibler divergence to the true posterior [17, 29]. The
+tted variational distribution is then used as a substitute for the posterior, just
+as the empirical distribution of samples is used in MCMC. Variational methods
+have had widespread application in machine learning; their potential in applied
+Bayesian statistics is beginning to be realized.
+
+In models composed of conjugate-exponential family pairs and mixtures, the
+variational inference algorithm can be automatically derived by computing expec-
+tations of natural parameters in the variational distribution [5, 7, 31]. However, the
+nonconjugate pair of variables in the CTM requires that we derive the variational
+inference algorithm from rst principles.
+
+We begin by using Jensens inequality to bound the log probability of a docu-
+
+ment,
+
+(3)
+
+log p(w1:N|, , )
+
+ Eq[log p(|, )] + N(cid:4)
++ N(cid:4)
+
+n=1
+
+Eq[log p(wn|zn, )] + H(q),
+
+n=1
+
+Eq[log p(zn|)]
+
+where the expectation is taken with respect to q, a variational distribution of the
+latent variables, and H(q) denotes the entropy of that distribution. As a variational
+distribution, we use a fully factorized model, where all the variables are indepen-
+dently governed by a different distribution,
+
+(4)
+
+q(1:K , z1:N|1:K , 2
+
+q(i|i , 2
+i )
+
+q(zn|n).
+
+1:K , 1:N ) = K(cid:5)
+
+i=1
+
+N(cid:5)
+
+n=1
+
+The variational distributions of the discrete topic assignments z1:N are specied
+by the K-dimensional multinomial parameters 1:N (these are mean parameters
+of the multinomial). The variational distribution of the continuous variables 1:K
+
+24
+
+D. M. BLEI AND J. D. LAFFERTY
+
+are K independent univariate Gaussians {i , i}. Since the variational parameters
+are t using a single observed document w1:N , there is no advantage in introducing
+a nondiagonal variational covariance matrix.
+
+The variational inference algorithm optimizes equation (3) with respect to the
+variational parameters, thereby tightening the bound on the marginal probability of
+the observations as much as the structure of variational distribution allows. This is
+equivalent to nding the variational distribution that minimizes KL(q||p), where
+p is the true posterior [17, 29]. Details of this optimization for the CTM are given
+in the Appendix.
+
+Note that variational methods do not come with the same theoretical guarantees
+as MCMC, where the limiting distribution of the chain is exactly the posterior of
+interest. However, variational methods provide fast algorithms and a clear conver-
+gence criterion, whereas MCMC methods can be computationally inefcient and
+determining when a Markov chain has converged is difcult [23].
+
+3.2. Parameter estimation. Given a collection of documents, we carry out pa-
+rameter estimation for the correlated topic model by attempting to maximize the
+likelihood of a corpus of documents as a function of the topics 1:K and the mul-
+tivariate Gaussian (, ).
+
+As in many latent variable models, we cannot compute the marginal likelihood
+of the data because of the latent structure that needs to be marginalized out. To ad-
+dress this issue, we use variational expectationmaximization (EM). In the E-step
+of traditional EM, one computes the posterior distribution of the latent variables
+given the data and current model parameters. In variational EM, we use the varia-
+tional approximation to the posterior described in the previous section. Note that
+this is akin to Monte Carlo EM, where the E-step is approximated by a Monte
+Carlo approximation to the posterior [30].
+given by summing equation (3) over the document collection {w1, . . . , wD},
+[log p(d , zd , wd|, , 1:K )] + H(qd ).
+
+Specically, the objective function of variational EM is the likelihood bound
+
+; w1:D)  D(cid:4)
+
+L(, , 1:K
+
+Eqd
+
+d=1
+
+The variational EM algorithm is coordinate ascent in this objective function. In
+the E-step, we maximize the bound with respect to the variational parameters by
+performing variational inference for each document. In the M-step, we maximize
+the bound with respect to the model parameters. This amounts to maximum likeli-
+hood estimation of the topics and multivariate Gaussian using expected sufcient
+statistics, where the expectation is taken with respect to the variational distribu-
+tions computed in the E-step,
+
+d,ind ,
+
+(cid:6)
+
+ i
+
+(cid:4)
+
+d
+
+A CORRELATED TOPIC MODEL OF SCIENCE
+
+25
+
+(cid:6) = 1
+(cid:6) = 1
+
+D
+
+D
+
+(cid:4)
+(cid:4)
+
+d
+
+d
+
+d ,
+
+I 2
+d
+
++ (d (cid:6))(d (cid:6))T ,
+
+where nd is the vector of word counts for document d.
+
+The E-step and M-step are repeated until the bound on the likelihood con-
+verges. In the analysis reported below, we run variational inference until the rel-
+ative change in the probability bound of equation (3) is less than 0.0001%, and
+run variational EM until the relative change in the likelihood bound is less than
+0.001%.
+
+3.3. Topic graphs. As seen below, the ability of the CTM to model the corre-
+lation between topics yields a better t of a document collection than LDA. But
+the covariance of the logistic normal model for topic proportions can also be used
+to visualize the relationships among the topics. In particular, the covariance matrix
+can be used to form a topic graph, where the nodes represent individual topics, and
+neighboring nodes represent highly related topics. In such settings, it is useful to
+have a mechanism to control the sparsity of the graph.
+
+Recall that the graph encoding the independence relations in a Gaussian graph-
+ical model is specied by the zero pattern in the inverse covariance matrix. More
+precisely, if X  N (, ) is a K-dimensional multivariate Gaussian, and S = 
+1
+denotes the inverse covariance matrix, then we form a graph G() = (V , E) with
+vertices V corresponding to the random variables X1, . . . , XK and edges E satis-
+fying (s, t )  E if and only if Sst (cid:5)= 0. If N (s) = {t : (s, t )  E} denotes the set of
+neighbors of s in the graph, then the independence relation Xs  Xu|XN (s) holds
+for any node u / N (s) that is not a neighbor of s.
+
+Recent work of Meinshausen and Bhlmann [20] shows how the lasso [28] can
+be adapted to give an asymptotically consistent estimator of the graph G(). The
+strategy is to regress each variable Xs onto all of the other variables, imposing an
+(cid:3)1 penalty on the parameters to encourage sparsity. The nonzero components then
+serve as an estimate of the neighbors of s in the graph.
+In more detail, let  s = (s1, . . . , sK )  RK be the parameters of the lasso t
+obtained by regressing Xs onto (Xt )t(cid:5)=s, with the parameter ss serving as the
+unregularized intercept. The optimization problem is
+
+(cid:7)Xs  X\s s(cid:7)2
+
++ n(cid:7)\s(cid:7)1,
+
+1
+2
+
+(5)
+where X\s denotes the set of variables with Xs replaced by the vector of all 1s,
+and \s denotes the vector  s with component ss removed. The estimated set of
+neighbors is then
+
+2
+
+
+
+(cid:6) s = arg min
+
+(6)
+
+(cid:7)N (s) = {t :(cid:6)st (cid:5)= 0}.
+
+26
+
+D. M. BLEI AND J. D. LAFFERTY
+
+(cid:7)N (s) = N (s))  1 as the sample
+Meinshausen and Bhlmann [20] show that P(
+size n increases, for a suitable choice of the regularization parameter n satisfying
+log(K)  . Moreover, the convergence is exponentially fast, and as a con-
+n2
+sequence, if K = O(nd ) grows only polynomially with sample size, the estimated
+n
+graph is the true graph with probability approaching one.
+
+To adapt the MeinshausenBhlmann technique to the CTM, recall that we es-
+timate the covariance matrix  using variational EM, where in the M-step we
+maximize the variational lower bound with respect to approximation computed in
+the E-step. For a given document d, the variational approximation to the posterior
+of  is a normal with mean d  RK . We treat the standardized mean vectors {d}
+as data, and regress each component onto the others with an (cid:3)1 penalty. Two simple
+procedures can be used to then form the graph edge set, by taking the conjunction
+or disjunction of the local neighborhood estimates:
+
+(s, t )  EAND
+(s, t )  EOR
+
+in case t  (cid:7)N (s) and s  (cid:7)N (t ),
+in case t  (cid:7)N (s) or s  (cid:7)N (t ).
+
+(7)
+
+(8)
+
+Figure 2 shows an example of a topic graph constructed using this method,
+with edges EAND formed by intersecting the neighborhood estimates. Varying the
+regularization parameter n allows control over the sparsity of the graph; the graph
+becomes increasingly sparse as n increases.
+
+4. Analyzing Science.
+
+JSTOR is an on-line archive of scholarly journals that
+scans bound volumes dating back to the 1600s and runs optical character recogni-
+tion algorithms on the scans. Thus, JSTOR stores and indexes hundreds of millions
+of pages of noisy text, all searchable through the Internet. This is an invaluable re-
+source to scholars.
+
+The JSTOR collection provides an opportunity for developing exploratory
+analysis and useful descriptive statistics of large volumes of text data. As they are,
+the articles are organized by journal, volume and number. But the users of JSTOR
+would benet from a topical organization of articles from different journals and
+automatic recommendations of similar articles to those known to be of interest.
+
+In some modern electronic scholarly archives, such as the ArXiv (http://www.
+arxiv.org/), contributors provide meta-data with their manuscripts that describe and
+categorize their work to aid in such a topical exploration of the collection. In many
+text data sets, however, meta-data is unavailable. Moreover, there may be under-
+lying topics and connections between articles that the authors or curators have not
+determined. To these ends, we analyzed a large portion of JSTORs corpus of arti-
+cles from Science with the CTM.
+
+4.1. Qualitative analysis of Science.
+
+In this section we illustrate the possible
+applications of the CTM to automatic corpus analysis and browsing. We estimated
+a 100-topic model on the Science articles from 1990 to 1999 using the variational
+
+A
+C
+O
+R
+R
+E
+L
+A
+T
+E
+D
+T
+O
+P
+I
+C
+M
+O
+D
+E
+L
+O
+F
+S
+C
+I
+E
+N
+C
+E
+
+2
+7
+
+FIG. 2. A portion of the topic graph learned from 16,351 OCR articles from Science (19901999). Each topic node is labeled with its ve most
+probable phrases and has font proportional to its popularity in the corpus. (Phrases are found by permutation test.) The full model can be found in
+http://www.cs.cmu.edu/~lemur/science/ and on STATLIB.
+
+28
+
+D. M. BLEI AND J. D. LAFFERTY
+
+EM algorithm of Section 3.2. (C code that implements this algorithm can be found
+at the rst authors web-site and STATLIB.) The total vocabulary size in this col-
+lection is 375,144 terms. We trim the 356,195 terms that occurred fewer than 70
+times as well as 296 stop words, that is, words like the, but or with, which
+do not convey meaning. This yields a corpus of 16,351 documents, 19,088 unique
+terms and a total of 5.7M words.
+Using the technique described in Section 3.3, we constructed a sparse graph
+( = 0.1) of the connections between the estimated latent topics. Part of this graph
+is illustrated in Figure 2. (For space, we manually removed topics that occurred
+very rarely and those that captured nontopical content such as front matter.) This
+graph provides a snapshot of ten years of Science, and reveals different substruc-
+tures of themes in the collection. A user interested in the brain can restrict attention
+to articles that use the neuroscience topics; a user interested in genetics can restrict
+attention to those articles in the cluster of genetics topics.
+
+Further structure is revealed at the document level, where each document is as-
+sociated with a latent vector of topic proportions. The posterior distribution of the
+proportions can be used to associate documents with latent topics. For example, the
+following are the top ve articles associated with the topic whose most probable
+vocabulary items are laser, optical, light, electron, quantum:
+
+1. Vacuum Squeezing of Solids: Macroscopic Quantum States Driven by
+
+Light Pulses (1997).
+
+2. Superradiant Rayleigh Scattering from a BoseEinstein Condensate
+
+(1999).
+
+3. Physics and Device Applications of Optical Microcavities (1992).
+4. Photon Number Squeezed States in Semiconductor Lasers (1992).
+5. A Well-Collimated Quasi-Continuous Atom Laser (1999).
+
+Moreover, we can use the expected distance between per-document topic pro-
+portions to identify other documents that have similar topical content. We use the
+expected Hellinger distance, which is a symmetric distance between distributions.
+Consider two documents i and j ,
+E[d( i ,  j )] = Eq
+
+j k
+
+(cid:8)(cid:4)
+(cid:9)(cid:10)
+ik 
+(cid:4)
+(cid:14)(cid:10)
+
+k
+
+(cid:11)
+(cid:15)
+
+Eq
+
+ik
+
+Eq
+
+(cid:13)
+(cid:12)2
+(cid:16)
+j k(cid:10)
+
+j k
+
+(cid:17)
+
+,
+
+= 2  2
+
+k
+
+where all expectations are taken with respect to the variational posterior distri-
+butions (see Section 3.1). One example of this application of the latent variable
+analysis is illustrated in Figure 3.
+
+The interested reader is invited to visit http://www.cs.cmu.edu/~lemur/science/
+to interactively explore this model, including the topics, their connections, the ar-
+ticles that exhibit them and the expected Hellinger similarity between articles.
+
+A CORRELATED TOPIC MODEL OF SCIENCE
+
+29
+
+FIG. 3. Using the Hellinger distance to nd similar articles to the query article Earths Solid
+Iron Core May Skew Its Magnetic Field. Illustrated are the top three articles by Hellinger distance
+to the query article and the expected posterior topic proportions for each article. Notice that each
+document somehow combines geology and physics.
+
+4.2. Quantitative comparison to latent Dirichlet allocation. We compared the
+logistic normal to the Dirichlet by tting a smaller collection of articles to CTM
+and LDA models of varying numbers of topics. This collection contains the 1,452
+documents from 1960; we used a vocabulary of 5,612 words after pruning common
+function words and terms that occur once in the collection. Using ten-fold cross
+validation, we computed the log probability of the held-out data given a model
+estimated from the remaining data. A better model of the document collection will
+assign higher probability to the held out data. To avoid comparing bounds, we used
+
+30
+
+D. M. BLEI AND J. D. LAFFERTY
+
+FIG. 4.
+(Left) The 10-fold cross-validated held-out log probability of the 1960 Science corpus,
+computed by importance sampling. The CTM supports more topics than LDA. See gure at right for
+the standard error of the difference. (Right) The mean difference in held-out log probability. Numbers
+greater than zero indicate a better t by the CTM.
+
+importance sampling to compute the log probability of a document where the tted
+variational distribution is the proposal.
+
+Figure 4 illustrates the average held out log probability for each model and
+the average difference between them. The CTM provides a better t than LDA
+and supports more topics; the likelihood for LDA peaks near 30 topics, while the
+likelihood for the CTM peaks close to 90 topics. The means and standard errors of
+the difference in log-likelihood of the models is shown at right; this indicates that
+the CTM always gives a better t.
+
+Another quantitative evaluation of the relative strengths of LDA and the CTM
+is how well the models predict the remaining words of a document after observing
+a portion of it. Specically, we observe P words from a document and are in-
+terested in which model provides a better predictive distribution of the remaining
+words p(w|w1:P ). To compare these distributions, we use perplexity, which can be
+thought of as the effective number of equally likely words according to the model.
+Mathematically, the perplexity of a word distribution is dened as the inverse of
+(cid:1)
+the per-word geometric average of the probability of the observations,
+d=1(NdP ))
+
+(cid:19)1/(
+
+D
+
+,
+
+(cid:18)
+
+D(cid:5)
+
+Nd(cid:5)
+
+d=1
+
+i=P+1
+
+Perp() =
+
+p(wi|, w1:P )
+
+where  denotes the model parameters of an LDA or CTM model. Note that lower
+numbers denote more predictive power.
+
+The plot in Figure 5 compares the predictive perplexity under LDA and the
+CTM for different numbers of words randomly observed from the documents.
+
+A CORRELATED TOPIC MODEL OF SCIENCE
+
+31
+
+FIG. 5.
+(Left) The 10-fold cross-validated predictive perplexity for partially observed held-out doc-
+uments from the 1960 Science corpus (K = 50). Lower numbers indicate more predictive power from
+the CTM. (Right) The mean difference in predictive perplexity. Numbers less than zero indicate better
+prediction from the CTM.
+
+When a small number of words have been observed, there is less uncertainty about
+the remaining words under the CTM than under LDAthe perplexity is reduced
+by nearly 200 words, or roughly 10%. The reason is that after seeing a few words
+in one topic, the CTM uses topic correlation to infer that words in a related topic
+may also be probable. In contrast, LDA cannot predict the remaining words as well
+until a large portion of the document has been observed so that all of its topics are
+represented.
+
+5. Summary. We have developed a hierarchical topic model of documents
+that replaces the Dirichlet distribution of per-document topic proportions with a
+logistic normal. This allows the model to capture correlations between the occur-
+rence of latent topics. The resulting correlated topic model gives better predictive
+performance and uncovers interesting descriptive statistics for facilitating brows-
+ing and search. Use of the logistic normal, while more complex, may have benet
+in the many applications of Dirichlet-based mixed membership models.
+
+One issue that we did not thoroughly explore is model selection, that is, choos-
+ing the number of topics for a collection. In other topic models, nonparamet-
+ric Bayesian methods based on the Dirichlet process are a natural suite of tools
+because they can accommodate new topics as more documents are observed.
+(The nonparametric Bayesian version of LDA is exactly the hierarchical Dirich-
+let process [27].) The logistic normal, however, does not immediately give way to
+such extensions. Tackling the model selection issue in this setting is an important
+area of future research.
+
+32
+
+D. M. BLEI AND J. D. LAFFERTY
+
+APPENDIX: DETAILS OF VARIATIONAL INFERENCE
+
+Variational objective. Before deriving the optimization procedure, we put the
+objective function equation (3) in terms of the variational parameters. The rst
+term is
+
+Eq[log p(|, )]
+log|
+
+log 2  1
+2
+
+= 1
+2
+Eq[(  )T 
+
+1|  K
+2
+1(  )]
+
+= Tr(diag(2)
+
+Eq[(  )T 
+
+1(  )],
+
+(9)
+
+where
+
+(10)
+
+(11)
+
+1) + (  )T 
+(cid:18)
+
+(cid:8)
+
+log
+
+The nonconjugacy of the logistic normal to multinomial leads to difculty in
+computing the second term of equation (3), the expected log probability of a topic
+assignment
+
+Eq[log p(zn|)] = Eq[T zn]  Eq
+(cid:18)
+(cid:8)
+
+To preserve the lower bound on the log probability, we upper bound the negative
+log normalizer with a Taylor expansion:
+1
+
+K(cid:4)
+
+(cid:18)
+K(cid:4)
+
+(cid:19)(cid:13)
+exp{i}
+
+ 1 + log( ),
+
+Eq[exp{i}]
+
+ 
+
+(12)
+
+log
+
+Eq
+
+1(  ).
+(cid:19)(cid:13)
+exp{i}
+(cid:19)
+
+K(cid:4)
+
+i=1
+
+.
+
+i=1
+
+i=1
+
+i
+
+(13)
+
+Using this additional bound, the second term of equation (3) is
+
+Eq[log p(zn|)] = K(cid:4)
+
+where we have introduced a new variational parameter  . The expectation
+Eq[exp{i}] is the mean of a log normal distribution with mean and variance ob-
+i /2} for
+}: Eq[exp{i}] = exp{i + 2
+tained from the variational parameters {i , 2
+i  {1, . . . , K}. This is a simpler approach than the more exible, but more com-
+(cid:18)
+putationally intensive, method taken in [25].
+K(cid:4)
+Eq[log p(wn|zn, )] = K(cid:4)
++ log 2 + 1)  N(cid:4)
+
+The fourth term is the entropy of the variational distribution:
+
+The third term of equation (3) is
+
+(cid:19)
+i /2}
+
+exp{i + 2
+
++ 1  log .
+
+i n,i  
+
+n,i log i,wn .
+
+K(cid:4)
+
+k(cid:4)
+
+n,i log n,i .
+
+i=1
+
+i=1
+
+i=1
+
+(14)
+
+(15)
+
+1
+
+2 (log 2
+1
+
+i
+
+i=1
+
+n=1
+
+i=1
+
+A CORRELATED TOPIC MODEL OF SCIENCE
+
+33
+
+Note that the additional variational parameter  is not needed to compute this
+entropy.
+
+Coordinate ascent optimization. Finally, we maximize the bound in equa-
+tion (3) with respect to the variational parameters 1:K , 1:K , 1:N and  . We
+use a coordinate ascent algorithm, iteratively maximizing the bound with respect
+to each parameter.
+
+First, we maximize equation (3) with respect to  , using the second bound in
+
+equation (12). The derivative with respect to  is
+exp{i + 2
+
+( ) = N
+
+(16)
+
+f
+
+(cid:11)
+
+(cid:19)
+i /2}
+
+(cid:19)
+
+ 
+
+1
+
+,
+
+(cid:18)
+
+(cid:18)
+
+
+
+2
+
+K(cid:4)
+ = K(cid:4)
+(cid:6)
+
+i=1
+
+i=1
+
+which has a maximum at
+
+(17)
+
+exp{i + 2
+
+i /2}.
+
+Second, we maximize with respect to n. This yields a maximum at
+(18)
+
+i  {1, . . . , K},
+
+(cid:6)
+n,i  exp{i}i,wn ,
+
+which is an application of variational inference updates within the exponential
+family [5, 7, 31].
+
+Third, we maximize with respect to i. Equation (3) is not amenable to analytic
+
+(19)
+
+1(  ) + N(cid:4)
+
+dL/d = 
+
+maximization. We use the conjugate gradient algorithm with derivative
+n,1:K  (N/ ) exp{ + 2/2}.
+
+n=1
+Finally, we maximize with respect to 2
+use Newtons method for each coordinate with the constraint that i > 0,
+(20)
+
+ii /2  N/2 exp{i + 2
+1
+
+i /2} + 1/(22
+
+= 
+
+dL/d2
+i
+
+i ).
+
+i . Again, there is no analytic solution. We
+
+Iterating between the optimizations of , ,  and  denes a coordinate ascent
+algorithm on equation (3). (In practice, we optimize with respect to  in between
+optimizations for ,  and .) Though each coordinates optimization is convex,
+the variational objective is not convex with respect to the ensemble of variational
+parameters. We are only guaranteed to nd a local maximum, but note that this is
+still a bound on the log probability of a document.
+
+Acknowledgments. We thank two anonymous reviewers for their excellent
+suggestions for improving the paper. We thank JSTOR for providing access to
+journal material in the JSTOR archive. We thank Jon McAuliffe and Nathan Srebro
+for useful discussions and comments. A preliminary version of this work appears
+in [9].
+
+34
+
+D. M. BLEI AND J. D. LAFFERTY
+

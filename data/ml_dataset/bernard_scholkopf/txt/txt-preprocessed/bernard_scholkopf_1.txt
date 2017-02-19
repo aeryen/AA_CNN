@@ -1,0 +1,1032 @@
+Abstract
+
+We consider the scenario where training and test data are drawn from different
+distributions, commonly referred to as sample selection bias. Most algorithms
+for this setting try to rst recover sampling distributions and then make appro-
+priate corrections based on the distribution estimate. We present a nonparametric
+method which directly produces resampling weights without distribution estima-
+tion. Our method works by matching distributions between training and testing
+sets in feature space. Experimental results demonstrate that our method works
+well in practice.
+
+1 Introduction
+
+The default assumption in many learning scenarios is that training and test data are independently
+and identically (iid) drawn from the same distribution. When the distributions on training and test
+set do not match, we are facing sample selection bias or covariate shift. Specically, given a domain
+of patterns X and labels Y, we obtain training samples Z = {(x1, y1), . . . , (xm, ym)}  X Y from
+a Borel probability distribution Pr(x, y), and test samples Z = {(x1, y1), . . . , (xm , ym)}  X Y
+drawn from another such distribution Pr(x, y).
+Although there exists previous work addressing this problem [2, 5, 8, 9, 12, 16, 20], sample selection
+bias is typically ignored in standard estimation algorithms. Nonetheless, in reality the problem
+occurs rather frequently : While the available data have been collected in a biased manner, the test is
+usually performed over a more general target population. Below, we give two examples; but similar
+situations occur in many other domains.
+1. Suppose we wish to generate a model to diagnose breast cancer. Suppose, moreover, that most
+women who participate in the breast screening test are middle-aged and likely to have attended the
+screening in the preceding 3 years. Consequently our sample includes mostly older women and
+those who have low risk of breast cancer because they have been tested before. The examples do not
+reect the general population with respect to age (which amounts to a bias in Pr(x)) and they only
+contain very few diseased cases (i.e. a bias in Pr(y|x)).
+2. Gene expression prole studies using DNA microarrays are used in tumor diagnosis. A common
+problem is that the samples are obtained using certain protocols, microarray platforms and analysis
+techniques. In addition, they typically have small sample sizes. The test cases are recorded under
+different conditions, resulting in a different distribution of gene expression values.
+
+In this paper, we utilize the availability of unlabeled data to direct a sample selection de-biasing
+procedure for various learning methods. Unlike previous work we infer the resampling weight di-
+rectly by distribution matching between training and testing sets in feature space in a non-parametric
+
+manner. We do not require the estimation of biased densities or selection probabilities [20, 2, 12], or
+the assumption that probabilities of the different classes are known [8]. Rather, we account for the
+difference between Pr(x, y) and Pr(x, y) by reweighting the training points such that the means
+of the training and test points in a reproducing kernel Hilbert space (RKHS) are close. We call this
+reweighting process kernel mean matching (KMM). When the RKHS is universal [14], the popula-
+tion solution to this miminisation is exactly the ratio Pr(x, y)/ Pr(x, y); however, we also derive a
+cautionary result, which states that even granted this ideal population reweighting, the convergence
+of the empirical means in the RKHS depends on an upper bound on the ratio of distributions (but
+not on the dimension of the space), and will be extremely slow if this ratio is large.
+
+The required optimisation is a simple QP problem, and the reweighted sample can be incorpo-
+rated straightforwardly into several different regression and classication algorithms. We apply our
+method to a variety of regression and classication benchmarks from UCI and elsewhere, as well as
+to classication of microarrays from prostate and breast cancer patients. These experiments demon-
+strate that KMM greatly improves learning performance compared with training on unweighted data,
+and that our reweighting scheme can in some cases outperform reweighting using the true sample
+bias distribution.
+Key Assumption 1: In general, the estimation problem with two different distributions Pr(x, y)
+and Pr(x, y) is unsolvable, as the two terms could be arbitrarily far apart. In particular, for arbi-
+trary Pr(y|x) and Pr(y|x), there is no way we could infer a good estimator based on the training
+sample. Hence we make the simplifying assumption that Pr(x, y) and Pr(x, y) only differ via
+Pr(x, y) = Pr(y|x) Pr(x) and Pr(y|x) Pr(x). In other words, the conditional probabilities of y|x
+remain unchanged (this particular case of sample selection bias has been termed covariate shift
+[12]). However, we will see experimentally that even in situations where our key assumption is not
+valid, our method can nonetheless perform well (see Section 4).
+
+2 Sample Reweighting
+
+We begin by stating the problem of regularized risk minimization. In general a learning method
+minimizes the expected risk
+
+R[Pr, , l(x, y, )] = E(x,y)Pr [l(x, y, )]
+
+(1)
+
+of a loss function l(x, y, ) that depends on a parameter . For instance, the loss function could
+be the negative log-likelihood  log Pr(y|x, ), a misclassication loss, or some form of regression
+loss. However, since typically we only observe examples (x, y) drawn from Pr(x, y) rather than
+Pr(x, y), we resort to computing the empirical average
+1
+m
+
+Remp[Z, , l(x, y, )] =
+
+l(xi, yi, ).
+
+X
+
+(2)
+
+m
+
+i=1
+
+To avoid overtting, instead of minimizing Remp directly we often minimize a regularized variant
+Rreg[Z, , l(x, y, )] := Remp[Z, , l(x, y, )] + [], where [] is a regularizer.
+
+2.1 Sample Correction
+
+The problem is more involved if Pr(x, y) and Pr(x, y) are different. The training set is drawn from
+Pr, however what we would really like is to minimize R[Pr, , l] as we wish to generalize to test
+examples drawn from Pr. An observation from the eld of importance sampling is that
+l(x, y, )i
+
+R[Pr , , l(x, y, )] = E(x,y)Pr [l(x, y, )] = E(x,y)Prh Pr(x,y)
+| {z }
+
+= R[Pr, , (x, y)l(x, y, )],
+
+:=(x,y)
+
+Pr(x,y)
+
+(3)
+
+(4)
+
+provided that the support of Pr is contained in the support of Pr. Given (x, y), we can thus
+compute the risk with respect to Pr using Pr. Similarly, we can estimate the risk with respect to
+Pr by computing Remp[Z, , (x, y)l(x, y, )].
+The key problem is that the coefcients (x, y) are usually unknown, and we need to estimate them
+from the data. When Pr and Pr differ only in Pr(x) and Pr(x), we have (x, y) = Pr(x)/Pr(x),
+where  is a reweighting factor for the training examples. We thus reweight every observation
+
+(x, y) such that observations that are under-represented in Pr obtain a higher weight, whereas over-
+represented cases are downweighted.
+Now we could estimate Pr and Pr and subsequently compute  based on those estimates. This is
+closely related to the methods in [20, 8], as they have to either estimate the selection probabilities
+or have prior knowledge of the class distributions. Although intuitive, this approach has two major
+problems: rst, it only works whenever the density estimates for Pr and Pr(or potentially, the se-
+lection probabilities or class distributions) are good. In particular, small errors in estimating Pr can
+lead to large coefcients  and consequently to a serious overweighting of the corresponding obser-
+vations. Second, estimating both densities just for the purpose of computing reweighting coefcients
+may be overkill: we may be able to directly estimate the coefcients i := (xi, yi) without having
+to estimate the two distributions. Furthermore, we can regularize i directly with more exibility,
+taking prior knowledge into account similar to learning methods for other problems.
+
+2.2 Using the sample reweighting in learning algorithms
+
+Before we describe how we will estimate the reweighting coefcients i, let us briey discuss how
+to minimize the reweighted regularized risk
+
+Rreg[Z, , l(x, y, )] :=
+
+1
+m
+
+m
+
+X
+
+i=1
+
+il(xi, yi, ) + [],
+
+(5)
+
+in the classication and regression settings (an additional classication method is discussed in the
+accompanying technical report [7]).
+Support Vector Classication: Utilizing the setting of [17]we can have the following minimization
+problem (the original SVMs can be formulated in the same way):
+
+minimize
+
+,
+
+1
+2 kk2 + C
+
+m
+
+X
+
+i=1
+
+ii
+
+(6a)
+
+subject to h(xi, yi)  (xi, y), i  1  i/(yi, y) for all y  Y, and i  0.
+
+(6b)
+Here, (x, y) is a feature map from X  Y into a feature space F, where   F and (y, y) denotes
+a discrepancy function between y and y. The dual of (6) is given by
+
+(7a)
+
+(7b)
+
+minimize
+
+
+
+1
+2
+
+m
+
+X
+
+iyjy  k(xi, y, xj, y) 
+
+i,j=1;y,y Y
+
+subject to iy  0 for all i, y and X
+yY
+
+m
+
+iy
+
+X
+i=1;yY
+
+iy/(yi, y)  iC.
+
+Here k(x, y, x, y) := h(x, y), (x, y)i denotes the inner product between the feature maps. This
+generalizes the observation-dependent binary SV classication described in [10]. Modications of
+existing solvers, such as SVMStruct [17], are straightforward.
+Penalized LMS Regression: Assume l(x, y, ) = (y  h(x), i)2 and [] = kk2. Here we
+minimize
+(8)
+
+m
+
+i(yi  h(xi), i)2 + kk2 .
+
+X
+
+i=1
+
+Denote by  the diagonal matrix with diagonal (1, . . . , m) and let K  Rmm be the kernel
+matrix Kij = k(xi, xj). In this case minimizing (8) is equivalent to minimizing (y  K) (y 
+K) + K with respect to . Assuming that K and  have full rank, the minimization yields
+ = ( 1 + K)1y. The advantage of this formulation is that it can be solved as easily as solving
+the standard penalized regression problem. Essentially, we rescale the regularizer depending on the
+pattern weights: the higher the weight of an observation, the less we regularize.
+
+3 Distribution Matching
+
+3.1 Kernel Mean Matching and its relation to importance sampling
+
+Let  : X  F be a map into a feature space F and denote by  : P  F the expectation operator
+
+(Pr) := ExPr(x) [(x)] .
+
+(9)
+
+Clearly  is a linear operator mapping the space of all probability distributions P into feature space.
+Denote by M() := {(Pr) where Pr  P} the image of P under . This set is also often referred
+to as the marginal polytope. We have the following theorem (proved in [7]):
+Theorem 1 The operator  is bijective if F is an RKHS with a universal kernel k(x, x) =
+h(x), (x)i in the sense of Steinwart [15].
+The use of feature space means to compare distributions is further explored in [3]. The practical
+consequence of this (rather abstract) result is that if we know (Pr), we can infer a suitable  by
+solving the following minimization problem:
+
+minimize
+
+
+
+(cid:13)(cid:13)(Pr )  ExPr(x) [(x)(x)](cid:13)(cid:13) subject to (x)  0 and ExPr(x) [(x)] = 1. (10)
+
+This is the kernel mean matching (KMM) procedure. For a proof of the following (and further
+results in the paper) see [7].
+Lemma 2 The problem (10) is convex. Moreover, assume that Pr is absolutely continuous with
+respect to Pr (so Pr(A) = 0 implies Pr(A) = 0). Finally assume that k is universal. Then the
+solution (x) of (10) is P r(x) = (x)P r(x).
+
+3.2 Convergence of reweighted means in feature space
+
+Lemma 2 shows that in principle, if we knew Pr and [Pr], we could fully recover Pr by solving
+a simple quadratic program. In practice, however, neither (Pr) nor Pr is known. Instead, we only
+have samples X and X of size m and m, drawn iid from Pr and Pr respectively.
+Naively we could just replace the expectations in (10) by empirical averages and hope that the
+resulting optimization problem provides us with a good estimate of . However, it is to be expected
+that empirical averages will differ from each other due to nite sample size effects. In this section,
+we explore two such effects. First, we demonstrate that in the nite sample case, for a xed , the
+empirical estimate of the expectation of  is normally distributed: this provides a natural limit on
+the precision with which we should enforce the constraint R (x)d Pr(x) = 1 when using empirical
+expectations (we will return to this point in the next section).
+Lemma 3 If (x)  [0, B] is some xed function of x  X, then given xi  Pr iid such that (xi)
+m Pi (xi) converges in distribution to a
+has nite mean and non-zero variance, the sample mean 1
+Gaussian with mean R (x)d Pr(x) and standard deviation bounded by B
+2m .
+This lemma is a direct consequence of the central limit theorem [1, Theorem 5.5.15]. Alternatively,
+it is straightforward to get a large deviation bound that likewise converges as 1/m [6].
+Our second result demonstrates the deviation between the empirical means of Pr and (x) Pr in
+feature space, given (x) is chosen perfectly in the population sense. In particular, this result shows
+that convergence of these two means will be slow if there is a large difference in the probability mass
+of Pr and Pr (and thus the bound B on the ratio of probability masses is large).
+Lemma 4 In addition to the Lemma 3 conditions, assume that we draw X := {x1, . . . , xm} iid
+from X using Pr = (x) Pr, and k(x)k  R for all x  X. Then with probability at least 1  
+
+m
+
+X
+
+i=1
+
+1
+m
+
+(cid:13)(cid:13)(cid:13)
+
+(xi)(xi) 
+
+1
+m
+
+m
+
+X
+
+i=1
+
+(xi)(cid:13)(cid:13)(cid:13)  (cid:16)1 + p2 log /2(cid:17) RpB2/m + 1/m
+
+(11)
+
+Note that this lemma shows that for a given (x), which is correct in the population sense, we can
+bound the deviation between the feature space mean of Pr and the reweighted feature space mean
+of Pr. It is not a guarantee that we will nd coefcients i that are close to (xi), but it gives us a
+useful upper bound on the outcome of the optimization.
+Lemma 4 implies that we have O(Bp1/m + 1/mB2) convergence in m, m and B. This means
+that, for very different distributions we need a large equivalent sample size to get reasonable conver-
+gence. Our result also implies that it is unrealistic to assume that the empirical means (reweighted
+or not) should match exactly.
+
+3.3 Empirical KMM optimization
+
+To nd suitable values of   Rm we want to minimize the discrepancy between means subject
+to constraints i  [0, B] and | 1
+i=1 i  1|  . The former limits the scope of discrepancy
+between Pr and Pr whereas the latter ensures that the measure (x) Pr(x) is close to a probability
+distribution. The objective function is given by the discrepancy term between the two empirical
+means. Using Kij := k(xi, xj) and i := m
+
+j=1 k(xi, xj) one may check that
+
+m Pm
+
+m
+
+X
+
+i=1
+
+1
+m
+
+(cid:13)(cid:13)(cid:13)
+
+i(xi) 
+
+1
+m
+
+m
+
+X
+
+i=1
+
+m Pm
+(xi)(cid:13)(cid:13)(cid:13)
+
+2
+
+=
+
+1
+m2 K 
+
+2
+m2  + const.
+
+We now have all necessary ingredients to formulate a quadratic problem to nd suitable  via
+
+minimize
+
+
+
+1
+2
+
+K   subject to i  [0, B] and (cid:12)(cid:12)(cid:12)
+
+m
+
+X
+
+i=1
+
+i  m(cid:12)(cid:12)(cid:12)  m.
+
+(12)
+
+In accordance with Lemma 3, we conclude that a good choice of  should be O(B/m). Note
+that (12) is a quadratic program which can be solved efciently using interior point methods or any
+other successive optimization procedure. We also point out that (12) resembles Single Class SVM
+[11] using the -trick. Besides the approximate equality constraint, the main difference is the linear
+correction term by means of . Large values of i correspond to particularly important observations
+xi and are likely to lead to large i.
+
+4 Experiments
+4.1 Toy regression example
+Our rst experiment is on toy data, and is intended mainly to provide a comparison with the approach
+of [12]. This method uses an information criterion to optimise the weights, under certain restrictions
+on Pr and Pr (namely, Pr must be known, while Pr can be either known exactly, Gaussian with
+unknown parameters, or approximated via kernel density estimation).
+
+Our data is generated according to the polynomial regression example from [12, Section 2], for
+which Pr  N(0.5, 0.52) and Pr  N(0, 0.32) are two normal distributions. The observations are
+generated according to y = x + x3, and are observed in Gaussian noise with standard deviation
+0.3 (see Figure 1(a); the blue curve is the noise-free signal).
+We sampled 100 training (blue circles) and testing (red circles) points from Pr and Pr respectively.
+We attempted to model the observations with a degree 1 polynomial. The black dashed line is a
+best-case scenario, which is shown for reference purposes: it represents the model t using ordinary
+least squared (OLS) on the labeled test points. The red line is a second reference result, derived
+only from the training data via OLS, and predicts the test data very poorly. The other three dashed
+lines are t with weighted ordinary least square (WOLS), using one of three weighting schemes: the
+ratio of the underlying training and test densities, KMM, and the information criterion of [12]. A
+summary of the performance over 100 trials is shown in Figure 1(b). Our method outperforms the
+two other reweighting methods.
+
+0.6
+
+0.4
+
+0.2
+
+0
+
+0.2
+
+0.4
+
+0.6
+
+0.8
+
+1
+
+1.2
+
+1.4
+
+
+
+0.4
+
+x from q0
+true fitting model
+OLS fitting x
+
+q0
+
+x from q1
+OLS fitting x
+
+q1
+WOLS by ratio
+WOLS by KMM
+WOLS by min IC
+0.2
+
+0
+
+0.2
+
+
+
+s
+s
+o
+
+l
+
+e
+r
+a
+u
+q
+s
+
+f
+o
+m
+u
+S
+
+
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+0
+
+0.4
+
+0.6
+
+0.8
+
+1
+
+1.2
+
+ratio
+
+KMM
+
+IC
+
+OLS
+
+(a)
+
+(b)
+
+Figure 1: (a) Polynomial models of degree 1 t with OLS and WOLS;(b) Average performances of three
+WOLS methods and OLS on the test data in (a). Labels are Ratio for ratio of test to training density; KMM for
+our approach; min IC for the approach of [12]; and OLS for the model trained on the labeled test points.
+
+4.2 Real world datasets
+We next test our approach on real world data sets, from which we select training examples using a
+deliberately biased procedure (as in [20, 9]). To describe our biased selection scheme, we need to
+dene an additional random variable si for each point in the pool of possible training samples, where
+si = 1 means the ith sample is included, and si = 0 indicates an excluded sample. Two situations
+are considered: the selection bias corresponds to our assumption regarding the relation between
+the training and test distributions, and P (si = 1|xi, yi) = P (si|xi); or si is dependent only on
+yi, i.e. P (si|xi, yi) = P (si|yi), which potentially creates a greater challenge since it violates our
+key assumption 1. In the following, we compare our method (labeled KMM) against two others: a
+baseline unweighted method (unweighted), in which no modication is made, and a weighting by
+the inverse of the true sampling distribution (importance sampling), as in [20, 9]. We emphasise,
+however, that our method does not require any prior knowledge of the true sampling probabilities.
+In our experiments, we used a Gaussian kernel exp(kxi  xjk2) in our kernel classication and
+regression algorithms, and parameters  = (m  1)/m and B = 1000 in the optimization (12).
+
+
+
+unweighted
+importance sampling
+KMM
+
+0.2
+
+0.18
+
+0.16
+
+0.14
+
+0.12
+
+0.1
+
+0.08
+
+0.06
+
+0.04
+
+0.02
+
+r
+o
+r
+r
+e
+
+
+t
+s
+e
+t
+
+0
+
+
+
+1
+
+2
+
+3
+
+4
+6
+biased feature
+
+5
+
+7
+
+8
+
+9
+
+r
+o
+r
+r
+e
+
+t
+s
+e
+t
+
+0.35
+
+0.3
+
+0.25
+
+0.2
+
+0.15
+
+0.1
+
+0.05
+
+0
+
+
+
+
+
+unweighted
+importance sampling
+KMM
+
+0.1
+
+0.2
+
+0.3
+
+training set proportion
+
+0.4
+
+0.5
+
+(a) Simple bias on features
+
+(b) Joint bias on features
+
+0.07
+
+0.06
+
+0.05
+
+r
+o
+r
+r
+e
+
+
+t
+s
+e
+t
+
+0.04
+
+0.03
+
+0.02
+
+0.01
+
+0
+
+
+
+
+
+unweighted
+importance sampling
+KMM
+
+1
+
+2
+4
+training set proportion
+
+3
+
+5
+
+12
+
+10
+
+8
+
+6
+
+4
+
+2
+
+0
+
+0
+
+
+
+optimal weights
+inverse of true sampling
+probabilites
+
+10
+
+20
+
+30
+
+40
+
+50
+
+(c) Bias on labels
+
+(d)  vs inverse sampling prob.
+
+Figure 2: Classication performance analysis on breast cancer dataset from UCI.
+
+4.2.1 Breast Cancer Dataset
+This dataset is from the UCI Archive, and is a binary classication task. It includes 699 examples
+from 2 classes: benign (positive label) and malignant (negative label). The data are randomly split
+into training and test sets, where the proportion of examples used for training varies from 10% to
+50%. Test results are averaged over 30 trials, and were obtained using a support vector classier with
+kernel size  = 0.1. First, we consider a biased sampling scheme based on the input features, of
+which there are nine, with integer values from 0 to 9. Since smaller feature values predominate in the
+unbiased data, we sample according to P (s = 1|x  5) = 0.2 and P (s = 1|x > 5) = 0.8, repeating
+the experiment for each of the features in turn. Results are an average over 30 random training/test
+splits, with 1/4 of the data used for training and 3/4 for testing. Performance is shown in Figure 2(a):
+we consistently outperform the unweighted method, and match or exceed the performance obtained
+using the known distribution ratio. Next, we consider a sampling bias that operates jointly across
+multiple features. We select samples less often when they are further from the sample mean x over
+the training data, i.e. P (si|xi)  exp(kxi  xk2) where  = 1/20. Performance of our method
+in 2(b) is again better than the unweighted case, and as good as or better than reweighting using the
+sampling model. Finally, we consider a simple biased sampling scheme which depends only on the
+label y: P (s = 1|y = 1) = 0.1 and P (s = 1|y = 1) = 0.9 (the data has on average twice as
+many positive as negative examples when uniformly sampled). Average performance for different
+training/testing split proportions is in Figure 2(c); remarkably, despite our assumption regarding the
+difference between the training and test distributions being violated, our method still improves the
+test performance, and outperforms the reweighting by density ratio for large training set sizes. Fig-
+
+ure 2(d) shows the weights  are proportional to the inverse of true sampling probabilities: positive
+examples have higher weights and negative ones have lower weights.
+4.2.2 Further Benchmark Datasets
+We next compare the performance on further benchmark datasets1 by selecting training data via
+various biased sampling schemes. Specically, for the sampling distribution bias on labels, we
+use P (s = 1|y) = exp(a + by)/(1 + exp(a + by)) (datasets 1 to 5), or the simple step distri-
+bution P (s = 1|y = 1) = a, P (s = 1|y = 1) = b (datasets 6 and 7). For the remaining
+datasets, we generate biased sampling schemes over their features. We rst do PCA, selecting the
+rst principal component of the training data and the corresponding projection values. Denoting
+the minimum value of the projection as m and the mean as m, we apply a normal distribution with
+mean m + (m  m)/a and variance (m  m)/b as the biased sampling scheme. Please refer to
+[7] for detailed parameter settings. We use penalized LMS for regression problems and SVM for
+classication problems. To evaluate generalization performance, we utilize the normalized mean
+square error (NMSE) given by 1
+for regression problems, and the average test error
+for classication problems. In 13 out of 23 experiments, our reweighting approach is the most accu-
+rate (see Table 1), despite having no prior information about the bias of the test sample (and, in some
+cases, despite the additional fact that the data reweighting does not conform to our key assumption
+1). In addition, the KMM always improves test performance compared with the unweighted case.
+Two additional points should be borne in mind: rst, we use the same  for the kernel mean match-
+ing and the SVM, as listed in Table 1. Performance might be improved by decoupling these kernel
+sizes: indeed, we employ kernels that are somewhat large, suggesting that the KMM procedure is
+helpful in the case of relatively smooth classication/regresssion functions. Second, we did not nd
+a performance improvement in the case of data sets with smaller sample sizes. This is not surprising,
+since a reweighting would further reduce the effective number of points used for training, resulting
+in insufcient data for learning.
+Table 1: Test results for three methods on 18 datasets with different sampling schemes. The results are
+averages over 10 trials for regression problems (marked *) and 30 trials for classication problems. We used a
+Gaussian kernel of size  for both the kernel mean matching and the SVM/LMS regression, and set B = 1000.
+
+n Pn
+
+(yii)
+var y
+
+i=1
+
+DataSet
+1. Abalone*
+2. CA Housing*
+3. Delta Ailerons(1)*
+4. Ailerons*
+5. haberman(1)
+6. USPS(6vs8)(1)
+7. USPS(3vs9)(1)
+8. Bank8FM*
+9. Bank32nh*
+10. cpu-act*
+11. cpu-small*
+12. Delta Ailerons(2)*
+13. Boston house*
+14. kin8nm*
+15. puma8nh*
+16. haberman(2)
+17. USPS(6vs8) (2)
+18. USPS(6vs8) (3)
+19. USPS(3vs9)(2)
+20. Breast Cancer
+21. India diabetes
+22. ionosphere
+23. German credit
+
+
+
+1e  1
+1e  1
+1e3
+1e  5
+1e  2
+1/128
+1/128
+1e  1
+1e  2
+1e  12
+1e  12
+1e3
+1e  4
+1e  1
+1e  1
+1e  2
+1/128
+1/128
+1/128
+1e  1
+1e  4
+1e  1
+1e  4
+
+ntr
+2000
+16512
+4000
+7154
+150
+500
+500
+4500
+4500
+4000
+4000
+4000
+300
+5000
+4499
+150
+500
+500
+500
+280
+200
+150
+400
+
+selected
+853
+3470
+1678
+925
+52
+260
+252
+654
+740
+1462
+1488
+634
+108
+428
+823
+90
+156
+104
+252
+96
+97
+64
+214
+
+ntst
+2177
+4128
+3129
+6596
+156
+1042
+1145
+3692
+3692
+4192
+4192
+3129
+206
+3192
+3693
+156
+1042
+1042
+1145
+419
+568
+201
+600
+
+unweighted
+1.00  0.08
+2.29  0.01
+0.51  0.01
+1.50  0.06
+0.50  0.09
+0.13  0.18
+0.016  0.006
+0.5  0.1
+23  4.0
+10  1
+9  2
+2  2
+0.8  0.2
+0.85  0.2
+1.1  0.1
+0.27  0.01
+0.23  0.2
+0.54  0.0002
+0.46  0.09
+0.05  0.01
+0.32  0.02
+0.32  0.06
+0.283  0.004
+
+NMSE / Test err.
+importance samp.
+1.1  0.2
+1.72  0.04
+0.51  0.01
+0.7  0.1
+0.37  0.03
+0.1  0.2
+0.012  0.005
+0.45  0.06
+19  2
+4.0  0.2
+4.0  0.2
+1.5  1.5
+0.74  0.09
+0.81  0.1
+0.77  0.05
+0.39  0.04
+0.23  0.2
+0.5  0.2
+0.5  0.2
+0.036  0.005
+0.30  0.02
+0.31  0.07
+0.282  0.004
+
+KMM
+0.6  0.1
+1.24  0.09
+0.401  0.007
+1.2  0.2
+0.30  0.05
+0.1  0.1
+0.013  0.005
+0.47  0.05
+19  2
+1.9  0.2
+2.0  0.5
+1.7  0.9
+0.76  0.07
+0.81  0.2
+0.83  0.03
+0.25  0.2
+0.16  0.08
+0.16  0.04
+0.2  0.1
+0.033  0.004
+0.30  0.02
+0.28  0.06
+0.280  0.004
+
+4.2.3 Tumor Diagnosis using Microarrays
+Our next benchmark is a dataset of 102 microarrays from prostate cancer patients [13]. Each of these
+microarrays measures the expression levels of 12,600 genes. The dataset comprises 50 samples
+from normal tissues (positive label) and 52 from tumor tissues (negative label). We simulate the
+realisitc scenario that two sets of microarrays A and B are given with dissimilar proportions of tumor
+samples, and we want to perform cancer diagnosis via classication, training on A and predicting
+
+1Regression data from http://www.liacc.up.pt/ltorgo/Regression/DataSets.html;
+
+classication data from UCI. Sets with numbers in brackets are examined by different sampling schemes.
+
+on B. We select training examples via the biased selection scheme P (s = 1|y = 1) = 0.85 and
+P (s = 1|y = 1) = 0.15. The remaining data points form the test set. We then perform SVM
+classication for the unweighted, KMM, and importance sampling approaches. The experiment
+was repeated over 500 independent draws from the dataset according to our biased scheme; the 500
+resulting test errors are plotted in [7]. The KMM achieves much higher accuracy levels than the
+unweighted approach, and is very close to the importance sampling approach.
+
+We study a very similar scenario on two breast cancer microarray datasets from [4] and [19], mea-
+suring the expression levels of 2,166 common genes for normal and cancer patients [18]. We train
+an SVM on one of them and test on the other. Our reweighting method achieves signicant improve-
+ment in classication accuracy over the unweighted SVM (see [7]). Hence our method promises to
+be a valuable tool for cross-platform microarray classication.
+Acknowledgements: The authors thank Patrick Warnat (DKFZ, Heidelberg) for providing the mi-
+croarray datasets, and Olivier Chapelle and Matthias Hein for helpful discussions. The work is
+partially supported by by the BMBF under grant 031U112F within the BFAM project, which is part
+of the German Genome Analysis Network. NICTA is funded through the Australian Governments
+Backing Australias Ability initiative, in part through the ARC. This work was supported in part by
+the IST Programme of the EC, under the PASCAL Network of Excellence, IST-2002-506778.

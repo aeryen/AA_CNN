@@ -1,0 +1,1394 @@
+Abstract
+
+We consider the problem of grasping novel objects,
+specically ones that are being seen for the rst
+time through vision. Grasping a previously un-
+known object, one for which a 3-d model is not
+available, is a challenging problem. Further, even
+if given a model, one still has to decide where to
+grasp the object. We present a learning algorithm
+that neither requires, nor tries to build, a 3-d model
+of the object. Given two (or more) images of an ob-
+ject, our algorithm attempts to identify a few points
+in each image corresponding to good locations at
+which to grasp the object. This sparse set of points
+is then triangulated to obtain a 3-d location at which
+to attempt a grasp. This is in contrast to standard
+dense stereo, which tries to triangulate every single
+point in an image (and often fails to return a good
+3-d model). Our algorithm for identifying grasp
+locations from an image is trained via supervised
+learning, using synthetic images for the training set.
+We demonstrate this approach on two robotic ma-
+nipulation platforms. Our algorithm successfully
+grasps a wide variety of objects, such as plates,
+tape-rolls, jugs, cellphones, keys, screwdrivers, sta-
+plers, a thick coil of wire, a strangely shaped power
+horn, and others, none of which were seen in the
+training set. We also apply our method to the task
+of unloading items from dishwashers.1
+
+1 Introduction
+In this paper, we address the problem of grasping novel ob-
+jects that a robot is perceiving for the rst time through vision.
+Modern-day robots can be carefully hand-programmed or
+scripted to carry out many complex manipulation tasks,
+ranging from using tools to assemble complex machinery, to
+balancing a spinning top on the edge of a sword [Shin-ichi
+and Satoshi, 2000]. However, autonomously grasping a pre-
+viously unknown object still remains a challenging problem.
+If we are trying to grasp a previously known object, or if we
+
+1A preliminary version of this work was described in [Saxena et
+
+al., 2006b; 2006a].
+
+Figure 1: Our robot unloading items from a dishwasher.
+
+are able to obtain a full 3-d model of the object, then var-
+ious approaches such as ones based on friction cones [Ma-
+son and Salisbury, 1985], form- and force-closure [Bicchi and
+Kumar, 2000], pre-stored primitives [Miller et al., 2003], or
+other methods can be applied. However, in practical scenar-
+ios it is often very difcult to obtain a full and accurate 3-
+d reconstruction of an object seen for the rst time through
+vision. For stereo systems, 3-d reconstruction is difcult for
+objects without texture, and even when stereopsis works well,
+it would typically reconstruct only the visible portions of the
+object. Even if more specialized sensors such as laser scan-
+ners (or active stereo) are used to estimate the objects shape,
+we would still only have a 3-d reconstruction of the front face
+of the object.
+
+In contrast to these approaches, we propose a learning al-
+gorithm that neither requires, nor tries to build, a 3-d model
+of the object.
+Instead it predicts, directly as a function of
+the images, a point at which to grasp the object. Informally,
+the algorithm takes two or more pictures of the object, and
+then tries to identify a point within each 2-d image that cor-
+responds to a good point at which to grasp the object. (For
+example, if trying to grasp a coffee mug, it might try to iden-
+
+Figure 2: Some examples of objects on which the grasping algorithm was tested.
+
+tify the mid-point of the handle.) Given these 2-d points in
+each image, we use triangulation to obtain a 3-d position at
+which to actually attempt the grasp. Thus, rather than trying
+to triangulate every single point within each image in order
+to estimate depthsas in dense stereowe only attempt to
+triangulate one (or at most a small number of) points corre-
+sponding to the 3-d point where we will grasp the object. This
+allows us to grasp an object without ever needing to obtain its
+full 3-d shape, and applies even to textureless, translucent or
+reective objects on which standard stereo 3-d reconstruction
+fares poorly (see Figure 6).
+
+To the best of our knowledge, our work represents the rst
+algorithm capable of grasping novel objects (ones where a 3-
+d model is not available), including ones from novel object
+classes, that we are perceiving for the rst time using vision.
+This paper focuses on the task of grasp identication, and
+thus we will consider only objects that can be picked up
+without performing complex manipulation.2 We will attempt
+to grasp a number of common ofce and household objects
+such as toothbrushes, pens, books, cellphones, mugs, mar-
+tini glasses, jugs, keys, knife-cutters, duct-tape rolls, screw-
+drivers, staplers and markers (see Figure 2). We will also
+address the problem of unloading items from dishwashers.
+The remainder of this paper is structured as follows.
+
+In
+Section 2, we describe related work. In Section 3, we describe
+our learning approach, as well as our probabilistic model for
+inferring the grasping point. In Section 4, we describe our
+robotic manipulation platforms.
+In Section 5, we describe
+the motion planning/trajectory planning for moving the ma-
+nipulator to the grasping point. In Section 6, we report the
+results of extensive experiments performed to evaluate our
+algorithm, and Section 7 concludes.
+
+2For example, picking up a heavy book lying at on a table might
+require a sequence of complex manipulations, such as to rst slide
+the book slightly past the edge of the table so that the manipulator
+can place its ngers around the book.
+
+2 Related Work
+
+Most work in robot manipulation assumes availability of a
+complete 2-d or 3-d model of the object, and focuses on
+designing control and planning methods to achieve a suc-
+cessful and stable grasp. Here, we will discuss in detail
+prior work that uses learning or vision for robotic manip-
+ulation, and refer the reader to [Bicchi and Kumar, 2000;
+Mason and Salisbury, 1985; Shimoga, 1996] for a more gen-
+eral survey of past work in robotic manipulation.
+
+In simulation environments (without real world experi-
+ments), learning has been applied to robotic manipulation
+for several different purposes. For example, [Pelossof et
+al., 2004] used Support Vector Machines (SVM) to esti-
+mate the quality of a grasp given a number of features de-
+[Hsiao et al., 2007;
+scribing the grasp and the object.
+Hsiao and Lozano-Perez, 2006] used partially observable
+Markov decision processes (POMDP) to choose optimal con-
+trol policies for two-ngered hands. They also used imitation
+learning to teach a robot whole-body grasps. [Miller et al.,
+2003] used heuristic rules to generate and evaluate grasps for
+three-ngered hands by assuming that the objects are made
+of basic shapes such as spheres, boxes, cones and cylinders
+each with pre-computed grasp primitives. All of these meth-
+ods assumed full knowledge of the 3-d model of the object.
+Further, these methods were not tested through real-world ex-
+periments, but were instead modeled and evaluated in a sim-
+ulator.
+
+Some work has been done on using vision for real world
+grasping experiments; however most were limited to grasp-
+ing 2-d planar objects. For uniformly colored planar ob-
+jects lying on a uniformly colored table top, one can nd
+the 2-d contour of the object quite reliably. Using local
+visual features (based on the 2-d contour) and other prop-
+erties such as form- and force-closure, the methods dis-
+cussed below decide the 2-d locations at which to place
+[Piater, 2002;
+(two or three) ngertips to grasp the object.
+Coelho et al., 2001] estimated 2-d hand orientation using K-
+means clustering for simple objects (specically, square, tri-
+
+(a) Martini glass
+
+(b) Mug
+
+(c) Eraser
+
+(d) Book
+
+(e) Pencil
+
+Figure 3: The images (top row) with the corresponding labels (shown in red in the bottom row) of the ve object classes used
+for training. The classes of objects used for training were martini glasses, mugs, whiteboard erasers, books and pencils.
+
+angle and round blocks). [Morales et al., 2002a; 2002b]
+calculated 2-d positions of three-ngered grasps from 2-d ob-
+ject contours based on feasibility and force closure criteria.
+[Bowers and Lumia, 2003] also considered the grasping of
+planar objects and chose the location of the three ngers of a
+hand by rst classifying the object as circle, triangle, square
+or rectangle from a few visual features, and then using pre-
+[Kamon et al., 1996]
+scripted rules based on fuzzy logic.
+used Q-learning to control the arm to reach towards a spheri-
+cal object to grasp it using a parallel plate gripper.
+
+If the desired location of the grasp has been identied, tech-
+niques such as visual servoing that align the gripper to the de-
+sired location [Kragic and Christensen, 2003] or haptic feed-
+back [Petrovskaya et al., 2006] can be used to pick up the
+object. [Platt et al., 2005] learned to sequence together ma-
+nipulation gaits for four specic, known 3-d objects. How-
+ever, they considered fairly simple scenes, and used online
+learning to associate a controller with the height and width
+of the bounding ellipsoid containing the object. For grasping
+known objects, one can also use Learning-by-Demonstration
+[Hueser et al., 2006], in which a human operator demon-
+strates how to grasp an object, and the robot learns to grasp
+that object by observing the human hand through vision.
+
+The task of identifying where to grasp an object (of the
+sort typically found in the home or ofce) involves solving
+a difcult perception problem. This is because the objects
+vary widely in appearance, and because background clut-
+ter (e.g., dishwasher prongs or a table top with a pattern)
+makes it even more difcult to understand the shape of a
+scene. There are numerous robust learning algorithms that
+can infer useful information about objects, even from a clut-
+tered image. For example, there is a large amount of work
+on recognition of known object classes (such as cups, mugs,
+etc.), e.g., [Schneiderman and Kanade, 1998]. The perfor-
+mance of these object recognition algorithms could proba-
+
+bly be improved if a 3-d model of the object were available,
+but they typically do not require such models. For exam-
+ple, that an object is cup-shaped can often be inferred di-
+rectly from a 2-d image. Our approach takes a similar di-
+rection, and will attempt to infer grasps directly from 2-d
+images, even ones containing clutter. [Saxena et al., 2005;
+2007d] also showed that given just a single image, it is often
+possible to obtain the 3-d structure of a scene. While knowing
+the 3-d structure by no means implies knowing good grasps,
+this nonetheless suggests that most of the information in the
+3-d structure may already be contained in the 2-d images, and
+suggests that an approach that learns directly from 2-d images
+holds promise. Indeed, [Marotta et al., 2004] showed that hu-
+mans can grasp an object using only one eye.
+
+Our work also takes inspiration from [Castiello, 2005],
+which showed that cognitive cues and previously learned
+knowledge both play major roles in visually guided grasping
+in humans and in monkeys. This indicates that learning from
+previous knowledge is an important component of grasping
+novel objects.
+
+Further, [Goodale et al., 1991] showed that there is a disso-
+ciation between recognizing objects and grasping them, i.e.,
+there are separate neural pathways that recognize objects and
+that direct spatial control to reach and grasp the object. Thus,
+given only a quick glance at almost any rigid object, most pri-
+mates can quickly choose a grasp to pick it up, even without
+knowledge of the object type. Our work represents perhaps a
+rst step towards designing a vision grasping algorithm which
+can do the same.
+
+3 Learning the Grasping Point
+We consider the general case of grasping objectseven ones
+not seen beforein 3-d cluttered environments such as in a
+home or ofce. To address this task, we will use an image of
+the object to identify a location at which to grasp it.
+
+Because even very different objects can have similar sub-
+parts,
+there are certain visual features that indicate good
+grasps, and that remain consistent across many different ob-
+jects. For example, jugs, cups, and coffee mugs all have
+handles; and pens, white-board markers, toothbrushes, screw-
+drivers, etc. are all long objects that can be grasped roughly
+at their mid-point (Figure 3). We propose a learning ap-
+proach that uses visual features to predict good grasping
+points across a large range of objects.
+
+In our approach, we will rst predict the 2-d location of
+the grasp in each image; more formally, we will try to iden-
+tify the projection of a good grasping point onto the image
+plane. Then, given two (or more) images of an object taken
+from different camera positions, we will predict the 3-d posi-
+tion of a grasping point. If each of these points can be per-
+fectly identied in each image, then we can easily triangu-
+late from these images to obtain the 3-d grasping point. (See
+Figure 8a.) In practice it is difcult to identify the projec-
+tion of a grasping point into the image plane (and, if there are
+multiple grasping points, then the correspondence problem
+i.e., deciding which grasping point in one image corresponds
+to which point in another imagemust also be solved). This
+problem is further exacerbated by imperfect calibration be-
+tween the camera and the robot arm, and by uncertainty in
+the camera position if the camera was mounted on the arm it-
+self. To address all of these issues, we develop a probabilistic
+model over possible grasping points, and apply it to infer a
+good position at which to grasp an object.
+
+3.1 Grasping Point
+For most objects, there is typically a small region that a
+human (using a two-ngered pinch grasp) would choose to
+grasp it; with some abuse of terminology, we will informally
+refer to this region as the grasping point, and our training
+set will contain labeled examples of this region. Examples
+of grasping points include the center region of the neck for
+a martini glass, the center region of the handle for a coffee
+mug, etc. (See Figure 3.)
+
+For testing purposes, we would like to evaluate whether the
+robot successfully picks up an object. For each object in our
+test set, we dene the successful grasp region to be the re-
+gion where a human/robot using a two-ngered pinch grasp
+would (reasonably) be expected to successfully grasp the ob-
+ject. The error in predicting the grasping point (reported in
+Table 1) is then dened as the distance of the predicted point
+from the closest point lying in this region. (See Figure 4; this
+region is usually somewhat larger than that used in the train-
+ing set, dened in the previous paragraph.) Since our gripper
+(Figure 1) has some passive compliance because of attached
+foam/rubber, and can thus tolerate about 0.5cm error in po-
+sitioning, the successful grasping region may extend slightly
+past the surface of the object. (E.g., the radius of the cylinder
+in Figure 4 is about 0.5cm greater than the actual neck of the
+martini glass.)
+
+Figure 4: An illustration showing the grasp labels. The la-
+beled grasp for a martini glass is on its neck (shown by a black
+cylinder). For two predicted grasping points P1 and P2, the
+error would be the 3-d distance from the grasping region, i.e.,
+d1 and d2 respectively.
+
+the grasping point in each image. Collecting real-world data
+of this sort is cumbersome, and manual labeling is prone to
+errors. Thus, we instead chose to generate, and learn from,
+synthetic data that is automatically labeled with the correct
+grasps.
+
+In detail, we generate synthetic images along with cor-
+rect grasps (Figure 3) using a computer graphics ray tracer. 3
+There is a relation between the quality of the synthetically
+generated images and the accuracy of the algorithm. The
+better the quality of the synthetically generated images and
+graphical realism, the better the accuracy of the algorithm.
+Therefore, we used a ray tracer instead of faster, but cruder,
+[Michels et al., 2005] used syn-
+OpenGL style graphics.
+thetic OpenGL images to learn distances in natural scenes.
+However, because OpenGL style graphics have less realism,
+their learning performance sometimes decreased with added
+graphical details in the rendered images.
+
+The advantages of using synthetic images are multi-fold.
+First, once a synthetic model of an object has been created, a
+large number of training examples can be automatically gen-
+erated by rendering the object under different (randomly cho-
+sen) lighting conditions, camera positions and orientations,
+etc. In addition, to increase the diversity of the training data
+generated, we randomized different properties of the objects
+such as color, scale, and text (e.g., on the face of a book). The
+time-consuming part of synthetic data generation was the cre-
+ation of the mesh models of the objects. However, there are
+many objects for which models are available on the internet
+that can be used with only minor modications. We generated
+2500 examples from synthetic data, comprising objects from
+ve object classes (see Figure 3). Using synthetic data also al-
+lows us to generate perfect labels for the training set with the
+exact location of a good grasp for each object. In contrast,
+
+3.2 Synthetic Data for Training
+We apply supervised learning to identify patches that contain
+grasping points. To do so, we require a labeled training set,
+i.e., a set of images of objects labeled with the 2-d location of
+
+3Ray tracing [Glassner, 1989] is a standard image rendering
+method from computer graphics. It handles many real-world opti-
+cal phenomenon such as multiple specular reections, textures, soft
+shadows, smooth curves, and caustics. We used PovRay, an open
+source ray tracer.
+
+Figure 5: Examples of different edge and texture lters (9
+Laws masks and 6 oriented edge lters) used to calculate the
+features.
+
+(a)
+
+(b)
+
+Figure 6: (a) An image of textureless/transparent/reective
+objects.
+(b) Depths estimated by our stereo system. The
+grayscale value indicates the depth (darker being closer to the
+camera). Black represents areas where stereo vision failed to
+return a depth estimate.
+
+collecting and manually labeling a comparably sized set of
+real images would have been extremely time-consuming.
+
+We have made the data available online at:
+
+http://ai.stanford.edu/asaxena/learninggrasp/data.html
+
+3.3 Features
+In our approach, we begin by dividing the image into small
+rectangular patches, and for each patch predict if it contains a
+projection of a grasping point onto the image plane.
+
+Instead of relying on a few visual cues such as presence
+of edges, we will compute a battery of features for each rect-
+angular patch. By using a large number of different visual
+features and training on a huge training set (Section 3.2), we
+hope to obtain a method for predicting grasping points that is
+robust to changes in the appearance of the objects and is also
+able to generalize well to new objects.
+
+We start by computing features for three types of lo-
+cal cues: edges, textures, and color. [Saxena et al., 2007c;
+2007a] We transform the image into YCbCr color space,
+where Y is the intensity channel, and Cb and Cr are color
+channels. We compute features representing edges by con-
+volving the intensity channel with 6 oriented edge lters (Fig-
+ure 5). Texture information is mostly contained within the
+image intensity channel, so we apply 9 Laws masks to this
+channel to compute the texture energy. For the color chan-
+nels, low frequency information is most useful for identifying
+grasps; our color features are computed by applying a local
+averaging lter (the rst Laws mask) to the 2 color channels.
+We then compute the sum-squared energy of each of these
+lter outputs. This gives us an initial feature vector of dimen-
+sion 17.
+
+To predict if a patch contains a grasping point, local image
+features centered on the patch are insufcient, and one has
+to use more global properties of the object. We attempt to
+capture this information by using image features extracted at
+multiple spatial scales (3 in our experiments) for the patch.
+
+Objects exhibit different behaviors across different scales,
+and using multi-scale features allows us to capture these vari-
+ations. In detail, we compute the 17 features described above
+from that patch as well as the 24 neighboring patches (in a 5x5
+window centered around the patch of interest). This gives us
+a feature vector x of dimension 1  17  3 + 24  17 = 459.
+Although we rely mostly on image-based features for pre-
+dicting the grasping point, some robots may be equipped with
+range sensors such as a laser scanner or a stereo camera. In
+these cases (Section 6.3), we also compute depth-based fea-
+tures to improve performance. More formally, we apply our
+texture based lters to the depth image obtained from a stereo
+camera, append them to the feature vector used in classica-
+tion, and thus obtain a feature vector xs  R918. Applying
+these texture based lters this way has the effect of comput-
+ing relative depths, and thus provides information about 3-d
+properties such as curvature. However, the depths given by a
+stereo system are sparse and noisy (Figure 6) because many
+objects we consider are textureless or reective. Even after
+normalizing for the missing depth readings, these features im-
+proved performance only marginally.
+
+3.4 Probabilistic Model
+Using our image-based features, we will rst predict whether
+each region in the image contains the projection of a grasp-
+ing point. Then in order to grasp an object, we will statisti-
+cally triangulate our 2-d predictions to obtain a 3-d grasp-
+ing point.
+
+In detail, on our manipulation platforms (Section 4), we
+have cameras mounted either on the wrist of the robotic arm
+(Figure 11) or on a frame behind the robotic arm (Figure 9).
+When the camera is mounted on the wrist, we command the
+arm to move the camera to two or more positions, so as to
+acquire images of the object from different viewpoints. How-
+ever, there are inaccuracies in the physical positioning of the
+arm, and hence there is some slight uncertainty in the posi-
+tion of the camera when the images are acquired. We will
+now describe how we model these position errors.
+
+Formally, let C be the image that would have been taken if
+the actual pose of the camera was exactly equal to the mea-
+sured pose (e.g., if the robot had moved exactly to the com-
+manded position and orientation, in the case of the camera
+being mounted on the robotic arm). However, due to posi-
+tioning error, instead an image C is taken from a slightly dif-
+ferent location. Let (u, v) be a 2-d position in image C, and
+let (u, v) be the corresponding image position in C. Thus
+C(u, v) = C(u, v), where C(u, v) is the pixel value at (u, v)
+in image C. The errors in camera position/pose should usu-
+ally be small,4 and we model the difference between (u, v)
+and (u, v) using an additive Gaussian model: u = u + u,
+v = v + v, where u, v  N (0, 2).
+
+4The robot position/orientation error is typically small (position
+is usually accurate to within 1mm), but it is still important to model
+this error. From our experiments (see Section 6), if we set 2 = 0,
+the triangulation is highly inaccurate, with average error in predict-
+ing the grasping point being 15.4 cm, as compared to 1.8 cm when
+appropriate 2 is chosen.
+
+(a) Coffee Pot
+
+(e) Synthetic Martini Glass
+Figure 7: Grasping point classication. The red points in each image show the locations most likely to be a grasping point, as
+predicted by our logistic regression model. (Best viewed in color.)
+
+(d) Mug
+
+(b) Duct tape
+
+(c) Marker
+
+Now, to predict which locations in the 2-d image are grasp-
+ing points (Figure 7), we dene the class label z(u, v) as fol-
+lows. For each location (u, v) in an image C, z(u, v) = 1
+if (u, v) is the projection of a grasping point onto the image
+plane, and z(u, v) = 0 otherwise. For a corresponding loca-
+tion (u, v) in image C, we similarly dene z(u, v) to indicate
+whether position (u, v) represents a grasping point in the im-
+age C. Since (u, v) and (u, v) are corresponding pixels in C
+and C, we assume z(u, v) = z(u, v). Thus:
+
+P (z(u, v) = 1|C) = P (z(u, v) = 1| C)
+
+= Zu Zv
+
+P (u, v)P (z(u + u, v + v) = 1| C)dudv(1)
+
+Here, P (u, v) is the (Gaussian) density over u and v. We
+then use logistic regression to model the probability of a 2-d
+position (u + u, v + v) in C being a good grasping point:
+P (z(u + u, v + v) = 1| C) = P (z(u + u, v + v) = 1|x; )
+
+= 1/(1 + exT )
+
+(2)
+
+where x  R459 are the features for the rectangular patch
+centered at (u + u, v + v) in image C (described in Sec-
+tion 3.3). The parameter of this model   R459 is learned
+using standard maximum likelihood for logistic regression:
+
+ = arg maxQi P (zi|xi; ), where (xi, zi) are the syn-
+
+thetic training examples (image patches and labels), as de-
+scribed in Section 3.2. Figure 7a-d shows the result of apply-
+ing the learned logistic regression model to some real (non-
+synthetic) images.
+3-d grasp model: Given two or more images of a new ob-
+ject from different camera positions, we want to infer the 3-d
+position of the grasping point. (See Figure 8.) Because lo-
+gistic regression may have predicted multiple grasping points
+per image, there is usually ambiguity in the correspondence
+problem (i.e., which grasping point in one image corresponds
+to which graping point in another). To address this while also
+taking into account the uncertainty in camera position, we
+propose a probabilistic model over possible grasping points
+in 3-d space. In detail, we discretize the 3-d work-space of
+the robotic arm into a regular 3-d grid G  R3, and associate
+with each grid element j a random variable yj, so that yj = 1
+if grid cell j contains a grasping point, and yj = 0 otherwise.
+
+Figure 8: (a) Diagram illustrating rays from two images C1
+and C2 intersecting at a grasping point (shown in dark blue).
+(Best viewed in color.)
+
+From each camera location i = 1, ..., N, one image is
+In image Ci, let the ray passing through (u, v) be
+taken.
+denoted Ri(u, v). Let Gi(u, v)  G be the set of grid-
+cells through which the ray Ri(u, v) passes. Let r1, ...rK 
+Gi(u, v) be the indices of the grid-cells lying on the ray
+Ri(u, v) .
+
+We know that if any of the grid-cells rj along the ray rep-
+resent a grasping point, then its projection is a grasp point.
+More formally, zi(u, v) = 1 if and only if yr1 = 1 or
+yr2 = 1 or . . . or yrK = 1. For simplicity, we use a (ar-
+guably unrealistic) naive Bayes-like assumption of indepen-
+dence, and model the relation between P (zi(u, v) = 1|Ci)
+and P (yr1 = 1 or . . . or yrK = 1|Ci) as
+
+P (zi(u, v) = 0|Ci) = P (yr1 = 0, ..., yrK = 0|Ci)
+
+=
+
+K
+
+Yj=1
+
+P (yrj = 0|Ci)
+
+(3)
+
+Assuming that any grid-cell along a ray is equally likely to be
+a grasping point, this therefore gives
+
+P (yrj = 1|Ci) = 1  (1  P (zi(u, v) = 1|Ci))1/K (4)
+
+Next, using another naive Bayes-like independence as-
+sumption, we estimate the probability of a particular grid-cell
+
+yj  G being a grasping point as:
+
+P (yj = 1|C1, ..., CN ) =
+
+P (yj = 1)P (C1, ..., CN |yj = 1)
+
+=
+
+=
+
+
+
+P (yj = 1)
+
+P (C1, ..., CN )
+
+P (yj = 1)
+
+P (C1, ..., CN )
+
+N
+
+Yi=1
+Yi=1
+
+N
+
+N
+
+Yi=1
+
+P (yj = 1|Ci)
+
+P (C1, ..., CN )
+
+P (Ci|yj = 1)
+
+P (yj = 1|Ci)P (Ci)
+
+P (yj = 1)
+
+(5)
+
+where P (yj = 1) is the prior probability of a grid-cell being
+a grasping point (set to a constant value in our experiments).
+One can envision using this term to incorporate other avail-
+able information, such as known height of the table when the
+robot is asked to pick up an object from a table. Using Equa-
+tions 1, 2, 4 and 5, we can now compute (up to a constant
+of proportionality that does not depend on the grid-cell) the
+probability of any grid-cell yj being a valid grasping point,
+given the images.5
+Stereo cameras: Some robotic platforms have stereo cam-
+eras (e.g., the robot in Figure 10); therefore we also discuss
+how our probabilistic model can incorporate stereo images.
+From a stereo camera, since we also get a depth value w(u, v)
+for each location (u, v) in the image,6 we now obtain a 3-d
+image C(u, v, w(u, v)) for 3-d positions (u, v, w).
+
+However because of camera positioning errors (as dis-
+cussed before), we get C(u, v, w(u, v)) instead of actual im-
+age C(u, v, w(u, v)). We again model the difference be-
+tween (u, v, w) and (u, v, w) using an additive Gaussian: u =
+u + u, v = v + v, w = w + w, where u, v  N (0, 2
+uv).
+w). Now, for our class label z(u, v, w) in the 3-d
+w  N (0, 2
+image, we have:
+
+P (z(u, v, w) = 1|C) = P (z(u, v, w) = 1| C)
+
+=Zu Zv Zw
+P (z(u + u, v + v, w + w) = 1| C)dudvdw (6)
+
+P (u, v, w)
+
+5In about 2% of the trials described in Section 6.2, grasping
+failed because the algorithm found points in the images that did not
+actually correspond to each other. (E.g., in one image the point se-
+lected may correspond to the midpoint of a handle, and in a different
+image a different point may be selected that corresponds to a differ-
+ent part of the same handle.) Thus, triangulation using these points
+results in identifying a 3-d point that does not lie on the object. By
+ensuring that the pixel values in a small window around each of the
+corresponding points are similar, one would be able to reject some
+of these spurious correspondences.
+
+6The depths estimated from a stereo camera are very sparse, i.e.,
+the stereo system nds valid points only for a few pixels in the im-
+age. (see Figure 6) Therefore, we still mostly rely on image features
+to nd the grasp points. The pixels where the stereo camera was
+unable to obtain a depth are treated as regular (2-d) image pixels.
+
+Here, P (u, v, w) is the (Gaussian) density over u, v and
+w. Now our logistic regression model is
+P (z(u, v, w(u, v)) = 1| C) = P (z(u, v, w(u, v)) = 1|xs; s)
+
+= 1/(1 + exT
+
+s s)
+
+(7)
+where xs  R918 are the image and depth features for the
+rectangular patch centered at (u, v) in image C (described
+in Section 3.3). The parameter of this model s  R918 is
+learned similarly.
+
+Now to use a stereo camera in estimating the 3-d grasping
+
+point, we use
+
+P (yj = 1|Ci) = P (zi(u, v, w(u, v)) = 1|Ci)
+
+(8)
+in Eq. 5 in place of Eq. 4 when Ci represents a stereo camera
+image with depth information at (u, v).
+
+This framework allows predictions from both regular and
+stereo cameras to be used together seamlessly, and also al-
+lows predictions from stereo cameras to be useful even when
+the stereo system failed to recover depth information at the
+predicted grasp point.
+3.5 MAP Inference
+Given a set of images, we want to infer the most likely 3-d
+location of the grasping point. Therefore, we will choose the
+grid cell j in the 3-d robot workspace that maximizes the con-
+ditional log-likelihood log P (yj = 1|C1, ..., CN ) in Eq. 5.
+More formally, let there be NC regular cameras and N  NC
+stereo cameras. Now, from Eq. 4 and 8, we have:
+
+arg maxj log P (yj = 1|C1, ..., CN )
+
+N
+
+= arg max
+
+j
+
+log
+
+NC
+
+= arg max
+
+j
+
+P (yj = 1|Ci)
+
+Yi=1
+log(cid:16)1  (1  P (zi(u, v) = 1|Ci))1/K(cid:17)
+
+Xi=1
+Xi=NC +1
+
+N
+
++
+
+log (P (zi(u, v, w(u, v)) = 1|Ci))(9)
+
+where P (zi(u, v) = 1|Ci) is given by Eq. 1 and 2 and
+P (zi(u, v, w(u, v)) = 1|Ci) is given by Eq. 6 and 7.
+
+A straightforward implementation that explicitly computes
+the sum above for every single grid-cell would give good
+grasping performance, but be extremely inefcient (over 110
+seconds). Since there are only a few places in an image where
+P (zi(u, v) = 1|Ci) is signicantly greater than zero, we im-
+plemented a counting algorithm that explicitly considers only
+grid-cells yj that are close to at least one ray Ri(u, v). (Grid-
+cells that are more than 3 distance away from all rays are
+highly unlikely to be the grid-cell that maximizes the sum-
+mation in Eq. 9.) This counting algorithm efciently accu-
+mulates the sums over the grid-cells by iterating over all N
+images and rays Ri(u, v),7 and results in an algorithm that
+7In practice, we found that restricting attention to rays where
+P (zi(u, v) = 1|Ci) > 0.1 allows us to further reduce the number
+of rays to be considered, with no noticeable degradation in perfor-
+mance.
+
+identies a 3-d grasping position in 1.2 sec.
+
+4 Robot Platforms
+Our experiments were performed on two robots built for the
+STAIR (STanford AI Robot) project.8 Each robot has an arm
+and other equipment such as cameras, computers, etc. (See
+Fig. 9 and 10.) The STAIR platforms were built as part of a
+project whose long-term goal is to create a general purpose
+household robot that can navigate in indoor environments,
+pick up and interact with objects and tools, and carry out tasks
+such as tidy up a room or prepare simple meals. Our algo-
+rithms for grasping novel objects represent perhaps a small
+step towards achieving some of these goals.
+
+STAIR 1 uses a harmonic arm (Katana, by Neuronics), and
+is built on top of a Segway robotic mobility platform.
+Its
+5-dof arm is position-controlled and has a parallel plate grip-
+per. The arm has a positioning accuracy of 1 mm, a reach of
+62cm, and can support a payload of 500g. Our vision system
+used a low-quality webcam (Logitech Quickcam Pro 4000)
+mounted near the end effector and a stereo camera (Bumble-
+bee, by Point Grey Research). In addition, the robot has a
+laser scanner (SICK LMS-291) mounted approximately 1m
+above the ground for navigation purposes. (We used the we-
+bcam in the experiments on grasping novel objects, and the
+Bumblebee stereo camera in the experiments on unloading
+items from dishwashers.) STAIR 2 sits atop a holonomic mo-
+bile base, and its 7-dof arm (WAM, by Barrett Technologies)
+can be position or torque-controlled, is equipped with a three-
+ngered hand, and has a positioning accuracy of 0.6 mm. It
+has a reach of 1m and can support a payload of 3kg. Its vision
+system uses a stereo camera (Bumblebee2, by Point Grey Re-
+search).
+
+We used a distributed software framework called Switch-
+yard [Quigley, 2007] to route messages between different
+devices such as the robotic arms, cameras and computers.
+Switchyard allows distributed computation using TCP mes-
+sage passing, and thus provides networking and synchroniza-
+tion across multiple processes on different hardware plat-
+forms.
+
+Figure 9: STAIR 1 platform. This robot is equipped with a
+5-dof arm and a parallel plate gripper.
+
+5 Planning
+After identifying a 3-d point at which to grasp an object, we
+need to nd an arm pose that realizes the grasp, and then plan
+a path to reach that arm pose so as to pick up the object.
+
+Given a grasping point, there are typically many end-
+effector orientations consistent with placing the center of the
+gripper at that point. The choice of end-effector orientation
+should also take into account other constraints, such as loca-
+tion of nearby obstacles, and orientation of the object.
+5-dof arm. When planning in the absence of obstacles, we
+found that even fairly simple methods for planning worked
+well. Specically, on our 5-dof arm, one of the degrees of
+freedom is the wrist rotation, which therefore does not affect
+planning to avoid obstacles. Thus, we can separately consider
+planning an obstacle-free path using the rst 4-dof, and de-
+ciding the wrist rotation. To choose the wrist rotation, using a
+
+8See http://www.cs.stanford.edu/group/stair for details.
+
+Figure 10: STAIR 2 platform. This robot is equipped with
+7-dof Barrett arm and three-ngered hand.
+
+Figure 11: The robotic arm picking up various objects: screwdriver, box, tape-roll, wine glass, a solder tool holder, coffee pot,
+powerhorn, cellphone, book, stapler and coffee mug. (See Section 6.2.)
+
+simplied version of our algorithm in [Saxena et al., 2007b],
+we learned the 2-d value of the 3-d grasp orientation projected
+onto the image plane (see Appendix). Thus, for example, if
+the robot is grasping a long cylindrical object, it should rotate
+the wrist so that the parallel-plate grippers inner surfaces are
+parallel (rather than perpendicular) to the main axis of the
+cylinder. Further, we found that using simple heuristics to
+decide the remaining degrees of freedom worked well.9
+
+When grasping in the presence of obstacles, such as when
+unloading items from a dishwasher, we used a full motion
+planning algorithm for the 5-dof as well as for the opening
+of the gripper (a 6th degree of freedom). Specically, having
+
+9Four degrees of freedom are already constrained by the end-
+effector 3-d position and the chosen wrist angle. To decide the fth
+degree of freedom in uncluttered environments, we found that most
+grasps reachable by our 5-dof arm fall in one of two classes: down-
+ward grasps and outward grasps. These arise as a direct consequence
+of the shape of the workspace of our 5 dof robotic arm (Figure 11).
+A downward grasp is used for objects that are close to the base of
+the arm, which the arm will grasp by reaching in a downward direc-
+tion (Figure 11, rst image), and an outward grasp is for objects
+further away from the base, for which the arm is unable to reach
+in a downward direction (Figure 11, second image). In practice, to
+simplify planning we rst plan a path towards an approach position,
+which is set to be a xed distance away from the predicted grasp
+point towards the base of the robot arm. Then we move the end-
+effector in a straight line forward towards the target grasping point.
+Our grasping experiments in uncluttered environments (Section 6.2)
+were performed using this heuristic.
+
+identied possible goal positions in conguration space us-
+ing standard inverse kinematics [Mason and Salisbury, 1985],
+we plan a path in 6-dof conguration space that takes the
+end-effector from the starting position to a goal position,
+avoiding obstacles. For computing the goal orientation of
+the end-effector and the conguration of the ngers, we
+used a criterion that attempts to minimize the opening of
+the hand without touching the object being grasped or other
+nearby obstacles. Our planner uses Probabilistic Road-Maps
+(PRMs) [Schwarzer et al., 2005], which start by randomly
+sampling points in the conguration space. It then constructs
+a road map by nding collision-free paths between nearby
+points, and nally nds a shortest path from the starting po-
+sition to possible target positions in this graph. We also ex-
+perimented with a potential eld planner [Khatib, 1986], but
+found the PRM method gave better results because it did not
+get stuck in local optima.
+
+7-dof arm. On the STAIR 2 robot, which uses a 7-dof arm,
+we use the full algorithm in [Saxena et al., 2007b], for pre-
+dicting the 3-d orientation of a grasp, given an image of an
+object. This, along with our algorithm to predict the 3-d
+grasping point, determines six of the seven degrees of free-
+dom (i.e., the end-effector location and orientation). For de-
+ciding the seventh degree of freedom, we use a criterion that
+maximizes the distance of the arm from the obstacles. Sim-
+ilar to the planning on the 5-dof arm, we then apply a PRM
+planner to plan a path in the 7-dof conguration space.
+
+Table 1: Mean absolute error in locating the grasping point for different objects, as well as grasp success rate for picking up the
+different objects using our robotic arm. (Although training was done on synthetic images, testing was done on the real robotic
+arm and real objects.)
+
+OBJECTS SIMILAR TO ONES TRAINED ON
+
+TESTED ON
+
+MEAN ABSOLUTE GRASP-SUCCESS
+
+ERROR (CM)
+
+TESTED ON
+
+MEAN ABSOLUTE GRASP-SUCCESS
+
+NOVEL OBJECTS
+
+ERROR (CM)
+
+MUGS
+PENS
+WINE GLASS
+BOOKS
+ERASER/
+CELLPHONE
+
+OVERALL
+
+2.4
+0.9
+1.2
+2.9
+
+1.6
+
+1.80
+
+RATE
+
+75%
+100%
+100%
+75%
+
+100%
+
+90.0%
+
+STAPLER
+DUCT TAPE
+KEYS
+MARKERS/SCREWDRIVER
+TOOTHBRUSH/CUTTER
+JUG
+TRANSLUCENT BOX
+POWERHORN
+COILED WIRE
+OVERALL
+
+1.9
+1.8
+1.0
+1.1
+1.1
+1.7
+3.1
+3.6
+1.4
+1.86
+
+RATE
+90%
+100%
+100%
+100%
+100%
+75%
+75%
+50%
+100%
+87.8%
+
+6 Experiments
+6.1 Experiment 1: Synthetic data
+We rst evaluated the predictive accuracy of the algorithm on
+synthetic images (not contained in the training set). (See Fig-
+ure 7e.) The average accuracy for classifying whether a 2-d
+image patch is a projection of a grasping point was 94.2%
+(evaluated on a balanced test set comprised of the ve objects
+in Figure 3). Even though the accuracy in classifying 2-d
+regions as grasping points was only 94.2%, the accuracy in
+predicting 3-d grasping points was higher because the proba-
+bilistic model for inferring a 3-d grasping point automatically
+aggregates data from multiple images, and therefore xes
+some of the errors from individual classiers.
+
+6.2 Experiment 2: Grasping novel objects
+We tested our algorithm on STAIR 1 (5-dof robotic arm, with
+a parallel plate gripper) on the task of picking up an object
+placed on an uncluttered table top in front of the robot. The
+location of the object was chosen randomly (and we used
+cardboard boxes to change the height of the object, see Fig-
+ure 11), and was completely unknown to the robot. The orien-
+tation of the object was also chosen randomly from the set of
+orientations in which the object would be stable, e.g., a wine
+glass could be placed vertically up, vertically down, or in a
+random 2-d orientation on the table surface (see Figure 11).
+(Since the training was performed on synthetic images of ob-
+jects of different types, none of these scenarios were in the
+training set.)
+
+In these experiments, we used a web-camera, mounted on
+the wrist of the robot, to take images from two or more loca-
+tions. Recall that the parameters of the vision algorithm were
+trained from synthetic images of a small set of ve object
+classes, namely books, martini glasses, white-board erasers,
+mugs/cups, and pencils. We performed experiments on cof-
+fee mugs, wine glasses (empty or partially lled with water),
+pencils, books, and erasersbut all of different dimensions
+and appearance than the ones in the training setas well
+as a large set of objects from novel object classes, such as
+rolls of duct tape, markers, a translucent box, jugs, knife-
+cutters, cellphones, pens, keys, screwdrivers, staplers, tooth-
+brushes, a thick coil of wire, a strangely shaped power horn,
+
+etc.
+(See Figures 2 and 11.) We note that many of these
+objects are translucent, textureless, and/or reective, mak-
+ing 3-d reconstruction difcult for standard stereo systems.
+(Indeed, a carefully-calibrated Point Gray stereo system, the
+Bumblebee BB-COL-20,with higher quality cameras than
+our web-camerafails to accurately reconstruct the visible
+portions of 9 out of 12 objects. See Figure 6.)
+
+In extensive experiments,
+
+the algorithm for predicting
+grasps in images appeared to generalize very well. Despite
+being tested on images of real (rather than synthetic) objects,
+including many very different from ones in the training set,
+it was usually able to identify correct grasp points. We note
+that test set error (in terms of average absolute error in the
+predicted position of the grasp point) on the real images was
+only somewhat higher than the error on synthetic images; this
+shows that the algorithm trained on synthetic images trans-
+fers well to real images. (Over all 5 object types used in the
+synthetic data, average absolute error was 0.81cm in the syn-
+thetic images; and over all the 14 real test objects, average er-
+ror was 1.84cm.) For comparison, neonate humans can grasp
+simple objects with an average accuracy of 1.5cm. [Bower et
+al., 1970]
+
+Table 1 shows the errors in the predicted grasping points on
+the test set. The table presents results separately for objects
+which were similar to those we trained on (e.g., coffee mugs)
+and those which were very dissimilar to the training objects
+(e.g., duct tape). For each entry in the table, a total of four
+trials were conducted except for staplers, for which ten trials
+were conducted. In addition to reporting errors in grasp posi-
+tions, we also report the grasp success rate, i.e., the fraction
+of times the robotic arm was able to physically pick up the
+object. For a grasp to be counted as successful, the robot had
+to grasp the object, lift it up by about 1ft, and hold it for 30
+seconds. On average, the robot picked up the novel objects
+87.8% of the time.
+
+For simple objects such as cellphones, wine glasses, keys,
+toothbrushes, etc., the algorithm performed perfectly in our
+experiments (100% grasp success rate). However, grasping
+objects such as mugs or jugs (by the handle) allows only
+a narrow trajectory of approachwhere one nger is in-
+serted into the handleso that even a small error in the grasp-
+ing point identication causes the arm to hit and move the ob-
+
+Figure 12: Example of a real dishwasher image, used for
+training in the dishwasher experiments.
+
+Figure 13: Grasping point detection for objects in a dish-
+washer.
+(Only the points in top ve grasping regions are
+shown.)
+
+ject, resulting in a failed grasp attempt. Although it may be
+possible to improve the algorithms accuracy, we believe that
+these problems can best be solved by using a more advanced
+robotic arm that is capable of haptic (touch) feedback.
+
+In many instances,
+
+the algorithm was able to pick up
+completely novel objects (a strangely shaped power-horn,
+duct-tape, solder tool holder, etc.; see Figures 2 and 11).
+Perceiving a transparent wine glass is a difcult problem
+for standard vision (e.g., stereopsis) algorithms because of
+reections, etc. However, as shown in Table 1, our algorithm
+successfully picked it up 100% of the time. Videos showing
+the robot grasping the objects are available at
+
+http://ai.stanford.edu/asaxena/learninggrasp/
+
+6.3 Experiment 3: Unloading items from
+
+dishwashers
+
+The goal of the STAIR project is to build a general purpose
+household robot. As a step towards one of STAIRs envi-
+sioned applications, in this experiment we considered the task
+of unloading items from dishwashers (Figures 1 and 14). This
+is a difcult problem because of the presence of background
+clutter and occlusion between objectsone object that we are
+trying to unload may physically block our view of a second
+object. Our training set for these experiments also included
+some hand-labeled real examples of dishwasher images (Fig-
+ure 12), including some images containing occluded objects;
+this helps prevent the algorithm from identifying grasping
+points on the background clutter such as dishwasher prongs.
+Along with the usual features, these experiments also used
+the depth-based features computed from the depth image ob-
+tained from the stereo camera (Section 3.3). Further, in these
+experiments we did not use color information, i.e., the images
+fed to the algorithm were grayscale.
+
+In detail, we asked a person to arrange several objects
+neatly (meaning inserted over or between the dishwasher
+prongs, and with no pair of objects lying ush against each
+other; Figures 10 and 11 show typical examples) in the upper
+tray of the dishwasher. To unload the items from the dish-
+washer, the robot rst identies grasping points in the image.
+Figure 13 shows our algorithm correctly identifying grasps
+
+Table 2: Grasp-success rate for unloading items from a dish-
+washer.
+
+TESTED ON
+PLATES
+BOWLS
+MUGS
+WINE GLASS
+OVERALL
+
+GRASP-SUCCESS-RATE
+
+100%
+80%
+60%
+80%
+80%
+
+on multiple objects even in the presence of clutter and occlu-
+sion. The robot then uses these grasps and the locations of
+the obstacles (perceived using a stereo camera) to plan a path
+while avoiding obstacles, to pick up the object. When plan-
+ning a path to a grasping point, the robot chooses the grasp-
+ing point that is most accessible to the robotic arm using a
+criterion based on the grasping points height, distance to the
+robot arm, and distance from obstacles. The robotic arm then
+removes the rst object (Figure 14) by lifting it up by about
+1ft and placing it on a surface on its right using a pre-written
+script, and repeats the process above to unload the next item.
+As objects are removed, the visual scene also changes, and
+the algorithm will nd grasping points on objects that it had
+missed earlier.
+
+We evaluated the algorithm quantitatively for four object
+classes: plates, bowls, mugs and wine glasses.
+(We have
+successfully unloaded items from multiple dishwashers; how-
+ever we performed quantitative experiments only on one dish-
+washer.) We performed ve trials for each object class (each
+trial used a different object). We achieved an average grasp-
+ing success rate of 80.0% in a total of 20 trials (see Table 2).
+Our algorithm was able to successfully pick up objects such
+as plates and wine glasses most of the time. However, due to
+the physical limitations of the 5-dof arm with a parallel plate
+gripper, it is not possible for the arm to pick up certain ob-
+jects, such as bowls, if they are in certain congurations (see
+Figure 15). For mugs, the grasp success rate was low because
+of the problem of narrow trajectories discussed in Section 6.2.
+We also performed tests using silverware, specically ob-
+jects such as spoons and forks. These objects were often
+placed (by the human dishwasher loader) against the corners
+or walls of the silverware rack. The handles of spoons and
+
+Figure 14: Dishwasher experiments (Section 6.3): Our robotic arm unloads items from a dishwasher.
+
+forks are only about 0.5cm thick; therefore a larger clearance
+than 0.5cm was needed for them to be grasped using our par-
+allel plate gripper, making it physically extremely difcult to
+do so. However, if we arrange the spoons and forks with part
+of the spoon or fork at least 2cm away from the walls of the
+silverware rack, then we achieve a grasping success rate of
+about 75%.
+
+Some of the failures were because some parts of the object
+were not perceived; therefore the arm would hit and move the
+object resulting in a failed grasp. In such cases, we believe
+an algorithm that uses haptic (touch) feedback would signi-
+cantly increase grasp success rate. Some of our failures were
+also in cases where our algorithm correctly predicts a grasp-
+ing point, but the arm was physically unable to reach that
+grasp. Therefore, we believe that using an arm/hand with
+more degrees of freedom, will signicantly improve perfor-
+mance for the problem of unloading a dishwasher.
+
+Figure 15: Dishwasher experiments: Failure case. For some
+congurations of certain objects, it is impossible for our 5-
+dof robotic arm to grasp it (even if a human were controlling
+the arm).
+
+6.4 Experiment 4: Grasping kitchen and ofce
+
+objects
+
+Our long-term goal is to create a useful household robot that
+can perform many different tasks, such as fetching an object
+
+in response to a verbal request and cooking simple kitchen
+meals.
+In situations such as these, the robot would know
+which object it has to pick up. For example, if the robot was
+asked to fetch a stapler from an ofce, then it would know that
+it needs to identify grasping points for staplers only. There-
+fore, in this experiment we study how we can use information
+about object type and location to improve the performance of
+the grasping algorithm.
+
+Consider objects lying against a cluttered background such
+as a kitchen or an ofce. If we predict the grasping points
+using our algorithm trained on a dataset containing all ve
+objects, then we typically obtain a set of reasonable grasping
+point predictions (Figure 16, left column). Now suppose we
+know the type of object we want to grasp, as well as its ap-
+proximate location in the scene (such as from an object recog-
+nition algorithm [Gould et al., 2007]). We can then restrict
+our attention to the area of the image containing the object,
+and apply a version of the algorithm that has been trained
+using only objects of a similar type (i.e., using object-type
+specic parameters, such as using bowl-specic parameters
+when picking up a cereal bowl, using spoon-specic param-
+eters when picking up a spoon, etc). With this method, we
+obtain object-specic grasps, as shown in Figure 16 (right
+column).
+
+Achieving larger goals, such as cooking simple kitchen
+meals, requires that we combine different algorithms such
+as object recognition, navigation, robot manipulation, etc.
+These results demonstrate how our approach could be used
+in conjunction with other complementary algorithms to ac-
+complish these goals.
+
+6.5 Experiment 5: Grasping using 7-dof arm and
+
+three-ngered hand.
+
+In this experiment, we demonstrate that our grasping point
+prediction algorithm can also be used with other robotic
+manipulation platforms. We performed experiments on the
+STAIR 2 robot, which is equipped with a 7-dof arm and a
+three-ngered Barrett hand. This is a more capable manipu-
+lator than a parallel plate gripper, in that its ngers can form
+a large variety of congurations; however, in this experiment
+we will use the hand only in a limited way, specically, a con-
+guration with the two ngers opposing the third one, with all
+ngers closing simultaneously. While there is a large space
+of hand congurations that one would have to consider in or-
+der to fully take advantage of the capabilities of such a hand,
+identifying a point at which to grasp the object still remains
+an important aspect of the problem, and is the focus of the
+
+Kitchen
+
+Ofce
+
+Figure 16: Grasping point classication in kitchen and ofce
+scenarios: (Left Column) Top ve grasps predicted by the
+grasp classier alone.
+(Right Column) Top two grasps for
+three different object-types, predicted by the grasp classier
+when given the object types and locations. The red points in
+each image are the predicted grasp locations. (Best viewed in
+color.)
+
+present experiment.
+
+In particular, we asked a person to place several objects in
+front of the STAIR 2 robot. The bowls were placed upright
+at a random location on a table (with height unknown to the
+robot), and the plates were stacked neatly in a rack (also in
+a random location). Using our algorithm trained on a dataset
+containing the ve synthetic objects described in Section 3.2,
+the robot chose the best grasp predicted from the image, and
+attempted to pick up the object (Figure 17).
+It achieved a
+grasping success rate of 60% for cereal bowls, and 80% for
+plates (5 trials for each object).
+
+7 Conclusions
+We proposed an algorithm for enabling a robot to grasp an
+object that it has never seen before. Our learning algorithm
+neither tries to build, nor requires, a 3-d model of the ob-
+ject. Instead it predicts, directly as a function of the images,
+a point at which to grasp the object. In our experiments, the
+algorithm generalizes very well to novel objects and environ-
+ments, and our robot successfully grasped a wide variety of
+objects in different environments such as dishwashers, ofce
+and kitchen.
+
+The ability to pick up novel objects represents perhaps a
+tiny rst step towards the STAIR projects larger goal of en-
+abling robots to perform a large variety of household tasks,
+such as fetching an item in response to a verbal request, tidy-
+ing up a room, and preparing simple meals in a kitchen. In
+the short term, we are working on applying variations of the
+
+Figure 17: Barrett arm grasping an object using our algo-
+rithm.
+
+algorithms described in this paper to try to enable STAIR to
+prepare simple meals using a normal home kitchen.
+
+Acknowledgments
+We give warm thanks to Morgan Quigley for help with the
+robotic hardware and communication software. We also
+thank Justin Kearns, Lawson Wong, David Ho, Chioma Os-
+ondu, and Brad Gulko for help in running the experiments.
+This work was supported by the DARPA transfer learning
+program under contract number FA8750-05-2-0249, and by
+the National Science Foundation under award number CNS-
+0551737.
+
+Appendix: Predicting orientation
+In [Saxena et al., 2007b], we presented an algorithm for pre-
+dicting the 3-d orientation of an object from its image. Here,
+for the sake of simplicity, we will present the learning al-
+gorithm in the context of grasping using our 5-dof arm on
+STAIR 1.
+
+As discussed in Section 5, our task is to predict the 2-d
+wrist orientation  of the gripper (at the predicted grasping
+point) given the image. For example, given a picture of a
+closed book (which we would like to grasp at its edge), we
+should choose an orientation in which the robots two ngers
+are parallel to the books surfaces, rather than perpendicular
+to the books cover.
+
+Since our robotic arm has a parallel plate gripper compris-
+ing two ngers that close in parallel, a rotation of  results in
+similar conguration of the gripper. This results in a discon-
+tinuity at  = , in that the orientation of the gripper at  = 
+is equivalent to  = 0. Therefore, to handle this symmetry,
+we will represent angles via y() = [cos(2), sin(2)]  R2.
+Thus, y( + N ) = [cos(2 + 2N ), sin(2 + 2N )] = y().
+Now, given images features x, we model the conditional
+
+distribution of y as a multi-variate Gaussian:
+
+P (y|x; w, K) = (2)n/2|K|1/2
+
+exp(cid:20)
+
+1
+2
+
+(y  wT x)T K(y  wT x)(cid:21)
+
+where K 1 is a covariance matrix. The parameters of this
+model w and K are learnt by maximizing the conditional log
+
+likelihood logQi P (yi|xi; w).
+
+Now when given a new image, our MAP estimate for y is
+
+given as follows. Since ||y||2 = 1, we will choose
+
+y = arg max
+
+y:||y||2=1
+
+log P (y|x; w, K) = arg max
+
+y:||y||2=1
+
+yT Kq
+
+for q = wT x. (This derivation assumed K = 2I for some
+2, which will roughly hold true if  is chosen uniformly in
+the training set.) The closed form solution of this is y =
+Kq/||Kq||2.
+
+In our robotic experiments, typically 30 accuracy is re-
+quired to successfully grasp an object, which our algorithm
+almost always attains. In an example, Figure 18 shows the
+predicted orientation for a pen.
+
+Figure 18: Predicted orientation at the grasping point for pen.
+Dotted line represents the true orientation, and solid line rep-
+resents the predicted orientation.
+

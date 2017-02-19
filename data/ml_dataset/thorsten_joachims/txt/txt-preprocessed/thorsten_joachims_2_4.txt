@@ -1,0 +1,1150 @@
+Abstract
+
+Algorithms for learning to rank Web docu-
+ments usually assume a documents relevance
+is independent of other documents. This
+leads to learned ranking functions that pro-
+duce rankings with redundant results.
+In
+contrast, user studies have shown that di-
+versity at high ranks is often preferred. We
+present two online learning algorithms that
+directly learn a diverse ranking of documents
+based on users clicking behavior. We show
+that these algorithms minimize abandon-
+ment, or alternatively, maximize the proba-
+bility that a relevant document is found in
+the top k positions of a ranking. Moreover,
+one of our algorithms asymptotically achieves
+optimal worst-case performance even if users
+interests change.
+
+1. Introduction
+
+Web search has become an essential component of the
+Internet infrastructure, and has hence attracted sig-
+nicant interest from the machine learning community
+(e.g. Herbrich et al., 2000; Burges et al., 2005; Radlin-
+ski & Joachims, 2005; Chu & Ghahramani, 2005; Met-
+zler & Croft, 2005; Yue et al., 2007; Taylor et al.,
+2008). The conventional approach to this learning-
+to-rank problem has been to assume the availability
+of manually labeled training data. Usually, this data
+consists of a set of documents judged as relevant or not
+to specic queries, or of pairwise judgments compar-
+ing the relative relevance of pairs of documents. These
+judgments are used to optimize a ranking function o-
+line, to a standard information retrieval metric, then
+deploying the learned function in a live search engine.
+We propose a new learning to rank problem formu-
+lation that diers in three fundamental ways. First,
+unlike most previous methods, we learn from usage
+
+Appearing in Proceedings of the 25 th International Confer-
+ence on Machine Learning, Helsinki, Finland, 2008. Copy-
+right 2008 by the author(s)/owner(s).
+
+data rather than manually labeled relevance judg-
+ments. Usage data is available in much larger quan-
+tities and at much lower cost. Moreover, unlike man-
+ual judgments, which need to be constantly updated
+to stay relevant, usage data naturally reects current
+users needs and the documents currently available.
+Although some researchers have transformed usage
+data into relevance judgments, or used it to generate
+features (e.g. Joachims, 2002; Radlinski & Joachims,
+2005; Agichtein et al., 2006), we go one step further
+by directly optimizing a usage-based metric.
+Second, we propose an online learning approach for
+learning from usage data. As training data is being
+collected, it immediately impacts the rankings shown.
+This means the learning problem we address is regret
+minimization, where the goal is to minimize the total
+number of poor rankings displayed over all time. In
+particular, in this setting there is a natural tradeo be-
+tween exploration and exploitation: It may be valuable
+in the long run to present some rankings with unknown
+documents, to allow training data about these docu-
+ments to be collected.
+In contrast, in the short run
+exploitation is typically optimal. With only few ex-
+ceptions (e.g. Radlinski & Joachims, 2007), previous
+work does not consider such an online approach.
+Third and most importantly, except for (Chen &
+Karger, 2006), previous algorithms for learning to rank
+have considered the relevance of each document in-
+dependently of other documents. This is reected in
+the performance measures typically optimized, such
+as Precision, Recall, Mean Average Precision (MAP)
+(Baeza-Yates & Ribeiro-Neto, 1999) and Normalized
+Discounted Cumulative Gain (NDCG) (Burges et al.,
+2006). In fact, recent work has shown that these mea-
+sures do not necessarily correlate with user satisfaction
+(Turpin & Scholer, 2006). Additionally, it intuitively
+stands to reason that presenting many slight varia-
+tions of the same relevant document in web search re-
+sults may increase the MAP or NDCG score, yet would
+be suboptimal for users. Moreover, web queries often
+have dierent meanings for dierent users (a canonical
+example is the query jaguar) suggesting that a ranking
+with diverse documents may be preferable.
+
+Learning Diverse Rankings with Multi-Armed Bandits
+
+We will show how clickthrough data can be used to
+learn rankings maximizing the probability that any
+new user will nd at least one relevant document high
+in the ranking.
+
+2. Related Work
+
+The standard approach for learning to rank uses train-
+ing data, in the form of judgments assessing the rele-
+vance of individual documents to a query, to learn pa-
+rameters  for a scoring function f(q, di, ). Given a
+new query q, this function computes f(q, di, ) for each
+document di independently and ranks documents by
+decreasing score (e.g. Herbrich et al., 2000; Joachims,
+2002; Burges et al., 2005; Chu & Ghahramani, 2005).
+This also applies to recent algorithms that learn 
+to maximize nonlinear performance measures such as
+MAP (Metzler & Croft, 2005; Yue et al., 2007) and
+NDCG (Burges et al., 2006; Taylor et al., 2008).
+The theoretical model that justies ranking docu-
+ments in this way is the probabilistic ranking principle
+(Robertson, 1977). It suggests that documents should
+be ranked by their probablility of relevance to the
+query. However, the optimality of such a ranking relies
+on the assumption that there are no statistical depen-
+dencies between the probabilities of relevance among
+documents  an assumption that is clearly violated in
+practice. For example, if one document about jaguar
+cars is not relevant to a user who issues the query
+jaguar, other car pages become less likely to be rele-
+vant. Furthermore, empirical studies have shown that
+given a xed query, the same document can have dif-
+ferent relevance to dierent users (Teevan et al., 2007).
+This undermines the assumption that each document
+has a single relevance score that can be provided as
+training data to the learning algorithm. Finally, as
+users are usually satised with nding a small number
+of, or even just one, relevant document, the usefulness
+and relevance of a document does depend on other
+documents ranked higher.
+As a result, most search engines today attempt to elim-
+inate redundant results and produce diverse rankings
+that include documents that are potentially relevant to
+the query for dierent reasons. However, learning op-
+timally diverse rankings using expert judgments would
+require document relevance to be measured for dier-
+ent possible meanings of a query. While the TREC
+interactive track1 provides some documents labeled in
+this way for a small number of queries, such document
+collections are even more dicult to create than stan-
+dard expert labeled collections.
+
+1http://trec.nist.gov/data/t11 interactive/t11i.html
+
+Several non-learning algorithms for obtaining a diverse
+ranking of documents from a non-diverse ranking have
+been proposed. One common one is Maximal Marginal
+Relevance (MMR) (Carbonell & Goldstein, 1998).
+Given a similarity (relevance) measure between docu-
+ments and queries sim1(d, q) and a similarity measure
+between pairs of documents sim2(di, dj), MMR iter-
+atively selects documents by repeatedly nding di =
+argmaxdD sim1(d, q)  (1  ) maxdjS sim2(d, dj)
+where S is the set of documents already selected and
+ is a tuning parameter. In this way MMR selects the
+most relevant documents that are also dierent from
+any documents already selected.
+Critically, MMR requires that the relevance function
+sim1(d, q), and the similarity function sim2(di, dj) is
+known. It is usual to obtain sim1 and sim2 using al-
+gorithms such as those discussed above. The goal of
+MMR is to rerank an already learned ranking (that of
+ranking documents by decreasing sim1 score) to im-
+prove diversity. All previous approaches of which we
+are aware that optimize diversity similarly require a
+relevance function to be learned prior to performing
+a diversication step (Zhu et al., 2007; Zhang et al.,
+2005; Zhai et al., 2003), with the exception of Chen
+and Karger (2006). Rather, they require that a model
+for estimating the probability a document is relevant,
+given a query and other non-relevant documents, is
+available. In contrast, we directly learn a diverse rank-
+ing of documents using users clicking behavior.
+
+3. Problem Formalization
+
+We address the problem of learning an optimally diver-
+sied ranking of documents D = {d1, . . . , dn} for one
+xed query. Suppose we have a population of users,
+where each user ui considers some subset of documents
+Ai  D as relevant to the query, and the remainder of
+the documents as non-relevant. Intuitively, users with
+dierent interpretations for the query would have dif-
+ferent relevant sets, while users with similar interpre-
+tations would have similar relevant sets.
+At time t, we interact with user ut with relevant
+set At. We present an ordered set of k documents,
+Bt = (b1(t), . . . , bk(t)). The user considers the results
+in order, and clicks on up to one document. The prob-
+ability of user ut clicking on document di (conditional
+on the user not clicking on a document presented ear-
+lier in the ranking) is assumed to be pti  [0, 1]. We
+refer to the vector of probabilities (pti)iD as the type
+of user ut. In the simplest case, we could take pti = 1
+if di  At and 0 otherwise, in which case the user
+clicks on the rst relevant document or does not click
+if no documents in Bt are relevant. However, in reality
+clicks tend to be noisy although more relevant docu-
+
+Learning Diverse Rankings with Multi-Armed Bandits
+
+At every rank
+
+j. pj  0
+for counter=1 . . . x do
+
+Algorithm 1 Ranked Explore and Commit
+1: input: Documents (d1, .., dn), parameters , , k.
+2: x  (cid:100)2k2/2 log(2k/)(cid:101)
+3: (b1, . . . , bk)  k arbitrary documents.
+4: for i=1 . . . k do
+5:
+6:
+7:
+8:
+9:
+10:
+11:
+12:
+13:
+14:
+15: end for
+
+bi  dj
+display {b1, . . . , bk} to user; record clicks
+if user clicked on bi then pj  pj + 1
+
+end for
+j  argmaxj pj
+bi  dj
+
+for j=1 . . . n do
+
+end for
+
+over every document dj
+
+Loop x times
+
+Commit to best document at this rank
+
+ments are more likely to be clicked on. In our analysis,
+we will take pti  [0, 1].
+We get payo 1 if the user clicks, 0 if not. The goal is
+to maximize the total payo, summing over all time.
+This payo represents the number of users who clicked
+on any result, which can be interpreted as the user
+nding at least one potentially relevant document (so
+long as pti is higher when di At than when di / At).
+The event that a user does not click is called aban-
+donment since the user abandoned the search results.
+Abandonment is an important measure of user satis-
+faction because it indicates that users were presented
+with search results of no potential interest.
+
+4. Learning Algorithms
+
+We now present two algorithms that directly mini-
+mize the abandonment rate. At a high level, both
+algorithms learn a marginal utility for each document
+at each rank, displaying documents to maximize the
+probability that a new user of the search system would
+nd at least one relevant document within the top k
+positions. The algorithms dier in their assumptions.
+
+4.1. Ranked Explore and Commit
+
+The rst algorithm we present is a simple greedy strat-
+egy that assumes that user interests and documents
+do not change over time. As we will see, after T
+time steps this algorithm achieves a payo of at least
+(11/e )OP T  O(k3n/2 ln(k/)) with probability
+at least 1  . OP T denotes the maximal payo that
+could be obtained if the click probabilities pti were
+known ahead of time for all users and documents, and
+(1  1/e)OP T is the best obtainable polynomial time
+approximation, as will be explained in Section 5.1.
+As described in Algorithm 1, Ranked Explore and
+
+Initialize MABs
+
+else
+
+Sequentially select documents
+
+bi(t)  select-arm (MABi)
+if bi(t){b1(t), .., bi1(t)} then Replace repeats
+
+bi(t)  arbitrary unselected document
+bi(t)  bi(t)
+
+for i = 1 . . . k do
+
+Algorithm 2 Ranked Bandits Algorithm
+1: initialize MAB1(n), . . . , MABk(n)
+2: for t = 1 . . . T do
+3:
+4:
+5:
+6:
+7:
+8:
+9:
+10:
+11:
+12:
+13:
+14:
+15:
+16:
+17:
+18:
+19:
+20: end for
+
+end if
+end for
+display {b1(t), . . . , bk(t)} to user; record clicks
+for i = 1 . . . k do
+if user clicked bi(t) and bi(t) = bi(t) then
+
+end if
+update (MABi, arm = bi(t), reward = fit)
+
+Determine feedback for MABi
+
+end for
+
+else
+
+fit = 1
+
+fit = 0
+
+Commit (REC) iteratively selects documents for each
+rank. At each rank position i, every document dj is
+presented a xed number x times, and the number of
+clicks it receives during these presentations is recorded.
+After nx presentations, the algorithm permanently as-
+signs the document that received the most clicks to
+the current rank, and moves on to the next rank.
+
+4.2. Ranked Bandits Algorithm
+
+
+
+Ranked Explore and Commit is purely greedy, mean-
+ing that after each document is selected, this deci-
+sion is never revisited. In particular, this means that
+if user interests or documents change, REC can per-
+form arbitrarily poorly. In contrast, the Ranked Ban-
+dits Algorithm (RBA) achieves a combined payo of
+(11/e)OP T O(k
+T n log n) after T time steps even
+if documents and user interests change over time.
+This algorithm leverages standard theoretical results
+for multi-armed bandits. Multi-armed bandits (MAB)
+are modeled on casino slot machines (sometimes called
+one-armed bandits). The goal of standard MAB algo-
+rithms is to select the optimal sequence of slot ma-
+chines to play to maximize the expected total reward
+collected. For further details, refer to (Auer et al.,
+2002a). The ranked bandits algorithm runs an MAB
+instance MABi for each rank i. Each of the k copies of
+the multi-armed bandit algorithm maintains a value
+(or index) for every document. When selecting the
+ranking to display to users, the algorithm MAB1 is
+responsible for choosing which document is shown at
+rank 1. Next, the algorithm MAB2 determines which
+
+Learning Diverse Rankings with Multi-Armed Bandits
+
+document is shown at rank 2, unless the same docu-
+ment was selected at the highest rank. In that case,
+the second document is picked arbitrarily. This pro-
+cess is repeated to select all top k documents.
+Next, after a user considers up to the top k documents
+in order and clicks on one or none, we need to update
+the indices. If the user clicks on a document actually
+selected by an MAB instance, the reward for the arm
+corresponding to that document for the multi-armed
+bandit at that rank is 1. The reward for the arms
+corresponding to all other selected documents is 0. In
+particular, note that the RBA treats the bandits corre-
+sponding to each rank independently. Precise pseudo-
+code for the algorithm is presented in Algorithm 2.
+A generalization of this algorithm, in an abstract set-
+ting without the application to Information Retrieval,
+was discovered independently by Streeter and Golovin
+(2007).
+The actual MAB algorithm used for each MABi in-
+stance is not critical, and in fact any algorithm for the
+non-stochastic multi-armed bandit problem will suf-
+ce. Our theoretical analysis only requires that:
+ The algorithm has a set S of n strategies.
+ In each period t a payo function ft : S  [0, 1] is
+dened. This function is not revealed to the algo-
+rithm, and may depend on the algorithms choices
+before time t.
+ In each period the algorithm chooses a (random)
+element yt  S based on the feedback revealed in
+prior periods.
+
+ The feedback revealed in period t is ft(yt).
+ The expected payos of the chosen strategies sat-
+
+E[ft(yt)]  max
+yS
+
+E[ft(y)]  R(T )
+
+where R(T ) is an explicit function in o(T ) which
+depends on the particular multi-armed bandit al-
+gorithm chosen, and the expectation is over any
+randomness in the algorithm. We will use the
+Exp3 algorithm in our analysis, where R(T ) =
+
+T n log n(cid:1) (Auer et al., 2002b).
+
+O(cid:0)
+
+We will also later see that although these conditions
+are needed to bound worst-case performance, better
+practical performance may be obtained at the expense
+of worst-case performance if they are relaxed.
+
+5. Theoretical Analysis
+
+We now present a theoretical analysis of the algorithms
+presented in Section 4. First however, we discuss the
+oine version of this optimization problem.
+
+isfy:
+
+T(cid:88)
+
+t=1
+
+T(cid:88)
+
+t=1
+
+5.1. The Oine Optimization Problem
+
+The problem of choosing the optimum set of k docu-
+ments for a given user population is NP-hard, even if
+all the information about the user population (i.e. the
+set of relevant documents for each user) is given oine
+and we restrict ourselves to pij  {0, 1}. This is be-
+cause selecting the optimal set of documents is equiva-
+lent to the maximum coverage problem: Given a posi-
+tive integer k and a collection of subsets S1, S2, . . . , Sn
+of an m-element set, nd k of the subsets whose union
+has the largest possible cardinality.
+The standard greedy algorithm for the maximum cov-
+erage problem, translated to our setting, iteratively
+chooses the document that is relevant to the most users
+for whom a relevant document has not yet been se-
+lected. This algorithm is a (1 1/e)-approximation
+algorithm for this maximization problem (Nemhauser
+et al., 1978). The (1  1/e) factor is optimal and
+no better worst-case approximation ratio is achievable
+
+in polynomial time unless NP  DT IM E(cid:0)nlog log n(cid:1)
+
+(Khuller et al., 1997).
+
+5.2. Analysis of Ranked Bandits Algorithm
+
+We start by analyzing the Ranked Bandits Algorithm.
+This algorithm works by simulating the oine greedy
+algorithm, using a separate instance of the multi-
+armed bandit algorithm for each step of the greedy
+algorithm. Except for the sublinear regret term, the
+combined payo is as high as possible without violat-
+ing the hardness-of-approximation result stated in the
+preceding paragraph.
+To analyze the RBA, we rst restrict ourselves to users
+who click on any given document with probability ei-
+ther 0 or 1. We refer to this restricted type of user as a
+deterministic user; we will relax the requirement later.
+Additionally, this analysis applies to a worst case (and
+hence xed) sequence of users.
+Further, it is useful to introduce some notation. For a
+set A and a sequence B = (b1, b2, . . . , bk), let
+
+if A intersects {b1, . . . , bi}
+otherwise
+
+Gi(A, B) =
+gi(A, B) = Gi(A, B)  Gi1(A, B)
+
+0
+
+(cid:26) 1
+
+Recalling that At is the set of documents relevant to
+user ut, we see that Gk(At, B) is the payo of present-
+ing B to the user ut. Let
+B = argmax
+
+T(cid:88)
+
+Gk(At, B),
+
+B
+
+T(cid:88)
+
+t=1
+
+t=1
+
+Gk(At, B).
+
+OP T =
+
+Learning Diverse Rankings with Multi-Armed Bandits
+
+Recall that (b1(t), . . . , bk(t)) is the sequence of docu-
+ments chosen by the algorithms MAB1, . . . , MABk at
+time t, and that (b1(t), . . . , bk(t)) is the sequence of
+documents presented to the user. Dene the feedback
+function fit for algorithm MABi at time t, as follows:
+
+(cid:26) 1 if Gi1(At, Bt) = 0 and b  At
+
+fit(b) =
+
+0 otherwise
+
+.
+
+Note that the value of fit dened in the pseudocode for
+the Ranked Bandits Algorithms is equal to fit(bi(t)).
+Lemma 1. For all i,
+
+Proof. We will prove, by induction on i, that
+
+(cid:35)
+
+(cid:18)
+
+
+
+1  1
+k
+
+(cid:19)i
+
+OP TE
+
+(cid:34) T(cid:88)
+inequality(cid:0)1  1
+
+t=1
+
+k
+
+(cid:1)k
+
+< 1
+e .
+
+Gi(At, Bt)
+
+OP T +iR(T ).
+
+(5)
+The theorem follows by taking i = k and using the
+
+In the base case i = 0, inequality (5) is trivial. For the
+induction step, let
+
+Zi = OP T  E
+
+Gi(At, Bt)
+
+.
+
+(cid:34) T(cid:88)
+
+t=1
+
+E
+
+gi(At, Bt)
+
+(cid:34) T(cid:88)
+
+E
+
+ 1
+k
+OP T  1
+k
+
+1
+k
+
+=
+
+t=1
+
+(cid:35)
+
+(cid:34) T(cid:88)
+
+t=1
+
+(Gk(At, B)  Gi1(At, Bt))
+
+We have
+
+(cid:35)
+
+ R(T )
+
+and Lemma 1 says that
+
+Zi = Zi1  E
+
+gi(At, Bt)
+
+,
+
+(6)
+
+E
+
+Gi1(At, Bt)
+
+ R(T ).
+
+E
+
+gi(At, Bt)
+
+Zi1  R(T ).
+
+(7)
+
+(cid:35)
+(cid:35)
+
+t=1
+
+(cid:34) T(cid:88)
+(cid:34) T(cid:88)
+(cid:35)
+
+t=1
+
+ 1
+k
+(cid:19)
+
+(cid:34) T(cid:88)
+
+t=1
+
+(cid:18)
+
+(cid:35)
+
+(cid:35)
+
+Proof. First, note that
+
+gi(At, Bt)  fit(bi(t)).
+
+(1)
+This is trivially true when fit(bi(t)) = 0. When
+fit(bi(t)) = 1, Gi1(At, Bt) = 0 and bi(t)  At. This
+implies that bi(t) = bi(t) and that gi(At, Bt) = 1.
+Now using the regret bound for MABi we obtain
+
+E[fit(bi(t))]  max
+
+E[fit(b)]  R(T )
+
+T(cid:88)
+
+t=1
+
+T(cid:88)
+(cid:34)(cid:88)
+
+t=1
+
+T(cid:88)
+
+bB
+
+t=1
+
+b
+
+ 1
+k
+
+E
+
+fit(b)
+
+ R(T ). (2)
+
+To complete the proof of the lemma, we will prove that
+(3)
+
+fit(b)  Gk(At, B)  Gi1(At, Bt).
+
+(cid:88)
+
+bB
+
+The lemma follows immediately by combining (1)-(3).
+Observe that the left side of (3) is a non-negative
+integer, while the right side takes one of the values
+{1, 0, 1}. Thus, to prove (3) it suces to show that
+the left side is greater than or equal to 1 whenever the
+right side is equal to 1. The right side equals 1 only
+when Gi1(At, Bt) = 0 and At intersects B. In this
+case it is clear that there exists at least one b  B
+such that fit(b) = 1, hence the left side is greater than
+or equal to 1.
+
+Theorem 1. The algorithms combined payo after T
+rounds satises:
+
+E
+
+Gk(At, Bt)
+
+OP T  kR(T ). (4)
+
+(cid:35)
+
+(cid:18)
+
+
+
+1  1
+e
+
+(cid:19)
+
+(cid:34) T(cid:88)
+
+t=1
+
+Combining (6) with (7), we obtain
+
+Zi 
+
+1  1
+k
+
+Zi1 + R(T ).
+
+Combining this with the induction hypothesis proves
+(5).
+
+The general case,
+in which user uis type vector
+(pij)jD is an arbitrary element of [0, 1]D, can be re-
+duced via a simple transformation to the case of de-
+terministic users analyzed above. We replace user ui
+with a random deterministic user ui whose type vector
+pi  {0, 1}D is sampled using the following rule: the
+random variable pij has distribution
+
+(cid:26) 1 with probability pij
+
+pij =
+
+0 with probability 1  pij,
+
+and these random variables are mutually independent.
+Note that the clicking behavior of user ui when pre-
+sented with a ranking B is identical to the clicking
+behavior observed when a random user type ui is sam-
+pled from the above distribution, and the ranking B
+is presented to this random user. Thus, if we apply
+the specied transformation to users u1, u2, . . . , uT ,
+obtaining a random sequence u1, u2, . . . , uT of deter-
+ministic users, this transformation changes neither the
+algorithms expected payo nor that of the optimum
+ranking B. Thus, Theorem 1 for general users can
+be deduced by applying the same theorem to the ran-
+dom sequence u1, . . . , uT and taking the expectation of
+the left and right sides of (4) over the random choices
+involved in sampling u1, . . . , uT .
+
+Learning Diverse Rankings with Multi-Armed Bandits
+
+Note also that B is dened as the optimal subset of
+k documents, and OP T is the payo of presenting B,
+without specifying the order in which documents are
+presented. However, the Ranked Bandits Algorithm
+learns an order for the documents in addition to iden-
+tifying a set of documents. In particular, given k(cid:48) < k,
+RBA(k(cid:48)) would receive exactly the same feedback as
+the rst k(cid:48) instances of MABi receive when running
+RBA(k). Hence any k(cid:48) sized prex of the learned rank-
+ing also has the same performance bound with respect
+the appropriate smaller set B(cid:48).
+Finally, it is worth noting that this analysis cannot
+be trivially extended to non-binary payos, for exam-
+ple when learning a ranking of web advertisements.
+In particular, the greedy algorithm on which RBA is
+based in the non-binary payo case can obtain a payo
+that is a factor of k   below optimal, for any  > 0.
+
+5.3. Analysis of Ranked Explore and Commit
+
+The analysis of the Ranked Explore and Commit
+(REC) algorithm is analogous to that of the Ranked
+Bandits algorithm, except that the equivalents of
+Lemma 1 and Theorem 1 are only true with high prob-
+ability after t0 = nxk time steps of exploration have
+occurred. Let B denote the ranking selected by REC.
+Lemma 2. Let x = 2k2/2 log(2k/). Assume At is
+drawn i.i.d. from a xed distribution of user types. For
+any i, with probability 1  /k,
+
+(cid:35)
+
+E
+
+gi(At, B)
+
+(cid:34) T(cid:88)
+
+t=t0
+
+ 1
+k
+
+E
+
+(cid:34) T(cid:88)
+
+t=t0
+
+(Gk(At, B)  Gi1(At, B))
+
+(cid:35)
+
+ 
+k
+
+T.
+
+Proof Outline. First note that in this setting, B and
+OP T are dened in expectation over the At drawn.
+For any document, by Hoedings inequality, with
+probability 1  /2k the true payo of that document
+explored at rank i is within /2k of the observed mean
+payo. Hence the document selected at rank i is within
+/k of the payo of the best document available at
+rank i. Now, the same proof as for Lemma 1 applies,
+although with a dierent regret R(T ).
+Theorem 2. With probability (1 ), the algorithms
+combined payo after T rounds satises:
+
+E
+
+Gk(At, B)
+
+OP T  T  nkx (8)
+
+(cid:34) T(cid:88)
+
+t=1
+
+(cid:35)
+
+(cid:18)
+
+
+
+1  1
+e
+
+(cid:19)
+
+Proof Outline. Applying Lemma 2 for all i  {1, .., k},
+with probability (1  k/k) = (1  ) the conclusion
+of the Lemma holds for all i.
+
+Next, an analogous proof as for Theorem 1 applies,
+except replacing R(T ) with 
+k T and noting that the
+regret during the nkx exploration steps is at most 1
+for every time step.
+
+It is interesting to note that, in contrast to the Ranked
+Bandits Algorithm, this algorithm can be adapted to
+the case where clicked documents provide real valued
+payos. The only modication necessary is that docu-
+ments should always be presented by decreasing payo
+value. However, we do not address this extension fur-
+ther due to space constraints.
+
+6. Evaluation
+
+In this section, we evaluate the Ranked Bandits and
+Ranked Explore and Commit algorithms, as well as
+two variants of RBA, with simulations using a user
+and document model.
+We chose a model that produces a user population and
+document distribution designed to be realistic yet al-
+low us to evaluate the performance of the presented
+algorithms under dierent levels of noise in user click-
+ing behavior. Our model rst assigns each of 20 users
+to topics of interest using a Chinese Restaurant Pro-
+cess (Aldous, 1985) with parameter  = 3. This led
+to a mean of 6.5 unique topics, with topic popularity
+decaying according to a power law. Taking a collection
+of 50 documents, we then randomly assigned as many
+documents to each topic as there were users assigned
+to the topic, leading to topics with more users having
+more relevant documents. We set each document as-
+signed to a topic as relevant to all users assigned to
+that topic, and all other documents as non relevant.
+The probabilities of a user clicking on relevant and
+non-relevant documents were set to constants pR and
+pNR respectively.
+We tested by drawing one user uniformly from the
+user population at each time step, and presented this
+user with the ranking selected by each algorithm, using
+k = 5. We report the average number of time steps
+where the user clicked on a result, and the average
+number of time steps where at least one of the pre-
+sented documents was relevant to the user. All num-
+bers we report are averages over 1,000 algorithm runs.
+
+6.1. Performance Without Click Noise
+
+We start by evaluating how well the REC and RBA
+algorithms maximize the clickthrough rate in the sim-
+plest case when pR = 1 and pNR = 0. We also compare
+their performance to the clickthrough rate that the
+same users would generate if presented with a static
+system that orders documents by decreasing true prob-
+
+Learning Diverse Rankings with Multi-Armed Bandits
+
+Figure 1. Clickthrough rate of the learned ranking as a
+function of the number of times the ranking was presented
+to users.
+
+ability of relevance to the users assuming document
+relevances are independent. Figure 1 shows that both
+REC and RBA perform well above the static baseline
+and well above the performance guarantee provided by
+the theoretical results. This is not surprising, as the
+(1  1/e)OP T bound is a worst-case bound. In fact,
+we see that REC with x = 1000 nearly matches the
+performance of the best possible ranking after nish-
+ing its initial exploration phase. We also see that the
+exploration parameter of REC plays a signicant role
+in the performance, with lower exploration leading to
+faster convergence but slightly lower nal performance.
+Note that despite REC performing best here, the rank-
+ing learned by REC is xed after the exploration steps
+have been performed. If user interests and documents
+change over time, the performance of REC could fall
+arbitrarily. In contrast, RBA is guaranteed to remain
+near or above the (1  1/e)OP T bound.
+
+6.2. Eect of Click Noise
+
+In Figure 1, the clickthrough rate and fraction of users
+who found a relevant document in the top k positions
+is identical (since users click if and only if they are
+presented with a relevant document).
+In contrast,
+Figure 2 shows how the fraction of users who nd
+a relevant document decays as the probability of a
+user clicking becomes noisier. The gure presents the
+performance lines for REC and RBA across a range
+of click probabilities,
+from (pR = 1, pNR = 0) to
+(pR = 0.7, pNR = 0.3). We see that both algorithms
+decay gracefully: as the clicks become noisier noisy,
+the fraction of users presented with a relevant docu-
+ments decays slowly.
+
+6.3. Optimizing Practical Eectiveness
+
+Despite the theoretical results shown earlier, it would
+be surprising if an algorithm designed for the worst
+
+Figure 2. Eect of noise in clicking behavior on the quality
+of the learned ranking.
+
+case had best average case performance. Figure 3
+shows the clickthrough rate (which the algorithms op-
+timize), and fraction of users who nd relevant doc-
+uments (which is of more interest to information re-
+trieval practitioners), for variants building on the in-
+sights of the ranked bandits idea. Specically, two
+variants of RBA that have the best performance we
+could obtain in our simulation are shown. We found
+that using a UCB1-based multi-armed bandit algo-
+rithm (Auer et al., 2002a) in place of EXP3 improves
+the performance of RBA substantially when user inter-
+ests are static. Note however, that UCB1 does not sat-
+isfy the constraints presented in Section 4.2 because it
+assumes rewards are identically distributed over time,
+an assumption violated in our setting when changes in
+the documents presented above rank i alter the reward
+distribution at rank i. Nevertheless, we see that this
+modication substantially improves the performance
+of RBA. We expect such an algorithm to perform best
+when few documents are prone to radical shifts in pop-
+ularity.
+
+7. Conclusions and Extensions
+
+We have presented a new formulation of the learning
+to rank problem that explicitly takes into account the
+relevance of dierent documents being interdependent.
+We presented, analyzed and evaluated two algorithms
+and two variants for this learning setting. We have
+shown that the learning problem can be solved in a
+theoretically sound manner, and that our algorithms
+can be expected to perform reasonably in practice.
+We plan to extend this work by addressing the non-
+binary document relevance settings, and perform em-
+pirical evaluations using real users and real documents.
+Furthermore, we plan to investigate how prior knowl-
+edge can be incorporated into the algorithms to im-
+prove speed of convergence. Finally, we plan to inves-
+
+0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1400,000350,000300,000250,000200,000150,000100,00050,000 0Clickthrough Rate (1-Abandonment)Number of User PresentationsBest possible performance (OPT)Lower bound performance (1-1/e)OPTRanked Bandits AlgorithmRanked Explore and Commit (x=50)Ranked Explore and Commit (x=1000)Popularity-Based Static Ranking 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1400,000350,000300,000250,000200,000150,000100,00050,000 0Fraction of Rankings with a Relevant DocumentNumber of User PresentationsBest possible relevance performanceRanked Bandits AlgorithmRanked Explore and Commit (x=1000)1.00 / 0.00;  0.95 / 0.050.90 / 0.100.85 / 0.150.80 / 0.200.75 / 0.250.70 / 0.30Learning Diverse Rankings with Multi-Armed Bandits
+
+Baeza-Yates, R., & Ribeiro-Neto, B. (1999). Modern in-
+
+formation retrieval. New York, NY: Addison Wesley.
+
+Burges, C., Shaked, T., Renshaw, E., Lazier, A., Deeds,
+M., Hamilton, N., & Hullender, G. (2005). Learning to
+rank using gradient descent. In ICML (pp. 8996).
+
+Burges, C. J. C., Ragno, R., & Le, Q. V. (2006). Learning
+to rank with nonsmooth cost functions. In NIPS (pp.
+193200). MIT Press.
+
+Carbonell, J., & Goldstein, J. (1998). The use of MMR,
+diversity-based reranking for reordering documents and
+producing summaries. In SIGIR (pp. 335336).
+
+Chen, H., & Karger, D. R. (2006). Less is more: Proba-
+bilistic models for retrieving fewer relevant documents.
+In SIGIR (pp. 429436).
+
+Chu, W., & Ghahramani, Z. (2005). Gaussian processes
+for ordinal regression. Journal of Machine Learning Re-
+search, 6, 10191041.
+
+Herbrich, R., Graepel, T., & Obermayer, K. (2000). Large
+margin rank boundaries for ordinal regression. Advances
+in Large Margin Classiers (pp. 115132).
+
+Joachims, T. (2002). Optimizing search engines using click-
+
+through data. In KDD (pp. 132142).
+
+Khuller, S., Moss, A., & Naor, J. (1997). The budgeted
+Information Processing
+
+maximum coverage problem.
+Letters, 70, 3945.
+
+Metzler, D., & Croft, W. B. (2005). A markov random eld
+model for term dependencies. In SIGIR (pp. 472479).
+Nemhauser, G. L., Wolsey, L. A., & Fisher, M. L. (1978).
+An analysis of approximation for maximizing submodu-
+lar set functions. Mathematical Programming, 14, 265
+294.
+
+Radlinski, F., & Joachims, T. (2005). Query chains: Learn-
+ing to rank from implicit feedback. In KDD (pp. 239
+248).
+
+Radlinski, F., & Joachims, T. (2007). Active exploration
+for learning rankings from clickthrough data. In KDD
+(pp. 570579).
+
+Robertson, S. E. (1977). The probability ranking principle
+
+in IR. Journal of Documentation, 33, 294304.
+
+Streeter, M., & Golovin, D. (2007). An online algorithm
+for maximizing submodular functions (Technical Report
+CMU-CS-07-171). Carnegie Mellon University.
+
+Taylor, M. J., Guiver, J., Robertson, S. E., & Minka, T.
+(2008). Softrank: Optimizing non-smooth ranking met-
+rics. In WSDM (pp. 7786).
+
+Teevan, J., Dumais, S. T., & Horvitz, E. (2007). Charac-
+terizing the value of personalizing search. In SIGIR (pp.
+757758).
+
+Turpin, A., & Scholer, F. (2006). User performance versus
+In SIGIR
+
+precision measures for simple search tasks.
+(pp. 1118).
+
+Yue, Y., Finley, T., Radlinski, F., & Joachims, T. (2007). A
+support vector method for optimizing average precision.
+In SIGIR (pp. 271278).
+
+Zhai, C., Cohen, W. W., & Laerty, J. (2003). Beyond
+independent relevance: Methods and evaluation metrics
+for subtopic retrieval. In SIGIR (pp. 1017).
+
+Zhang, B., Li, H., Liu, Y., Ji, L., Xi, W., Fan, W., Chen,
+Z., & Ma, W.-Y. (2005). Improving web search results
+using anity graph. In CIKM (pp. 504511).
+
+Zhu, X., Goldberg, A. B., Gael, J. V., & Andrzejewski, D.
+(2007). Improving diversity in ranking using absorbing
+random walks. Proceedings of NAACL HLT.
+
+Figure 3. In a practical setting, it may be benecial to use a
+variant of RBA to obtain improved performance at the cost
+of weaker theoretical guarantees. Performance is shown in
+realistic settings pR = 0.8, pNR = 0.2.
+
+tigate if the bandits at dierent ranks can be coupled
+to improve the rate at which RBA converges.
+
+Acknowledgments
+
+We would like to thank the reviewers for helpful com-
+ments. This work was supported by NSF Career
+Award CCF-0643934, NSF Award CCF-0729102, NSF
+Career Award 0237381 and a gift from Google. The
+rst author was supported by a Microsoft Research
+Fellowship.
+

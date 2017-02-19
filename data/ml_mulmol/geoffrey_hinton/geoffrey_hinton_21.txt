@@ -1,0 +1,756 @@
+deep neural nets with a large number of parameters are very powerful machine learning systems .
+however , overtting is a serious problem in such networks .
+large networks are also slow to use , making it dicult to deal with overtting by combining the predictions of many dierent large neural nets at test time .
+dropout is a technique for addressing this problem .
+the key idea is to randomly drop units ( along with their connections ) from the neural network during training .
+this prevents units from co - adapting too much .
+during training , dropout samples from an exponential number of dierent thinned networks .
+at test time , it is easy to approximate the eect of averaging the predictions of all these thinned networks by simply using a single unthinned network that has smaller weights .
+this signicantly reduces overtting and gives major improvements over other regularization methods .
+we show that dropout improves the performance of neural networks on supervised learning tasks in vision , speech recognition , document classication and computational biology , obtaining state - of - the - art results on many benchmark data sets .
+keywords : neural networks , regularization , model combination , deep learning
+deep neural networks contain multiple non - linear hidden layers and this makes them very expressive models that can learn very complicated relationships between their inputs and outputs .
+with limited training data , however , many of these complicated relationships will be the result of sampling noise , so they will exist in the training set but not in real test data even if it is drawn from the same distribution .
+this leads to overtting and many methods have been developed for reducing it .
+these include stopping the training as soon as performance on a validation set starts to get worse , introducing weight penalties of various kinds such as l123 and l123 regularization and soft weight sharing ( nowlan and hinton , 123 ) .
+with unlimited computation , the best way to regularize a xed - sized model is to average the predictions of all possible settings of the parameters , weighting each setting by
+c ( cid : 123 ) 123 nitish srivastava , georey hinton , alex krizhevsky , ilya sutskever and ruslan salakhutdinov .
+srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+( a ) standard neural net
+( b ) after applying dropout .
+figure 123 : dropout neural net model .
+left : a standard neural net with 123 hidden layers .
+right : an example of a thinned net produced by applying dropout to the network on the left .
+crossed units have been dropped .
+its posterior probability given the training data .
+this can sometimes be approximated quite well for simple or small models ( xiong et al . , 123; salakhutdinov and mnih , 123 ) , but we would like to approach the performance of the bayesian gold standard using considerably less computation .
+we propose to do this by approximating an equally weighted geometric mean of the predictions of an exponential number of learned models that share parameters .
+model combination nearly always improves the performance of machine learning meth - ods .
+with large neural networks , however , the obvious idea of averaging the outputs of many separately trained nets is prohibitively expensive .
+combining several models is most helpful when the individual models are dierent from each other and in order to make neural net models dierent , they should either have dierent architectures or be trained on dierent data .
+training many dierent architectures is hard because nding optimal hyperparameters for each architecture is a daunting task and training each large network requires a lot of computation .
+moreover , large networks normally require large amounts of training data and there may not be enough data available to train dierent networks on dierent subsets of the data .
+even if one was able to train many dierent large networks , using them all at test time is infeasible in applications where it is important to respond
+dropout is a technique that addresses both these issues .
+it prevents overtting and provides a way of approximately combining exponentially many dierent neural network architectures eciently .
+the term dropout refers to dropping out units ( hidden and visible ) in a neural network .
+by dropping a unit out , we mean temporarily removing it from the network , along with all its incoming and outgoing connections , as shown in figure 123
+the choice of which units to drop is random .
+in the simplest case , each unit is retained with a xed probability p independent of other units , where p can be chosen using a validation set or can simply be set at 123 , which seems to be close to optimal for a wide range of networks and tasks .
+for the input units , however , the optimal probability of retention is usually closer to 123 than to 123 .
+( a ) at training time
+( b ) at test time
+figure 123 : left : a unit at training time that is present with probability p and is connected to units in the next layer with weights w .
+right : at test time , the unit is always present and the weights are multiplied by p .
+the output at test time is same as the expected output at training time .
+applying dropout to a neural network amounts to sampling a thinned network from it .
+the thinned network consists of all the units that survived dropout ( figure 123b ) .
+a neural net with n units , can be seen as a collection of 123n possible thinned neural networks .
+these networks all share weights so that the total number of parameters is still o ( n123 ) , or less .
+for each presentation of each training case , a new thinned network is sampled and trained .
+so training a neural network with dropout can be seen as training a collection of 123n thinned networks with extensive weight sharing , where each thinned network gets trained very rarely , if at all .
+at test time , it is not feasible to explicitly average the predictions from exponentially many thinned models .
+however , a very simple approximate averaging method works well in practice .
+the idea is to use a single neural net at test time without dropout .
+the weights of this network are scaled - down versions of the trained weights .
+if a unit is retained with probability p during training , the outgoing weights of that unit are multiplied by p at test time as shown in figure 123
+this ensures that for any hidden unit the expected output ( under the distribution used to drop units at training time ) is the same as the actual output at test time .
+by doing this scaling , 123n networks with shared weights can be combined into a single neural network to be used at test time .
+we found that training a network with dropout and using this approximate averaging method at test time leads to signicantly lower generalization error on a wide variety of classication problems compared to training with other regularization methods .
+the idea of dropout is not limited to feed - forward neural nets .
+it can be more generally applied to graphical models such as boltzmann machines .
+in this paper , we introduce the dropout restricted boltzmann machine model and compare it to standard restricted boltzmann machines ( rbm ) .
+our experiments show that dropout rbms are better than standard rbms in certain respects .
+this paper is structured as follows .
+section 123 describes the motivation for this idea .
+section 123 describes relevant previous work .
+section 123 formally describes the dropout model .
+section 123 gives an algorithm for training dropout networks .
+in section 123 , we present our experimental results where we apply dropout to problems in dierent domains and compare it with other forms of regularization and model combination .
+section 123 analyzes the eect of dropout on dierent properties of a neural network and describes how dropout interacts with the networks hyperparameters .
+section 123 describes the dropout rbm model .
+in section 123 we explore the idea of marginalizing dropout .
+in appendix a we present a practical guide
+srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+for training dropout nets .
+this includes a detailed analysis of the practical considerations involved in choosing hyperparameters when training dropout networks .
+a motivation for dropout comes from a theory of the role of sex in evolution ( livnat et al . , 123 ) .
+sexual reproduction involves taking half the genes of one parent and half of the other , adding a very small amount of random mutation , and combining them to produce an ospring .
+the asexual alternative is to create an ospring with a slightly mutated copy of the parents genes .
+it seems plausible that asexual reproduction should be a better way to optimize individual tness because a good set of genes that have come to work well together can be passed on directly to the ospring .
+on the other hand , sexual reproduction is likely to break up these co - adapted sets of genes , especially if these sets are large and , intuitively , this should decrease the tness of organisms that have already evolved complicated co - adaptations .
+however , sexual reproduction is the way most advanced organisms evolved .
+one possible explanation for the superiority of sexual reproduction is that , over the long term , the criterion for natural selection may not be individual tness but rather mix - ability of genes .
+the ability of a set of genes to be able to work well with another random set of genes makes them more robust .
+since a gene cannot rely on a large set of partners to be present at all times , it must learn to do something useful on its own or in collaboration with a small number of other genes .
+according to this theory , the role of sexual reproduction is not just to allow useful new genes to spread throughout the population , but also to facilitate this process by reducing complex co - adaptations that would reduce the chance of a new gene improving the tness of an individual .
+similarly , each hidden unit in a neural network trained with dropout must learn to work with a randomly chosen sample of other units .
+this should make each hidden unit more robust and drive it towards creating useful features on its own without relying on other hidden units to correct its mistakes .
+however , the hidden units within a layer will still learn to do dierent things from each other .
+one might imagine that the net would become robust against dropout by making many copies of each hidden unit , but this is a poor solution for exactly the same reason as replica codes are a poor way to deal with a noisy channel .
+a closely related , but slightly dierent motivation for dropout comes from thinking about successful conspiracies .
+ten conspiracies each involving ve people is probably a better way to create havoc than one big conspiracy that requires fty people to all play their parts correctly .
+if conditions do not change and there is plenty of time for rehearsal , a big conspiracy can work well , but with non - stationary conditions , the smaller the conspiracy the greater its chance of still working .
+complex co - adaptations can be trained to work well on a training set , but on novel test data they are far more likely to fail than multiple simpler co - adaptations that achieve the same thing .
+related work
+dropout can be interpreted as a way of regularizing a neural network by adding noise to its hidden units .
+the idea of adding noise to the states of units has previously been used in the context of denoising autoencoders ( daes ) by vincent et al .
+( 123 , 123 ) where noise
+is added to the input units of an autoencoder and the network is trained to reconstruct the noise - free input .
+our work extends this idea by showing that dropout can be eectively applied in the hidden layers as well and that it can be interpreted as a form of model averaging .
+we also show that adding noise is not only useful for unsupervised feature learning but can also be extended to supervised learning problems .
+in fact , our method can be applied to other neuron - based architectures , for example , boltzmann machines .
+while 123% noise typically works best for daes , we found that our weight scaling procedure applied at test time enables us to use much higher noise levels .
+dropping out 123% of the input units and 123% of the hidden units was often found to be optimal .
+since dropout can be seen as a stochastic regularization technique , it is natural to consider its deterministic counterpart which is obtained by marginalizing out the noise .
+in this paper , we show that , in simple cases , dropout can be analytically marginalized out to obtain deterministic regularization methods .
+recently , van der maaten et al .
+( 123 ) also explored deterministic regularizers corresponding to dierent exponential - family noise distributions , including dropout ( which they refer to as blankout noise ) .
+however , they apply noise to the inputs and only explore models with no hidden layers .
+wang and manning ( 123 ) proposed a method for speeding up dropout by marginalizing dropout noise .
+chen et al .
+( 123 ) explored marginalization in the context of denoising autoencoders .
+in dropout , we minimize the loss function stochastically under a noise distribution .
+this can be seen as minimizing an expected loss function .
+previous work of globerson and roweis ( 123 ) ; dekel et al .
+( 123 ) explored an alternate setting where the loss is minimized when an adversary gets to pick which units to drop .
+here , instead of a noise distribution , the maximum number of units that can be dropped is xed .
+however , this work also does not explore models with hidden units .
+model description
+this section describes the dropout neural network model .
+consider a neural network with l hidden layers .
+let l ( 123 , .
+, l ) index the hidden layers of the network .
+let z ( l ) denote the vector of inputs into layer l , y ( l ) denote the vector of outputs from layer l ( y ( 123 ) = x is the input ) .
+w ( l ) and b ( l ) are the weights and biases at layer l .
+the feed - forward operation of a standard neural network ( figure 123a ) can be described as ( for l ( 123 , .
+, l 123 ) and any hidden unit i )
+yl + b ( l+123 )
+= f ( z ( l+123 )
+where f is any activation function , for example , f ( x ) = 123 / ( 123 + exp ( x ) ) .
+with dropout , the feed - forward operation becomes ( figure 123b )
+( cid : 123 ) yl + b ( l+123 )
+( cid : 123 ) y ( l ) = r ( l ) y ( l ) ,
+= f ( z ( l+123 )
+srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+( a ) standard network
+( b ) dropout network
+figure 123 : comparison of the basic operations of a standard and dropout network .
+here denotes an element - wise product .
+for any layer l , r ( l ) is a vector of independent bernoulli random variables each of which has probability p of being 123
+this vector is sampled and multiplied element - wise with the outputs of that layer , y ( l ) , to create the
+thinned outputs ( cid : 123 ) y ( l ) .
+the thinned outputs are then used as input to the next layer
+process is applied at each layer .
+this amounts to sampling a sub - network from a larger network .
+for learning , the derivatives of the loss function are backpropagated through the sub - network .
+at test time , the weights are scaled as w ( l ) test = pw ( l ) as shown in figure 123
+the resulting neural network is used without dropout .
+learning dropout nets
+this section describes a procedure for training dropout neural nets .
+dropout neural networks can be trained using stochastic gradient descent in a manner simi - lar to standard neural nets .
+the only dierence is that for each training case in a mini - batch , we sample a thinned network by dropping out units .
+forward and backpropagation for that training case are done only on this thinned network .
+the gradients for each parameter are averaged over the training cases in each mini - batch .
+any training case which does not use a parameter contributes a gradient of zero for that parameter .
+many methods have been used to improve stochastic gradient descent such as momentum , annealed learning rates and l123 weight decay .
+those were found to be useful for dropout neural networks as well .
+one particular form of regularization was found to be especially useful for dropout constraining the norm of the incoming weight vector at each hidden unit to be upper bounded by a xed constant c .
+in other words , if w represents the vector of weights incident on any hidden unit , the neural network was optimized under the constraint ||w||123 c .
+this constraint was imposed during optimization by projecting w onto the surface of a ball of radius c , whenever w went out of it .
+this is also called max - norm regularization since it implies that the maximum value that the norm of any weight can take is c .
+the constant
+c is a tunable hyperparameter , which is determined using a validation set .
+max - norm regularization has been previously used in the context of collaborative ltering ( srebro and it typically improves the performance of stochastic gradient descent training of deep neural nets , even when no dropout is used .
+although dropout alone gives signicant improvements , using dropout along with max - norm regularization , large decaying learning rates and high momentum provides a signicant boost over just using dropout .
+a possible justication is that constraining weight vectors to lie inside a ball of xed radius makes it possible to use a huge learning rate without the possibility of weights blowing up .
+the noise provided by dropout then allows the optimiza - tion process to explore dierent regions of the weight space that would have otherwise been dicult to reach .
+as the learning rate decays , the optimization takes shorter steps , thereby doing less exploration and eventually settles into a minimum .
+123 unsupervised pretraining
+neural networks can be pretrained using stacks of rbms ( hinton and salakhutdinov , 123 ) , autoencoders ( vincent et al . , 123 ) or deep boltzmann machines ( salakhutdinov and hin - ton , 123 ) .
+pretraining is an eective way of making use of unlabeled data .
+pretraining followed by netuning with backpropagation has been shown to give signicant performance boosts over netuning from random initializations in certain cases .
+dropout can be applied to netune nets that have been pretrained using these tech - niques .
+the pretraining procedure stays the same .
+the weights obtained from pretraining should be scaled up by a factor of 123 / p .
+this makes sure that for each unit , the expected output from it under random dropout will be the same as the output during pretraining .
+we were initially concerned that the stochastic nature of dropout might wipe out the in - formation in the pretrained weights .
+this did happen when the learning rates used during netuning were comparable to the best learning rates for randomly initialized nets .
+how - ever , when the learning rates were chosen to be smaller , the information in the pretrained weights seemed to be retained and we were able to get improvements in terms of the nal generalization error compared to not using dropout when netuning .
+experimental results
+we trained dropout neural networks for classication problems on data sets in dierent domains .
+we found that dropout improved generalization performance on all data sets compared to neural networks that did not use dropout .
+table 123 gives a brief description of the data sets .
+the data sets are
+mnist : a standard toy data set of handwritten digits .
+timit : a standard speech benchmark for clean speech recognition .
+cifar - 123 and cifar - 123 : tiny natural images ( krizhevsky , 123 ) .
+street view house numbers data set ( svhn ) : images of house numbers collected by
+google street view ( netzer et al . , 123 ) .
+imagenet : a large collection of natural images .
+reuters - rcv123 : a collection of reuters newswire articles .
+srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+alternative splicing data set : rna features for predicting alternative gene splicing
+( xiong et al . , 123 ) .
+we chose a diverse set of data sets to demonstrate that dropout is a general technique for improving neural nets and is not specic to any particular application domain .
+in this section , we present some key results that show the eectiveness of dropout .
+a more detailed description of all the experiments and data sets is provided in appendix b .
+123 ( 123 123 grayscale ) 123 ( 123 123 color ) 123 ( 123 123 color ) 123 ( 123 123 color ) 123 ( 123 - dim , 123 frames )
+table 123 : overview of the data sets used in this paper .
+123 results on image data sets
+we used ve image data sets to evaluate dropoutmnist , svhn , cifar - 123 , cifar - 123 and imagenet .
+these data sets include dierent image types and training set sizes .
+models which achieve state - of - the - art results on all of these data sets use dropout .
+standard neural net ( simard et al . , 123 ) svm gaussian kernel dropout nn + max - norm constraint dropout nn + max - norm constraint dropout nn + max - norm constraint dropout nn + max - norm constraint dropout nn + max - norm constraint ( goodfellow et al . , 123 )
+dbn + netuning ( hinton and salakhutdinov , 123 ) dbm + netuning ( salakhutdinov and hinton , 123 ) logistic dbn + dropout netuning dbm + dropout netuning
+table 123 : comparison of dierent models on mnist .
+the mnist data set consists of 123 123 pixel handwritten digit images .
+the task is to classify the images into 123 digit classes .
+table 123 compares the performance of dropout with other techniques .
+the best performing neural networks for the permutation invariant
+123 layers , 123 units
+123 layers , 123 units 123 layers , 123 units 123 layers , 123 units 123 layers , 123 units 123 layers , 123 units 123 layers , 123 units 123 layers , ( 123 123 )
+setting that do not use dropout or unsupervised pretraining achieve an error of about 123% ( simard et al . , 123 ) .
+with dropout the error reduces to 123% .
+replacing logistic units with rectied linear units ( relus ) ( jarrett et al . , 123 ) further reduces the error to 123% .
+adding max - norm regularization again reduces it to 123% .
+increasing the size of the network leads to better results .
+a neural net with 123 layers and 123 units per layer gets down to 123% error .
+note that this network has more than 123 million parameters and is being trained on a data set of size 123 , 123
+training a network of this size to give good generalization error is very hard with standard regularization methods and early stopping .
+dropout , on the other hand , prevents overtting , even in this case .
+it does not even need early stopping .
+goodfellow et al .
+( 123 ) showed that results can be further improved to 123% by replacing relu units with maxout units .
+all dropout nets use p = 123 for hidden units and p = 123 for input units .
+more experimental details can be found in appendix b . 123
+dropout nets pretrained with stacks of rbms and deep boltzmann machines also give improvements as shown in table 123
+dbmpretrained dropout nets achieve a test error of 123% which is the best performance ever reported for the permutation invariant setting .
+we note that it possible to obtain better results by using 123 - d spatial information and augmenting the training set with distorted versions of images from the standard training set .
+we demonstrate the eectiveness of dropout in that setting on more interesting data
+the robustness of dropout , classication experiments were done with networks of many dierent ar - chitectures keeping all hyperparameters , in - cluding p , xed .
+figure 123 shows the test error rates obtained for these dierent ar - chitectures as training progresses .
+the same architectures trained with and with - out dropout have drastically dierent test errors as seen as by the two separate clus - ters of trajectories .
+dropout gives a huge improvement across all architectures , with - out using hyperparameters that were tuned specically for each architecture .
+123 . 123 street view house numbers
+figure 123 : test error for dierent architectures with and without dropout .
+the net - works have 123 to 123 hidden layers each with 123 to 123 units .
+the street view house numbers ( svhn ) data set ( netzer et al . , 123 ) consists of color images of house numbers collected by google street view .
+figure 123a shows some examples of images from this data set .
+the part of the data set that we use in our experiments consists of 123 123 color images roughly centered on a digit in a house number .
+the task is to identify that digit .
+for this data set , we applied dropout to convolutional neural networks ( lecun et al . , 123 ) .
+the best architecture that we found has three convolutional layers followed by 123 fully connected hidden layers .
+all hidden units were relus .
+each convolutional layer was
+123number of weight updates123 . 123 . 123classification error % srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+binary features ( wdch ) ( netzer et al . , 123 ) hog ( netzer et al . , 123 ) stacked sparse autoencoders ( netzer et al . , 123 ) kmeans ( netzer et al . , 123 ) multi - stage conv net with average pooling ( sermanet et al . , 123 ) multi - stage conv net + l123 pooling ( sermanet et al . , 123 ) multi - stage conv net + l123 pooling + padding ( sermanet et al . , 123 ) conv net + max - pooling conv net + max pooling + dropout in fully connected layers conv net + stochastic pooling ( zeiler and fergus , 123 ) conv net + maxout ( goodfellow et al . , 123 ) conv net + max pooling + dropout in all layers
+table 123 : results on the street view house numbers data set .
+followed by a max - pooling layer .
+appendix b . 123 describes the architecture in more detail .
+dropout was applied to all the layers of the network with the probability of retaining a hid - den unit being p = ( 123 , 123 , 123 , 123 , 123 , 123 ) for the dierent layers of the network ( going from input to convolutional layers to fully connected layers ) .
+max - norm regularization was used for weights in both convolutional and fully connected layers .
+table 123 compares the results obtained by dierent methods .
+we nd that convolutional nets outperform other methods .
+the best performing convolutional nets that do not use dropout achieve an error rate of 123% .
+adding dropout only to the fully connected layers reduces the error to 123% .
+adding dropout to the convolutional layers as well further reduces the error to 123% .
+the additional gain in performance obtained by adding dropout in the convolutional layers ( 123% to 123% ) is worth noting .
+one may have presumed that since the convo - lutional layers dont have a lot of parameters , overtting is not a problem and therefore dropout would not have much eect .
+however , dropout in the lower layers still helps be - cause it provides noisy inputs for the higher fully connected layers which prevents them
+123 . 123 cifar - 123 and cifar - 123 the cifar - 123 and cifar - 123 data sets consist of 123 123 color images drawn from 123 and 123 categories respectively .
+figure 123b shows some examples of images from this data set .
+a detailed description of the data sets , input preprocessing , network architectures and other experimental details is given in appendix b . 123
+table 123 shows the error rate obtained by dierent methods on these data sets .
+without any data augmentation , snoek et al .
+( 123 ) used bayesian hyperparameter optimization to obtained an error rate of 123% on cifar - 123
+using dropout in the fully connected layers reduces that to 123% and adding dropout in every layer further reduces the error to 123% .
+goodfellow et al .
+( 123 ) showed that the error is further reduced to 123% by replacing relu units with maxout units .
+on cifar - 123 , dropout reduces the error from 123% to 123% which is a huge improvement .
+no data augmentation was used for either data set ( apart from the input dropout ) .
+( a ) street view house numbers ( svhn )
+figure 123 : samples from image data sets .
+each row corresponds to a dierent category .
+conv net + max pooling ( hand tuned ) conv net + stochastic pooling ( zeiler and fergus , 123 ) conv net + max pooling ( snoek et al . , 123 ) conv net + max pooling + dropout fully connected layers conv net + max pooling + dropout in all layers conv net + maxout ( goodfellow et al . , 123 )
+table 123 : error rates on cifar - 123 and cifar - 123
+imagenet is a data set of over 123 million labeled high - resolution images belonging to roughly 123 , 123 categories .
+starting in 123 , as part of the pascal visual object challenge , an annual competition called the imagenet large - scale visual recognition challenge ( ilsvrc ) has been held .
+a subset of imagenet with roughly 123 images in each of 123 categories is used in this challenge .
+since the number of categories is rather large , it is conventional to report two error rates : top - 123 and top - 123 , where the top - 123 error rate is the fraction of test images for which the correct label is not among the ve labels considered most probable by the model .
+figure 123 shows some predictions made by our model on a few test images .
+ilsvrc - 123 is the only version of ilsvrc for which the test set labels are available , so most of our experiments were performed on this data set .
+table 123 compares the performance of dierent methods .
+convolutional nets with dropout outperform other methods by a large margin .
+the architecture and implementation details are described in detail in krizhevsky et al .
+( 123 ) .
+srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+figure 123 : some imagenet test cases with the 123 most probable labels as predicted by our model .
+the length of the horizontal bars is proportional to the probability assigned to the labels by the model .
+pink indicates ground truth .
+sparse coding ( lin et al . , 123 ) sift + fisher vectors ( sanchez and perronnin , 123 ) conv net + dropout ( krizhevsky et al . , 123 )
+table 123 : results on the ilsvrc - 123 test set .
+svm on fisher vectors of dense sift and color statistics avg of classiers over fvs of sift , lbp , gist and csift conv net + dropout ( krizhevsky et al . , 123 ) avg of 123 conv nets + dropout ( krizhevsky et al . , 123 )
+table 123 : results on the ilsvrc - 123 validation / test set .
+our model based on convolutional nets and dropout won the ilsvrc - 123 competition .
+since the labels for the test set are not available , we report our results on the test set for the nal submission and include the validation set results for dierent variations of our model .
+table 123 shows the results from the competition .
+while the best methods based on standard vision features achieve a top - 123 error rate of about 123% , convolutional nets with dropout achieve a test error of about 123% which is a staggering dierence .
+figure 123 shows some examples of predictions made by our model .
+we can see that the model makes very reasonable predictions , even when its best guess is not correct .
+123 results on timit
+next , we applied dropout to a speech recognition task .
+we use the timit data set which consists of recordings from 123 speakers covering 123 major dialects of american english reading ten phonetically - rich sentences in a controlled noise - free environment .
+dropout neural networks were trained on windows of 123 log - lter bank frames to predict the label of the central frame .
+no speaker dependent operations were performed .
+appendix b . 123 describes the data preprocessing and training details .
+table 123 compares dropout neural
+nets with other models .
+a 123 - layer net gives a phone error rate of 123% .
+dropout further improves it to 123% .
+we also trained dropout nets starting from pretrained weights .
+a 123 - layer net pretrained with a stack of rbms get a phone error rate of 123% .
+with dropout , this reduces to 123% .
+similarly , for an 123 - layer net the error reduces from 123% to 123% .
+phone error rate%
+nn ( 123 layers ) ( mohamed et al . , 123 ) dropout nn ( 123 layers )
+dbn - pretrained nn ( 123 layers ) dbn - pretrained nn ( 123 layers ) ( mohamed et al . , 123 ) dbn - pretrained nn ( 123 layers ) ( mohamed et al . , 123 ) mcrbm - dbn - pretrained nn ( 123 layers ) ( dahl et al . , 123 ) dbn - pretrained nn ( 123 layers ) + dropout dbn - pretrained nn ( 123 layers ) + dropout
+table 123 : phone error rate on the timit core test set .
+123 results on a text data set
+to test the usefulness of dropout in the text domain , we used dropout networks to train a document classier .
+we used a subset of the reuters - rcv123 data set which is a collection of over 123 , 123 newswire articles from reuters .
+these articles cover a variety of topics .
+the task is to take a bag of words representation of a document and classify it into 123 disjoint topics .
+appendix b . 123 describes the setup in more detail .
+our best neural net which did not use dropout obtained an error rate of 123% .
+adding dropout reduced the error to 123% .
+we found that the improvement was much smaller compared to that for the vision and speech data sets .
+123 comparison with bayesian neural networks
+dropout can be seen as a way of doing an equally - weighted averaging of exponentially many models with shared weights .
+on the other hand , bayesian neural networks ( neal , 123 ) are the proper way of doing model averaging over the space of neural network structures and in dropout , each model is weighted equally , whereas in a bayesian neural network each model is weighted taking into account the prior and how well the model ts the data , which is the more correct approach .
+bayesian neural nets are extremely useful for solving problems in domains where data is scarce such as medical diagnosis , genetics , drug discovery and other computational biology applications .
+however , bayesian neural nets are slow to train and dicult to scale to very large network sizes .
+besides , it is expensive to get predictions from many large nets at test time .
+on the other hand , dropout neural nets are much faster to train and use at test time .
+in this section , we report experiments that compare bayesian neural nets with dropout neural nets on a small data set where bayesian neural networks are known to perform well and obtain state - of - the - art results .
+the aim is to analyze how much does dropout lose compared to bayesian neural nets .
+the data set that we use ( xiong et al . , 123 ) comes from the domain of genetics .
+the task is to predict the occurrence of alternative splicing based on rna features .
+alternative splicing is a signicant cause of cellular diversity in mammalian tissues .
+predicting the
+srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+code quality ( bits )
+neural network ( early stopping ) ( xiong et al . , 123 ) regression , pca ( xiong et al . , 123 ) svm , pca ( xiong et al . , 123 ) neural network with dropout bayesian neural network ( xiong et al . , 123 )
+table 123 : results on the alternative splicing data set .
+occurrence of alternate splicing in certain tissues under dierent conditions is important for understanding many human diseases .
+given the rna features , the task is to predict the probability of three splicing related events that biologists care about .
+the evaluation metric is code quality which is a measure of the negative kl divergence between the target and the predicted probability distributions ( higher is better ) .
+appendix b . 123 includes a detailed description of the data set and this performance metric .
+table 123 summarizes the performance of dierent models on this data set .
+xiong et al .
+( 123 ) used bayesian neural nets for this task .
+as expected , we found that bayesian neural nets perform better than dropout .
+however , we see that dropout improves signicantly upon the performance of standard neural nets and outperforms all other methods .
+the challenge in this data set is to prevent overtting since the size of the training set is small .
+one way to prevent overtting is to reduce the input dimensionality using pca .
+thereafter , standard techniques such as svms or logistic regression can be used .
+however , with dropout we were able to prevent overtting without the need to do dimensionality reduction .
+the dropout nets are very large ( 123s of hidden units ) compared to a few tens of units in the bayesian network .
+this shows that dropout has a strong regularizing eect .
+123 comparison with standard regularizers
+several regularization methods have been proposed for preventing overtting in neural net - works .
+these include l123 weight decay ( more generally tikhonov regularization ( tikhonov , 123 ) ) , lasso ( tibshirani , 123 ) , kl - sparsity and max - norm regularization .
+dropout can be seen as another way of regularizing neural networks .
+in this section we compare dropout with some of these regularization methods using the mnist data set .
+the same network architecture ( 123 - 123 - 123 - 123 - 123 ) with relus was trained us - ing stochastic gradient descent with dierent regularizations .
+table 123 shows the results .
+the values of dierent hyperparameters associated with each kind of regularization ( decay constants , target sparsity , dropout rate , max - norm upper bound ) were obtained using a validation set .
+we found that dropout combined with max - norm regularization gives the lowest generalization error .
+salient features
+the experiments described in the previous section provide strong evidence that dropout is a useful technique for improving neural networks .
+in this section , we closely examine how dropout aects a neural network .
+we analyze the eect of dropout on the quality of features produced .
+we see how dropout aects the sparsity of hidden unit activations
+test classication error %
+l123 + l123 applied towards the end of training l123 + kl - sparsity dropout + l123 dropout + max - norm
+table 123 : comparison of dierent regularization methods on mnist .
+also see how the advantages obtained from dropout vary with the probability of retaining units , size of the network and the size of the training set .
+these observations give some insight into why dropout works so well .
+123 eect on features
+( a ) without dropout
+( b ) dropout with p = 123 .
+figure 123 : features learned on mnist with one hidden layer autoencoders having 123 rectied
+in a standard neural network , the derivative received by each parameter tells it how it should change so the nal loss function is reduced , given what all other units are doing .
+therefore , units may change in a way that they x up the mistakes of the other units .
+this may lead to complex co - adaptations .
+this in turn leads to overtting because these co - adaptations do not generalize to unseen data .
+we hypothesize that for each hidden unit , dropout prevents co - adaptation by making the presence of other hidden units unreliable .
+therefore , a hidden unit cannot rely on other specic units to correct its mistakes .
+it must perform well in a wide variety of dierent contexts provided by the other hidden units .
+to observe this eect directly , we look at the rst level features learned by neural networks trained on visual tasks with and without dropout .
+srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+figure 123a shows features learned by an autoencoder on mnist with a single hidden layer of 123 rectied linear units without dropout .
+figure 123b shows the features learned by an identical autoencoder which used dropout in the hidden layer with p = 123 .
+both au - toencoders had similar test reconstruction errors .
+however , it is apparent that the features shown in figure 123a have co - adapted in order to produce good reconstructions .
+each hidden unit on its own does not seem to be detecting a meaningful feature .
+on the other hand , in figure 123b , the hidden units seem to detect edges , strokes and spots in dierent parts of the image .
+this shows that dropout does break up co - adaptations , which is probably the main reason why it leads to lower generalization errors .
+123 eect on sparsity
+( a ) without dropout
+( b ) dropout with p = 123 .
+figure 123 : eect of dropout on sparsity .
+relus were used for both models .
+left : the histogram of mean activations shows that most units have a mean activation of about 123 .
+the histogram of activations shows a huge mode away from zero .
+clearly , a large fraction of units have high activation .
+right : the histogram of mean activations shows that most units have a smaller mean mean activation of about 123 .
+the histogram of activations shows a sharp peak at zero .
+very few units have high activation .
+we found that as a side - eect of doing dropout , the activations of the hidden units become sparse , even when no sparsity inducing regularizers are present .
+thus , dropout au - tomatically leads to sparse representations .
+to observe this eect , we take the autoencoders trained in the previous section and look at the sparsity of hidden unit activations on a ran - dom mini - batch taken from the test set .
+figure 123a and figure 123b compare the sparsity for the two models .
+in a good sparse model , there should only be a few highly activated units for any data case .
+moreover , the average activation of any unit across data cases should be low .
+to assess both of these qualities , we plot two histograms for each model .
+for each model , the histogram on the left shows the distribution of mean activations of hidden units across the minibatch .
+the histogram on the right shows the distribution of activations of the hidden units .
+comparing the histograms of activations we can see that fewer hidden units have high activations in figure 123b compared to figure 123a , as seen by the signicant mass away from
+zero for the net that does not use dropout .
+the mean activations are also smaller for the dropout net .
+the overall mean activation of hidden units is close to 123 for the autoencoder without dropout but drops to around 123 when dropout is used .
+123 eect of dropout rate
+dropout has a tunable hyperparameter p ( the probability of retaining a unit in the network ) .
+in this section , we explore the eect of varying this hyperparameter .
+the comparison is done in two situations .
+the number of hidden units is held constant .
+the number of hidden units is changed so that the expected number of hidden units
+that will be retained after dropout is held constant .
+in the rst case , we train the same network architecture with dierent amounts of dropout .
+we use a 123 - 123 - 123 - 123 - 123 architecture .
+no input dropout was used .
+fig - ure 123a shows the test error obtained as a function of p .
+if the architecture is held constant , having a small p means very few units will turn on during training .
+it can be seen that this has led to undertting since the training error is also high .
+we see that as p increases , the error goes down .
+it becomes at when 123 p 123 and then increases as p becomes close
+( a ) keeping n xed .
+( b ) keeping pn xed .
+figure 123 : eect of changing dropout rates on mnist .
+another interesting setting is the second case in which the quantity pn is held constant where n is the number of hidden units in any particular layer .
+this means that networks that have small p will have a large number of hidden units .
+therefore , after applying dropout , the expected number of units that are present will be the same across dierent architectures .
+however , the test networks will be of dierent sizes .
+in our experiments , we set pn = 123 for the rst two hidden layers and pn = 123 for the last hidden layer .
+figure 123b shows the test error obtained as a function of p .
+we notice that the magnitude of errors for small values of p has reduced by a lot compared to figure 123a ( for p = 123 it fell from 123% to 123% ) .
+values of p that are close to 123 seem to perform best for this choice of pn but our usual default value of 123 is close to optimal .
+123 . 123 . 123 . 123probability of retaining a unit ( p ) 123 . 123 . 123 . 123 . 123classification error %test errortraining error123 . 123 . 123 . 123probability of retaining a unit ( p ) 123 . 123 . 123 . 123classification error %test errortraining error srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+123 eect of data set size
+one test of a good regularizer is that it should make it possible to get good generalization error from models with a large number of parameters trained on small data sets .
+this section explores the eect of changing the data set size when dropout is used with feed - forward networks .
+huge neural networks trained in the standard way overt massively on small data sets .
+to see if dropout can help , we run classication experiments on mnist and vary the amount of data given to the network .
+the results of these experiments are shown in figure 123
+the network was given data sets of size 123 , 123 , 123k , 123k , 123k and 123k chosen randomly from the mnist training set .
+the same network architec - ture ( 123 - 123 - 123 - 123 - 123 ) was used for all data sets .
+dropout with p = 123 was per - formed at all the hidden layers and p = 123 at the input layer .
+it can be observed that for extremely small data sets ( 123 , 123 ) dropout does not give any improvements .
+the model has enough parameters that it can overt on the training data , even with all the noise coming from dropout .
+as the size of the data set is increased , the gain from doing dropout increases up to a point and then declines .
+this suggests that for any given architecture and dropout rate , there is a sweet spot corresponding to some amount of data that is large enough to not be memorized in spite of the noise but not so large that overtting is not a problem anyways .
+figure 123 : eect of varying data set size .
+123 monte - carlo model averaging vs .
+weight scaling
+the ecient test time procedure that we propose is to do an approximate model com - bination by scaling down the weights of the trained neural network .
+an expensive but more correct way of averaging the models is to sample k neural nets using dropout for each test case and average their predictions .
+as k , this monte - carlo model average gets close to the true model average .
+it is in - teresting to see empirically how many sam - ples k are needed to match the performance of the approximate averaging method .
+by computing the error for dierent values of k we can see how quickly the error rate of the nite - sample average approaches the error rate of the true model average .
+figure 123 : monte - carlo model averaging vs .
+123dataset size123classification error %with dropoutwithout dropout123number of samples used for monte - carlo averaging ( k ) 123 . 123 . 123 . 123 . 123test classification error %monte - carlo model averagingapproximate averaging by weight scaling dropout
+we again use the mnist data set and do classication by averaging the predictions of k randomly sampled neural networks .
+figure 123 shows the test error rate obtained for dierent values of k .
+this is compared with the error obtained using the weight scaling method ( shown as a horizontal line ) .
+it can be seen that around k = 123 , the monte - carlo method becomes as good as the approximate method .
+thereafter , the monte - carlo method is slightly better than the approximate method but well within one standard deviation of it .
+this suggests that the weight scaling method is a fairly good approximation of the true
+dropout restricted boltzmann machines
+besides feed - forward neural networks , dropout can also be applied to restricted boltzmann machines ( rbm ) .
+in this section , we formally describe this model and show some results to illustrate its key properties .
+123 model description consider an rbm with visible units v ( 123 , 123 ) d and hidden units h ( 123 , 123 ) f .
+it denes the following probability distribution
+p ( h , v; ) =
+exp ( v ( cid : 123 ) w h + a ( cid : 123 ) h + b ( cid : 123 ) v ) .
+where = ( w , a , b ) represents the model parameters and z is the partition function .
+dropout rbms are rbms augmented with a vector of binary random variables r ( 123 , 123 ) f .
+each random variable rj takes the value 123 with probability p , independent of others .
+if rj takes the value 123 , the hidden unit hj is retained , otherwise it is dropped from the model .
+the joint distribution dened by a dropout rbm can be expressed as
+p ( r , h , v; p , ) = p ( r; p ) p ( h , v|r; ) , prj ( 123 p ) 123rj ,
+p ( r; p ) =
+p ( h , v|r; ) =
+exp ( v ( cid : 123 ) w h + a ( cid : 123 ) h + b ( cid : 123 ) v )
+g ( hj , rj ) = 123 ( rj = 123 ) + 123 ( rj = 123 ) 123 ( hj = 123 ) .
+z ( cid : 123 ) ( , r ) is the normalization constant .
+g ( hj , rj ) imposes the constraint that if rj = 123 ,
+hj must be 123
+the distribution over h , conditioned on v and r is factorial
+p ( h|r , v ) =
+p ( hj|rj , v ) ,
+p ( hj = 123|rj , v ) = 123 ( rj = 123 ) ( cid : 123 ) bj + ( cid : 123 ) i
+srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+( a ) without dropout
+( b ) dropout with p = 123 .
+figure 123 : features learned on mnist by 123 hidden unit rbms .
+the features are ordered by l123
+the distribution over v conditioned on h is same as that of an rbm
+p ( v|h ) =
+p ( vi = 123|h ) = ai + ( cid : 123 ) j
+conditioned on r , the distribution over ( v , h ) is same as the distribution that an rbm would impose , except that the units for which rj = 123 are dropped from h .
+therefore , the dropout rbm model can be seen as a mixture of exponentially many rbms with shared weights each using a dierent subset of h .
+123 learning dropout rbms
+learning algorithms developed for rbms such as contrastive divergence ( hinton et al . , 123 ) can be directly applied for learning dropout rbms .
+the only dierence is that r is rst sampled and only the hidden units that are retained are used for training .
+similar to dropout neural networks , a dierent r is sampled for each training case in every minibatch .
+in our experiments , we use cd - 123 for training dropout rbms .
+123 eect on features
+dropout in feed - forward networks improved the quality of features by reducing co - adaptations .
+this section explores whether this eect transfers to dropout rbms as well .
+figure 123a shows features learned by a binary rbm with 123 hidden units .
+figure 123b shows features learned by a dropout rbm with the same number of hidden units .
+features
+( a ) without dropout
+( b ) dropout with p = 123 .
+figure 123 : eect of dropout on sparsity .
+left : the activation histogram shows that a large num - ber of units have activations away from zero .
+right : a large number of units have activations close to zero and very few units have high activation .
+learned by the dropout rbm appear qualitatively dierent in the sense that they seem to capture features that are coarser compared to the sharply dened stroke - like features in the standard rbm .
+there seem to be very few dead units in the dropout rbm relative to the
+123 eect on sparsity
+next , we investigate the eect of dropout rbm training on sparsity of the hidden unit activations .
+figure 123a shows the histograms of hidden unit activations and their means on a test mini - batch after training an rbm .
+figure 123b shows the same for dropout rbms .
+the histograms clearly indicate that the dropout rbms learn much sparser representations than standard rbms even when no additional sparsity inducing regularizer is present .
+marginalizing dropout
+dropout can be seen as a way of adding noise to the states of hidden units in a neural network .
+in this section , we explore the class of models that arise as a result of marginalizing this noise .
+these models can be seen as deterministic versions of dropout .
+in contrast to standard ( monte - carlo ) dropout , these models do not need random bits and it is possible to get gradients for the marginalized loss functions .
+in this section , we briey explore these
+deterministic algorithms have been proposed that try to learn models that are robust to feature deletion at test time ( globerson and roweis , 123 ) .
+marginalization in the context of denoising autoencoders has been explored previously ( chen et al . , 123 ) .
+the marginal - ization of dropout noise in the context of linear regression was discussed in srivastava ( 123 ) .
+wang and manning ( 123 ) further explored the idea of marginalizing dropout to speed - up training .
+van der maaten et al .
+( 123 ) investigated dierent input noise distributions and
+srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+the regularizers obtained by marginalizing this noise .
+wager et al .
+( 123 ) describes how dropout can be seen as an adaptive regularizer .
+123 linear regression
+first we explore a very simple case of applying dropout to the classical problem of linear regression .
+let x rnd be a data matrix of n data points .
+y rn be a vector of targets .
+linear regression tries to nd a w rd that minimizes
+when the input x is dropped out such that any input dimension is retained with probability p , the input can be expressed as r x where r ( 123 , 123 ) nd is a random matrix with rij bernoulli ( p ) and denotes an element - wise product .
+marginalizing the noise , the objective function becomes
+this reduces to
+rbernoulli ( p ) ( cid : 123 ) ||y ( r x ) w||123 ( cid : 123 ) .
+||y pxw||123 + p ( 123 p ) ||w||123 ,
+where = ( diag ( x ( cid : 123 ) x ) ) 123 / 123
+therefore , dropout with linear regression is equivalent , in expectation , to ridge regression with a particular form for .
+this form of essentially scales the weight cost for weight wi by the standard deviation of the ith dimension of the data .
+if a particular data dimension varies a lot , the regularizer tries to squeeze its weight
+another interesting way to look at this objective is to absorb the factor of p into w .
+this leads to the following form
+||y x ( cid : 123 ) w||123 +
+where ( cid : 123 ) w = pw .
+this makes the dependence of the regularization constant on p explicit .
+for p close to 123 , all the inputs are retained and the regularization constant is small .
+as more dropout is done ( by decreasing p ) , the regularization constant grows larger .
+123 logistic regression and deep networks
+for logistic regression and deep neural nets , it is hard to obtain a closed form marginalized model .
+however , wang and manning ( 123 ) showed that in the context of dropout applied to logistic regression , the corresponding marginalized model can be trained approximately .
+under reasonable assumptions , the distributions over the inputs to the logistic unit and over the gradients of the marginalized model are gaussian .
+their means and variances can be computed eciently .
+this approximate marginalization outperforms monte - carlo dropout in terms of training time and generalization performance .
+however , the assumptions involved in this technique become successively weaker as more
+layers are added .
+therefore , the results are not directly applicable to deep networks .
+bernoulli dropout gaussian dropout
+123 layers , 123 units each
+123 conv + 123 fully connected layers
+table 123 : comparison of classication error % with bernoulli and gaussian dropout .
+for mnist , the bernoulli model uses p = 123 for the hidden units and p = 123 for the input units .
+for cifar - 123 , we use p = ( 123 , 123 , 123 , 123 , 123 , 123 ) going from the input layer to the p .
+results were
+the value of for the gaussian dropout models was set to be ( cid : 123 ) 123p
+averaged over 123 dierent random seeds .
+multiplicative gaussian noise
+dropout involves multiplying hidden activations by bernoulli distributed random variables which take the value 123 with probability p and 123 otherwise .
+this idea can be generalized by multiplying the activations with random variables drawn from other distributions .
+we recently discovered that multiplying by a random variable drawn from n ( 123 , 123 ) works just as well , or perhaps better than using bernoulli noise .
+this new form of dropout amounts to adding a gaussian distributed random variable with zero mean and standard deviation equal to the activation of the unit .
+that is , each hidden activation hi is perturbed to hi + hir where r n ( 123 , 123 ) , or equivalently hir ( cid : 123 ) where r ( cid : 123 ) n ( 123 , 123 ) .
+we can generalize this to r ( cid : 123 ) n ( 123 , 123 ) where becomes an additional hyperparameter to tune , just like p was in the standard ( bernoulli ) dropout .
+the expected value of the activations remains unchanged , therefore no weight scaling is required at test time .
+in this paper , we described dropout as a method where we retain units with probability p at training time and scale down the weights by multiplying them by a factor of p at test time .
+another way to achieve the same eect is to scale up the retained activations by multiplying by 123 / p at training time and not modifying the weights at test time .
+these methods are equivalent with appropriate scaling of the learning rate and weight initializations at each therefore , dropout can be seen as multiplying hi by a bernoulli random variable rb that takes the value 123 / p with probability p and 123 otherwise .
+e ( rb ) = 123 and v ar ( rb ) = ( 123 p ) / p .
+for the gaussian multiplicative noise , if we set 123 = ( 123 p ) / p , we end up multiplying hi by a random variable rg , where e ( rg ) = 123 and v ar ( rg ) = ( 123 p ) / p .
+therefore , both forms of dropout can be set up so that the random variable being multiplied by has the same mean and variance .
+however , given these rst and second order moments , rg has the highest entropy and rb has the lowest .
+both these extremes work well , although preliminary experimental results shown in table 123 suggest that the high entropy case might work
+slightly better .
+for each layer , the value of in the gaussian model was set to be ( cid : 123 ) 123p
+using the p from the corresponding layer in the bernoulli model .
+dropout is a technique for improving neural networks by reducing overtting .
+standard backpropagation learning builds up brittle co - adaptations that work for the training data but do not generalize to unseen data .
+random dropout breaks up these co - adaptations by
+srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+making the presence of any particular hidden unit unreliable .
+this technique was found to improve the performance of neural nets in a wide variety of application domains includ - ing object classication , digit recognition , speech recognition , document classication and analysis of computational biology data .
+this suggests that dropout is a general technique and is not specic to any domain .
+methods that use dropout achieve state - of - the - art re - sults on svhn , imagenet , cifar - 123 and mnist .
+dropout considerably improved the performance of standard neural nets on other data sets as well .
+this idea can be extended to restricted boltzmann machines and other graphical mod - els .
+the central idea of dropout is to take a large model that overts easily and repeatedly sample and train smaller sub - models from it .
+rbms easily t into this framework .
+we de - veloped dropout rbms and empirically showed that they have certain desirable properties .
+one of the drawbacks of dropout is that it increases training time .
+a dropout network typically takes 123 - 123 times longer to train than a standard neural network of the same ar - chitecture .
+a major cause of this increase is that the parameter updates are very noisy .
+each training case eectively tries to train a dierent random architecture .
+therefore , the gradients that are being computed are not gradients of the nal architecture that will be used at test time .
+therefore , it is not surprising that training takes a long time .
+however , it is likely that this stochasticity prevents overtting .
+this creates a trade - o between over - tting and training time .
+with more training time , one can use high dropout and suer less overtting .
+however , one way to obtain some of the benets of dropout without stochas - ticity is to marginalize the noise to obtain a regularizer that does the same thing as the dropout procedure , in expectation .
+we showed that for linear regression this regularizer is a modied form of l123 regularization .
+for more complicated models , it is not obvious how to obtain an equivalent regularizer .
+speeding up dropout is an interesting direction for future
+this research was supported by ogs , nserc and an early researcher award .
+appendix a .
+a practical guide for training dropout networks
+neural networks are infamous for requiring extensive hyperparameter tuning .
+dropout networks are no exception .
+in this section , we describe heuristics that might be useful for
+a . 123 network size
+it is to be expected that dropping units will reduce the capacity of a neural network .
+if n is the number of hidden units in any layer and p is the probability of retaining a unit , then instead of n hidden units , only pn units will be present after dropout , in expectation .
+moreover , this set of pn units will be dierent each time and the units are not allowed to build co - adaptations freely .
+therefore , if an n - sized layer is optimal for a standard neural net on any given task , a good dropout net should have at least n / p units .
+we found this to be a useful heuristic for setting the number of hidden units in both convolutional and fully
+a . 123 learning rate and momentum
+dropout introduces a signicant amount of noise in the gradients compared to standard stochastic gradient descent .
+therefore , a lot of gradients tend to cancel each other .
+order to make up for this , a dropout net should typically use 123 - 123 times the learning rate that was optimal for a standard neural net .
+another way to reduce the eect the noise is to use a high momentum .
+while momentum values of 123 are common for standard nets , with dropout we found that values around 123 to 123 work quite a lot better .
+using high learning rate and / or momentum signicantly speed up learning .
+a . 123 max - norm regularization
+though large momentum and learning rate speed up learning , they sometimes cause the network weights to grow very large .
+to prevent this , we can use max - norm regularization .
+this constrains the norm of the vector of incoming weights at each hidden unit to be bound by a constant c .
+typical values of c range from 123 to 123
+a . 123 dropout rate
+dropout introduces an extra hyperparameterthe probability of retaining a unit p .
+this hyperparameter controls the intensity of dropout .
+p = 123 , implies no dropout and low values of p mean more dropout .
+typical values of p for hidden units are in the range 123 to 123 .
+for input layers , the choice depends on the kind of input .
+for real - valued inputs ( image patches or speech frames ) , a typical value is 123 .
+for hidden layers , the choice of p is coupled with the choice of number of hidden units n .
+smaller p requires big n which slows down the training and leads to undertting .
+large p may not produce enough dropout to prevent
+appendix b .
+detailed description of experiments and data sets
+this section describes the network architectures and training details for the experimental results reported in this paper .
+the code for reproducing these results can be obtained from http : / / www . cs . toronto . edu / ~ nitish / dropout .
+the implementation is gpu - based .
+we used the excellent cuda librariescudamat ( mnih , 123 ) and cuda - convnet ( krizhevsky et al . , 123 ) to implement our networks .
+the mnist data set consists of 123 , 123 training and 123 , 123 test examples each representing a 123 digit image .
+we held out 123 , 123 random training images for validation .
+hyperpa - rameters were tuned on the validation set such that the best validation error was produced after 123 million weight updates .
+the validation set was then combined with the training set and training was done for 123 million weight updates .
+this net was used to evaluate the per - formance on the test set .
+this way of using the validation set was chosen because we found that it was easy to set up hyperparameters so that early stopping was not required at all .
+therefore , once the hyperparameters were xed , it made sense to combine the validation and training sets and train for a very long time .
+srivastava , hinton , krizhevsky , sutskever and salakhutdinov
+the architectures shown in figure 123 include all combinations of 123 , 123 , and 123 layer networks with 123 and 123 units in each layer .
+thus , there are six architectures in all .
+for all the architectures ( including the ones reported in table 123 ) , we used p = 123 in all hidden layers and p = 123 in the input layer .
+a nal momentum of 123 and weight constraints with c = 123 was used in all the layers .
+to test the limits of dropouts regularization power , we also experimented with 123 and 123 layer nets having 123 and 123 units .
+123 layer nets gave improvements as shown in table 123
+however , the three layer nets performed slightly worse than 123 layer ones with the same level of dropout .
+when we increased dropout , performance improved but not enough to outperform the 123 layer nets .
+the svhn data set consists of approximately 123 , 123 training images and 123 , 123 test images .
+the training set consists of two partsa standard labeled training set and another set of labeled examples that are easy .
+a validation set was constructed by taking examples from both the parts .
+two - thirds of it were taken from the standard set ( 123 per class ) and one - third from the extra set ( 123 per class ) , a total of 123 samples .
+this same process is used by sermanet et al .
+( 123 ) .
+the inputs were rgb pixels normalized to have zero mean and unit variance .
+other preprocessing techniques such as global or local contrast normalization or zca whitening did not give any noticeable improvements .
+the best architecture that we found uses three convolutional layers each followed by a max - pooling layer .
+the convolutional layers have 123 , 123 and 123 lters respectively .
+each convolutional layer has a 123 123 receptive eld applied with a stride of 123 pixel .
+each max pooling layer pools 123 123 regions at strides of 123 pixels .
+the convolutional layers are followed by two fully connected hidden layers having 123 units each .
+all units use the rectied linear activation function .
+dropout was applied to all the layers of the network with the probability of retaining the unit being p = ( 123 , 123 , 123 , 123 , 123 , 123 ) for the dierent layers of the network ( going from input to convolutional layers to fully connected layers ) .
+in addition , the max - norm constraint with c = 123 was used for all the weights .
+a momentum of 123 was used in all the layers .
+these hyperparameters were tuned using a validation set .
+since the training set was quite large , we did not combine the validation set with the training set for nal training .
+we reported test error of the model that had smallest validation error .
+b . 123 cifar - 123 and cifar - 123
+the cifar - 123 and cifar - 123 data sets consists of 123 , 123 training and 123 , 123 test images each .
+they have 123 and 123 image categories respectively .
+these are 123 123 color images .
+we used 123 , 123 of the training images for validation .
+we followed the procedure similar to mnist , where we found the best hyperparameters using the validation set and then combined it with the training set .
+the images were preprocessed by doing global contrast normalization in each color channel followed by zca whitening .
+global contrast normal - ization means that for image and each color channel in that image , we compute the mean of the pixel intensities and subtract it from the channel .
+zca whitening means that we mean center the data , rotate it onto its principle components , normalize each component
+and then rotate it back .
+the network architecture and dropout rates are same as that for svhn , except the learning rates for the input layer which had to be set to smaller values .
+the open source kaldi toolkit ( povey et al . , 123 ) was used to preprocess the data into log - lter banks .
+a monophone system was trained to do a forced alignment and to get labels for speech frames .
+dropout neural networks were trained on windows of 123 consecutive frames to predict the label of the central frame .
+no speaker dependent operations were performed .
+the inputs were mean centered and normalized to have unit variance .
+we used probability of retention p = 123 in the input layers and 123 in the hidden layers .
+max - norm constraint with c = 123 was used in all the layers .
+a momentum of 123 with a high learning rate of 123 was used .
+the learning rate was decayed as 123 ( 123 + t / t ) 123
+for dbn pretraining , we trained rbms using cd - 123
+the variance of each input unit for the gaussian rbm was xed to 123
+for netuning the dbn with dropout , we found that in order to get the best results it was important to use a smaller learning rate ( about 123 ) .
+adding max - norm constraints did not give any improvements .
+the reuters rcv123 corpus contains more than 123 , 123 documents categorized into 123 classes .
+these classes are arranged in a tree hierarchy .
+we created a subset of this data set consisting of 123 , 123 articles and a vocabulary of 123 words comprising of 123 categories in which each document belongs to exactly one class .
+the data was split into equal sized training and test sets .
+we tried many network architectures and found that dropout gave improvements in classication accuracy over all of them .
+however , the improvement was not as signicant as that for the image and speech data sets .
+this might be explained by the fact that this data set is quite big ( more than 123 , 123 training examples ) and overtting is not a very serious problem .
+b . 123 alternative splicing the alternative splicing data set consists of data for 123 cassette exons , 123 rna features and 123 tissue types derived from 123 mouse tissues .
+for each input , the target consists of 123 softmax units ( one for tissue type ) .
+each softmax unit has 123 states ( inc , exc , nc ) which are of the biological importance .
+for each softmax units , the aim is to predict a distribution over these 123 states that matches the observed distribution from wet lab experiments as closely as possible .
+the evaluation metric is code quality which is dened as
+( cid : 123 ) ttissue types ( cid : 123 ) s ( inc , exc , nc )
+i , t is the target probability for state s and tissue type t in input i; qs
+t ( ri ) is the predicted probability for state s in tissue type t for input ri and ps is the average of ps over i and t .
+a two layer dropout network with 123 units in each layer was trained on this data set .
+a value of p = 123 was used for the hidden layer and p = 123 for the input layer .
+max - norm regularization with high decaying learning rates was used .
+results were averaged across the same 123 folds used by xiong et al .
+( 123 ) .
+srivastava , hinton , krizhevsky , sutskever and salakhutdinov

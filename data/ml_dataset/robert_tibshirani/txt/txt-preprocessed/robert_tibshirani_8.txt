@@ -1,0 +1,1442 @@
+1. Introduction. We discuss the problem of identifying differentially ex-
+pressed groups of genes from a set of microarray experiments. In the usual
+situation we have N genes measured on n microarrays, under two different ex-
+perimental conditions, such as control and treatment. The number of genes N is
+usually large, say, at least a few thousand, while the number samples n is smaller,
+say, a hundred or fewer. This problem is an example of multiple hypothesis testing
+with a large number of tests, one that often arises in genomic and proteomic ap-
+plications, and also in signal processing. We focus mostly on the gene expression
+problem, but our proposed methods are more widely applicable.
+
+Most approaches start by computing a two-sample t-statistic zj for each gene.
+Genes having t-statistics larger than a pre-dened cutoff (in absolute value) are
+declared signicant, and then the family-wise error rate or false discovery rate of
+the resulting gene list is assessed by comparing the tail area from a null distribution
+of the statistic. This null distribution is derived from data permutations, or from
+asymptotic theory.
+
+In an interesting and useful paper, Subramanian et al. (2005) proposed a method
+called Gene Set Enrichment Analysis (GSEA) for assessing the signicance of pre-
+dened gene-sets, rather than individual genes. The gene-sets can be derived from
+different sources, for example, the sets of genes representing biological pathways
+
+Received October 2006; revised January 2007.
+1Supported in part by NSF Grant DMS-05-05673 and National Institutes of Health Contract 8RO1
+
+EB002784.
+
+2Supported in part by NSF Grant DMS-99-71405 and National Institutes of Health Contract N01-
+
+HV-28183.
+
+Key words and phrases. Multiple testing, gene set enrichment, hypothesis testing.
+
+107
+
+108
+
+B. EFRON AND R. TIBSHIRANI
+
+in the cell, or sets of genes whose DNA sequences are close to together on the
+cells chromosomes. The idea is that these gene-sets are closely related and, hence,
+will have similar expression patterns. By borrowing strength across the gene-set,
+there is potential for increased statistical power. In addition, in comparing study
+results on the same disease from different labs, one might get more reproducibility
+from gene-sets than from individual genes, because of biological and technical
+variability.
+
+The GSEA methods works roughly as follows. We begin with a pre-dened
+collection of gene-sets S1, S2, . . . , SK . We compute t-statistic zj for all N genes
+in our data. Let zk = (z1, z2, . . . , zm) be the gene scores for the m genes in gene-
+set Sk. In GSEA we then compute a gene-set score Sk(zk) for each gene-set Sk,
+equal to essentially a signed version of the KolmogorovSmirnov statistic between
+the values {zj , j  Sk} and their complement {zj , j / Sk}; the sign taken positive
+or negative depending on the direction of shift. The idea is that if some or all of the
+gene-set Sk have higher (or lower) values of zj than expected, their summary score
+Sk should be large. An absolute cutoff value is dened, and values of Sk above
+(or below) the cutoff are declared signicant. The GSEA method then does many
+permutations of the sample labels and recomputes the statistic on each permuted
+dataset. This information is used to estimate the false discovery rate of the list of
+signicant gene-sets. The Bioconductor package limma offers an analysis option
+similar to GSEA, but uses instead the simple average of the scores zk [see Smyth
+(2004)], randomizing over the set of genes rather than the set of samples, what we
+call row randomization here.
+
+Other related ideas may be found in Pavlidis et al. (2002) and Rahnenfhrer et al.
+(2004). Nobel and Wright (2005) propose the SAFE methodology a quite gen-
+eral permutation-based approach to the enrichment testing problem. Newton et al.
+(2006) propose random set scoring methods for assessing the signicance of gene-
+set enrichment. Zahn et al. (2006) propose an alternative to GSEA that uses a
+Van der Waerden statistic in place of the KolmogorovSmirnov statistic and boot-
+strap sampling of the arrays instead of a permutation distribution. Other papers
+that address the problem of testing for differentially expressed sets of genes in-
+clude Szabo et al. (2003), Frisina et al. (2004), Lu et al. (2005) and Dettling et al.
+(2005). One of our goals here is to make explicit the choices involved between the
+various randomization schemes.
+
+In studying the GSEA work, we have found some shortcomings and ways it
+could be improved. The GSEAs dependence on KolmogorovSmirnov statistics
+is a reasonable choice, but not a necessary one. This paper puts the GSEA proce-
+dure in a more theoretical framework that allows us to investigate questions of ef-
+ciency for gene-set inference; a new procedure based on the maxmean statistic
+is suggested that has superior power characteristics versus familiar location/scale
+alternatives.
+
+Here are two simulated data examples that illustrate some of the main issues,
+and allow us to introduce our proposed solution. We generated data on 1000 genes
+
+ON TESTING THE SIGNIFICANCE OF SETS OF GENES
+
+109
+
+FIG. 1. Example 1: left panel shows histograms of GSEA scores for original data (black) and from
+200 permutations of the sample labels (dashed). The rst gene-set stands our fairly clearly with a
+score of about 0.7. The right panel shows the results using instead the maxmean statistic. The rst
+gene-set stands out much more clearly than in the left panel.
+
+and 50 samples, with each consecutive nonoverlapping block of 20 genes consid-
+ered to be a gene-set. The rst 25 samples are the control group, and the second
+25 samples are the treatment group. First we generated each data value as i.i.d.
+N (0, 1). Then the constant 2.5 was added to the rst 10 genes in the treatment
+group. Thus, half of the rst gene-set (rst block of 20 genes) has a higher aver-
+age expression in the treatment group, while all other gene-sets have no average
+difference in the two groups.
+
+The left panel of Figure 1 shows a histogram (black lines) of the GSEA scores
+for the 50 gene-sets. The rst gene-set clearly stands out, with a value of about
+0.9. We did 200 permutations of the control-treatment labels, producing the dashed
+histogram in the top left panel of Figure 1. The rst gene-set stands out on the right
+side of the histogram. So the GSEA method has performed reasonably well in this
+example.
+
+In the paper we study alternative summary statistics for gene-sets. Our favorite
+is something we call the maxmean statistic: we compute the average of the pos-
+itive parts of each zi in S, and also the negative parts, and choose the one that is
+larger in absolute value. The results for maxmean in this example are shown in the
+right panel of Figure 1. The rst gene-set stands out more clearly than it does in
+the left panel. In this paper we show by both analytic calculations and simulations
+that the maxmean statistics are generally more powerful than GSEA.
+
+Now consider a different problem. We generated data exactly as before, except
+that the rst 10 genes in every gene-set are 2.5 units higher in the treatment group.
+The top left panel of Figure 2 shows a histogram of the maxmean scores for the
+50 gene-sets, and a histogram of the scores from 200 permutations of the sample
+
+110
+
+B. EFRON AND R. TIBSHIRANI
+
+FIG. 2. Example 2: top left panel shows a histogram of the maxmean scores. In the top right panel a
+histogram of maxmean scores from 200 permutations of the sample labels has been added (dashed):
+all of the gene-sets look to be signicant. In the bottom left panel a histogram of the maxmean scores
+is shown along with maxmean scores from 200 row randomizationsgene-sets chosen from the
+full collection of genes at random (dashed). Finally, in the bottom right panel, histograms of the
+restandardized scores from the original data (solid) and from 200 permutations of the sample labels
+(dashed) are shown. (Note that the horizontal axis has changed, since the values have been centered
+and scaled). None of the gene-sets looks signicant, which is reasonable, given the way the data were
+generated.
+
+labels (dashed). All of the scores look signicantly large compared to the permu-
+tation values. But given the way that the data were generated, there seems to be
+nothing special about any one gene-set. To quantify this, we row randomized the
+1000 genes, leaving the sample labels as is. The rst 20 genes in the scrambled set
+
+ON TESTING THE SIGNIFICANCE OF SETS OF GENES
+
+111
+
+became the rst gene-set, the second 20 genes became the second gene-set, and
+so on. We did this many 200 times, recomputing the maxmean statistic on each
+scrambled set. The results are shown in the bottom left panel of Figure 2. None
+of the original 50 gene-sets are notable when compared to gene-sets formed by
+randomly sampling from the full set of genes.
+
+The point is that any method for assessing gene-sets should compare a given
+gene-set score not only to scores from permutations of the sample labels, but also
+take into account scores from sets formed by random selections of genes. Both
+GSEA and SAFE do something like this, at least implicitly.
+
+The bottom right panel of Figure 2 puts all of these ideas together. It uses the
+restandardized version of the maxmean statistic, in which we center and scale
+the maxmean statistic by its mean and standard deviation under the row random-
+izations, like those in the bottom left panel. This standardized maxmean statistic
+is then computed both on the original data (light histogram) and on each of the
+permuted datasets (dark histogram). As we would expect, we see no signicant
+gene-sets. This restandardization is potentially important for any gene summary
+statistic: it turns out that the GSEA statistic incorporates a form of what we are
+calling restandardization.
+
+The two ideas illustrated abovealternative summary statistics for gene-sets
+and restandardization based on row randomizationare two of the main proposals
+in this paper. In Section 2 we describe the randomization and permutation meth-
+ods for estimating appropriate null distributions. Section 3 studies the choice of
+summary statistic for gene-sets, and introduces the maxmean statistic. In Section 4
+we summarize our proposal for Gene Set Analysis and discuss computational is-
+sues. A simulation study is carried out in Section 5, comparing the power of the
+maxmean statistic to the GSEA statistic and other competitors. Finally, in Section 6
+we give a number of examples of the method, including applications to a kidney
+cancer dataset, a generalization to the class prediction problem and comparison of
+different gene-set collections over the same expression dataset.
+
+2. Randomization and permutation. A straightforward approach to gene-
+set analysis begins with some enrichment score S and computes its signicance
+. Here we argue that a second kind of
+by comparison with permutation values S
+comparison operation, row randomization, is also needed to avoid bias in the
+determination of signicance. We begin with a simplied statement of the gene-
+set problem, leading later to a more realistic analysis.
+
+
+
+Let X indicate an N by n matrix of expression values, N genes and n microar-
+rays, with the rst n1 columns of X representing Class 1 and the last n2 Class 2,
+n1+ n2 = n. In the p53 example of Subramanian et al. (2005) there are N = 10100
+genes and n = 50 arrays relating to cell lines with normal or mutated states for the
+p53 factor, n1 = 17 normal and n2 = 33 mutated.
+
+The ith row of X, that is, the data for gene i, yields a two-sample t-statistic
+ti comparing the classes. In this section it will be convenient to transform the ti
+
+112
+
+B. EFRON AND R. TIBSHIRANI
+
+theoretical null: zi  N (0, 1),
+
+values to z-values zi, theoretically having a standard normal distribution,
+(2.1)
+under the null hypothesis of no difference between the two treatments. [The trans-
+formation is zi = 
+1(Fn2(ti )), where  is the standard normal cumulative dis-
+tribution function (c.d.f.) while Fn2 is the c.d.f. for a t distribution having n  2
+degrees of freedom.] The methods here apply outside the realm of genes, microar-
+rays and t-tests, but that is the main application we have in mind.
+
+To begin with, suppose that a single gene-set S, comprising m genes, is under
+consideration, and we wish to test the hypothesis that S is enriched, meaning that
+its m z-values are unusually large, positively or negatively, in a sense to be dened.
+The scientic idea underlying enrichment, as nicely stated in Subramanian et al.
+(2005), is that a biologically related set of genes, perhaps representing a genetic
+pathway, could reveal its importance through a general effect on its constituent
+z-values, whether or not the individual zis were signicantly nonzero.
+
+Let zS indicate the set of m z-values in S and
+S = S(zS)
+
+(2.2)
+
+dene an enrichment test statistic, with larger value of S indicating greater enrich-
+ment. The GSEA algorithm uses a KolmogorovSmirnov type function for S(zS).
+A simpler approach starts with a function s of the individual z-values,
+
+(2.3)
+
+si = s(zi ),
+
+S =(cid:1)
+
+and takes the gene-set score S to be the average of si in S,
+
+S
+
+s(zi )/m.
+
+(2.4)
+The choice s(z) = |z| will be discussed later. Limma [Smyth (2004)], a microarray
+analysis program available in the Bioconductor R package, implements (2.4) with
+s(z) = z, so S is simply zS, the average z-score in S (actually using S = |zS| for
+two-sided inference). Section 3 develops a third choice, the maxmean statistic.
+Testing S for enrichment requires a null hypothesis distribution for S, and that
+is where difculties begin; there are two quite different models for what null
+might mean. We discuss these next, in a spirit closely related to Q1 and Q2 of
+Tian et al. (2005).
+
+Randomization Model. The null hypothesis Hrand is that S has been chosen
+by random selection of m genes from the full set of N genes. In this case the
+null density of S, say, grand(S), can be obtained by row randomization: sets S
+of m rows of the expression matrix X are drawn at random, giving randomized
+versions S of (2.4), a large number of which are generated and used to estimate
+grand(S). Equivalently, random subsets z
+S of size m are drawn from all N zis,
+giving S = S(z
+S).
+
+ON TESTING THE SIGNIFICANCE OF SETS OF GENES
+
+113
+
+Permutation Model. Let XS be the m by n submatrix of X corresponding
+to S. The null hypothesis Hperm is that the n columns of XS are independent and
+identically distributed m-vectors (i.i.d.). The null density of S, gperm(S), is ob-
+tained by column permutations, leading to an estimate of gperm(S) in the usual
+way.
+
+The Randomization Model has the appealing feature of operating conditionally
+on the set z of all N z-values: given z, it tests the null hypothesis that the observed
+S is no bigger than what might be obtained by a random selection of S.
+
+Its defect concerns correlation between the genes. Suppose the scores si in (2.3)
+
+have empirical mean and standard deviation
+
+s  (means , stdevs )
+
+(2.5)
+
+(2.6)
+
+with
+
+(2.7)
+
+for the ensemble of all N genes. Because row randomization destroys gene-wide
+correlations, the randomized version of (2.4) will have mean and standard devia-
+tion
+
+S  (,  ),
+
+ = means
+
+
+and   = stdevs /
+
+m.
+
+However,   will underestimate the variability of S if there is positive correlation
+among the z-values in S, which seems likely if S was chosen on the basis of bio-
+logical similarities. The p-value in the Limma package compares S = zS with the
+row randomization distribution of S, ignoring, perhaps dangerously, correlation
+effects.
+
+Permutation methods deal nicely with the correlation problem. Let RS indicate
+the correlation matrix of the i.i.d. columns of XS in the Permutation Model. Be-
+cause column-wise permutations maintain the integrity of column vectors, it turns
+out, under some regularity conditions, that z
+S, the permutation vector of z-values
+in S, will have correlation matrix approximating RS, as will zS itself. In other
+words, for a prechosen gene-set S, the permutation correlation matrix of zS will
+be approximately correct.
+Figure 3 concerns correlation effects in the p53 example of Subramanian et al.
+(2005); the authors provide a catalog of 522 gene sets, of which 395 have m  10
+members. Taking s(z) = z yields
+(2.8)
+
+as in (2.5), this being the mean and standard deviation of all those zis involved
+
+in the 395 gene-sets. 400 permutation values of S
+i values
+in S, were generated for each of the 395 gene-sets S, and the permutation standard
+deviation 
+
+
+S, the average z
+
+
+S computed.
+
+(means , stdevs ) = (0.00, 1.13),
+ = z
+
+114
+
+B. EFRON AND R. TIBSHIRANI
+
+FIG. 3. Permutation standard deviation compared to randomization standard deviation for S = zS ,
+
+395 gene-sets for p53 data, Subramanian et al. (2005). Permutation values exceed randomization
+values, especially for gene-sets with large m at left, reecting positive correlations within gene-sets.
+
+Figure 3 plots 
+
+
+= 1.13/
+(2.7); 
+large m, with median 1.50 for m  50.
+
+
+
+S versus 
+S
+
+
+S /
+
+mS, the randomization standard deviation
+
+S has median 1.08 (light line), but the ratio is considerably greater for
+
+The Permutation Model has a serious weakness of its own: it does not take into
+account the overall statistics (means , stdevs ), (2.5), as demonstrated next. Figure 4
+concerns the BRCA data, Efron (2004), a microarray experiment comparing two
+classes of breast cancer patients, N = 3226 genes, n = 15 microarrays, n = 7 for
+class 1, n2 = 8 for class 2. A two-sample t-statistic ti was computed for each
+gene and converted to z-value, zi = 
+1(F13(ti )). The N z-values have mean and
+standard deviation
+
+(2.9)
+
+z  (0.026, 1.43).
+
+random selection from the N genes. Enrichment was tested with S =(cid:2)
+
+In this case (2.1), the theoretical N (0, 1) null, substantially underestimates the
+z-values variability, their histogram looking like an overdispersed but somewhat
+short-tailed normal.
+For this example 129 gene-sets S of size m = 25 each were constructed by
+|zi|/m,
+that is, by using (2.3) and (2.4) with s(z) = |z|. Figure 4 shows that the permu-
+tation distribution S
+greatly underestimates the actual 129 S values. A standard
+BenjaminiHochberg (1995) FDR analysis based on permutation p-values, carried
+
+
+
+S
+
+ON TESTING THE SIGNIFICANCE OF SETS OF GENES
+
+115
+
+FIG. 4. Enrichment statistics S for 129 randomly selected gene-sets of size m = 25, heavy line
+|zi|/m, BRCA data,
+histogram, lies far to right of permutation S
+Hedenfalk et al. (2001). Restandardized values (2.12), light line histogram, gives a much better match
+to actual values.
+
+values, solid histogram. S =(cid:2)
+
+
+
+S
+
+out at rejection level q = 0.10, labels 113 of the 129 generate as enriched, even
+though we know that all of them were constructed randomly.
+
+It is easy to spot the trouble here: the permutation z-values are much less dis-
+persed than the actual zs, with marginal mean and standard deviation, for all N of
+them,
+
+(2.10)
+
+z
+
+  (0.022, 1.014)
+
+
+
+compared to (2.9). [This is a dependable feature of the permutation t-test, which
+ N (0, 1), the theoretical null, under a wide variety of circum-
+tends to yield z
+i
+stances.]
+
+,
+over all N genes and a large
+
+
+i ) are correspondingly reduced. Letting (mean
+
+) indicate the mean and standard deviation of s
+
+The individual scores s
+
+= s(z
+
+
+
+
+
+
+
+i
+
+stdev
+number of permutations,
+
+(2.11)
+
+s
+
+, stdev
+
+
+
+
+
+
+, stdev
+
+  (mean
+) = (0.82, 0.60) compared to (means , stdevs ) =
+statistics that are
+
+),
+
+
+
+we computed (mean
+(1.17, 0.82) for the actual scores (2.5). This translates into S
+much smaller than the actual S values.
+
+116
+
+B. EFRON AND R. TIBSHIRANI
+
+2.1. Restandardization. We combine the randomization and permutation
+ideas into a method that we call Restandardization. This can be thought of
+to take account of the overall
+as a method of correcting permutation values S
+S s(zi )/m as in
+
+distribution of the individual scores si. For a gene-set score S =(cid:2)
+
+
+
+(2.3) and (2.4), the restandardized permutation value is dened to be
+
+(2.12)
+
+S
+
+ = means + stdevs
+stdev
+
+ (S
+
+  mean
+
+
+
+),
+
+with (means , stdevs ) and (mean
+tions dened at (2.5) and (2.11).
+
+
+
+
+, stdev
+
+) the overall means and standard devia-
+
+A restandardized p-value for testing the enrichment of gene-set S is obtained by
+simulations,
+
+comparing its actual enrichment score S to a large number B of S
+
+
+
+pS = #{S
+
+
+
+values exceeding S}/B.
+
+
+Figure 4 shows the restandardized value S
+
+with the actual S values, though the S
+
+giving much better agreement than
+distribution is moderately overdis-
+
+(2.13)
+
+
+S
+persed.
+
+(2.14)
+
+Here is another equivalent way to express the restandardization procedure: we
+rst standardize the statistic S with respect to its randomization mean and stan-
+dard deviation, and then compute the permutation distribution of the standardized
+statistic. This gives the p-value
+
+(cid:3)
+pS = #
+
+S
+
+
+
+  mean
+
+stdev
+
+exceeding
+
+(cid:4)(cid:5)
+
+B.
+
+S  means
+stdevs
+
+It is this form of restandardization that we use in our software package GSA, de-
+scribed in Section 4.
+
+Restandardization can also be applied to more complicated gene-set statistics S,
+
+not simple averages as in (2.4), via
+
+(2.15)
+
+S
+
+ =  +  
+
+ (S
+
+
+
+  
+
+
+
+).
+
+
+
+
+
+, 
+
+Here (,  ) are the mean and standard deviation of S for a randomly selected
+
+) are the corresponding quantities
+gene-set of size m, as in (2.5), while (
+
+based on a permuted data matrix; computing (
+) requires a nested simulation.
+, 
+The GSEA enrichment test incorporates a form of restandardization: it com-
+pares the empirical c.d.f. of the z-values in S with the c.d.f. of all other z-values;
+the latter c.d.f. brings to bear information from the overall distribution of z, much
+like means and stdevs do in (2.14). This same approach could be used in context
+(2.4) by replacing s(zi ) in (2.3) with t (zi ) = (s(zi )  means )/stdevs, leading to
+(2.16)
+
+t (zi )/m = (S  means )/stdevs
+
+T =(cid:1)
+
+S
+
+ON TESTING THE SIGNIFICANCE OF SETS OF GENES
+
+117
+
+as the enrichment statistic for S. Then (2.14) reduces to
+
+(2.17)
+
+pS = #{T
+
+
+
+> T }/B,
+
+so that the restandardized p-value equals the usual permutation p-value.
+
+Restandardization can be shown to yield improved inferences in a variety of
+
+situations:
+ If S was selected randomly, as in the Randomization Model.
+ If the theoretical null (2.1), z  N (0, 1), agrees with the empirical distribution
+of the N z-values.
+ If the zis are uncorrelated.
+
+The method is not perfect, as examples can be constructed to show. Neither the
+Randomization nor Permutation Models perfectly describe how gene-sets S come
+under consideration in the catalog examples of Subramanian et al. (2005), making
+some sort of compromise formula a necessity.
+
+3. Efcient tests for enrichment. The Randomization and Permutation
+Models specify null hypotheses for the selection of a gene-set S. Notions of ef-
+cient testing, however, require us to specify alternatives to the null selection. This
+section begins with an exponential family selection model, considers some spe-
+cic test statistics, and goes on to propose the maxmean statistic, which leads to
+enrichment tests with good power characteristics.
+
+The Poisson Selection Model starts with independent Poisson variates
+
+ind Po(i ),
+
+i = e
+
+(cid:6)
+
+(3.1)
+for i = 1, 2, . . . , N, where si = s(zi ), for s() a given J -dimensional function,  an
+unknown J -dimensional parameter vector,
+
+si /T
+
+Ii
+
+T = N(cid:1)
+
+(cid:6)
+
+S = {i : Ii = 1},
+
+m  N(cid:1)
+
+Ii
+
+1
+
+e
+
+si ,
+
+(3.2)
+
+and  =(cid:2)
+n
+1 i an unknown scalar parameters. In what follows, the i will be small
+and the Ii almost all zeros or ones, mostly zeros. For convenient exposition we
+assume that all the Ii are zeros or ones, though this is not essential.
+We dene the selected gene-set S as composed of those genes having Ii = 1,
+
+i=1
+
+(3.3)
+
+so S has
+
+(3.4)
+
+118
+
+B. EFRON AND R. TIBSHIRANI
+
+members. It is easy to calculate the probability g, (S) of selecting my particular
+gene-set S,
+
+(cid:6)sSlog T](cid:9)
+
+,
+
+m!em[
+
+g, (S) =
+
+(3.5)
+
+where
+
+(cid:6)
+
+e
+
+m
+m!
+
+(cid:7)(cid:8)
+sS =(cid:1)
+(cid:11) N(cid:1)
+
+S
+
+(cid:6)
+
+
+
+si
+
+i=1
+
+si e
+
+i=1
+
+This is a product of two exponential family likelihoods, yielding maximum likeli-
+
+hood estimates(cid:10) = m and (cid:10)
+N(cid:1)
+
+ dened by
+
+(3.6)
+
+(3.7)
+
+si /m.
+
+si = sS.
+
+e
+
+g (S|m) = m!em[
+
+Parameter  = 0 corresponds to the Randomization Model null hypothesis that
+from its null expectation s =(cid:2)
+S has been selected at random. Given gene-set size m, the sufcient statistic for
+testing H0 :  = 0 is sS, called S at (2.4). An efcient test rejects H0 if sS is far
+N
+1 si /N. If sS is one-dimensional, as in Section 2,
+we reject for extreme values of sS, either positive or negative.
+Under H0 :  = 0, all gene-sets S of size m are equally likely. Nonzero  tilts
+(cid:6)sS, as seen in (3.5) where
+
+the selection toward gene-sets having larger values of 
+(cid:6)sSlog T]
+
+(3.8)
+Efcient choice of a gene-set enrichment test statistic S = zS depends on the
+individual scoring function si = s(zi ) in (3.3). Consider two choices:
+(3.9)
+both of which are univariate and have  a scalar, J = 1. The rst of these, the
+from z =(cid:2)
+Limma choice, uses S = zS; enriched gene-sets S will tend to have zS far away
+N
+1 zi /N. This is ne if enrichment manifests itself as a shift of location
+in z-values. The second choice s(2)(z) = |z| has power against scale alternatives.
+For general use one would like enrichment test statistics having power against
+both shift and scale alternatives. To this end, dene the two-dimensional scoring
+function
+
+s(2)(z) = |z|,
+
+s(1)(z) = z
+
+and
+
+.
+
+s(z) =(cid:8)
+
+s(+)(z), s()(z)
+
+,
+
+(cid:9)
+
+(cid:12)
+s(+)(z) = max(z, 0),
+s()(z) =  min(z, 0),
+(cid:13)s(+)
+S , s()
+
+(cid:14)
+
+S
+
+.
+
+(3.10)
+
+(3.11)
+
+and the maxmean test statistic
+
+Smax = max
+
+Smax is designed to detect unusually large z-values in either or both directions.
+Note that Smax is not the same as the largest absolute value of the mean of the pos-
+itive or negative z values in the gene-set: it divides by the total number of genes m.
+
+ON TESTING THE SIGNIFICANCE OF SETS OF GENES
+
+119
+
+If, for example, a gene-set of 100 genes had 99 scores of 0.5 and one score of 10,
+the average of the positive scores would be 10, and the average of the negative
+scores equal to 0.5, so the mean with largest absolute value would be 10. But the
+maxmean statistic is the maximum of 10/100 = 0.1 and 99(0.5)/100 = 0.495,
+and the negative scores would win. The maxmean statistic is robust by design, not
+allowing a few large positive or negative gene scores to dominate.
+Figure 5 compares the power of Smax with the limma test that rejects the null
+hypothesis of no enrichment for large values of the absolute mean statistic |zS|.
+Here S consists of m = 25 independent normal z-values,
+(3.12)
+Contours of equal power are shown, for testing H0 : (b, g) = (0, 1) versus alterna-
+tives (b  0, g  1) [or, equivalently, (b  0, g  1)], at level 0.95; better power is
+reected by contours nearer the null hypothesis point (b, g) = (0, 1).
+As expected, the absolute mean test has good power for shift alternatives b (cid:9)= 0,
+but no power for scale alternatives g > 1, as shown by its nearly vertical contour
+
+i = 1, 2, . . . , m = 25.
+
+ind N (b, g2),
+
+zi
+
+FIG. 5. Contours of equal power for absolute mean, enrichment statistic |zS| (jagged vertical line)
+mean of absolute value (curving broken line), and maxmean statistic (heavy curving lines); for testing
+ind N (0, 1) vs N (b, g2), i = 1, 2, . . . , m = 25, at level 0.95; ks is 0.5 power contour for the
+H0 : zi
+KolmogorovSmirnov test, dominated by maxmean test with 0.5 contour everywhere closer to null
+point (0, 1). Using mean absolute value, average over S of |z| has very little power versus shift
+alternatives, curved dashed line.
+
+120
+
+B. EFRON AND R. TIBSHIRANI
+
+lines. The maxmean test shows reasonable power in both directions. Comparing
+the 0.5 power contours, for instance, shows maxmean almost dominating |zS|. Also
+shown is KS, the 0.5 power contour for a test based on absolute Kolmogorov
+Smirnov distance between the empirical c.d.f. of the 25 z-values and a N (0, 1)
+c.d.f. (The GSEA test is based on an improved variant of the KolmogorovSmirnov
+statistic.) In this case, maxmean dominates ks, its contour being everywhere closer
+to (b, g) = (0, 1). Finally, we show the results for the test based on the mean ab-
+solute value: this has the best power for pure scale alternatives but is not very
+sensitive to location shifts.
+
+Using a similar setup, the left panel of Figure 6 compares the power of the
+maxmean statistic to that of the individual gene scores zi. We see that the maxmean
+statistic has a strong power advantage. In the right panel we have changed the setup
+slightly, with half of the genes in the gene-set generated as N (b, g2), and the other
+half as N (b, g2). The increase in power enjoyed by the maxmean statistic is
+slightly less than in the left panel, but it is still substantial.
+
+We applied the maxmean statistic to the p53 data with the catalog of 522 gene-
+sets in Subramanian et al. (2005). Restandardization, (2.12), noticeably improved
+results, though the effect was much less dramatic than in Figure 4. Applying the
+FDR algorithm to the restandardized p-value (2.13), cutoff level q = 0.10, yielded
+8 signicant gene-sets, Table 1, in close agreement with Table 2 of Subramanian
+et al. (2005).
+and
+s()
+predominating,
+S
+indicating positive enrichment in the mutant class, while the other six gene-sets
+had bigger z-values overall in the normal class.
+
+Signicance is dened in a two-sided testing sense here, but we can use s(+)
+in (3.11) separately. Gene-sets 4 and 7 in Table 1 have s()
+
+S
+
+S
+
+FIG. 6. Contours of power 0.5 (solid lines)
+for individual gene scores zi and power
+ind N (0, 1) vs
+0.5, 0.7 . . . 0.9 (broken lines)
+N (b, g2), i = 1, 2, . . . , m = 25. In the left panel, all genes in the gene-set are shifted by b; in
+the right panel, half of the genes are shifted by b and half by b.
+
+for the maxmean statistic;
+
+for testing H0 : zi
+
+ON TESTING THE SIGNIFICANCE OF SETS OF GENES
+
+121
+
+Signicant gene-sets, FDR cutoff 0.10, for p53 data, Subramanian
+
+TABLE 1
+
+et al. (2005); maxmean statistic restandardized
+
+
+
+1. p53 hypoxia
+
+2. p53 pathway
+radiation sensitivity
+3.
+
+ras pathway
+4.
+
+Indicate signicant gene-sets listed in Subramanian et al. (2005),
+Table 2. They list the n.g.f. pathway as almost signicant.
+
+5. p53 Up
+6.
+7.
+8. SA G1 and S phases
+
+
+hsp27 pathway
+n.g.f. pathway
+
+
+
+NOTE. Restandardization formula (2.12) was applied separately to s(+)
+in (3.11), and then combined to give
+= max
+
+(cid:13)s(+)
+
+, s()
+
+s()
+(3.13)
+
+(cid:14)
+
+S
+
+S
+
+S
+
+.
+
+
+max
+
+S
+
+S
+
+and
+
+Figure 7 displays the top eight pathways, showing the individual gene scores zi
+in each pathway. The inset at the top shows the estimated FDR for an individual
+gene analysis. We see that the cutoff for an FDR of 0.10 is about 4.7 for neg-
+ative scores, while the FDR for positive scores never gets down to 0.10. Hence,
+an analysis of individual genes would report as signicant the top few genes in
+the negative gene-sets, and none of the genes in the positive gene-sets. Note that
+location shift alternatives look quite reasonable here.
+
+
+The values of (means , stdevs ) and (mean
+
+) used in (2.12) were based on
+the catalog of 15,059 genes listed (with multiple occurrences) in the 522 gene-sets,
+rather than the 10,100 genes in the original p53 data set. Table 2 shows consid-
+erable differences between the two choices for (means , stdevs ), though not for
+(z) being similar. When
+(mean
+a catalog of gene-sets S is simultaneously under consideration for enrichment, the
+catalog choice of (means , stdevs ) is preferable from the row randomization view-
+point.
+
+), with s = s(+)(z), the comparison for s
+
+
+, stdev
+
+, stdev
+
+
+
+
+
+
+
+The Poisson Selection Model (3.1) and (3.2) follows the Randomization Model
+of Section 2 in that the set z of N original z-values is treated as a xed ancil-
+lary, with only the selection process for S considered random. We could, instead,
+think of z-values selected for inclusion in S as coming from a different underlying
+distribution, for example,
+
+f (z) = e
+
+(cid:6)
+
+s(z)log T f0(z),
+
+(3.14)
+
+in (3.1), and T =(cid:15) 
+is based on sS =(cid:2)
+
+where f0(z) is the baseline density for nonenriched z-values,  and s(z) are as
+s(z)f0(z) dz. If the members of S are selected indepen-
+dently according to (3.14), then the most powerful test for null hypothesis  = 0
+
+ e
+
+(cid:6)
+
+S s(z)/m, just as in (3.6).
+
+122
+
+B. EFRON AND R. TIBSHIRANI
+
+FIG. 7. p53 data: the top eight pathways showing the individual gene scores zi in each pathway.
+The inset at the top shows the estimated FDR for an individual gene analysis.
+
+Comparison of (mean, stdev) values for s = s(+)(z), (3.10); for original list of 10,100 genes in p53
+data, versus 15,059 genes listed with multiple occurrences, in catalog of 522 gene-sets. Latter is
+
+TABLE 2
+
+preferred choice for restandardization formula (2.12)
+
+Original 10,100 genes
+Catalog 15,059 genes
+
+means
+
+0.451
+0.456
+
+(stdevs)
+
+(0.628)
+(0.671)
+
+mean
+
+0.406
+0.404
+
+(stdev)
+
+(0.589)
+(0.587)
+
+ON TESTING THE SIGNIFICANCE OF SETS OF GENES
+
+123
+
+This point of view is more congenial to the Permutation Model of Section 2, but
+F0 denote the empirical
+
+(3.15)
+
+distribution
+
+there is really not much practical difference from (3.1). Let (cid:10)
+and (cid:10)
+
+(cid:10)
+F0[a, b] = #{zi in [a, b]}/B,
+(cid:5) N(cid:1)
+F[a, b] =(cid:1){i for zi in [a, b]}
+(cid:10)
+(cid:10)
+
+Then (3.1) and (3.2) give (cid:10)
+
+F the tilted distribution
+
+(3.16)
+
+(cid:16)
+
+1
+
+(cid:6)
+
+e
+
+s(z) d
+
+F0(z),
+
+(3.17)
+
+F[a, b] =
+
+b
+
+a
+
+i .
+
+just as in (3.14).
+
+More elaborate probability models can be constructed to make, say,
+
+the
+KolmogorovSmirnov distance the optimal test statistic. The strongpoint of the
+maxmean enrichment statistic is its good performance against simple location and
+scale alternatives, as seen in Figure 5.
+
+4. Computational issues and software. The developments in the previous
+two sections lead to our Gene Set Analysis procedure, which we summarize here:
+
+1. Compute a summary statistic zi for each gene, for example, the two-sample
+t-statistic for two-class data. Let zS be the vector of zi values for genes in a
+gene-set S.
+2. For each gene-set S, choose a summary statistic S = s(z): choices include the
+average of zi or |zi| for genes in S, the GSEA statistic or, our recommended
+choice, the maxmean statistic (3.11).
+3. Standardize S by its randomization mean and standard deviation as in (2.14):
+(cid:6) = (S  means )/stdevs. For summary statistics such as the mean, mean ab-
+S
+solute value or maxmean (but not GSEA), this can be computed from the ge-
+newise means and standard deviations, without having to draw random sets of
+genes. Note formula (3.13) for the maxmean statistic.
+
+4. Compute permutations of the outcome values (e.g., the class labels in the two-
+on each permuted dataset, yielding permutation
+
+(cid:6)
+
+class case) and recompute S
+(cid:6)B.
+values S
+
+(cid:6)2, . . . , S
+
+(cid:6)1, S
+
+(cid:6)
+We use these permutation values to estimate p-values for each gene-set score S
+and false discovery rates applied to these p-values for the collection of gene-set
+scores.
+
+It would be convenient computationally to pool the permutation values for dif-
+ferent gene-sets: this is often done in the analysis of individual genes [e.g., in the
+SAM package Tusher et al. (2001)] and also in the GSEA software. Such pooling
+
+124
+
+B. EFRON AND R. TIBSHIRANI
+
+reduces the number of permutations needed to obtain sufcient accurate results.
+However, we have found that in gene-set analysis the permutation distribution
+for each gene-set depends heavily on both the number of genes in the gene-set
+and their average pairwise correlation (neither of which applies to individual-gene
+analysis). Hence, we do not pool the permutation values, and so we must carry out
+at least 1000 permutations to get accurate results. However, with a careful imple-
+mentation this need not be an obstacle for practical use.
+
+We have written an R language package GSA (gene-set analysis) for carry-
+ing out these computations. This will be freely available along with collections of
+gene-sets for use with the package.
+
+5. Simulation comparison of different gene-set summaries.
+
+In this study
+we simulated 1000 genes and 50 samples in each of 2 classes, control and treat-
+ment. The genes were assigned to with 50 gene-sets, each with 20 genes. All mea-
+surements were generated as N (0, 1) before the treatment effect was added. There
+were ve different scenarios:
+
+1. all 20 genes of gene-set 1 are 0.2 units higher in class 2,
+2. the 1st 15 genes of gene-set 1 are 0.3 units higher in class 2,
+3. the 1st 10 genes of gene-set 1 are 0.4 units higher in class 2,
+4. the 1st 5 genes are 0.6 units higher in class 2,
+5. the 1st 10 genes of gene-set 1 are 0.4 units higher in class 2, and 2nd 10 genes
+
+of gene-set 1 are 0.4 units lower in class 2.
+
+(cid:6)
+
+> S
+
+(cid:6)
+
+(cid:6)
+1), with small values being good. Here S
+(cid:6)
+
+In every one of these scenarios only the rst gene-set is of potential interest. For
+each scenario, we carried out 200 permutations and report the estimated tail proba-
+bility Prob(S
+is the restandardized
+(cid:6)
+version of a summary statistic, and the quantity Prob(S
+1) is the observed
+p-value for the rst gene-set.
+We compared ve different summary statistics: the mean of zi, the mean of |zi|,
+maxmean, GSEA and GSEA applied to |zi|. Everything was repeated 20 times,
+and the mean and standard error of the tail probability over the 20 simulations
+are reported in Table 3. While the maxmean can be beaten by a small margin
+by the mean or the mean of the absolute values in the one-sided or two-sided
+scenarios, respectively, it is the only method with consistently low p-values in all
+ve scenarios.
+
+> S
+
+6. Examples.
+
+6.1. Survival with kidney cancer.
+
+In this example we apply the gene-set
+methodology to a dataset with censored survival outcome. Zhao et al. (2005) col-
+lected gene expression data on 14,814 genes from 177 kidney patients. Survival
+times were also measured for each patient. The data were split into 88 samples to
+form the training set and the remaining 89 formed the test set.
+
+ON TESTING THE SIGNIFICANCE OF SETS OF GENES
+
+125
+
+TABLE 3
+
+Results of simulation study: p-values for the rst gene-set, for ve different summary statistics
+(columns) and ve different scenarios (rows, described in the text). The rst four scenarios are
+one-sided shifts, while the last one is two-sided. We see that the maxmean statistic is the only one
+
+with consistently low p-values in all ve scenarios
+
+mean
+
+mean.abs
+
+maxmean
+
+GSEA
+
+GSEA.abs
+
+(1)
+mean
+se
+(2)
+mean
+se
+(3)
+mean
+se
+(4)
+mean
+se
+(5)
+mean
+se
+
+0.014
+0.008
+
+0.005
+0.003
+
+0.014
+0.008
+
+0.074
+0.032
+
+0.587
+0.106
+
+0.133
+0.038
+
+0.035
+0.014
+
+0.032
+0.015
+
+0.081
+0.050
+
+5e-04
+4e-04
+
+0.012
+0.005
+
+0.002
+0.001
+
+0.002
+0.001
+
+0.014
+0.007
+
+0.018
+0.008
+
+0.032
+0.017
+
+0.016
+0.008
+
+0.031
+0.018
+
+0.069
+0.038
+
+0.233
+0.063
+
+0.192
+0.060
+
+0.074
+0.034
+
+0.057
+0.032
+
+0.037
+0.014
+
+0.011
+0.009
+
+k
+
+k and St e
+
+We computed the Cox partial likelihood score statistic zi for each gene, and
+used this as the basis for gene-set analysis using the maxmean statistics Sk. Since
+there are separate training and test sets, we examined the concordance between the
+scores Sk for a given gene-set between the training and test sets. Denote the train-
+ing and test set scores by St r
+k . We measured the concordance by setting a
+cutpoint c and dening a test set value with |St e
+| > c to be a true positive; other-
+wise it is called a true negative. Then we applied the same cutpoint to the training
+set scores St r
+k and then computed the false positive and false negative rates. We ap-
+plied this same idea both to scores for the individual genes and also to gene-set
+enrichment analysis, based on the Cox scores. The cutpoint c was varied to gen-
+erate the curves of false positive and false negative rates in Figure 8. We see that
+both the maxmean statistic and GSEA statistics have considerably lower false pos-
+itive rates, for a given false negative rate, than the individual gene analysis. The
+maxmean statistic also enjoys an advantage over GSEA, which is not surprising
+given the results from our power studies. In this case it seems that a list of signif-
+icant gene-sets based on the maxmean statistic will tend to be more reproducible
+than a list of signicant genes from an individual gene analysis.
+
+6.2. Comparisons of different gene-set collections. The gene-sets used in the
+examples of this paper are the collection of 522 gene pathways developed by
+
+126
+
+B. EFRON AND R. TIBSHIRANI
+
+FIG. 8. Kidney cancer microarray data: false positive and false negative rates for three methods,
+using the test set values for each method to dene the true positive and true negative for genes
+or gene-sets.
+
+Subramanian et al. (2005). This is the C2 functional collection in their Mole-
+cular Signature Database. The same authors provide three additional collections:
+C1 (chromosomal location, 24 sets), C3 (motif-based, 319 sets ) and C4 (chro-
+mosomal location, 427 sets). The Stanford Microarray Database has at least two
+more collections in their synethetic gene database that are potentially useful for
+this purpose: tissue types (80 sets) and cellular processes (22 sets). We applied our
+gene-set analysis technique using the maxmean statistic to both the p53 and kid-
+ney cancer datasets, using each of these six collections of gene-sets. The results
+are shown in Figure 9. In both cases the FDR results in the left tail are shown for
+gene-sets with negative maxmean statistics. The FDRs for the right tail were high
+for both datasets. We see that different collections exhibit the lowest FDRs in the
+two studies: motif, chromosomes and pathways for the p53 data and correlation
+
+ON TESTING THE SIGNIFICANCE OF SETS OF GENES
+
+127
+
+FIG. 9. Gene set analysis applied to the p53 mutation data and kidney cancer data, comparing the
+estimated FDRs over six different collections of gene-sets. In both cases the FDR results in the left
+tail (negative gene-set scores) are shown. The FDRs for the right tail (positive gene-set scores) were
+high for both datasets.
+
+for the kidney cancer data. This suggests that, for a given expression dataset, sys-
+tematic mining of different gene-set collections could be a useful exercise for
+discovering potentially interested gene-sets for further investigation.
+
+128
+
+B. EFRON AND R. TIBSHIRANI
+
+Acknowledgments. We would like to thank the authors of GSEA for their
+assistance, especially Pablo Tamayo for considerable efforts in debugging our im-
+plementation of the GSEA procedure. We would also like to thank Trevor Hastie
+and Rafael Irizarry for helpful comments and suggestions. Finally, we would like
+to thank the Associate Editor and two referees for helpful comments that led to
+improvements in this paper.
+

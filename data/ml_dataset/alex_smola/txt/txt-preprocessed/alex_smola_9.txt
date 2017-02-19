@@ -1,0 +1,574 @@
+Abstract
+
+With the increase in available data parallel machine learning has become an in-
+creasingly pressing problem. In this paper we present the rst parallel stochastic
+gradient descent algorithm including a detailed analysis and experimental evi-
+dence. Unlike prior work on parallel optimization algorithms [5, 7] our variant
+comes with parallel acceleration guarantees and it poses no overly tight latency
+constraints, which might only be available in the multicore setting. Our analy-
+sis introduces a novel proof technique  contractive mappings to quantify the
+speed of convergence of parameter distributions to their asymptotic limits. As a
+side effect this answers the question of how quickly stochastic gradient descent
+algorithms reach the asymptotically normal regime [1, 8].
+
+1
+
+Introduction
+
+Over the past decade the amount of available data has increased steadily. By now some industrial
+scale datasets are approaching Petabytes. Given that the bandwidth of storage and network per
+computer has not been able to keep up with the increase in data, the need to design data analysis
+algorithms which are able to perform most steps in a distributed fashion without tight constraints
+on communication has become ever more pressing. A simple example illustrates the dilemma. At
+current disk bandwidth and capacity (2TB at 100MB/s throughput) it takes at least 6 hours to read
+the content of a single harddisk. For a decade, the move from batch to online learning algorithms
+was able to deal with increasing data set sizes, since it reduced the runtime behavior of inference
+algorithms from cubic or quadratic to linear in the sample size. However, whenever we have more
+than a single disk of data, it becomes computationally infeasible to process all data by stochastic
+gradient descent which is an inherently sequential algorithm, at least if we want the result within a
+matter of hours rather than days.
+Three recent papers attempted to break this parallelization barrier, each of them with mixed suc-
+cess. [5] show that parallelization is easily possible for the multicore setting where we have a tight
+coupling of the processing units, thus ensuring extremely low latency between the processors. In
+particular, for non-adversarial settings it is possible to obtain algorithms which scale perfectly in
+the number of processors, both in the case of bounded gradients and in the strongly convex case.
+Unfortunately, these algorithms are not applicable to a MapReduce setting since the latter is fraught
+with considerable latency and bandwidth constraints between the computers.
+A more MapReduce friendly set of algorithms was proposed by [3, 9]. In a nutshell, they rely on
+distributed computation of gradients locally on each computer which holds parts of the data and
+subsequent aggregation of gradients to perform a global update step. This algorithm scales linearly
+
+1
+
+in the amount of data and log-linearly in the number of computers. That said, the overall cost in
+terms of computation and network is very high: it requires many passes through the dataset for
+convergence. Moreover, it requires many synchronization sweeps (i.e. MapReduce iterations). In
+other words, this algorithm is computationally very wasteful when compared to online algorithms.
+[7] attempted to deal with this issue by a rather ingenious strategy: solve the sub-problems exactly on
+each processor and in the end average these solutions to obtain a joint solution. The key advantage
+of this strategy is that only a single MapReduce pass is required, thus dramatically reducing the
+amount of communication. Unfortunately their proposed algorithm has a number of drawbacks:
+the theoretical guarantees they are able to obtain imply a signicant variance reduction relative
+to the single processor solution [7, Theorem 3, equation 13] but no bias reduction whatsoever [7,
+Theorem 2, equation 9] relative to a single processor approach. Furthermore, their approach requires
+a relatively expensive algorithm (a full batch solver) to run on each processor. A further drawback
+of the analysis in [7] is that the convergence guarantees are very much dependent on the degree of
+strong convexity as endowed by regularization. However, since regularization tends to decrease with
+increasing sample size the guarantees become increasingly loose in practice as we see more data.
+We attempt to combine the benets of a single-average strategy as proposed by [7] with asymptotic
+analysis [8] of online learning. Our proposed algorithm is strikingly simple: denote by ci(w) a loss
+function indexed by i and with parameter w. Then each processor carries out stochastic gradient
+descent on the set of ci(w) with a xed learning rate  for T steps as described in Algorithm 1.
+
+Algorithm 1 SGD({c1, . . . , cm}, T, , w0)
+
+for t = 1 to T do
+
+Draw j { 1 . . . m} uniformly at random.
+wt  wt1  wcj(wt1).
+
+end for
+return wT .
+
+On top of the SGD routine which is carried out on each computer we have a master-routine which
+aggregates the solution in the same fashion as [7].
+
+Algorithm 2 ParallelSGD({c1, . . . cm}, T, , w0, k)
+
+for all i { 1, . . . k} parallel do
+end for
+Aggregate from all computers v = 1
+
+vi = SGD({c1, . . . cm}, T, , w0) on client
+k!k
+
+i=1 vi and return v
+
+m of the data which is likely to exceed 1
+k .
+
+The key algorithmic difference to [7] is that the batch solver of the inner loop is replaced by a
+stochastic gradient descent algorithm which digests not a xed fraction of data but rather a random
+xed subset of data. This means that if we process T instances per machine, each processor ends up
+seeing T
+Algorithm
+Distributed subgradient [3, 9]
+Distributed convex solver [7]
+Multicore stochastic gradient [5]
+This paper
+A direct implementation of the algorithms above would place every example on every machine:
+however, if T is much less than m, then it is only necessary for a machine to have access to the
+data it actually touches. Large scale learning, as dened in [2], is when an algorithm is bounded
+by the time available instead of by the amount of data available. Practically speaking, that means
+that one can consider the actual data in the real dataset to be a subset of a virtually innite set,
+and drawing with replacement (as the theory here implies) and drawing without replacement on the
+
+Latency tolerance MapReduce Network IO Scalability
+moderate
+high
+low
+high
+
+linear
+unclear
+linear
+linear
+
+high
+low
+n.a.
+low
+
+yes
+yes
+no
+yes
+
+2
+
+Algorithm 3 SimuParallelSGD(Examples {c1, . . . cm}, Learning Rate , Machines k)
+
+Dene T = $m/k%
+Randomly partition the examples, giving T examples to each machine.
+for all i { 1, . . . k} parallel do
+
+Randomly shufe the data on machine i.
+Initialize wi,0 = 0.
+for all t { 1, . . . T}: do
+
+Get the tth example on the ith machine (this machine), ci,t
+wi,t  wi,t1  wci(wi,t1)
+
+end for
+
+end for
+Aggregate from all computers v = 1
+
+i=1 wi,t and return v.
+
+k!k
+
+innite data set can both be simulated by shufing the real data and accessing it sequentially. The
+initial distribution and shufing can be a part of how the data is saved. SimuParallelSGD ts very
+well with the large scale learning paradigm as well as the MapReduce framework. Our paper applies
+an anytime algorithm via stochastic gradient descent. The algorithm requires no communication
+between machines until the end. This is perfectly suited to MapReduce settings. Asymptotically,
+the error approaches zero. The amount of time required is independent of the number of examples,
+only depending upon the regularization parameter and the desired error at the end.
+
+2 Formalism
+
+In stark contrast to the simplicity of Algorithm 2, its convergence analysis is highly technical. Hence
+we limit ourselves to presenting the main results in this extended abstract. Detailed proofs are given
+in the appendix. Before delving into details we briey outline the proof strategy:
+
+ When performing stochastic gradient descent with xed (and sufciently small) learning
+rate  the distribution of the parameter vector is asymptotically normal [1, 8]. Since all
+computers are drawing from the same data distribution they all converge to the same limit.
+ Averaging between the parameter vectors of k computers reduces variance by O(k 1
+2 )
+similar to the result of [7]. However, it does not reduce bias (this is where [7] falls short).
+ To show that the bias due to joint initialization decreases we need to show that the distri-
+bution of parameters per machine converges sufciently quickly to the limit distribution.
+ Finally, we also need to show that the mean of the limit distribution for xed learning rate
+is sufciently close to the risk minimizer. That is, we need to take nite-size learning rate
+effects into account relative to the asymptotically normal regime.
+
+2.1 Loss and Contractions
+
+In this paper we consider estimation with convex loss functions ci
+: #2  [0,). While our
+analysis extends to other Hilbert Spaces such as RKHSs we limit ourselves to this class of functions
+for convenience. For instance, in the case of regularized risk minimization we have
+
+ci(w) =
+
+
+2(w(2 + L(xi, yi, w  xi)
+
+(1)
+
+where L is a convex function in wxi, such as 1
+for binary classication. The goal is to nd an approximate minimizer of the overall risk
+
+2 (yiwxi)2 for regression or log[1+exp(yiwxi)]
+m"i=1
+
+ci(w).
+
+1
+m
+
+(2)
+
+c(w) =
+
+To deal with stochastic gradient descent we need tools for quantifying distributions over w.
+Lipschitz continuity: A function f : X  R is Lipschitz continuous with constant L with respect
+
+to a distance d if |f (x)  f (y)| Ld(x, y) for all x, y  X.
+
+3
+
+Holder continuity: A function f is Holder continous with constant L and exponent  if |f (x) 
+Lipschitz seminorm: [10] introduce a seminorm. With minor modication we use
+
+f (y)| Ld(x, y) for all x, y  X.
+
+(f(Lip := inf {l where |f (x)  f (y)| ld(x, y) for all x, y  X} .
+That is, (f(Lip is the smallest constant for which Lipschitz continuity holds.
+
+Holder seminorm: Extending the Lipschitz norm for   1:
+
+(f(Lip
+
+:= inf {l where |f (x)  f (y)| ld(x, y) for all x, y  X} .
+
+(3)
+
+(4)
+
+Contraction: For a metric space (M, d), f : M  M is a contraction mapping if (f(Lip < 1.
+In the following we assume that (L(x, y, y")(Lip  G as a function of y" for all occurring data
+(x, y)  X  Y and for all values of w within a suitably chosen (often compact) domain.
+Theorem 1 (Banachs Fixed Point Theorem) If (M, d) is a non-empty complete metric space,
+then any contraction mapping f on (M, d) has a unique xed point x = f (x).
+
+Corollary 2 The sequence xt = f (xt1) converges linearly with d(x, xt)  (f(t
+Our strategy is to show that the stochastic gradient descent mapping
+
+Lip d(x0, x).
+
+(5)
+is a contraction, where i is selected uniformly at random from {1, . . . m}. This would allow us
+to demonstrate exponentially fast convergence. Note that since the algorithm selects i at random,
+different runs with the same initial settings can produce different results. A key tool is the following:
+
+w  i(w) := w  ci(w)
+
+Lemma 3 Let c  ##yL(xi, yi, y)##Lip be a Lipschitz bound on the loss gradient. Then if  
+(##xi##2 c + )1 the update rule (5) is a contraction mapping in #2 with Lipschitz constant 1 .
+
+We prove this in Appendix B. If we choose  low enough, gradient descent uniformly becomes a
+contraction. We dene
+
+ := min
+
+i $##xi##2
+
+c + %1
+
+.
+
+(6)
+
+2.2 Contraction for Distributions
+
+For xed learning rate  stochastic gradient descent is a Markov process with state vector w. While
+there is considerable research regarding the asymptotic properties of this process [1, 8], not much is
+known regarding the number of iterations required until the asymptotic regime is assumed. We now
+address the latter by extending the notion of contractions from mappings of points to mappings of
+distributions. For this we introduce the Monge-Kantorovich-Wasserstein earth movers distance.
+
+Denition 4 (Wasserstein metric) For a Radon space (M, d) let P (M, d) be the set of all distri-
+butions over the space. The Wasserstein distance between two distributions X, Y  P (M, d) is
+
+Wz(X, Y ) =&
+
+(X,Y )x,y
+
+inf
+
+dz(x, y)d(x, y)( 1
+
+z
+
+(7)
+
+where (X, Y ) is the set of probability distributions on (M, d)  (M, d) with marginals X and Y .
+This metric has two very important properties: it is complete and a contraction in (M, d) induces a
+contraction in (P (M, d), Wz). Given a mapping  : M  M, we can construct p : P (M, d) 
+P (M, d) by applying  pointwise to M. Let X  P (M, d) and let X" := p(X). Denote for any
+measurable event E its pre-image by 1(E). Then we have that X"(E) = X(1(E)).
+
+4
+
+Lemma 5 Given a metric space (M, d) and a contraction mapping  on (M, d) with constant c, p
+is a contraction mapping on (P (M, d), Wz) with constant c.
+
+This is proven in Appendix C. This shows that any single mapping is a contraction. However, since
+we draw ci at random we need to show that a mixture of such mappings is a contraction, too. Here
+the fact that we operate on distributions comes handy since the mixture of mappings on distribution
+is a mapping on distributions.
+
+Lemma 6 Given a Radon space (M, d), if p1 . . . pk are contraction mappings with constants
+i=1 aipi is a contrac-
+
+c1 . . . ck with respect to Wz, and!i ai = 1 where ai  0, then p = !k
+tion mapping with a constant of no more than [!i ai(ci)z]
+Corollary 7 If for all i, ci  c, then p is a contraction mapping with a constant of no more than c.
+i=1 pi to be the
+This is proven in Appendix C. We apply this to SGD as follows: Dene p = 1
+ the initial parameter distribution from which w0 is
+stochastic operation in one step. Denote by D0
+drawn and by Dt
+).
+ = p(Dt1
+Then the following holds:
+
+ the parameter distribution after t steps, which is obtained via Dt
+
+m!m
+
+z .
+
+
+
+1
+
+Theorem 8 For any z  N, if   , then p is a contraction mapping on (M, Wz) with contrac-
+tion rate (1  ). Moreover, there exists a unique xed point D such that p(D) = D. Finally,
+if w0 = 0 with probability 1, then Wz(D0
+
+, D) = G
+
+ , and Wz(DT
+
+ , D)  G
+
+ (1  )T .
+
+ , D)  G
+
+This is proven in Appendix F. The contraction rate (1  ) can be proven by applying Lemma 3,
+Lemma 5, and Corollary 6. As we show later, wt  G/ with probability 1, so PrwD [d(0, w) 
+G/] = 1, and since w0 = 0, this implies Wz(D0
+, D) = G/. From this, Corollary 2 establishes
+Wz(DT
+This means that for a suitable choice of  we achieve exponentially fast convergence in T to some
+stationary distribution D. Note that this distribution need not be centered at the risk minimizer
+of c(w). What the result does, though, is establish a guarantee that each computer carrying out
+Algorithm 1 will converge rapidly to the same distribution over w, which will allow us to obtain
+good bounds if we can bound the bias and variance of D.
+
+ (1  )T .
+
+2.3 Guarantees for the Stationary Distribution
+
+At this point, we know there exists a stationary distribution, and our algorithms are converging to
+that distribution exponentially fast. However, unlike in traditional gradient descent, the stationary
+distribution is not necessarily just the optimal point. In particular, the harder parts of understanding
+this algorithm involve understanding the properties of the stationary distribution. First, we show that
+the mean of the stationary distribution has low error. Therefore, if we ran for a really long time and
+averaged over many samples, the error would be low.
+
+Theorem 9 c(EwD [w])  minwRn c(w)  2G2.
+Proven in Appendix G using techniques from regret minimization. Secondly, we show that the
+squared distance from the optimal point, and therefore the variance, is low.
+
+Theorem 10 The average squared distance of D from the optimal point is bounded by:
+
+EwD [(w  w)2] 
+
+4G2
+
+(2  )
+
+.
+
+In other words, the squared distance is bounded by O(G2/).
+
+5
+
+
+
+Proven in Appendix I using techniques from reinforcement learning. In what follows, if x  M,
+Y  P (M, d), we dene Wz(x, Y ) to be the Wz distance between Y and a distribution with a
+probability of 1 at x. Throughout the appendix, we develop tools to show that the distribution
+over the output vector of the algorithm is near D, the mean of the stationary distribution. In
+is the distribution over the nal vector of ParallelSGD after T iterations on each
+particular, if DT,k
+of k machines with a learning rate , then W2(D , DT,k
+[(x  D )2] becomes
+small. Then, we need to connect the error of the mean of the stationary distribution to a distribution
+that is near to this mean.
+Theorem 11 Given a cost function c such that (c(L and (c(L are bounded, a distribution D such
+that D and is bounded, then, for any v:
+
+) = )ExDT,k
+
+
+
+
+
+EwD[c(w)]  min
+
+w
+
+c(w)
+
+w
+
+c(w)) + (c(L
+
+(W2(v, D))2 + (c(v)  min
+
+ (W2(v, D)))2(c(L (c(v)  min
+This is proven in Appendix K. The proof is related to the Kantorovich-Rubinstein theorem, and
+bounds on the Lipschitz of c near v based on c(v)  minw c(w). At this point, we are ready to get
+the main theorem:
+Theorem 12 If    and T = ln k(ln +ln )
+8G2
+
+c(w)).
+
+(8)
+
+2
+
+2
+
+w
+
+:
+
++ (2G2).
+
+(9)
+
+EwDT,k
+
+
+
+[c(w)]  min
+
+w
+
+c(w) 
+
+k)(c(L +
+
+8G2 (c(L
+
+k
+
+This is proven in Appendix K.
+
+2.4 Discussion of the Bound
+
+The guarantee obtained in (9) appears rather unusual insofar as it does not have an explicit depen-
+dency on the sample size. This is to be expected since we obtained a bound in terms of risk min-
+imization of the given corpus rather than a learning bound. Instead the runtime required depends
+only on the accuracy of the solution itself.
+In comparison to [2], we look at the number of iterations to reach  for SGD in Table 2. Ignoring
+the effect of the dimensions (such as  and d), setting these parameters to 1, and assuming that the
+, and  = . In terms of our bound, we assume G = 1 and (c(L = 1.
+conditioning number  = 1
+. So, the Bottou paper claims a bound of 2
+In order to make our error order , we must set k = 1
+ machines to run 1
+iterations, which we interpret as
+time, which is the same order of computation, but a dramatic speedup of a factor of 1
+ in wall clock
+time.
+Another important aspect of the algorithm is that it can be arbitrarily precise. By halving  and
+roughly doubling T , you can halve the error. Also, the bound captures how much paralllelization
+can help. If k > %c%L
+
+2 . Modulo logarithmic factors, we require 1
+
+, then the last term G2 will start to dominate.
+
+
+
+
+
+1
+
+
+
+3 Experiments
+
+Data: We performed experiments on a proprietary dataset drawn from a major email system with
+labels y  1 and binary, sparse features. The dataset contains 3, 189, 235 time-stamped instances
+out of which the last 68, 1015 instances are used to form the test set, leaving 2, 508, 220 training
+points. We used hashing to compress the features into a 218 dimensional space. In total, the dataset
+contained 785, 751, 531 features after hashing, which means that each instance has about 313 fea-
+tures on average. Thus, the average sparsity of each data point is 0.0012. All instance have been
+normalized to unit length for the experiments.
+
+6
+
+Figure 1: Relative training error with  = 1e3: Huber loss (left) and squared error (right)
+
+Approach: In order to evaluate the parallelization ability of the proposed algorithm, we followed
+the following procedure: For each conguration (see below), we trained up to 100 models, each on
+an independent, random permutation of the full training data. During training, the model is stored on
+disk after k = 10, 000  2i updates. We then averaged the models obtained for each i and evaluated
+the resulting model. That way, we obtained the performance for the algorithm after each machine
+has seen k samples. This approach is geared towards the estimation of the parallelization ability of
+our optimization algorithm and its application to machine learning equally. This is in contrast to
+the evaluation approach taken in [7] which focussed solely on the machine learning aspect without
+studying the performance of the optimization approach.
+Evaluation measures: We report both the normalized root mean squared error (RMSE) on the test
+set and the normalized value of the objective function during training. We normalize the RMSE
+such that 1.0 is the RMSE obtained by training a model in one single, sequential pass over the data.
+The objective function values are normalized in much the same way such that the objective function
+value of a single, full sequential pass over the data reaches the value 1.0.
+Congurations: We studied both the Huber and the squared error loss. While the latter does not
+satisfy all the assumptions of our proofs (its gradient is unbounded), it is included due to its popu-
+larity. We choose to evaluate using two different regularization constants,  = 1e3 and  = 1e6
+in order to estimate the performance characteristics both on smooth, easy problems (1e3) and on
+high-variance, hard problems (1e6). In all experiments, we xed the learning rate to  = 1e3.
+
+3.1 Results and Discussion
+
+Optimization: Figure 1 shows the relative objective function values for training using 1, 10 and
+100 machines with  = 1e3. In terms of wall clock time, the models obtained on 100 machines
+clearly outperform the ones obtained on 10 machines, which in turn outperform the model trained
+on a single machine. There is no signicant difference in behavior between the squared error and
+the Huber loss in these experiments, despite the fact that the squared error is effectively unbounded.
+Thus, the parallelization works in the sense that many machines obtain a better objective function
+value after each machine has seen k instances. Additionally, the results also show that data-local
+parallelized training is feasible and benecial with the proposed algorithm in practice. Note that
+the parallel training needs slightly more machine time to obtain the same objective function value,
+which is to be expected. Also unsurprising, yet noteworthy, is the trade-off between the number of
+machines and the quality of the solution: The solution obtained by 10 machines is much more of an
+improvement over using one machine than using 100 machines is over 10.
+Predictive Performance: Figure 2 shows the relative test RMSE for 1, 10 and 100 machines with
+ = 1e3. As expected, the results are very similar to the objective function comparison: The
+parallel training decreases wall clock time at the price of slightly higher machine time. Again, the
+gain in performance between 1 and 10 machines is much higher than the one between 10 and 100.
+
+7
+
+Figure 2: Relative Test-RMSE with  = 1e3: Huber loss (left) and squared error (right)
+
+Figure 3: Relative train-error using Huber loss:  = 1e3 (left),  = 1e6 (right)
+
+Performance using different : The last experiment is conducted to study the effect of the regu-
+larization constant  on the parallelization ability: Figure 3 shows the objective function plot using
+the Huber loss and  = 1e3 and  = 1e6. The lower regularization constant leads to more
+variance in the problem which in turn should increase the benet of the averaging algorithm. The
+plots exhibit exactly this characteristic: For  = 1e6, the loss for 10 and 100 machines not only
+drops faster, but the nal solution for both beats the solution found by a single pass, adding further
+empirical evidence for the behaviour predicted by our theory.
+
+4 Conclusion
+
+In this paper, we propose a novel data-parallel stochastic gradient descent algorithm that enjoys a
+number of key properties that make it highly suitable for parallel, large-scale machine learning: It
+imposes very little I/O overhead: Training data is accessed locally and only the model is communi-
+cated at the very end. This also means that the algorithm is indifferent to I/O latency. These aspects
+make the algorithm an ideal candidate for a MapReduce implementation. Thereby, it inherits the lat-
+ters superb data locality and fault tolerance properties. Our analysis of the algorithms performance
+is based on a novel technique that uses contraction theory to quantify nite-sample convergence
+rate of stochastic gradient descent. We show worst-case bounds that are comparable to stochastic
+gradient descent in terms of wall clock time, and vastly faster in terms of overall time. Lastly, our
+experiments on a large-scale real world dataset show that the parallelization reduces the wall-clock
+time needed to obtain a set solution quality. Unsurprisingly, we also see diminishing marginal util-
+ity of adding more machines. Finally, solving problems with more variance (smaller regularization
+constant) benets more from the parallelization.
+
+8
+

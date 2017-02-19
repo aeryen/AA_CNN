@@ -1,0 +1,405 @@
+computing the sum of a set of numbers can produce an inaccurate result if it is done by adding each number in turn to an accumulator with limited precision , with rounding performed on each addition .
+the nal result can be much less accurate than the precision of the accumulator if cancellation occurs between positive and negative terms , or if accuracy is lost when many small numbers are added to a larger number .
+such inaccuracies are a problem for many applications , one such being the computation of the sample mean of data in statistical applications .
+much work has been done on trying to improve the accuracy of summation .
+some methods aim to somewhat improve accuracy at little computational cost , but do not guarantee that the result is the correctly rounded exact sum .
+for example , kahans method ( kahan , 123 ) tries to compensate for the error in each addition by subtracting this error from the next term before it is added .
+another simple method is used by the r language for statistical computation ( r core team , 123 ) , which computes the sample mean of data by rst computing a tentative mean ( adding terms in the obvious way ) and then adjusting this tentative mean by adding to it the mean ( again , computed in the obvious way ) of the dierence of each term from the tentative mean .
+this method sometimes improves accuracy , but can also make the result less accurate .
+( for example , the r expression mean ( c ( 123e123 , - 123e123 , 123 ) ) gives a result accurate to only three decimal digits , whereas the obvious method would give the exact mean rounded to about 123 digits of accuracy ) .
+many methods have been developed that instead compute the exact sum of a set of oating - point values , and then correctly round this exact sum to the closest oating - point value .
+this obviously would be preferable to any non - exact method , if the exact computation could be done suciently
+an additional advantage of exact methods is that they can easily be parallelized , without chang - ing the result , since unlike inexact summation , the exact sum does not depend on the order in which terms are added .
+in contrast , parallelizing simple summation in the obvious way , by splitting the sum into parts that are summed ( inexactly ) in parallel , then adding these partial sums , will in general produce a dierent result than the simple serial method .
+furthermore , the result obtained will depend on the details of the parallel algorithm , and perhaps on the run - time availability of
+diering results will also arise from serial implementations that do not sum terms in the usual left - to - right order .
+such implementations are otherwise attractive , since many modern processors have multiple computational units that can be exploited via instruction - level parallelism , if data dependencies allow it .
+summing four numbers as ( ( a123 + a123 ) + a123 ) + a123 does not allow for any parallelism , but summing them as ( a123 + a123 ) + ( a123 + a123 ) does , although it may produce a dierent result .
+in contrast , focusing on exact computation ensures that any improvements in computational methods will not lead to non - reproducible results .
+exact summation methods fall into two classes those implemented using standard oating - point arithmetic operations available in hardware on most current processors , such as the methods of zhu and hayes ( 123 ) , and those that instead perform the summation with integer arithmetic , using a superaccumulator .
+hybrid methods using both techniques been investigated by collange , defour , graillat , and iakymchuk ( 123a , b ) .
+the methods of this paper can be seen as using small and large variations on a superac - cumulator , though the large variation resembles other superaccumulator schemes only distantly .
+the general concept of a superaccumulator is that it is a xed - point numerical representation with enough binary digits before and after the binary point that it can represent the sum of any rea - sonable number of oating - point values exactly and without overow .
+such a scheme is possible because the exponent range in oating number formats is limited .
+the idea of such a superaccumulator goes back at least to kulisch and miranker ( 123 ) , who proposed its use for exact computation of dot products .
+in that context , the superaccumulator must accommodate the range of possible exponents in a product of two oating - point numbers , which is twice the exponent range of a single oating - point number , and the terms added to the su - peraccumulator will have twice the precision of a single oating - point number .
+in this paper , i will consider only the problem of summing individual oating - point values , in the standard ( ieee com - puter society , 123 ) 123 - bit double precision oating - point format , not higher - precision products of such values .
+directly extending the methods in this paper to such higher precision sums would require doing arithmetic with 123 - bit oating - point and integer numbers , which at present is typi - cally unsupported or slow .
+in the other direction , exact dot products of single - precision ( 123 - bit ) oating - point values could be computed using the present implementation , and exact summation of single - precision values could be done even more easily ( with smaller superaccumulators ) .
+below , i rst describe the standard oating - point and integer numeric formats assumed by the methods of this paper , and then present the small superaccumulator method , whose design in - corporates a tradeo between the largely xed time for initialization and termination and the additional time used for every term added .
+i then present a method in which such a small super - accumulator is combined with a large superaccumulator .
+this method has a higher xed cost , but requires less time per term added .
+i evaluate the performance of the small and large superaccumulator methods using a care - fully written implementation in c , which is provided as supplementary information to this paper .
+i compare the performance of these new methods with the obvious ( inexact ) simple summation method , with a variation on simple summation that accumulates sums of of terms with even and odd indexes separately , allowing for increased instruction - level parallelism , and with the exact ifastsum and onlineexact methods of zhu and hayes ( 123 ) , who have provided a c++ imple - mentation .
+timing tests are done on sixteen computer systems , that use intel , amd , arm , and sun processors launched between 123 and 123
+the results show that on modern 123 - bit processors , when summing many terms ( tens of thou - sands or more ) , the large superaccumulator method is less than a factor of two slower than simple inexact summation , and is signicantly faster than all the other exact methods tested .
+when sum - ming fewer than about a thousand terms , the small superaccumulator method is faster than the large superaccumulator method .
+the ifastsum method is almost always slower than the small superaccumulator method , except for very small summations ( less than about twenty terms ) , for which it is sometimes slightly faster .
+the onlineexact method is about a factor of two slower than the large superaccumulator method on modern 123 - bit processors .
+it is also slower or no faster on older processors , with the exception of 123 - bit processors based on the pentium 123 netburst architecture , for which it is about a factor of two faster than the large superaccumulator method .
+i conclude by discussing the implications of these performance results , and the possibility for further improvements , such as methods designed for small summations ( less than 123 terms ) , meth - ods using multiple processor cores , and implementations of methods in carefully - tuned assembly
+note : the c code shown later uses the symbols xsum_exp_bits ( 123 ) and xsum_mantissa_bits ( 123 ) , as well as the symbols xsum_exp_mask , equal to ( 123<<xsum_exp_bits ) - 123 , and xsum_mantissa_mask , equal to
+figure 123 : format of an ieee 123 - bit oating - point number .
+floating - point and integer formats
+the methods in this paper are designed to work with oating - point numbers in the standard ( ieee computer society , 123 ) 123 - bit double - precision format , which is today universally available , in hardware implementations , on general - purpose computers , and used for the c language double
+numbers in this format , illustrated in figure 123 , consist of a sign bit , s , 123 exponent bits , e , and 123 mantissa bits , m .
+interpreting each group of bits as an integer in binary notation , when e is not 123 and not 123 , the number represented by these bits is ( 123 ) s 123e123 ( 123+m123 ) .
+that is , e represents the binary exponent , with a bias of 123 , and the full mantissa consists of an implicit 123 followed by the bits of m .
+when e is 123 ( indicating a denormalized number ) , the number represented is ( 123 ) s 123 m123
+that is , the true exponent is 123 , and the mantissa does not include an implicit 123
+a value for e of 123 indicates plus or minus innity when m is zero , and a special nan ( not a number ) value otherwise .
+note that the smallest non - zero oating - point value is 123 and the largest non - innite value is 123 ( 123 123 ) .
+i also assume that unsigned and signed ( twos complement ) 123 - bit integer formats are available , and are accessible from c by the uint123_t and int123_t data types .
+these formats are today universally available for general purpose computers , and accessible from c in implementations compliant with the c123 standard .
+arithmetic on 123 - bit quantities is well - supported by recent 123 - bit processors , but even on older 123 - bit processors , addition , subtraction , and shifting of 123 - bit quantities are not extraordinarily slow , being facilitated by instructions such as add with carry .
+finally , i assume that the byte ordering of 123 - bit oating - point values and 123 - bit integers is consistent , so that a c union type with double , int123_t , and uint123_t elds will allow access to the sign , exponent , and mantissa of a 123 - bit oating - point value stored into the double eld via shift and mask operations on the 123 - bit signed and unsigned integer elds .
+such consistent endianness is not guaranteed by any standard , but seems to be nearly universal on todays computers ( of both big endian and little endian varieties ) including intel x123 , sparc , and modern arm processors ( though it appears some past arm architectures may not have been consistent ) .
+exact summation using a small superaccumulator
+i rst present a new summation method using a relatively small superaccumulator , which will prove to be the preferred method for summing a moderate number of terms , and which is also a component of the large superaccumulator method presented below .
+the details of this scheme are
+123bit exponentsign123bit mantissaxsum_mantissa_bitsxsum_exp_bits designed for fast implementation in software , in contrast to some other designs ( eg , kulisch , 123 ) that are meant primarily for hardware implementation .
+the most obvious design of a superaccumulator for use in summing 123 - bit oating - point values would be a xed - point binary number consisting of a sign bit , 123 + ( cid : 123 ) log123 n ( cid : 123 ) bits to the left of the binary point , where n is the maximum number of terms that might be summed , and 123 bits to the right of the binary point .
+the bits of such a superaccumulator could be stored in around 123
+however , this representation has several disadvantages .
+when adding a term to the superaccu - mulator , carries might propagate through several 123 - bit words , requiring a loop in the time - critical addition operation .
+furthermore , this sign - magnitude representation requires that addition and subtraction be handled separately , with the sign changing as necessary , necessitating additional complexities .
+if the superaccumulator instead represents negative numbers in twos complement form , additions that change the sign of the sum will need to alter all the higher - order bits .
+carry propagation can be sped up using a somewhat redundant carry - save representation , in which the high - order bits of each 123 - bit chunk of the superaccumulator overlap the low - order bits of the next higher chunk , allowing carry propagation to be deferred for some time .
+this approach is used , for example , by collange , et al .
+( 123a , b ) , whose chunks have 123 - bit overlap .
+in the scheme of collange , et al . , chunks can apparently also have dierent signs , an arrangement that can alleviate the problems of representing negative numbers , by allowing local updates without the need to determine the overall sign of the number immediately .
+in the design i use here , the small superaccumulator consists of 123 signed ( twos complement ) 123 - bit chunks , with 123 - bit overlap .
+chunks are indexed starting at 123 for the lowest - order chunk .
+denoting the value of chunk i as ci , the number represented by the superaccumulator is dened to
+the ci will always be in the range ( 123 123 ) to 123 123
+for convenience , the representation is further restricted so that the highest - order chunk ( for i = 123 ) is in the range 123 to 123
+this representation is diagrammed in figure 123
+the largest number representable in this superaccumulator is 123 123
+it can therefore represent any sum of up to 123 terms , which would occupy more than 123 terabytes of memory .
+this capacity to represent values beyond the exponent range of the 123 - bit oating - point format ensures that the nal rounded 123 - bit oating - point sum obtained using the superaccumulator will be nite whenever the nal exact sum is within range , even when summing the values in the ordinary way would have produced overow for an intermediate result .
+this is an advantage over methods such as those of zhu and hayes ( 123 ) , which use oating - point arithmetic , and hence cannot bypass
+due to the overlap of chunks , and the possibility that they have dierent signs , a single num - ber can have many possible representations in the superaccumulator .
+however , a canonical form is produced when carry propagation is done , which happens periodically when adding terms to the superaccumulator , and whenever a oating - point number that is the correct rounding of the superaccumulators value is needed .
+carry propagation starts at the low order chunk ( i = 123 ) , and proceeds by clearing the high - order 123 - bits of each chunk to zero , and adding these bits ( regarded
+note : the c code shown later uses the symbols xsum_schunks ( 123 ) , xsum_low_mantissa_bits ( 123 ) , xsum_high_exp_bits ( 123 ) and xsum_low_exp_bits ( 123 ) , along with corresponding masks .
+figure 123 : chunks making up a small superaccumulator .
+there are 123 chunks in the superaccumu - lator , whose indexes ( shown to the right ) are related to the high 123 bits of the exponent in a number , with the low 123 bits of an exponent specifying a position within a chunk .
+each chunk is a 123 - bit signed integer , with chunks overlapping by 123 bits .
+chunks are shown with overlap above , so that horizontal position corresponds to the positional value of each bit .
+the vertical lines at the right delimit the range of denormalized numbers ( note that the rightmost bit is unused ) .
+the vertical line at the left is the position of the topmost implicit 123 bit of the largest possible 123 - bit oating point number .
+bits to the left of that are provided to accomodate larger numbers that can arise when many numbers are summed .
+as a signed integer ) to the next - higher chunk .
+the process ends when we reach the highest - order chunk , whose high - order 123 bits will be either all 123s or all 123s , depending on whether the number is positive or negative .
+note that all chunks other than this highest - order chunk are positive after
+if carried out as just described , carry propagation for a negative number could require modica - tion of many higher - order chunks , all of which would be set to 123 ( ie , all 123s in twos complement ) .
+to avoid this ineciency , the procedure is modied so that such high - order chunks that would have value 123 are instead set to zero , and the upper 123 - bits of the next - lower chunk are set to all 123s ( so that it is now negative ) , which produces the same represented number .
+after carry propagation , all chunks will be no larger than 123 in absolute value .
+in the procedure described next for adding a oating - point value to the superaccumulator , the amount added to ( or subtracted from ) any chunk is at most 123
+it follows that the values of all chunks are guaranteed to remain within their allowed range if no more than 123 = 123 additions are done between calls of the carry propagation routine .
+this is suciently large that it makes sense to keep only a global count of remaining additions before carry propagation is needed , rather than keeping counts for each chunk , or detecting actual overow when adding to or subtracting from a chunk .
+using only a global count will result in carry propagation being done more often than necessary , but since the cost of carry propagation should be only a few tens of instructions per chunk , reducing calls to the carry propagation routine cannot justify even one additional instruction in the time - critical
+addition of a 123 - bit oating - point value to the superaccumulator starts with extraction of the 123 exponent bits and 123 mantissa bits , using shift and mask operations that treat the value as a
+123 123 - bit integer .
+note that the sign of the oating - point number is the same as the sign of its 123 - bit integer form , so no extraction of the sign bit is necessary .
+if the exponent bits are all 123s , the oating - point value is an innity or a nan , which are handled specially by storing indicators in auxiliary inf and nan elds of the superaccumulator .
+this operation is typically not highly time - critical , since inf and nan operands are expected to be fairly
+if the exponent bits are all 123s , the oating - point value is a zero or a non - zero denormalized number .
+if it is zero , the addition operation is complete , since nothing need be done to add zero .
+otherwise , the exponent is changed to 123 , since this is the true exponent ( with bias ) of denormalized
+if the exponent bits are neither all 123s nor all 123s , the value is an ordinary normalized number .
+in this case , the implicit 123 bit that is part of the mantissa value is explicitly set , so that the mantissa value now contains 123 bits .
+further shift and mask operations separate the exponent into its high - order 123 bits and low - order 123 bits .
+the high - order exponent bits , denoted i , index one of the rst 123 chunks of the superaccumulator .
+chunks i and i + 123 will be modied by adding or subtracting bits of the mantissa .
+due to the overlap of these chunks , this could be done in several ways , but it seems easiest to modify chunk i by adding or subtracting a 123 - bit value , and to use the remaining bits to modify chunk i + 123
+in detail , the quantity to add to or subtract from chunk i is found by shifting the 123 - bit mantissa left by the number of bits given by the low - order 123 bits of the exponent , and then masking out only the low - order 123 bits .
+the shift positions these mantissa bits to their proper place in the superaccumulator .
+the quantity to add to or subtract from chunk i + 123 is found by shifting the 123 - bit mantissa right by 123 minus the amount of the previous shift .
+this isolates ( without need of a masking operation ) the bits that were not used to modify chunk i , positioning them properly for adding to or subtracting from chunk i + 123
+note that this quantity will have at most 123 bits , since at least 123 mantissa bit will be used to modify chunk i .
+when modifying both chunk i and chunk i + 123 , whether to add or subtract is determined by the sign of the number being added .
+note that it is quite possible for dierent chunks to end up with dierent signs after several terms have been added , but the overall sign of the number is resolved when carry propagation is done .
+the c code used for this addition operation is shown in figure 123
+a function that sums an array would use this code ( expanded from an inline function ) in its inner loop that steps through array elements .
+this summation function must call the carry propagation routine after every 123 additions .
+this is most easily done with nested loops , with the inner loop adding numbers until some limit is reached , which is the same form as the inner loop would be if no check for carry propagation were needed .
+once all terms have been added to the small superaccumulator , a correctly rounded value for the sum can be obtained , after rst performing carry propagation .
+special inf and nan values must be handled specially .
+otherwise , the chunks are examined starting at the highest - order non - zero chunk , and proceeding to lower - order chunks as necessary .
+note that the sign of the rounded value is given by the sign of the highest - order chunk .
+/ *** declarations of types used to define the small superaccumulator *** /
+typedef int123_t xsum_schunk;
+/ * integer type of small accumulator chunk * /
+( xsum_schunk chunk ( xsum_schunks ) ; / * chunks making up small accumulator * /
+/ * a small superaccumulator * /
+/ * if non - zero , +inf , - inf , or nan * / / * if non - zero , a nan value with payload * / / * number of remaining adds before carry * /
+propagation must be done again
+/ *** code for adding the double value to the small accumulator sacc *** /
+union ( double fltv; int123_t intv; ) u;
+u . fltv = value; ivalue = u . intv; mantissa = ivalue & xsum_mantissa_mask; exp = ( ivalue >> xsum_mantissa_bits ) & xsum_exp_mask;
+if ( exp ! = 123 && exp ! = xsum_exp_mask ) / * normalized * / ( mantissa |= ( int123_t ) 123 << xsum_mantissa_bits; else if ( exp == 123 ) / * zero or denormalized * / ( if ( mantissa == 123 ) return;
+exp = 123;
+else / * inf or nan * / ( xsum_small_add_inf_nan ( sacc , ivalue ) ;
+low_exp = exp & xsum_low_exp_mask; high_exp = exp >> xsum_low_exp_bits; chunk_ptr = sacc - >chunk + high_exp; chunk123 = chunk_ptr ( 123 ) ; chunk123 = chunk_ptr ( 123 ) ; low_mantissa = ( mantissa << low_exp ) & xsum_low_mantissa_mask; high_mantissa = mantissa >> ( xsum_low_mantissa_bits - low_exp ) ;
+if ( ivalue < 123 ) ( chunk_ptr ( 123 ) = chunk123 - low_mantissa;
+chunk_ptr ( 123 ) = chunk123 - high_mantissa;
+( chunk_ptr ( 123 ) = chunk123 + low_mantissa;
+chunk_ptr ( 123 ) = chunk123 + high_mantissa;
+figure 123 : extracts from c code for adding a 123 - bit oating point value to a small superaccumulator .
+denormalized numbers are easy to identify , and do not require rounding .
+for normalized numbers , a tentative exponent for the rounded value can be obtained by con - verting the highest chunks integer value to oating point , and then looking at the exponent of the converted value .
+this is the only use of a oating - point operation in the superaccumulator rou - tines .
+if desired , this operation could be replaced with some other method of nding the topmost 123 bit in a 123 - bit word ( for instance , binary search using masks ) .
+this tentative exponent allows construction of a tentative mantissa from the highest - order chunk and the next lower one or two chunks .
+chunks of lower order may need to be examined in order to produce a correctly rounded result , potentially all the way to the lowest - order chunk .
+rounding may change the nal exponent .
+see the code in the supplemental information for further ( somewhat nicky ) details of round - ing .
+at present , only the commonly - used round to nearest , with ties to even rounding mode is implemented , but implementing other rounding modes would be straightforward .
+exact summation using the small superaccumulator has a xed cost , due to the need to set all 123 chunks to zero initially , and to scan all chunks when carry propagating in order to produce the nal rounded result .
+as will be seen from the experiments below , this xed cost is roughly 123 times the cost of adding a single term to the superaccumulator .
+a naive count of operations in the c code of figure 123 gives about 123 operations to add a term to the superaccumulator , compared to 123 operations ( fetch and add ) for simple oating - point summation .
+the actual per - term time ratio is not that bad on modern 123 - bit processors , probably because these processors can exploit instruction - level parallelism .
+nevertheless , to obtain good performance for large summations , we are motivated to look for a scheme with smaller cost per term , even if this increases xed overhead .
+faster exact summation of many terms with a large superaccumulator
+to reduce the per - term cost of summing values with a superaccumulator , we would like to eliminate from the inner summation loop the operations of testing for special inf or nan values , checking the sign of the term in order to decide whether to add or subtract , and splitting the mantissa bits into two parts , so they can be added to dierent chunks .
+this can be accomplished by using a large superaccumulator that has 123 123 - bit chunks , one for every possible combination of sign and expo - nent bits , as well as 123 123 - bit counts , one for each chunk .
+we still use a small superaccumulator as well , transferring partial sums from the large superaccumulator to the small superaccumulator as necessary to avoid loss of information from overow .
+the counts in the large superaccumulator are all initialized to 123; the chunks are not set initially .
+the c code for adding a value to this large superaccumulator is shown in figure 123
+it starts by isolating the sign and exponent bits of the oating - point value , viewed as an unsigned 123 - bit integer , by doing a right shift by 123 bits ( with zero ll , so no masking is needed ) .
+these 123 bits will be used to index a 123 - bit chunk of the large superaccumulator , and the corresponding 123 - bit
+the count indexed by the sign and exponent is then fetched , and decremented .
+if this decre - mented count is non - negative , it is stored as the new value for this count , and the entire oating - point value is added , as a 123 - bit integer , to the 123 - bit chunk indexed by the sign and exponent .
+note that no operation to mask out just the mantissa bits of this value is done .
+this masking can be omitted because the undesired bits at the top are the same for every add to any particular chunk , and are known from the index of that chunk .
+since the number of adds that have been done
+/ *** declarations of types used to define the large superaccumulator *** /
+typedef uint123_t xsum_lchunk;
+/ * integer type of large accumulator chunk ,
+must be exactly 123 bits in size * /
+typedef int_least123_t xsum_lcount; / * signed int type of counts for large acc
+typedef uint_fast123_t xsum_used;
+/ * unsigned type for holding used flags * /
+( xsum_lchunk chunk ( xsum_lchunks ) ; / * chunks making up large accumulator * /
+xsum_lcount count ( xsum_lchunks ) ; / * counts of # adds remaining for chunks , or - 123 if not used yet or special .
+* / xsum_used chunks_used ( xsum_lchunks / 123 ) ; / * bits indicate chunks in use * /
+/ * bits indicate chunk_used entries not 123 * / / * the small accumulator to condense into * /
+/ *** code for adding the double value to the large accumulator lacc *** /
+union ( double fltv; uint123_t uintv; ) u;
+u . fltv = value ix = u . uintv >> xsum_mantissa_bits; count = lacc - >count ( ix ) - 123;
+if ( count < 123 ) ( xsum_large_add_value_inf_nan ( lacc , ix , u . uintv ) ; ( lacc - >count ( ix ) = count;
+lacc - >chunk ( ix ) += u . uintv;
+figure 123 : extracts from c code for adding a 123 - bit oating point value to a large superaccumulator .
+is also kept track of in the count , the eect of adding these bits can be undone before transferring the sum held in the chunk to the small superaccumulator .
+if instead the decremented count is negative , a routine to do special processing is called .
+this test merges a check for the value being an inf or nan , a check for the indexed chunk having not yet been initialized , and a check for having already done the maximum allowed number ( 123 ) of adds to the indexed chunk , so that the chunks contents must now be transferred to the small
+since all these circumstances are expected to arise infrequently , the special processing routine is not time - critical .
+it operates as follows .
+when the exponent bits in the index passed to this routine are all 123s , the value being added is an inf or nan , which is handled by setting special elds of the small superaccumulator associated with this large superaccumulator .
+the count for this index
+remains at 123 , so that subsequent adds of this inf or nan will also be processed specially .
+for other exponents , if the count ( before being decremented ) is 123 , indicating that this is the rst use of this chunk , the chunk is initialized to zero , and the count is set to 123
+otherwise , the count must be zero , indicating that the maximum of 123 adds have previously been done to this chunk , in which case the sum is transferred to the small superaccumulator , the chunk is reset to zero , and the count is reset to 123
+in the latter two cases , the addition then proceeds as usual ( adding to the chunk and decrementing the count ) .
+the partial sum in a large superaccumulator chunk will need to be transferred to the small superaccumulator when the maximum number of adds before overow has already been done , or when the nal rounded result is desired .
+when the maximum of 123 adds has been done , the bits in the chunk are the correct sum of mantissa bits , without any further adjustment , since adding the same sign and exponent bits 123 times is the same as multiplying by 123 , which is the same as shifting these bits left 123 positions , which removes them from the 123 - bit word .
+when the transfer to the small superaccumulator is done before 123 adds to the chunk , we need to add to the chunk the the chunks index ( the sign and exponent bits ) times the count of remaining allowed adds , shifted left 123 bits , which has the eect of leaving only the sum of mantissa bits .
+the sum of the mantissa bits for all values that were added to this chunk has unsigned magnitude up to 123 , so all 123 bits of the chunk are used .
+there would be several ways of transferring these bits to the small superaccumulator , but it seems easiest to do so by modifying three consecutive small superaccumulator chunks by adding or subtracting 123 - bit quantities .
+conceptually , these three 123 - bit quantities are obtained by shifting the 123 - bit chunk left by the number of positions given by the low 123 bits of the exponent ( the same as the low 123 bits of the chunk index ) , and then extracting the lowest 123 bits , the next 123 bits , and the highest 123 bits .
+however , since shift operations on quantities greater than 123 bits in size may not be available , the equivalent result is instead found using a some left and some right shifts , and suitable masking operations .
+for chunks corresponding to normalized oating - point values ( ie , for which the exponent is not zero ) , we also add in the sum of all the implicit 123 bits at the top of the mantissa ( which would be beyond the top of the 123 - bit chunk ) to the appropriate 123 - bit quantity .
+finally we either add or subtract these three 123 - bit quantities from the corresponding chunks of the small superaccumulator according to the sign bit , which is the top bit of the 123 - bit index of the chunk .
+the xed cost of summation using a large superaccumulator is greater than that of using only a small superaccumulator because of the need to initialize the array of 123 counts , occupying 123 bytes .
+note this is in addition to the xed costs of using the small superaccumulator , which is still needed as well .
+note , though , that the 123 large superaccumulator chunks , occupying 123 bytes , are not initialized , but instead are set to zero only when actually used .
+for many applications , it will be typical for only a small fraction of the chunks to be used , because the numbers summed have limited range , or are all the same sign .
+it is also necessary to transfer all large superaccumulator chunks to the small superaccumulator when the nal rounded result is required .
+the obvious way of doing this would be to look at all 123 counts , transferring the corresponding chunk if the count is not 123
+the overhead of this can be reduced by keeping an array of 123 ag words , each a 123 - bit unsigned integer , whose bits indicate which chunks have been used .
+these ag words can be used to quickly skip large regions of unused chunks .
+this scan can be further sped up , in many cases , using a 123 - bit unsigned integer whose bits indicate which of the 123 ag words are not all zero .
+maintaining these ag words slightly increases
+the cost of processing a chunk when its count is negative , but does not increase the cost of the inner summation loop .
+a naive count of operations for adding one term in the c code of figure 123 gives only about 123 , compared to about 123 in figure 123
+and indeed , we will see below that summing large arrays using a large superaccumulator is about twice as fast as summing them using only a small superaccumulator .
+the relative performance of dierent method for summing the elements in an array will depend on many factors .
+some concern the problem instance such as the number of terms summed , and the range of numerical values spanned by those terms .
+others concern the computing environment such as the architecture of the processor , the speed of memory , and which compiler is used .
+there will also be random noise in measurements .
+the resulting variability has led langlois , parello , goossens , and porada ( 123 ) to despair of obtaining meaningful times on real machines , and to instead advocate assessing exact summation methods based on reproducible measurements from a simulation of how long a program would run on a hypothetical ideal processor in which instruction - level parallelism ( ilp ) allows each operation to be performed as soon as the operands it depends on have been computed .
+while this work does provide insight into the methods they assess , it does not answer the practical question of how well the methods perform on real computers .
+here , i will use time measurements on real computer systems to assess performance in a way that is both directly useful and provides some insight into the factors aecting performance of summation methods .
+sixteen computer systems with a variety of characteristics were used , many of them in conjunction with several compilers .
+i limited the scope of this assessment to serial implementations .
+although many of the processors used have multiple cores or threads , only a single thread was executing during these tests .
+( the systems were largely idle apart from the test program itself . )
+the small and large superaccumulator methods were implemented in c , with careful attention to eciency .
+several code segments were implemented twice , once in a straightforward manner ( without obvious ineciencies ) , and a second time with attempts at manual optimizations , such as loop unrolling and branch avoidance .
+the straightforward implementation might be the most ecient , if the compiler produces superior optimization decisions .
+this was not found to be the case , however , so the manually - optimized versions were used .
+the simple summation routines were similarly implemented ( with manually optimized versions chosen ) .
+the ordered summation routine adds each term in turn to a 123 - bit double - precision accumulator .
+the unordered summation routine uses separate accumulators for terms with even and odd indexes , then adds them together at the end .
+this allows scope for instruction - level
+for the ifastsum and onlineexact methods of zhu and hayes ( 123 ) , i used the c++ imple - mentation provided by them as supplementary information to their paper .
+from casual perusal , this c++ code appears to be a reasonably ecient implementation of these methods , but it is possible that it could be improved .
+the c / c++ compilers used were gcc - 123 , gcc - 123 , gcc - 123 , gcc - 123 , clang - 123 , clang - 123 , and clang - 123 .
+for many of the systems , more than one of these compilers were available .
+choice of compiler sometimes had a substantial impact on the performance of the various methods , and the most recent compiler version was not always the best .
+since relative as well as absolute performance diered between compilers , an arbitrary choice would not have been appropriate .
+instead , for each method a best choice of compiler from among those available was made , based on the time summing 123 terms for the small superaccumulator and ifastsum methods , on the time summing 123 terms for the two simple summation methods , and on the time summing 123 terms for the large superaccumulator and onlineexact methods .
+the compiler chosen for each method was then used for summations of all sizes done with that method .
+seven array sizes were tried , ranging from n = 123 to n = 123 by powers of ten , which covers the sizes relevant to the sizes of data caches in the processors tested .
+this range of sizes also shows the eects of xed versus per term costs for the various methods .
+each summation was repeated r = 123 / n times , and the total time for all summations was recorded , along with the total time divided by the total number of terms summed ( which was always 123 ) , which was reported in nanoseconds per term , and is what is shown in the plots below .
+note that due to the r - fold repetition , with r at least 123 , summing arrays of a size for which all the data ts in the memory cache should result in most memory accesses being to cache .
+the processors used all have at least two levels of cache , whose sizes are shown by vertical lines in the plots , at the number of terms for which the data would just t in that level cache .
+in order to limit the eort needed for this assessment , i mostly used only a single distribution for numeric elements of the arrays summed , as follows .
+the terms in the rst half of each array that was summed were independent , with values given by u123 exp ( 123u123 ) , with u123 and u123 being pseudo - random values uniformly drawn from ( 123 , 123 ) using a multiplicative congruential generator with period 123
+( the standard c rand generator was avoided , since it is not the same on all systems . ) the terms in the second half of the array were the negations of the mirror reection of the terms in the rst half that is , element n123i was the negation of element i .
+the exact sum of all terms was therefore zero .
+i also performed a few tests in which the elements of the array were randomly permuted before being summed , as discussed after the main results shown in the
+figures 123 though 123 show the results of the performance tests , with the six methods indicated by colour and solid vs .
+dashed lines as shown in the key above figure 123
+the processor manufacturer , model , and year of release are show above each plot .
+performance on six 123 - bit intel systems and two 123 - bit amd systems ( which use the intel in - struction set architecture ) is shown in figures 123 and 123
+the xeon and opteron processors are designed for use in servers and high - end workstations .
+the intel core 123 duo is from an apple macbook pro , the intel celeron 123y is from a low - end acer aspirev123 laptop , and the amd e123 - 123 is from a low - end gateway desktop system .
+the six intel processors span three major mi - croarchitecture families core ( core 123 duo , xeon e123 ) , nehalem ( x123 ) , and sandy / ivy bridge ( xeon e123 - 123 , xeon e123 - 123 v123 , and celeron 123y ) .
+the two amd processors also have dierent microarchitectures piledriver ( opteron 123 ) and jaguar ( e123 - 123 ) .
+the qualitative picture from these tests on modern processors is quite consistent .
+the large superaccumulator method is faster than the small superaccumulator method when summing more
+intel core 123 duo ( t123 ) , 123 ghz , 123
+intel xeon e123 , 123 ghz , 123
+intel xeon x123 , 123 ghz , 123
+intel xeon e123 - 123 , 123 ghz , 123
+intel xeon e123 - 123 v123 , 123 ghz , 123
+intel celeron 123y , 123 ghz , 123
+figure 123 : performance of summation methods on six 123 - bit intel systems .
+llsmall superaccumulatorlllarge superaccumulatorllifastsumllonlineexactllsimple sum , orderedllsimple sum , not orderednumber of termsnanoseconds per termlllllllllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termlllllllllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termlllllllllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termlllllllllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termlllllllllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termlllllllllllllllllllllllllllllllllllllllll123 amd opteron 123 , 123 ghz , 123
+amd e123 - 123 , 123 ghz , 123
+figure 123 : performance of summation methods on two 123 - bit amd systems ( intel isa ) .
+intel pentium iii , 123 ghz , 123
+intel xeon , 123 ghz , 123
+intel pentium 123 , 123 ghz , 123
+intel xeon x123 , 123 ghz , 123
+figure 123 : performance of summation methods on four 123 - bit intel systems .
+the intel xeon x123 is a 123 - bit capable processor , but was run in 123 - bit mode .
+number of termsnanoseconds per termlllllllllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termllllllllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termlllllllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termllllllllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termllllllllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termlllllllllllllllllllllllllllllllllllllllll123 armv123 processor , 123 mhz , 123
+cortex - a123 armv123 processor , 123 ghz , 123
+figure 123 : performance of summation methods on two 123 - bit arm systems .
+ultrasparc iii , 123 ghz , 123 ?
+ultrasparc t123 plus , 123 ghz , 123
+figure 123 : performance of summation methods on two 123 - bit sparc systems .
+than about 123 terms .
+similarly , the onlineexact method is faster than the ifastsum method when summing more than about 123 terms .
+the combination of the two superaccumulator meth - ods the small superaccumulator method for less than 123 terms , and the large superaccumulator method for 123 terms or more is superior to any combination of the ifastsum and onlineexact methods , except that for some processors ifastsum is slightly faster when summing very small arrays ( less than about thirty terms , or less a few hundred terms for the amd opteron 123
+the advantage of the large superaccumulator method over the onlineexact method for summing a large number of terms ( 123 or more ) is about a factor of two , except that for some processors this decreases ( to nothing for the amd opteron 123 ) when summing very large arrays , for which out - of - cache memory access time dominates .
+the advantage of the small superaccumulator method over ifastsum when summing small arrays is less ( non - existent for the intel core 123 duo and the amd opteron 123 ) , but the small superaccumulator method nevertheless appears to be generally preferable to ifastsum for other than very small sums .
+number of termsnanoseconds per termlllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termlllllllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termlllllllllllllllllllllllllllllllllllllll123number of termsnanoseconds per termllllllllllllllllllllllllllllllllllllll123 the large superaccumulator method is no more than about a factor of two slower than simple ordered summation , when summing 123 or more terms .
+for the amd opteron 123 , the large superaccumulator method is only slightly slower than simple summation , though for the amd e123 - 123 the ratio of times is slightly greater than two .
+the dierence between the large superaccu - mulator method and simple ordered summation is often less for very large summations , as expected if time for out - of - cache memory accesses starts to dominate .
+the simple summation method that adds terms out of order is about twice as fast as simple ordered summation , except for summing very large arrays , for which its advantage is usually less ( sometimes non - existent ) .
+for array sizes of 123 and 123 , simple unordered summation is typically about three times faster than the large superaccumulator method .
+how the methods perform on four 123 - bit intel processors is shown in figure 123
+the intel pentium iii processor uses the p123 microarchitecture , which is a distant ancestor of the core microarchi - tecture of the intel xeon x123
+the intel xeon ( 123 ghz ) and intel pentium 123 use the netburst microarchitecture .
+the intel pentium iii processor uses the 123 oating - point unit for oating - point arithmetic , whereas the other processors have the sse123 oating - point instructions , which have more potential for instruction - level parallelism .
+as was the case for the 123 - bit processors , we see that for summing large arrays , the large su - peraccumulator method is better than the small superaccumulator method , and the onlineexact method is better than the ifastsum method .
+the combination of small and large superaccumulator methods is better than the combination of ifastsum and onlineexact for the intel pentium iii , ex - cept for very small arrays .
+the advantage of the large superaccumulator method over onlineexact is a factor of two when summing 123 terms , but is not as large for 123 terms ( probably because of xed overhead ) or for 123 terms ( probably because out - of - cache memory access time starts to dominate ) .
+for the intel xeon x123 , the large superaccumulator method has only a slight ad - vantage when summing 123 terms , and the superaccumulator methods perform almost identically to ifastsum+onlineexact for other sizes ( with the small superaccumulator method being slower than ifastsum for very small sums ) .
+for the two processors with netburst microarchitecture the intel xeon at 123 ghz and the intel pentium 123 the picture is quite dierent .
+for these processors , the combination of ifastsum and onlineexact is better than the combination of the small and large superaccumulator methods for all array sizes .
+the advantage of onlineexact over the large superaccumulator method is almost a factor of two for summing large arrays .
+for smaller arrays , there is less dierence between the methods .
+one might speculate that this reects a design emphasis on oating - point rather than integer performance in the netburst processors .
+one can see that for summing 123 terms , both the small and large superaccumulator methods are actually slower on the 123 ghz xeon than on the 123 ghz pentium iii , whereas both simple summation and the onlineexact method perform
+for all these 123 - bit intel processors , the ratios of the times for the exact summation methods to the times for simple summation are substantially greater than for the 123 - bit processors ( though less so for very large summations , where out - of - cache memory access time is large ) .
+this also may reect a somewhat specialized design philosophy for these processors , in which general - purpose computation was supported only with 123 - bit registers and operations , whereas support for 123 - bit oating - point computations was similar to that found in modern 123 - bit processors .
+figure 123 shows result on two 123 - bit arm processors .
+for the armv123 processor , the combination of small and large superaccumulator methods performs better than ifastsum+onlineexact , but for the cortex - a123 armv123 processor the comparison is mixed .
+the exact summation methods are again slower compared to simple summation than is the case for the modern 123 - bit processors .
+finally , figure 123 shows results for two ultrasparc 123 - bit processors .
+for both processors , the combination of the small and large superaccumulator methods performs signicantly better than ifastsum+onlineexact .
+the performance of the superaccumulator methods is slower compared to simple summation for these processors than for the 123 - bit intel and amd processors .
+one should note that the ultrasparc t123 plus is optimized for multi - threaded workloads , with 123 threads per core , so a performance comparison using a single thread , as here , may be misleading .
+one can measure the xed overhead of the small superaccumulator method by looking at the ratio of the time per term for 123 terms and for 123 terms .
+this ratio is roughly 123 for most of the processors tested .
+assuming that the time for a summation can be modelled as a + bn , where n is the number of terms , a is the xed cost , and b is the per term cost , one can work out that a / b is about 123 , as was mentioned earlier .
+this model does not work well for the large superaccumulator method , perhaps because the xed overhead is not actually xed when n is small , since the number of chunks used in the large superaccumulator will grow at a substantial rate with the number of terms summed when n is still fairly small .
+i did a few timing runs in which the elements of the arrays were randomly permuted before summing them .
+this has the eect of mixing positive and negative terms randomly ( rather than all positive terms coming before all negative terms ) , and also aects the contents of the superac - cumulators at intermediate stages .
+this permutation had little eect on the performance of the large superaccumulator and onlineexact methods .
+however , it did increase the time for the small superaccumulator method on some processors , including recent ones .
+this is perhaps due to the conditional branch in the inner loop shown in figure 123 , which can be well - predicted if many terms in a row have the same sign , but not if positive and negative terms are mixed , which will aect the time on processors that do speculative execution of instructions that may follow a branch .
+the time for the ifastsum method was not aected as much , so the relative advantage of the small superaccumulator method over ifastsum was smaller , though the small superaccumulator method was still faster when summing at least 123 terms .
+kahans ( 123 ) method for reducing summation error ( but without producing the exact result ) was also tested on all systems .
+on modern 123 - bit processors , computing the exact sum with the large superaccumulator method was faster than kahans method for summations of more than about 123 terms .
+kahans method was signicantly faster than the small superaccumulator method only for summations of less than about 123 terms .
+i also implemented functions for computing the squared norm of a vector ( sum of squares of elements ) and the dot product of two vectors ( sum of products of corresponding elements ) using the small and large superaccumulator methods for the summations .
+( the products were computed as usual , with rounding to the nearest 123 - bit double - precision oating point number . ) i compared these implementations with versions using simple ordered and unordered summation .
+the results for the intel e123 - 123 v123 and the amd opteron 123 are shown in figures 123 and 123
+the times shown in these gures are somewhat disappointing .
+considering that the inner loops of the superaccumulator methods make no use of the processors oating - point instructions , i had
+intel e123 - 123 v123 , 123 ghz , 123
+amd opteron 123 , 123 ghz , 123
+figure 123 : performance of squared norm on recent intel and amd high - end processors .
+intel e123 - 123 v123 , 123 ghz , 123
+amd opteron 123 , 123 ghz , 123
+figure 123 : performance of dot product on recent intel and amd high - end processors .
+hoped that the multiplications in these functions would be executed in parallel with the integer operations on the superaccumulator , with the result that the squared norm of a vector would be computed in no more time than required for summing its elements ( and similarly for the dot product , if the two vectors remain in cache memory ) .
+this is true for the small superaccumulator method on the amd opteron 123 , but for the large superaccumulator method on this processor , and for both superaccumulator methods on the intel e123 - 123 v123 , the time required for computing the squared norm is noticeably greater than the time for summing the elements with the same method .
+in contrast the times for computing the squared norm using simple ordered and unordered summation are indistinguishable from the times for simple summation , for vectors of length 123 or more .
+the picture is the same for computation of the dot product , until the greater memory required becomes a factor for large vectors .
+the reason for this worse than expected performance is not apparent , but one might speculate that the compilers simply fail to arrange instructions in a manner that would allow for exploita - tion of the instruction - level parallelism that would seem to be possible .
+note , however , that for
+number of termsnanoseconds per termllllllllllllllllllllllllllll123number of termsnanoseconds per termllllllllllllllllllllllllllll123number of termsnanoseconds per termllllllllllllllllllllllllllll123number of termsnanoseconds per termllllllllllllllllllllllllllll123 large vectors the times to compute the squared norm or dot product with exact summation are nevertheless still less than a factor of two greater than the times using simple ordered summation .
+more information on these performance assessments , including details of the computer systems
+and compilers used , is included in the supplementary information for this paper .
+on modern 123 - bit processors , serial implementations of the two new exact summation methods introduced in this paper dominate , in combination , what appears to be the best combination of previous exact summation methods the ifastsum and onlineexact methods of zhu and hayes ( 123 ) .
+the advantage is typically about a factor of two for large summations .
+note also that the superaccumulator methods produce a nite nal result whenever the correct rounding of the exact sum is representable as a nite 123 - bit oating - point number , whereas the methods of zhu and hayes may produce overow even when the nal result can be represented .
+with the improvement in performance obtained with these superaccumulator methods , exact summation is less than a factor of two slower than simple ordered summation , and about a factor of three slower than simple unordered summation , when summing more than a few thousand terms .
+for large vectors , computing the sum exactly is faster than attempting to reduce ( but not eliminate ) error using kahans ( 123 ) method , and kahans method has a signicant speed advantage only when the number of terms is less than about one hundred .
+for many applications , the modest extra cost of computing the exactly - rounded sum may be well worth paying , in return for the advantages of accuracy .
+exact summation also has the natural advantage of being reproducible on any computer system that uses standard oating point , unlike the situation when a variety of unordered summation methods are used .
+the implementation of the small and large superaccumulator methods can probably be improved .
+in the inner loop of the small superaccumulator method , the conditional branch testing whether a term is positive or negative could be eliminated ( shifting the term right to produce all 123s or all 123s , then xoring to conditionally negate ) , although this might be slower when the terms actually all have the same sign .
+the signicant variation in performance seen with dierent compilers may indicate that none of them are producing close to optimal code .
+future compiler improvements might therefore speed up the performance of the exact summation methods .
+alternatively , it seems likely that performance could be improved by rewriting the routines in assembly language .
+one would also expect that using more than one processor core would allow for faster exact sum - mation .
+collange , defour , graillat , and iakymchuk ( 123a , b ) and chohra , langlois , and parello ( 123 ) both describe parallel implementations of exact summation .
+although these authors con - sider a variety of parallel architectures , i will limit discussion here to parallelizing exact summation on a shared memory system with multiple general - purpose processor cores or threads .
+in this context , any exact summation method can be parallelized in a straightforward way by simply splitting the array to be summed into parts , summing each part in parallel ( retaining the full exact sum ) and then adding together the partial sums before nally rounding to a single 123 - bit oating point number .
+for the methods of this paper , this would require writing a routine to add together two small superaccumulators , a straightforward operation that would take time comparable to that for producing the nal rounded result from a small superaccumulator .
+of course ,
+it is possible that more integrated algorithms might be somewhat faster , but for large summations , this simple approach should exploit most of the possible parallelism available from using a modest number of cores ( eg , the two to eight cores typical on current workstations ) .
+for very large summations , the results in figures 123 and 123 suggest that only a few cores will be needed to reach the limits imposed by memory bandwidth .
+for example , the intel xeon e123 - 123 v123 processor has a maximum memory bandwidth of 123 gbytes / s , which is 123 ns per 123 - byte oating - point value .
+when summing arrays of 123 elements , the large superaccumulator method takes 123 ns / term , which is 123 times larger than the limit imposed by memory bandwidth , sug - gesting that 123 cores would be enough to sum terms at the maximum possible rate .
+since the bandwidth achievable in practice is probably less than the theoretical maximum , it may be that fewer than 123 cores or threads would suce .
+( the e123 - 123 v123 processor has 123 cores , each of which can run 123 threads . )
+the issue is more complex for summations of around 123 to 123 terms , which may well reside in faster cache memory , which may or may not be shared between cores .
+experimental evaluations seem essential to investigating the limits of parallel summation in this regime .
+one should note that when comparing methods that all produce the exact result , and all do so at the maximum rate , limited by memory bandwidth , the methods can still be distinguished by how many cores or threads they use in order to achieve this .
+this is an important consideration in the context of a whole application that runs other threads as well , and in the wider context of a computer system performing several jobs ,
+the small superaccumulator method , as well as ifastsum , are rather slow when summing only a few terms , being ten to twenty times slower than simple ordered summation .
+the small super - accumulator method sets 123 123 - byte chunks to zero on initialization , and must scan them all when producing a rounded result .
+this xed cost dominates the per term cost when summing only a few terms .
+this will limit use of exact summation in applications where many small summations are done , which might be of as few as three terms .
+( sums of two terms are exactly rounded with standard oating - point arithmetic . )
+several approaches could be considered for reducing this xed overhead .
+one might replace the full array of 123 chunks with a small list of the non - zero chunks .
+or one might instead keep track of which chunks are non - zero in a bit array , foregoing actually setting the value of a chunk until it becomes non - zero , and also using these bits to quickly locate the non - zero chunks when producing the nal rounded result .
+these approaches would increase the cost per term , so the current small superaccumulator method would probably still be the fastest method for moderate - size summations .
+my original motivation for considering exact summation was improving the accuracy of the sample mean computation in r .
+in this application , the overhead of calling the mean function in the interpretive r implementation will dominate the xed overhead of the small superaccumulator method , so nding a faster method for very small summations is not essential .
+computing the sample mean by computing the exactly rounded sum of the data items and then diving by the number of items will not produce the correct rounding of the exact sample mean , though it will be quite close ( assuming overow does not occur ) .
+however , it should be straightforward to write a function that directly produces the correct rounding of the value in a small superaccumulator divided by a positive integer .
+i plan to soon implement such an exact sample mean computation in my pqr implementation of r ( neal , 123 ) .
+this research was supported by natural sciences and engineering research council of canada .
+the author holds a canada research chair in statistics and machine learning .

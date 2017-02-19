@@ -1,0 +1,1939 @@
+Abstract. This paper shows that the accuracy of learned text classiers can be improved by augmenting a small
+number of labeled training documents with a large pool of unlabeled documents. This is important because in many
+text classication problems obtaining training labels is expensive, while large quantities of unlabeled documents
+are readily available.
+
+We introduce an algorithm for learning from labeled and unlabeled documents based on the combination of
+Expectation-Maximization (EM) and a naive Bayes classier. The algorithm rst trains a classier using the
+available labeled documents, and probabilistically labels the unlabeled documents. It then trains a new classier
+using the labels for all the documents, and iterates to convergence. This basic EM procedure works well when
+the data conform to the generative assumptions of the model. However these assumptions are often violated in
+practice, and poor performance can result. We present two extensions to the algorithm that improve classication
+accuracy under these conditions: (1) a weighting factor to modulate the contribution of the unlabeled data, and (2)
+the use of multiple mixture components per class. Experimental results, obtained using text from three different
+real-world tasks, show that the use of unlabeled data reduces classication error by up to 30%.
+
+Keywords:
+combining labeled and unlabeled data, Bayesian learning
+
+text classication, Expectation-Maximization, integrating supervised and unsupervised learning,
+
+1.
+
+Introduction
+
+Consider the problem of automatically classifying text documents. This problem is of
+great practical importance given the massive volume of online text available through the
+World Wide Web, Internet news feeds, electronic mail, corporate databases, medical patient
+records and digital libraries. Existing statistical text learning algorithms can be trained to
+approximately classify documents, given a sufcient set of labeled training examples. These
+text classication algorithms have been used to automatically catalog news articles (Lewis
+& Gale, 1994; Joachims, 1998) and web pages (Craven et al., 1998; Shavlik & Eliassi-Red,
+
+104
+
+K. NIGAM ET AL.
+
+1998), automatically learn the reading interests of users (Pazzani, Muramatsu, & Billsus,
+1996; Lang, 1995), and automatically sort electronic mail (Lewis & Knowles, 1997; Sahami
+et al., 1998).
+
+One key difculty with these current algorithms, and the issue addressed by this paper, is
+that they require a large, often prohibitive, number of labeled training examples to learn accu-
+rately. Labeling must often be done by a person; this is a painfully time-consuming process.
+Take, for example, the task of learning which UseNet newsgroup articles are of interest to
+a particular person reading UseNet news. Systems that lter or pre-sort articles and present
+only the ones the user nds interesting are highly desirable, and are of great commercial
+interest today. Work by Lang (1995) found that after a person read and labeled about 1000
+articles, a learned classier achieved a precision of about 50% when making predictions for
+only the top 10% of documents about which it was most condent. Most users of a practical
+system, however, would not have the patience to label a thousand articlesespecially to
+obtain only this level of precision. One would obviously prefer algorithms that can provide
+accurate classications after hand-labeling only a few dozen articles, rather than thousands.
+The need for large quantities of data to obtain high accuracy, and the difculty of obtaining
+labeled data, raises an important question: what other sources of information can reduce
+the need for labeled data?
+
+This paper addresses the problem of learning accurate text classiers from limited num-
+bers of labeled examples by using unlabeled documents to augment the available labeled
+documents. In many text domains, especially those involving online sources, collecting
+unlabeled documents is easy and inexpensive. The ltering task above, where there are
+thousands of unlabeled articles freely available on UseNet, is one such example. It is the
+labeling, not the collecting of documents, that is expensive.
+
+How is it that unlabeled data can increase classication accuracy? At rst consideration,
+one might be inclined to think that nothing is to be gained by access to unlabeled data.
+However, they do provide information about the joint probability distribution over words.
+Suppose, for example, that using only the labeled data we determine that documents con-
+taining the word homework tend to belong to the positive class. If we use this fact to
+estimate the classication of the many unlabeled documents, we might nd that the word
+lecture occurs frequently in the unlabeled examples that are now believed to belong to the
+positive class. This co-occurrence of the words homework and lecture over the large
+set of unlabeled training data can provide useful information to construct a more accurate
+classier that considers both homework and lecture as indicators of positive examples.
+In this paper, we explain that such correlations are a helpful source of information for
+increasing classication rates, specically when labeled data are scarce.
+
+This paper uses Expectation-Maximization (EM) to learn classiers that take advantage
+of both labeled and unlabeled data. EM is a class of iterative algorithms for maximum like-
+lihood or maximum a posteriori estimation in problems with incomplete data (Dempster,
+Laird, & Rubin, 1977). In our case, the unlabeled data are considered incomplete because
+they come without class labels. The algorithm rst trains a classier with only the available
+labeled documents, and uses the classier to assign probabilistically-weighted class labels
+to each unlabeled document by calculating the expectation of the missing class labels. It then
+trains a new classier using all the documentsboth the originally labeled and the formerly
+unlabeledand iterates. In its maximum likelihood formulation, EM performs hill-climbing
+
+TEXT CLASSIFICATION USING EM
+
+105
+
+in data likelihood space, nding the classier parameters that locally maximize the likeli-
+hood of all the databoth the labeled and the unlabeled. We combine EM with naive Bayes,
+a classier based on a mixture of multinomials, that is commonly used in text classication.
+We also propose two augmentations to the basic EM scheme. In order for basic EM to
+improve classier accuracy, several assumptions about how the data are generated must be
+satised. The assumptions are that the data are generated by a mixture model, and that there is
+a correspondence between mixture components and classes. When these assumptions are
+not satised, EM may actually degrade rather than improve classier accuracy. Since these
+assumptions rarely hold in real-world data, we propose extensions to the basic EM/naive-
+Bayes combination that allow unlabeled data to still improve classication accuracy, in spite
+of violated assumptions. The rst extension introduces a weighting factor that dynamically
+adjusts the strength of the unlabeled datas contribution to parameter estimation in EM.
+The second reduces the bias of naive Bayes by modeling each class with multiple mixture
+components, instead of a single component.
+
+Over the course of several experimental comparisons, we show that (1) unlabeled data
+can signicantly increase performance, (2) the basic EM algorithm can suffer from a mist
+between the modeling assumptions and the unlabeled data, and (3) each extension mentioned
+above often reduces the effect of this problem and improves classication.
+
+The reduction in the number of labeled examples needed can be dramatic. For example, to
+identify the source newsgroup for a UseNet article with 70% classication accuracy, a tradi-
+tional learner requires 2000 labeled examples; alternatively our algorithm takes advantage
+of 10000 unlabeled examples and requires only 600 labeled examples to achieve the same
+accuracy. Thus, in this task, the technique reduces the need for labeled training examples
+by more than a factor of three. With only 40 labeled documents (two per class), accuracy is
+improved from 27% to 43% by adding unlabeled data. These ndings illustrate the power
+of unlabeled data in text classication problems, and also demonstrate the strength of the
+algorithms proposed here.
+
+The remainder of the paper is organized as follows. Section 2 describes, from a theoretical
+point of view, the problem of learning from labeled and unlabeled data. Sections 3 and 4
+present the formal framework for naive Bayes. In Section 5, we present the combination of
+EM and naive Bayes, and our extensions to this algorithm. Section 6 describes a systematic
+experimental comparison using three classication domains: newsgroup articles, web pages,
+and newswire articles. The rst two domains are multi-class classication problems where
+each class is relatively frequent. The third domain is treated as binary classication, with
+the positive class having a frequency between 1% and 30%, depending on the task.
+Related work is discussed in Section 7. Finally, advantages, limitations, and future research
+directions are discussed in Section 8.
+
+2. Argument for the value of unlabeled data
+
+How are unlabeled data useful when learning classication? Unlabeled data alone are
+generally insufcient to yield better-than-random classication because there is no infor-
+mation about the class label (Castelli & Cover, 1995). However, unlabeled data do contain
+information about the joint distribution over features other than the class label. Because of
+
+106
+
+K. NIGAM ET AL.
+
+Figure 1. Classication by a mixture of Gaussians. If unlimited amounts of unlabeled data are available, the
+mixture components can be fully recovered, and labeled data are used to assign labels to the individual components,
+converging exponentially quickly to the Bayes-optimal classier.
+
+this they can sometimes be usedtogether with a sample of labeled datato signicantly
+increase classication accuracy in certain problem settings.
+
+To see this, consider a simple classication problemone in which instances are gener-
+ated using a Gaussian mixture model. Here, data are generated according to two Gaussian
+distributions, one per class, whose parameters are unknown. Figure 1 illustrates the Bayes-
+optimal decision boundary (x > d), which classies instances into the two classes shown
+by the shaded and unshaded areas. Note that it is possible to calculate d from Bayes rule if
+we know the Gaussian mixture distribution parameters (i.e., the mean and variance of each
+Gaussian, and the mixing parameter between them).
+
+Consider when an innite amount of unlabeled data is available, along with a nite
+number of labeled samples. It is well known that unlabeled data alone, when generated
+from a mixture of two Gaussians, are sufcient to recover the original mixture components
+(McLachlan & Krishnan, 1997, section 2.7). However, it is impossible to assign class labels
+to each of the Gaussians without any labeled data. Thus, the remaining learning problem
+is the problem of assigning class labels to the two Gaussians. For instance, in gure 1, the
+means, variances, and mixture parameter can be learned with unlabeled data alone. Labeled
+data must be used to determine which Gaussian belongs to which class. This problem
+is known to converge exponentially quickly in the number of labeled samples (Castelli
+& Cover, 1995). Informally, as long as there are enough labeled examples to determine
+the class of each component, the parameter estimation can be done with unlabeled data
+alone.
+
+It is important to notice that this result depends on the critical assumption that the data
+indeed have been generated using the same parametric model as used in classication,
+something that almost certainly is untrue in real-world domains such as text classication.
+This raises the important empirical question as to what extent unlabeled data can be useful
+in practice in spite of the violated assumptions. In the following sections we address this by
+describing in detail a parametric generative model for text classication and by presenting
+empirical results using this model on real-world data.
+
+TEXT CLASSIFICATION USING EM
+
+107
+
+3. The probabilistic framework
+
+This section presents a probabilistic framework for characterizing the nature of documents
+and classiers. The framework denes a probabilistic generative model for the data, and
+embodies two assumptions about the generative process: (1) the data are produced by a
+mixture model, and (2) there is a one-to-one correspondence between mixture components
+and classes.1 The naive Bayes text classier we will discuss later falls into this framework,
+as does the example in Section 2.
+
+In this setting, every document is generated according to a probability distribution dened
+by a set of parameters, denoted (cid:181). The probability distribution consists of a mixture of
+components c j 2C Dfc1; : : : ; cjCjg. Each component is parameterized by a disjoint subset of
+(cid:181). A document, di , is created by rst selecting a mixture component according to the mixture
+weights (or class prior probabilities), P.c j j (cid:181) /, then having this selected mixture component
+generate a document according to its own parameters, with distribution P.di j c jI (cid:181) /.2 Thus,
+we can characterize the likelihood of document di with a sum of total probability over all
+mixture components:
+
+jCjX
+
+jD1
+
+P.di j (cid:181) / D
+
+P.c j j (cid:181) /P.di j c jI (cid:181) /:
+
+(1)
+
+Each document has a class label. We assume that there is a one-to-one correspondence
+between mixture model components and classes, and thus (for the time being) use c j to
+indicate the jth mixture component as well as, the jth class. The class label for a particular
+document di is written yi . If document di was generated by mixture component c j we say
+yi D c j . The class label may or may not be known for a given document.
+
+4. Text classication with naive Bayes
+
+This section presents naive Bayesa well-known probabilistic classierand describes
+its application to text. Naive Bayes is the foundation upon which we will later build in order
+to incorporate unlabeled data.
+
+The learning task in this section is to estimate the parameters of a generative model using
+labeled training data only. The algorithm uses the estimated parameters to classify new
+documents by calculating which class was most likely to have generated the given document.
+
+4.1. The generative model
+
+Naive Bayes assumes a particular probabilistic generative model for text. The model is a
+specialization of the mixture model presented in the previous section, and thus also makes
+the two assumptions discussed there. Additionally, naive Bayes makes word independence
+assumptions that allow the generative model to be characterized with a greatly reduced
+number of parameters. The rest of this subsection describes the generative model more
+formally, giving a precise specication of the model parameters, and deriving the probability
+that a particular document is generated given its class label (Eq. (4)).
+
+108
+
+K. NIGAM ET AL.
+
+; wdi;2
+
+First let us introduce some notation to describe text. A document, di , is considered to be
+an ordered list of word events, hwdi;1
+; : : :i. We write wdi;k for the word wt in position
+k of document di , where wt is a word in the vocabulary V D hw1; w2; : : : ; wjVji.
+When a document is to be generated by a particular mixture component, c j , a document
+length, jdij, is chosen independently of the component. (Note that this assumes that doc-
+ument length is independent of class.3) Then, the selected mixture component generates
+a word sequence of the specied length. We furthermore assume it generates each word
+independently of the length.
+
+Thus, we can expand the second term from Eq. (1), and express the probability of a
+document given a mixture component in terms of its constituent features: the document
+length and the words in the document. Note that, in this general setting, the probability of
+a word event must be conditioned on all the words that precede it.
+
+ c jI (cid:181)
+
+D P.jdij/
+
+jdijY
+
+
+
+wdi;k
+
+P
+
+kD1
+
+ c jI (cid:181)I wdi;q
+
+
+
+; q < k
+
+P.di j c jI (cid:181) /D P
+
+wdi;1
+
+; : : : ; wdi;jdi j
+
+
+
+(2)
+Next we make the standard naive Bayes assumption: that the words of a document
+are generated independently of context, that is, independently of the other words in the
+same document given the class label. We further assume that the probability of a word is
+independent of its position within the document; thus, for example, the probability of seeing
+the word homework in the rst position of a document is the same as seeing it in any
+other position. We can express these assumptions as:
+
+
+
+ c jI (cid:181)I wdi;q
+
+P
+
+wdi;k
+
+; q < k
+
+:
+
+(3)
+
+Combining these last two equations gives the naive Bayes expression for the probability
+
+
+
+ D P
+
+
+P
+
+wdi;k
+
+
+
+wdi;k
+
+ c jI (cid:181)
+c jI (cid:181)
+
+P
+
+:
+
+jdijY
+
+kD1
+
+of a document given its class:
+P.di j c jI (cid:181) / D P.jdij/
+
+(4)
+
+Thus the parameters of an individual mixture component are a multinomial distribution
+D
+over words, i.e. the collection of word probabilities, each written (cid:181)wtjc j , such that (cid:181)wtjc j
+t P.wt j c jI (cid:181) / D 1. Since we assume that for
+P.wt j c jI (cid:181) /, where t D f1; : : : ;jVjg and
+all classes, document length is identically distributed, it does not need to be parameterized
+for classication. The only other parameters of the model are the mixture weights (class prior
+probabilities), written (cid:181)c j , which indicate the probabilities of selecting the different mixture
+components. Thus the complete collection of model parameters, (cid:181), is a set of multinomials
+and prior probabilities over those multinomials: (cid:181) Df(cid:181)wtjc j : wt 2 V ; c j 2 CI (cid:181)c j : c j 2 Cg.
+
+4.2. Training a classier
+
+Learning a naive Bayes text classier consists of estimating the parameters of the generative
+model by using a set of labeled training data, D D fd1; : : : ; djDjg. This subsection derives
+a method for calculating these estimates from the training data.
+
+TEXT CLASSIFICATION USING EM
+
+109
+The estimate of (cid:181) is written O(cid:181). Naive Bayes uses the maximum a posteriori estimate, thus
+nding arg max(cid:181) P.(cid:181) j D/. This is the value of (cid:181) that is most probable given the evidence
+of the training data and a prior.
+
+The parameter estimation formulae that result from this maximization are the familiar
+
+ratios of empirical counts. The estimated probability of a word given a class, O(cid:181)wtjc j , is simply
+the number of times word wt occurs in the training data for class c j , divided by the total
+number of word occurrences in the training data for that classwhere counts in both the
+numerator and denominator are augmented with pseudo-counts (one for each word) that
+come from the prior distribution over (cid:181). The use of this type of prior is sometimes referred to
+as Laplace smoothing. Smoothing is necessary to prevent zero probabilities for infrequently
+occurring words.
+
+The word probability estimates O(cid:181)wtjc j are:
+1 CPjDj
+jVj CPjVj
+PjDj
+iD1 N .wt ; di /P.yi D c j j di /
+iD1 N .ws ; di /P.yi D c j j di /
+sD1
+
+ P.wt j c jI O(cid:181) / D
+
+O(cid:181)wtjc j
+
+;
+
+(5)
+
+where N .wt ; di / is the count of the number of times word wt occurs in document di and
+where P.yi D c j j di / 2 f0; 1g as given by the class label.
+The class prior probabilities, O(cid:181)c j , are estimated in the same manner, and also involve a
+
+ratio of counts with smoothing:
+
+ P.c j j O(cid:181) / D 1 CPjDj
+
+O(cid:181)c j
+
+iD1 P.yi D c j j di /
+jCj C jDj
+
+:
+
+(6)
+
+Dirichlet distribution: P.(cid:181) / / Q
+
+The derivation of these ratios of counts formulae comes directly from maximum a
+posteriori parameter estimation, and will be appealed to again later when deriving parameter
+estimation formulae for EM and augmented EM. Finding the (cid:181) that maximizes P.(cid:181) j D/
+is accomplished by rst breaking this expression into two terms by Bayes rule: P.(cid:181) j D/
+/ P.D j (cid:181) /P.(cid:181) /. The rst term is calculated by the product of all the document likelihoods
+(from Eq. (1)). The second term, the prior distribution over parameters, we represent by a
+/1/, where  is a parameter
+that effects the strength of the prior, and is some constant greater than zero.4 In this paper, we
+set  D 2, which (with maximum a posteriori estimation) is equivalent to Laplace smoothing.
+The whole expression is maximized by solving the system of partial derivatives of log.P.(cid:181) j
+D//, using Lagrange multipliers to enforce the constraint that the word probabilities in a
+class must sum to one. This maximization yields the ratio of counts seen above.
+
+c j2C ..(cid:181)c j
+
+Q
+
+/1
+
+wt2V
+
+.(cid:181)wtjc j
+
+4.3. Using a classier
+
+Given estimates of these parameters calculated from the training documents according to
+Eqs. (5) and (6), it is possible to turn the generative model backwards and calculate the
+probability that a particular mixture component generated a given document. We derive this
+
+110
+
+K. NIGAM ET AL.
+
+by an application of Bayes rule, and then by substitutions using Eqs. (1) and (4):
+
+P.yi D c j j diI O(cid:181) / D P.c j j O(cid:181) /P.di j c jI O(cid:181) /
+c jI O(cid:181)
+
+crI O(cid:181)
+ :
+
+
+Qjdij
+P.di j O(cid:181) /
+
+Qjdij
+PjCj
+P.c j j O(cid:181) /
+wdi;k
+rD1 P.cr j O(cid:181) /
+
+kD1 P
+
+D
+
+kD1 P
+
+wdi;k
+
+(7)
+
+If the task is to classify a test document di into a single class, then the class with the highest
+posterior probability, arg max j P.yi D c j j diI O(cid:181) /, is selected.
+
+4.4. Discussion
+
+Note that all four assumptions about the generation of text documents (mixture model,
+one-to-one correspondence between mixture components and classes, word independence,
+and document length distribution) are violated in real-world text data. Documents are often
+mixtures of multiple topics. Words within a document are not independent of each other
+grammar and topicality make this so.
+
+Despite these violations, empirically the Naive Bayes classier does a good job of clas-
+sifying text documents (Lewis & Ringuette, 1994; Craven et al., 1998; Yang & Pederson,
+1997; Joachims, 1997; McCallum et al., 1998). This observation is explained in part by the
+fact that classication estimation is only a function of the sign (in binary classication) of the
+function estimation (Domingos & Pazzani, 1997; Friedman, 1997). The word independence
+assumption causes naive Bayes to give extreme (almost 0 or 1) class probability estimates.
+However, these estimates can still be poor while classication accuracy remains high.
+
+The above formulation of naive Bayes uses a generative model that accounts for the
+number of times a word appears in a document. It is a multinomial (or in language modeling
+terms, unigram) model, where the classier is a mixture of multinomials (McCallum &
+Nigam, 1998). This formulation has been used by numerous practitioners of naive Bayes
+text classication (Lewis & Gale, 1994; Joachims, 1997; Li & Yamanishi, 1997; Mitchell,
+1997; McCallum et al., 1998; Lewis, 1998). However, there is another formulation of naive
+Bayes text classication that instead uses a generative model and document representation in
+which each word in the vocabulary is a binary feature, and is modeled by a mixture of multi-
+variate Bernoullis (Robertson & Sparck-Jones, 1976; Lewis, 1992; Larkey & Croft, 1996;
+Koller & Sahami, 1997). Empirical comparisons show that the multinomial formulation
+yields classiers with consistently higher accuracy (McCallum & Nigam, 1998).
+
+5.
+
+Incorporating unlabeled data with EM
+
+We now proceed to the main topic of this paper: how unlabeled data can be used to
+improve a text classier. When naive Bayes is given just a small set of labeled training
+
+TEXT CLASSIFICATION USING EM
+
+111
+
+data, classication accuracy will suffer because variance in the parameter estimates of the
+generative model will be high. However, by augmenting this small set with a large set
+of unlabeled data, and combining the two sets with EM, we can improve the parameter
+estimates.
+
+EM is a class of iterative algorithms for maximum likelihood or maximum a posteri-
+ori estimation in problems with incomplete data (Dempster, Laird, & Rubin, 1977). In
+our case, the unlabeled data are considered incomplete because they come without class
+labels.
+Applying EM to naive Bayes is quite straightforward. First, the naive Bayes parameters,
+O(cid:181), are estimated from just the labeled documents. Then, the classier is used to assign
+probabilistically-weighted class labels to each unlabeled document by calculating expec-
+tations of the missing class labels, P.c j j diI O(cid:181) /. Next, new classier parameters, O(cid:181), are
+estimated using all the documentsboth the originally and newly labeled. These last two
+steps are iterated until O(cid:181) does not change. As shown by Dempster, Laird, & Rubin (1977), at
+each iteration, this process is guaranteed to nd model parameters that have equal or higher
+likelihood than at the previous iteration.
+
+This section describes EM and our extensions within the probabilistic framework of naive
+
+Bayes text classication.
+
+5.1. Basic EM
+We are given a set of training documents D and the task is to build a classier in the form
+of the previous section. However, unlike previously, in this section we assume that only
+some subset of the documents di 2 Dl come with class labels yi 2 C, and for the rest of the
+documents, in subset Du, the class labels are unknown. Thus we have a disjoint partitioning
+of D, such that D D Dl [ Du.
+As in Section 4.2, learning a classier is approached as calculating a maximum a posteriori
+estimate of (cid:181), i.e. arg max(cid:181) P.(cid:181) /P.D j (cid:181) /. Consider the second term of the maximization,
+the probability of all the training data, D. The probability of all the data is simply the
+product over all the documents, because each document is independent of the others, given
+the model. For the unlabeled data, the probability of an individual document is a sum of total
+probability over all the classes, as in Eq. (1). For the labeled data, the generating component
+is already given by labels yi , and we do not need to refer to all mixture componentsjust
+the one corresponding to the class. Thus, the probability of all the data is:
+
+jCjX
+Y
+Y
+
+di2Du
+
+
+di2Dl
+
+P.D j (cid:181) / D
+
+P.c j j (cid:181) /P.di j c jI (cid:181) /
+
+jD1
+P.yi D c j j (cid:181) /P.di j yi D c jI (cid:181) /:
+
+Instead of trying to maximize P.(cid:181) j D/ directly we work with log.P.(cid:181) j D// instead, as a
+step towards making maximization (by solving the system of partial derivatives) tractable.
+Let l.(cid:181) j D/  log.P.(cid:181) /P.D j (cid:181) //. Then, using Eq. (8), we write
+
+(8)
+
+112
+
+X
+
+jCjX
+
+l.(cid:181) j D/ D log.P.(cid:181) // C
+
+log
+
+P.c j j (cid:181) /P.di j c jI (cid:181) /
+log.P.yi D c j j (cid:181) /P.di j yi D c jI (cid:181) //:
+
+di2Du
+
+jD1
+
+X
+
+di2Dl
+
+C
+
+K. NIGAM ET AL.
+
+(9)
+
+Notice that this equation contains a log of sums for the unlabeled data, which makes a
+maximization by partial derivatives computationally intractable. Consider, though, that if
+we had access to the class labels of all the documentsrepresented as the matrix of binary
+indicator variables z, zi D hzi1; : : : ; zijCji, where zi j D 1 iff yi D c j else zi j D 0then we
+could express the complete log likelihood of the parameters, lc.(cid:181) j D; z/, without a log of
+sums, because only one term inside the sum would be non-zero.
+
+lc.(cid:181) j DI z/ D log.P.(cid:181) // C
+
+zi j log.P.c j j (cid:181) /P.di j c jI (cid:181) //
+
+(10)
+
+X
+
+jCjX
+
+di2D
+
+jD1
+
+If we replace zi j by its expected value according to the current model, then Eq. (10)
+bounds from below the incomplete log likelihood from Eq. (9). This can be shown by an
+application of Jensens inequality (e.g. E[log.X /]  log.E[X]//. As a result one can nd a
+locally maximum O(cid:181) by a hill climbing procedure. This was formalized as the Expectation-
+Maximization (EM) algorithm by Dempster, Laird, & Rubin (1997).
+
+The iterative hill climbing procedure alternately recomputes the expected value of z and
+the maximum a posteriori parameters given the expected value of z, E[z]. Note that for the
+labeled documents zi is already known. It must, however, be estimated for the unlabeled
+documents. Let Oz.k/ and O(cid:181) .k/ denote the estimates for z and (cid:181) at iteration k. Then, the
+algorithm nds a local maximum of l.(cid:181) j D/ by iterating the following two steps:
+ E-step: Set Oz.kC1/ D E[zjDI O(cid:181) .k/].
+ M-step: Set O(cid:181) .kC1/ D arg max(cid:181) P.(cid:181) jDI Oz.kC1//.
+In practice, the E-step corresponds to calculating probabilistic labels P.c j j diI O(cid:181) / for
+the unlabeled documents by using the current estimate of the parameters, O(cid:181), and Eq. (7).
+The M-step, maximizing the complete likelihood equation, corresponds to calculating a
+new maximum a posteriori estimate for the parameters, O(cid:181), using the current estimates for
+P.c j j diI O(cid:181) /, and Eqs. (5) and (6).
+Our iteration process is initialized with a priming M-step, in which only the labeled
+documents are used to estimate the classier parameters, O(cid:181), as in Eqs. (5) and (6). Then the
+cycle begins with an E-step that uses this classier to probabilistically label the unlabeled
+documents for the rst time.
+The algorithm iterates over the E- and M-steps until it converges to a point where O(cid:181) does
+not change from one iteration to the next. Algorithmically, we determine that convergence
+has occurred by observing a below-threshold change in the log-probability of the parameters
+(Eq. (10)), which is the height of the surface on which EM is hill-climbing.
+
+Table 1 gives an outline of the basic EM algorithm from this section.
+
+TEXT CLASSIFICATION USING EM
+
+113
+
+Table 1. The basic EM algorithm described in Section 5.1.
+
+ Build an initial naive Bayes classier, O(cid:181), from the labeled documents, Dl , only. Use maximum a posteriori
+ Loop while classier parameters improve, as measured by the change in lc.(cid:181) jDI z/ (the complete log
+
+Inputs: Collections Dl of labeled documents and Du of unlabeled documents.
+parameter estimation to nd O(cid:181) D arg max(cid:181) P.D j (cid:181) /P.(cid:181) / (see Eqs. (5) and (6)).
+
+probability of the labeled and unlabeled data, and the prior) (see Eq. (10)).
+ (E-step) Use the current classier, O(cid:181), to estimate component membership of each unlabeled document,
+
+i.e., the probability that each mixture component (and class) generated each document,
+
+ (M-step) Re-estimate the classier, O(cid:181), given the estimated component membership of each document.
+
+P.c j j diI O(cid:181) / (see Eq. (7)).
+Use maximum a posteriori parameter estimation to nd O(cid:181) D arg max(cid:181) P.D j (cid:181) /P.(cid:181) /
+(see Eqs. (5) and (6)).
+
+ Output: A classier, O(cid:181), that takes an unlabeled document and predicts a class label.
+
+5.2. Discussion
+In summary, EM nds a O(cid:181) that locally maximizes the likelihood of its parameters given all
+the databoth the labeled and the unlabeled. It provides a method whereby unlabeled data
+can augment limited labeled data and contribute to parameter estimation. An interesting
+empirical question is whether these higher likelihood parameter estimates will improve
+classication accuracy. Section 4.4 discusses the fact that naive Bayes usually performs
+classication well despite violations of its assumptions. Will EM also have this property?
+Note that the justications for this approach depend on the assumptions stated in Section 3,
+namely, that the data is produced by a mixture model, and that there is a one-to-one cor-
+respondence between mixture components and classes. When these assumptions do not
+holdas certainly is the case in real-world textual datathe benets of unlabeled data are
+less clear.
+
+Our experimental results in Section 6 show that this method can indeed dramatically
+improve the accuracy of a document classier, especially when there are only a few labeled
+documents. But on some data sets, when there are a lot of labeled and a lot of unlabeled
+documents, this is not the case. In several experiments, the incorporation of unlabeled data
+decreases, rather than increases, classication accuracy.
+
+Next we describe changes to the basic EM algorithm described above that aim to address
+
+performance degradation due to violated assumptions.
+
+5.3. Augmented EM
+
+This section describes two extensions to the basic EM algorithm described above. The
+extensions help improve classication accuracy even in the face of somewhat violated
+assumptions of the generative model. In the rst we add a new parameter to modulate the
+degree to which EM weights the unlabeled data; in the second we augment the model to
+relax one of the assumptions about the generative model.
+
+114
+
+K. NIGAM ET AL.
+
+5.3.1. Weighting the unlabeled data. As described in the introduction, a common scenario
+is that few labeled documents are on hand, but many orders of magnitude more unlabeled
+documents are readily available. In this case, the great majority of the data determining EMs
+parameter estimates comes from the unlabeled set. In these circumstances, we can think
+of EM as almost entirely performing unsupervised clustering, since the model is mostly
+positioning the mixture components to maximize the likelihood of the unlabeled documents.
+The number of labeled data is so small in comparison to the unlabeled, that the only
+signicant effect of the labeled data is to initialize the classier parameters (i.e. determining
+EMs starting point for hill climbing), and to identify each component with a class label.
+
+When the two mixture model assumptions are true, and the natural clusters of the data
+are in correspondence with the class labels, then unsupervised clustering with many unla-
+beled documents will result in mixture components that are useful for classication (c.f.
+Section 2, where innite amounts of unlabeled data are sufcient to learn the parameters of
+the mixture components). However, when the mixture model assumptions are not true, the
+natural clustering of the unlabeled data may produce mixture components that are not in
+correspondence with the class labels, and are therefore detrimental to classication accu-
+racy. This effect is particularly apparent when the number of labeled documents is already
+large enough to obtain reasonably good parameter estimates for the classier, yet the orders
+of magnitude more unlabeled documents still overwhelm parameter estimation and thus
+badly skew the estimates.
+
+This subsection describes a method whereby the inuence of the unlabeled data is mod-
+ulated in order to control the extent to which EM performs unsupervised clustering. We
+introduce a new parameter , 0    1, into the likelihood equation which decreases the
+contribution of the unlabeled documents to parameter estimation. We term the resulting
+method EM-. Instead of using EM to maximize Eq. (10), we instead maximize:
+
+X
+lc.(cid:181) jDI z/ D log.P.(cid:181) // C
+jCjX
+
+X
+
+jCjX
+
+C 
+
+di2Du
+
+jD1
+
+jD1
+
+zi j log.P.c j j (cid:181) /P.di j c jI (cid:181) //
+
+!
+di2Dl
+zi j log.P.c j j (cid:181) /P.di j c jI (cid:181) //
+
+:
+
+Notice that when  is close to zero, the unlabeled documents will have little inuence
+on the shape of EMs hill-climbing surface. When  D 1, each unlabeled document will be
+weighted the same as a labeled document, and the algorithm is the same as the original EM
+previously described.
+
+When iterating to maximize Eq. (11), the E-step is performed exactly as before. The
+M-step is different, however, and entails the following substitutes for Eqs. (5) and (6). First
+dene 3.i / to be the weighting factor  whenever di in the unlabeled set, and to be 1
+whenever di is in the labeled set:
+
+(
+
+3.i / D
+
+ if di 2 Du
+if di 2 Dl :
+1
+
+(11)
+
+(12)
+
+TEXT CLASSIFICATION USING EM
+
+115
+
+Then the new estimate O(cid:181)wtjc j is again a ratio of word counts, but where the counts of the
+
+O(cid:181)wt j c j
+
+ P.wt j c jI O(cid:181) / D
+
+unlabeled documents are decreased by a factor of :
+
+1 CPjDj
+jVj CPjVj
+PjDj
+3.i /N .wt ; di /P.yi D c j j di /
+iD1
+Class prior probabilities, O(cid:181)c j , are modied similarly:
+3.i /P.yi D c j j di /
+
+ P.c j j O(cid:181) / D 1 CPjDj
+
+iD1
+
+sD1
+
+3.i /N .ws ; di /P.yi D c j j di /
+
+O(cid:181)c j
+
+iD1
+jCj C jDlj C jDuj
+
+:
+
+:
+
+(13)
+
+(14)
+
+These equations can be derived by again solving the system of partial derivatives using
+Lagrange multipliers to enforce the constraint that probabilities sum to one.
+
+In this paper we select the value of  that maximizes the leave-one-out cross-validation
+classication accuracy of the labeled training data. Experimental results with this technique
+are described in Section 6.3. As shown there, setting  to some value between 0 and 1 can
+result in classication accuracy higher than either  D 0 or  D 1, indicating that there
+can be value in the unlabeled data even when its natural clustering would result in poor
+classication.
+
+5.3.2. Multiple mixture components per class. The EM- technique described above
+addresses violated mixture model assumptions by reducing the effect of those violated
+assumptions on parameter estimation. An alternative approach is to attack the problem
+head-on by removing or weakening a restrictive assumption. This subsection takes exactly
+this approach by relaxing the assumption of a one-to-one correspondence between mixture
+components and classes. We replace it with a less restrictive assumption: a many-to-one
+correspondence between mixture components and classes.
+
+For textual data, this corresponds to saying that a class may be comprised of several dif-
+ferent sub-topics, each best captured with a different word distribution. Furthermore, using
+multiple mixture components per class can capture some dependencies between words. For
+example, consider a sports class consisting of documents about both hockey and baseball.
+In these documents, the words ice and puck are likely to co-occur, and the words bat
+and base are likely to co-occur. However, these dependencies cannot be captured by a
+single multinomial distribution over words in the sports class. On the other hand, with mul-
+tiple mixture components per class, one multinomial can cover the hockey sub-topic, and
+another the baseball sub-topicthus more accurately capturing the co-occurrence patterns
+of the above four words.
+
+For some or all of the classes we now allow multiple multinomial mixture components.
+Note that as a result, there are now missing values for the labeled as well as the unlabeled
+documentsit is unknown which mixture component, among those covering the given
+label, is responsible for generating a particular labeled document. Parameter estimation
+will still be performed with EM except that, for each labeled document, we must now
+estimate which mixture component the document came from.
+
+116
+
+K. NIGAM ET AL.
+
+Let us introduce the following notation for separating mixture components from classes.
+Instead of using c j to denote both a class and its corresponding mixture component, we will
+now write ta for the ath class (topic), and c j will continue to denote the jth mixture compo-
+nent. We write P.ta j c jI O(cid:181) / 2 f0; 1g for the pre-determined, deterministic, many-to-one
+
+mapping between mixture components and classes.
+
+Parameter estimation is again done with EM. The M-step is the same as basic EM, build-
+ing maximum a posteriori parameter estimates for the multinomial of each component.
+In the E-step, unlabeled documents are treated as before, calculating probabilistically-
+
+weighted mixture component membership, P.c j j diI O(cid:181) /. For labeled documents, the previ-
+ous P.c j j diI O(cid:181) / 2 f0; 1g that was considered to be xed by the class label is now allowed
+
+to vary between 0 and 1 for mixture components assigned to that documents class. Thus,
+the algorithm also calculates probabilistically-weighted mixture component membership
+
+for the labeled documents. Note, however, that all P.c j j diI O(cid:181) /, for which P.yi D ta j c jI O(cid:181) /
+
+is zero, are clamped at zero, and the rest are normalized to sum to one.
+
+Multiple mixture components for the same class are initialized by randomly spreading
+the labeled training data across the mixture components matching the appropriate class
+label. That is, components are initialized by performing a randomized E-step in which
+
+P.c j j diI O(cid:181) / is sampled from a uniform distribution over mixture components for which
+P.ta D yi j c jI O(cid:181) / is one.
+X
+
+When there are multiple mixture components per class, classication becomes a matter of
+probabilistically classifying documents into the mixture components, and then summing
+the mixture component probabilities into class probabilities:
+
+
+Qjdij
+Qjdij
+PjCj
+P.c j j O(cid:181) /
+rD1 P.cr j O(cid:181) /
+
+kD1 P
+
+
+
+wdi;k
+
+c jI O(cid:181)
+
+crI O(cid:181)
+
+ :
+
+P.ta j diI O(cid:181) / D
+
+P.ta j c jI O(cid:181) /
+
+c j
+
+kD1 P
+
+wdi;k
+
+(15)
+
+In this paper, we select the number of mixture components per class by cross-validation.
+Table 2 gives an outline of the EM algorithm with the extensions of this and the previous
+section.
+
+Experimental results from this technique are described in Section 6.4. As shown there,
+when the data are not naturally modeled by a single component per class, the use of unlabeled
+data with EM degrades performance. However, when multiple mixture components per class
+are used, performance with unlabeled data and EM is superior to naive Bayes.
+
+6. Experimental results
+
+In this section, we provide empirical evidence that combining labeled and unlabeled training
+documents using EM outperforms traditional naive Bayes, which trains on labeled docu-
+ments alone. We present experimental results with three different text corpora: UseNet news
+articles (20 Newsgroups), web pages (WebKB), and newswire articles (Reuters).5
+
+Results show that improvements in accuracy due to unlabeled data are often dramatic,
+especially when the number of labeled training documents is low. For example, on the 20
+Newsgroups data set, classication error is reduced by 30% when trained with 300 labeled
+and 10000 unlabeled documents.
+
+TEXT CLASSIFICATION USING EM
+
+117
+
+
+
+Table 2. The algorithm described in this paper, and used to generate the experimental results in Section 6. The
+algorithm enhancements for EM- that vary the contribution of the unlabeled data (Section 5.3.1) are indicated
+by [Weighted only]. The optional use of multiple mixture components per class (Section 5.3.2) is indicated by
+[Multiple only]. Unmarked paragraphs are common to all variations of the algorithm.
+
+
+
+Inputs: Collections Dl of labeled documents and Du of unlabeled documents.
+[Weighted only]: Set the discount factor of the unlabeled data, , by cross-validation
+(see Sections 6.1 and 6.3).
+[Multiple only]: Set the number of mixture components per class by cross-validation
+(see Sections 6.1 and 6.4).
+[Multiple only]: For each labeled document, randomly assign P.c j j diI O(cid:181) / for mixture components
+
+ Build an initial naive Bayes classier, O(cid:181), from the labeled documents only. Use maximum a posteriori
+ Loop while classier parameters improve (0:05 < 1lc.(cid:181) jDI z/, the change in complete log probability of
+the labeled and unlabeled data, and the prior) (see Eq. (10):
+ (E-step) Use the current classier, O(cid:181), to estimate the component membership of each document, i.e. the
+
+that correspond to the documents class label, to initialize each mixture component.
+parameter estimation to nd O(cid:181) D arg max(cid:181) P.D j (cid:181) /P.(cid:181) / (see Eqs. (5) and (6)).
+
+probability that each mixture component generated each document, P.c j j diI O(cid:181) / (see Eq. (7)).
+[Multiple only]: Restrict the membership probability estimates of labeled documents to be zero for
+components associated with other classes, and renormalize.
+ (M-step) Re-estimate the classier, O(cid:181), given the estimated component membership of each document.
+Use maximum a posteriori parameter estimation to nd O(cid:181) D arg max(cid:181) P.D j (cid:181) /P.(cid:181) /
+(see Eqs. (5) and (6)).
+[Weighted only]: When counting events for parameter estimation, word and document counts from
+unlabeled documents are reduced by a factor  (see Eqs. (13) and (14)).
+
+ Output: A classier, O(cid:181), that takes an unlabeled document and predicts a class label.
+
+On certain data sets, however, (and especially when the number of labeled documents
+is high), the incorporation of unlabeled data with the basic EM scheme may reduce rather
+than increase accuracy. We show that the application of the EM extensions described in the
+previous section increases performance beyond that of naive Bayes.
+
+6.1. Datasets and protocol
+
+The 20 Newsgroups data set (Joachims, 1997; McCallum, et al., 1998; Mitchell, 1997),
+collected by Ken Lang, consists of 20017 articles divided almost evenly among 20 different
+UseNet discussion groups. The task is to classify an article into the one newsgroup (of
+twenty) to which it was posted. Many of the categories fall into confusable clusters; for
+example, ve of them are comp.* discussion groups, and three of them discuss religion.
+When words from a stoplist of common short words are removed, there are 62258 unique
+words that occur more than once; other feature selection is not used. When tokenizing this
+data, we skip the UseNet headers (thereby discarding the subject line); tokens are formed
+from contiguous alphabetic characters, which are left unstemmed. The word counts of each
+document are scaled such that each document has constant length, with potentially fractional
+
+118
+
+K. NIGAM ET AL.
+
+word counts. Our preliminary experiments with 20 Newsgroups indicated that naive Bayes
+classication was better with this word count normalization.
+
+The 20 Newsgroups data set was collected from UseNet postings over a period of several
+months in 1993. Naturally, the data have time dependenciesarticles nearby in time are
+more likely to be from the same thread, and because of occasional quotations, may contain
+many of the same words. In practical use, a classier for this data set would be asked
+to classify future articles after being trained on articles from the past. To preserve this
+scenario, we create a test set of 4000 documents by selecting by posting date the last 20%
+of the articles from each newsgroup. An unlabeled set is formed by randomly selecting
+10000 documents from those remaining. Labeled training sets are formed by partitioning
+the remaining 6000 documents into non-overlapping sets. The sets are created with equal
+numbers of documents per class. For experiments with different labeled set sizes, we create
+up to ten sets per size; obviously, fewer sets are possible for experiments with labeled
+sets containing more than 600 documents. The use of each non-overlapping training set
+comprises a new trial of the given experiment. Results are reported as averages over all
+trials of the experiment.
+
+The WebKB data set (Craven et al., 1998) contains 8145 web pages gathered from univer-
+sity computer science departments. The collection includes the entirety of four departments,
+and additionally, an assortment of pages from other universities. The pages are divided into
+seven categories: student, faculty, staff, course, project, department and other. In this
+paper, we use the four most populous non-other categories: student, faculty, course and
+projectall together containing 4199 pages. The task is to classify a web page into the
+appropriate one of the four categories. For consistency with previous studies with this data
+set (Craven et al., 1998), when tokenizing the WebKB data, numbers were converted into a
+time or a phone number token, if appropriate, or otherwise a sequence-of-length-n token.
+We did not use stemming or a stoplist; we found that using a stoplist actually hurt
+performance. For example, my is an excellent indicator of a student homepage and is
+the fourth-ranked word by information gain. We limit the vocabulary to the 300 most
+informative words, as measured by average mutual information with the class variable.
+This feature selection method is commonly used for text (Yang & Pederson, 1997; Koller &
+Sahami, 1997; Joachims, 1997). We selected this vocabulary size by running leave-one-out
+cross-validation on the training data to optimize classication accuracy.
+
+The WebKB data set was collected as part of an effort to create a crawler that ex-
+plores previously unseen computer science departments and classies web pages into a
+knowledge-base ontology. To mimic the crawlers intended use, and to avoid reporting
+performance based on idiosyncrasies particular to a single department, we test using a
+leave-one-university-out approach. That is, we create four test sets, each containing all the
+pages from one of the four complete computer science departments. For each test set, an
+unlabeled set of 2500 pages is formed by randomly selecting from the remaining web pages.
+Non-overlapping training sets are formed by the same method as in 20 Newsgroups. Also
+as before, results are reported as averages over all trials that share the same number of
+labeled training documents.
+
+The Reuters 21578 Distribution 1.0 data set consists of 12902 articles and 90 topic
+categories from the Reuters newswire. Following several other studies (Joachims, 1998;
+
+TEXT CLASSIFICATION USING EM
+
+119
+
+Liere & Tadepalli, 1997) we build binary classiers for each of the ten most populous
+classes to identify the news topic. We use all the words inside the <TEXT> tags, including
+the title and the dateline, except that we remove the REUTER and &# tags that occur at the
+top and bottom of every document. We use a stoplist, but do not stem.
+
+In Reuters, classiers for different categories perform best with widely varying vocab-
+ulary sizes (which are chosen by average mutual information with the class variable). This
+variance in optimal vocabulary size is unsurprising. As previously noted (Joachims, 1997),
+categories like wheat and corn are known for a strong correspondence between a small
+set of words (like their title words) and the categories, while categories like acq are
+known for more complex characteristics. The categories with narrow denitions attain best
+classication with small vocabularies, while those with a broader denition require a large
+vocabulary. The vocabulary size for each Reuters trial is selected by optimizing accuracy
+as measured by leave-one-out cross-validation on the labeled training set.
+
+As with the 20 Newsgroups data set, there are time dependencies in Reuters. The
+standard ModApte train/test split divides the articles by time, such that the later 3299
+documents form the test set, and the earlier 9603 are available for training. In our experi-
+ments, 7000 documents from this training set are randomly selected to form the unlabeled
+set. From the remaining training documents, we randomly select up to ten non-overlapping
+training sets of ten positively labeled documents and 40 negatively labeled documents, as
+previously described for the other two data sets. We use non-uniform number of labelings
+across the classes because the negative class is much more frequent than the positive class
+in all of the binary Reuters classication tasks.
+
+Results on Reuters are reported as precision-recall breakeven points, a standard informa-
+tion retrieval measure for binary classication. Accuracy is not a good performance metric
+here because very high accuracy can be achieved by always predicting the negative class.
+The task on this data set is less like classication than it is like lteringnd the few
+positive examples from a large sea of negative examples. Recall and precision capture the
+inherent duality of this task, and are dened as:
+
+Recall D # of correct positive predictions
+Precision D # of correct positive predictions
+
+# of positive examples
+
+# of positive predictions
+
+:
+
+(16)
+
+(17)
+
+The classier can achieve a trade-off between precision and recall by adjusting the de-
+cision boundary between the positive and negative class away from its previous default of
+
+P.c j j diI O(cid:181) / D 0:5. The precision-recall breakeven point is dened as the precision and
+
+recall value at which the two are equal (e.g. Joachims, 1998).
+
+The algorithm used for experiments with EM is described in Table 2.
+In this section, when leave-one-out cross-validation is performed in conjunction with EM,
+we make one simplication for computational efciency. We rst run EM to convergence
+with all the training data, and then subtract the word counts of each labeled document in
+turn before testing that document. Thus, when performing cross-validation for a specic
+combination of parameter settings, only one run of EM is required instead of one run of EM
+
+120
+
+K. NIGAM ET AL.
+
+Figure 2. Classication accuracy on the 20 Newsgroups data set, both with and without 10,000 unlabeled
+documents. With small amounts of training data, using EM yields more accurate classiers. With large amounts
+of labeled training data, accurate parameter estimates can be obtained without the use of unlabeled data, and the
+two methods begin to converge.
+
+per labeled example. Note, however, that there are still some residual effects of the held-out
+document.
+
+The computational complexity of EM, however, is not prohibitive. Each iteration requires
+classifying the training documents (E-step), and building a new classier (M-step). In our
+experiments, EM usually converges after about 10 iterations. The wall-clock time to read
+the document-word matrix from disk, build an EM model by iterating to convergence, and
+classify the test documents is less than one minute for the WebKB data set, and less than
+15 minutes for 20 Newsgroups. The 20 Newsgroups data set takes longer because it has
+more documents and more words in the vocabulary.
+
+6.2. EM with unlabeled data increases accuracy
+
+We rst consider the use of basic EM to incorporate information from unlabeled documents.
+Figure 2 shows the effect of using basic EM with unlabeled data on the 20 Newsgroups data
+set. The vertical axis indicates average classier accuracy on test sets, and the horizontal
+axis indicates the amount of labeled training data on a log scale. We vary the amount of
+labeled training data, and compare the classication accuracy of traditional naive Bayes (no
+unlabeled data) with an EM learner that has access to 10000 unlabeled documents.
+
+EM performs signicantly better. For example, with 300 labeled documents (15 docu-
+ments per class), naive Bayes reaches 52% accuracy while EM achieves 66%. This represents
+a 30% reduction in classication error. Note that EM also performs well even with a very
+small number of labeled documents; with only 20 documents (a single labeled document
+per class), naive Bayes obtains 20%, EM 35%. As expected, when there is a lot of labeled
+data, and the naive Bayes learning curve is close to a plateau, having unlabeled data does not
+help nearly as much, because there is already enough labeled data to accurately estimate the
+classier parameters. With 5500 labeled documents (275 per class), classication accuracy
+increases from 76% to 78%. Each of these results is statistically signicant ( p < 0:05).6
+
+TEXT CLASSIFICATION USING EM
+
+121
+
+Figure 3. Classication accuracy while varying the number of unlabeled documents. The effect is shown on the
+20 Newsgroups data set, with 5 different amounts of labeled documents, by varying the amount of unlabeled
+data on the horizontal axis. Having more unlabeled data helps. Note the dip in accuracy when a small amount of
+unlabeled data is added to a small amount of labeled data. We hypothesize that this is caused by extreme, almost 0
+
+or 1, estimates of component membership, P.c j j di ; O(cid:181) /, for the unlabeled documents (as caused by naive Bayes
+
+word independence assumption).
+
+These results demonstrate that EM nds parameter estimates that improve classication
+accuracy and reduce the need for labeled training examples. For example, to reach 70%
+classication accuracy, naive Bayes requires 2000 labeled examples, while EM requires
+only 600 labeled examples to achieve the same accuracy.
+
+In gure 3 we consider the effect of varying the amount of unlabeled data. For ve different
+quantities of labeled documents, we hold the number of labeled documents constant, and
+vary the number of unlabeled documents in the horizontal axis. Naturally, having more
+unlabeled data helps, and it helps more when there is less labeled data.
+
+Notice that adding a small amount of unlabeled data to a small amount of labeled data
+actually hurts performance. We hypothesize that this occurs because the word independence
+
+assumption of naive Bayes leads to overly-condent P.c j j di ; O(cid:181) / estimates in the E-step,
+
+and the small amount of unlabeled data is distributed too sharply. (Without this bias in naive
+Bayes, the E-step would spread the unlabeled data more evenly across the classes.) When
+the number of unlabeled documents is large, however, this problem disappears because the
+unlabeled set provides a large enough sample to smooth out the sharp discreteness of naive
+Bayes overly-condent classication.
+
+We now move on to a different data set. To provide some intuition about why EM works,
+we present a detailed trace of one example from the WebKB data set. Table 3 shows the
+evolution of the classier over the course of two EM iterations. Each column shows the
+ordered list of words that the model indicates are most predictive of the course class.
+Words are judged to be predictive using a weighted log likelihood ratio.7 The symbol D
+indicates an arbitrary digit. At Iteration 0, the parameters are estimated from a randomly-
+chosen single labeled document per class. Notice that the course document seems to be
+about a specic Articial Intelligence course at Dartmouth. After two EM iterations with
+2500 unlabeled documents, we see that EM has used the unlabeled data to nd words that
+
+122
+
+K. NIGAM ET AL.
+
+Table 3. Lists of the words most predictive of the course class in the WebKB data set, as they change over
+iterations of EM for a specic trial. By the second iteration of EM, many common course-related words appear.
+The symbol D indicates an arbitrary digit.
+
+Iteration 0
+
+intelligence
+DD
+articial
+understanding
+DDw
+dist
+identical
+rus
+arrange
+games
+dartmouth
+natural
+cognitive
+logic
+proving
+prolog
+knowledge
+human
+representation
+eld
+
+Iteration 1
+
+DD
+D
+lecture
+cc
+D?
+DD:DD
+handout
+due
+problem
+set
+tay
+DDam
+yurttas
+homework
+kfoury
+sec
+postscript
+exam
+solution
+assaf
+
+Iteration 2
+
+D
+DD
+lecture
+cc
+DD:DD
+due
+D?
+homework
+assignment
+handout
+set
+hw
+exam
+problem
+DDam
+postscript
+solution
+quiz
+chapter
+ascii
+
+are more generally indicative of courses. The classier corresponding to the rst column
+achieves 50% accuracy; when EM converges, the classier achieves 71% accuracy.
+
+6.3. Varying the weight of the unlabeled data
+
+When graphing performance on this data set, we see that the incorporation of unlabeled
+data can also decrease, rather than increase, classication accuracy. The graph in gure 4
+shows the performance of basic EM (with 2500 unlabeled documents) on WebKB. Again,
+EM improves accuracy signicantly when the amount of labeled data is small. When there
+are four labeled documents (one per class), traditional naive Bayes attains 40% accuracy,
+while EM reaches 55%. When there is a lot of labeled data, however, EM hurts performance
+slightly. With 240 labeled documents, naive Bayes obtains 81% accuracy, while EM does
+worse at 79%. Both of these differences in performance are statistically signicant ( p <
+0:05), for three and two of the university test sets, respectively.
+
+As discussed in Section 5.3.1, we hypothesize that EM hurts performance here because
+the data do not t the assumptions of the generative modelthat is, the mixture components
+
+TEXT CLASSIFICATION USING EM
+
+123
+
+Figure 4. Classication accuracy on the WebKB data set, both with and without 2500 unlabeled documents.
+When there are small numbers of labeled documents, EM improves accuracy. When there are many labeled
+documents, however, EM degrades performance slightlyindicating a mist between the data and the assumed
+generative model.
+
+that best explain the unlabeled data are not in precise correspondence with the class labels.
+It is not surprising that the unlabeled data can throw off parameter estimation when one
+considers that the number of unlabeled documents is much greater than the number of
+labeled documents (e.g. 2500 versus 240), and thus, even at the points in gure 4 with
+the largest amounts of labeled data, the great majority of the probability mass used in the
+M-step to estimate the classier parameters actually comes from the unlabeled data.
+
+To remedy this dip in performance, we use EM- to reduce the weight of the unlabeled
+data by varying  in Eqs. (13) and (14). Figure 5 plots classication accuracy while varying
+ to achieve the relative weighting indicated in the horizontal axis, and does so for three
+different amounts of labeled training data. The bottom curve is obtained using 40 labeled
+documentsa vertical slice in gure 4 at a point where EM with unlabeled data gives higher
+accuracy than naive Bayes. Here, the best weighting of the unlabeled data is high, indicating
+that classication can be improved by augmenting the sparse labeled data with heavy reliance
+on the unlabeled data. The middle curve is obtained using 80 labeled documentsa slice
+near the point where EM and naive Bayes performance cross. Here, the best weighting
+is in the middle, indicating that EM- performs better than either naive Bayes or basic
+EM. The top curve is obtained using 200 labeled documentsa slice where unweighted
+EM performance is lower than traditional naive Bayes. Less weight should be given to the
+unlabeled data at this point.
+
+Note the inverse relationship between the labeled data set size and the best weighting
+factorthe smaller labeled data set, the larger the best weighting of the unlabeled data.
+This trend holds across all amounts of labeled data. Intuitively, when EM has very little
+labeled training data, parameter estimation is so desperate for guidance that EM with all the
+unlabeled data helps in spite of the somewhat violated assumptions. However, when there is
+enough labeled training data to sufciently estimate the parameters, less weight should be
+given to the unlabeled data. Finally, note that the best-performing values of  are somewhere
+between the extremes, remembering that the right-most point corresponds to EM with the
+
+124
+
+K. NIGAM ET AL.
+
+Figure 5. The effects of varying , the weighting factor on the unlabeled data in EM-. These three curves
+from the WebKB data set correspond to three different amounts of labeled data. When there is less labeled data,
+accuracy is highest when more weight is given to the unlabeled data. When the amount of labeled data is large,
+accurate parameter estimates are attainable from the labeled data alone, and the unlabeled data should receive less
+weight. With moderate amounts of labeled data, accuracy is better in the middle than at either extreme. Note the
+magnied vertical scale.
+
+weighting used to generate gure 4, and the left-most to regular naive Bayes. Paired t-tests
+across the trials of all the test universities show that the best-performing points on these
+curves are statistically signicantly higher than either end point, except for the difference
+between the maxima and basic EM with 40 labeled documents ( p < 0:05).
+
+In practice the value of the tuning parameter  can be selected by cross-validation.
+In our experiments we select  by leave-one-out cross-validation on the labeled training
+set for each trial, as discussed in Section 6.1. Figure 6 shows the accuracy for the best
+possible , and the accuracy when selecting  via cross-validation. Basic EM and naive
+Bayes accuracies are also shown for comparison. When  is perfectly selected, its accuracy
+dominates the basic EM and naive Bayes curves. Cross-validation selects s that, for small
+amounts of labeled documents, perform about as well as EM. For large amounts of labeled
+documents, cross-validation selects s that do not suffer from the degraded performance
+seen in basic EM, and also performs at least as well as naive Bayes. For example, at the
+240 document level seen before, the  picked by cross-validation gives only 5% of the
+weight to the unlabeled data, instead of the 91% given by basic EM. Doing so provides an
+accuracy of 82%, compared to 81% for naive Bayes and 79% for basic EM. This is not
+statistically signicantly different from naive Bayes, and is statistically signicantly higher
+than basic EM for two of the four test sets (both p < 0:05). These results indicate that we
+can automatically avoid EMs degradation in accuracy at large training set sizes and still
+preserve the benets of EM seen with small labeled training sets.
+
+These results also indicate that when the training set size is very small improved methods
+of selecting  could signicantly increase the practical performance of EM- even further.
+Note that in these cases, cross-validation has only a few documents with which to choose
+. The end of Section 6.4 suggests some methods that may perform better than cross-
+validation.
+
+TEXT CLASSIFICATION USING EM
+
+125
+
+Figure 6. Classication accuracy on the WebKB data set, with modulation of the unlabeled data by the weighting
+factor . The top curve shows accuracy when using the best value of . In the second curve,  is chosen by cross-
+validation. With small amounts of labeled data, the results are similar to basic EM; with large amounts of labeled
+data, the results are more accurate than basic EM. Thanks to the weighting factor, large amounts of unlabeled data
+no longer degrades accuracy, as it did in gure 4, and yet the algorithm retains the large improvements with small
+amounts of labeled data. Note the magnied vertical axis to facilitate the comparisons.
+
+6.4. Multiple mixture components per class
+
+Faced with data that do not t the assumptions of our model, the -tuning approach described
+above addresses this problem by allowing the model to incrementally ignore the unlabeled
+data. Another, more direct approach, described in Section 5.3.2, is to change the model so
+that it more naturally ts the data. Flexibility can be added to the mapping between mixture
+components and class labels by allowing multiple mixture components per class. We expect
+this to improve performance when data for each class is, in fact, multi-modal.
+
+With an eye towards testing this hypothesis, we apply EM to the Reuters corpus. Since
+the documents in this data set can have multiple class labels, each category is traditionally
+evaluated with a binary classier. Thus, the negative class covers 89 distinct categories,
+and we expect this task to strongly violate the assumption that all the data for the negative
+class are generated by a single mixture component. For this reason, we model the positive
+class with a single mixture component and the negative class with between one and forty
+mixture components, both with and without unlabeled data.
+
+Table 4 contains a summary of results on the test set for modeling the negative class with
+multiple mixture components. The NB1 column shows precision-recall breakeven points
+from standard naive Bayes (with just the labeled data), that models the negative class with
+a single mixture component. The NB* column shows the results of modeling the negative
+class with multiple mixture components (again using just the labeled data). In the NB*
+column, the number of components has been selected to optimize the best precision-recall
+breakeven point. The median number of components selected across trials is indicated in
+parentheses beside the breakeven point. Note that even before we consider the effect of
+unlabeled data, using this more complex representation on this data improves performance
+over traditional naive Bayes.
+
+126
+
+K. NIGAM ET AL.
+
+Table 4. Precision-recall breakeven points showing performance of binary classiers on Reuters with traditional
+naive Bayes (NB1), multiple mixture components using just labeled data (NB*), basic EM (EM1) with labeled and
+unlabeled data, and multiple mixture components EM with labeled and unlabeled data (EM*). For NB* and EM*,
+the number of components is selected optimally for each trial, and the median number of components across the
+trials used for the negative class is shown in parentheses. Note that the multi-component model is more natural
+for Reuters, where the negative class consists of many topics. Using both unlabeled data and multiple mixture
+components per class increases performance over either alone, and over naive Bayes.
+
+Category
+
+NB1
+
+NB*
+
+EM1
+
+EM*
+
+EM* vs. NB1
+
+EM* vs. NB*
+
+acq
+corn
+crude
+earn
+grain
+interest
+money-fx
+ship
+trade
+wheat
+
+69.4
+44.3
+65.2
+91.1
+65.7
+44.4
+49.4
+44.3
+57.7
+56.0
+
+74.3 (4)
+47.8 (3)
+68.3 (2)
+91.6 (1)
+66.6 (2)
+54.9 (5)
+55.3 (15)
+51.2 (4)
+61.3 (3)
+67.4 (10)
+
+70.7
+44.6
+68.2
+89.2
+67.0
+36.8
+40.3
+34.1
+56.1
+52.9
+
+83.9 (10)
+52.8 (5)
+75.4 (8)
+89.2 (1)
+72.3 (8)
+52.3 (5)
+56.9 (10)
+52.5 (7)
+61.8 (3)
+67.8 (10)
+
+C14.5
+C8.5
+C10.2
+1.9
+C6.3
+C7.9
+C7.5
+C8.2
+C4.1
+C11.8
+
+C9.6
+C5.0
+C7.1
+2.4
+C5.7
+2.6
+C1.6
+C1.3
+C0.5
+C0.4
+
+The column labeled EM1 shows results with basic EM (i.e. with a single negative
+component). Notice that here performance is often worse than naive Bayes (NB1). We
+hypothesize that, because the negative class is truly multi-modal, tting a single naive Bayes
+class with EM to the data does not accurately capture the negative class word distribution.
+The column labeled EM* shows results of EM with multiple mixture components, again
+selecting the best number of components. Here performance is better than both NB1 (tra-
+ditional naive Bayes) and NB* (naive Bayes with multiple mixture components per class).
+This increase, measured over all trials of Reuters, is statistically signicant ( p < 0:05).
+This indicates that while the use of multiple mixture components increases performance
+over traditional naive Bayes, the combination of unlabeled data and multiple mixture com-
+ponents increases performance even more.
+
+Furthermore, it is interesting to note that, on average, EM* uses more mixture components
+than NB*suggesting that the addition of unlabeled data reduces variance and supports
+the use of a more expressive model.
+
+Tables 5 and 6 show the complete results for experiments using multiple mixture compo-
+nents with and without unlabeled data, respectively. Note that in general, using too many or
+too few mixture components hurts performance. With too few components, our assumptions
+are overly restrictive. With too many components, there are more parameters to estimate
+from the same amount of data. Table 7 shows the same results as Table 4, but for classi-
+cation accuracy, and not precision-recall breakeven. The general trends for accuracy are
+the same as for precision-recall. However, for accuracy, the optimal number of mixture
+components for the negative class is greater than for precision-recall, because by its na-
+ture precision-recall focuses more on modeling the positive class, where accuracy focuses
+
+TEXT CLASSIFICATION USING EM
+
+127
+
+Table 5. Performance of EM using different numbers of mixture components for the negative class and 7000
+unlabeled documents. Precision-recall breakeven points are shown for experiments using between one and forty
+mixture components. Note that using too few or too many mixture components results in poor performance.
+
+Category
+
+acq
+corn
+crude
+earn
+grain
+interest
+money-fx
+ship
+trade
+wheat
+
+EM1
+
+EM3
+
+EM5
+
+EM10
+
+EM20
+
+EM40
+
+70.7
+44.6
+68.2
+89.2
+67.0
+36.8
+40.3
+34.1
+56.1
+52.9
+
+75.0
+45.3
+72.1
+88.3
+68.8
+43.5
+48.4
+41.5
+54.4
+56.0
+
+72.5
+45.3
+70.9
+88.5
+70.3
+47.1
+53.4
+42.3
+55.8
+55.5
+
+77.1
+46.7
+71.6
+86.5
+68.0
+49.9
+54.3
+36.1
+53.4
+60.8
+
+68.7
+41.8
+64.2
+87.4
+58.5
+34.8
+51.4
+21.0
+35.8
+60.8
+
+57.5
+19.1
+44.0
+87.2
+41.3
+25.8
+40.1
+5.4
+27.5
+43.4
+
+Table 6. Performance of EM using different numbers of mixture components for the negative class, but with no
+unlabeled data. Precision-recall breakeven points are shown for experiments using between one and forty mixture
+components.
+
+Category
+
+acq
+corn
+crude
+earn
+grain
+interest
+money-fx
+ship
+trade
+wheat
+
+NB1
+
+69.4
+44.3
+65.2
+91.1
+65.7
+44.4
+49.4
+44.3
+57.7
+56.0
+
+NB3
+
+69.4
+44.3
+60.2
+90.9
+63.9
+48.8
+48.1
+42.7
+57.5
+59.7
+
+NB5
+
+65.8
+46.0
+63.1
+90.5
+56.7
+52.6
+47.5
+47.1
+51.9
+55.7
+
+NB10
+
+NB20
+
+NB40
+
+68.0
+41.8
+64.4
+90.5
+60.3
+48.9
+47.1
+46.0
+53.2
+65.0
+
+64.6
+41.1
+65.8
+90.5
+56.2
+47.2
+48.8
+43.6
+52.3
+63.2
+
+68.8
+38.9
+61.8
+90.4
+57.5
+47.6
+50.4
+45.6
+58.1
+56.0
+
+more on modeling the negative class, because it is much more frequent. By allowing more
+mixture components for the negative class, a more accurate model is achieved.
+
+One obvious question is how to select the best number of mixture components without
+having access to the test set labels. As with selection of the weighting factor, , we use
+leave-one-out cross-validation, with the computational short-cut that entails running EM
+only once (as described at the end of Section 6.1).
+
+Results from this technique (EM*CV), compared to naive Bayes (NB1) and the best
+EM (EM*), are shown in Table 8. Note that cross-validation does not perfectly select the
+number of components that perform best on the test set. The results consistently show
+that selection by cross-validation chooses a smaller number of components than is best.
+
+128
+
+K. NIGAM ET AL.
+
+Table 7. Classication accuracy on Reuters with traditional naive Bayes (NB1), multiple mixture components
+using just labeled data (NB*), basic EM (EM1) with labeled and unlabeled data, and multiple mixture components
+EM with labeled and unlabeled data (EM*), as in Table 4.
+
+Category
+
+NB1
+
+NB*
+
+EM1
+
+EM*
+
+EM* vs. NB1
+
+EM* vs. NB*
+
+acq
+corn
+crude
+earn
+grain
+interest
+money-fx
+ship
+trade
+wheat
+
+86.9
+94.6
+94.3
+94.9
+94.1
+91.8
+93.0
+94.9
+91.8
+94.0
+
+88.0 (4)
+96.0 (10)
+95.7 (13)
+95.9 (5)
+96.2 (3)
+95.3 (5)
+94.1 (5)
+96.3 (3)
+94.3 (5)
+96.2 (4)
+
+81.3
+93.2
+94.9
+95.2
+93.6
+87.6
+90.4
+94.1
+90.2
+94.5
+
+93.1 (10)
+97.2 (40)
+96.3 (10)
+95.7 (10)
+96.9 (20)
+95.8 (10)
+95.0 (15)
+95.9 (3)
+95.0 (20)
+97.8 (40)
+
+C6.2
+C2.6
+C2.0
+C0.8
+C2.8
+C4.0
+C2.0
+C1.0
+C3.2
+C3.8
+
+C5.1
+C1.2
+C0.6
+0.2
+C0.7
+C0.5
+C0.9
+0.4
+C0.7
+C1.6
+
+Table 8. Performance of using multiple mixture components when the number of components is selected via
+cross-validation (EM*CV) compared to optimal selection (EM*) and straight naive Bayes (NB1). Note that cross-
+validation usually selects too few components.
+
+Category
+
+acq
+corn
+crude
+earn
+grain
+interest
+money-fx
+ship
+trade
+wheat
+
+NB1
+
+69.4
+44.3
+65.2
+91.1
+65.7
+44.4
+49.4
+44.3
+57.7
+56.0
+
+EM*
+
+83.9 (10)
+52.8 (5)
+75.4 (8)
+89.2 (1)
+72.3 (8)
+52.3 (5)
+56.9 (10)
+52.5 (7)
+61.8 (3)
+67.8 (10)
+
+EM*CV
+
+EM*CV vs. NB1
+
+75.6 (1)
+47.1 (3)
+68.3 (1)
+87.1 (1)
+67.2 (1)
+42.6 (3)
+47.4 (2)
+41.3 (2)
+57.3 (1)
+56.9 (1)
+
+C6.2
+C2.8
+C3.1
+4.0
+C1.5
+1.8
+2.0
+3.0
+0.4
+C0.9
+
+By using the cross-validation with the computational short-cut, we bias the model towards
+the held-out document, which, we hypothesize, favors the use of fewer components. The
+computationally expensive, but complete, cross-validation should perform better.
+
+Other model selection methods may perform better, while also remaining computationally
+efcient. These include: more robust methods of cross-validation, such as that of Ng (1997);
+Minimum Description Length (Rissanen, 1983); and Schuurmans metric-based approach,
+which also uses unlabeled data (1997). Research on improved methods of model selection
+for our algorithm is an area of future work.
+
+TEXT CLASSIFICATION USING EM
+
+129
+
+7. Related work
+
+Expectation-Maximization is a well-known family of algorithms with a long history and
+many applications. Its application to classication is not new in the statistics literature. The
+idea of using an EM-like procedure to improve a classier by treating the unclassied data
+as incomplete is mentioned by R. J. A. Little among the published responses to the original
+EM paper (Dempster, Laird, & Rubin, 1977). A discussion of this partial classication

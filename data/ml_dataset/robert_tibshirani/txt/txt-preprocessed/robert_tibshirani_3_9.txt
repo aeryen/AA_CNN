@@ -1,0 +1,1304 @@
+Abstract. For high dimensional supervised learning problems,
+often using problem specic assumptions can lead to greater ac-
+curacy. For problems with grouped covariates, which are believed
+to have sparse eects both on a group and within group level, we
+introduce a regularized model for linear regression with (cid:96)1 and (cid:96)2
+penalties. We discuss the sparsity and other regularization prop-
+erties of the optimal t for this model, and show that it has the
+desired eect of group-wise and within group sparsity. We propose
+an algorithm to t the model via accelerated generalized gradi-
+ent descent, and extend this model and algorithm to convex loss
+functions. We also demonstrate the ecacy of our model and the
+eciency of our algorithm on simulated data.
+
+Keywords: penalize, regularize, regression, model, nesterov
+
+1. Introduction
+
+Consider the usual linear regression framework. Our data consists
+of an n response vector y, and an n by p matrix of features, X. In
+many recent applications we have p >> n: a case where standard
+linear regression fails. To combat this, Tibshirani (1996) regularized
+the problem by bounding the (cid:96)1 norm of the solution. This approach,
+known as the lasso, minimizes
+
+(1)
+
+||y  X||2
+
+2 + ||||1.
+
+1
+2
+
+It nds a solution with few nonzero entries in . Suppose, further,
+that our predictor variables were divided into m dierent groups for
+example in gene expression data these groups may be gene pathways,
+or factor level indicators in categorical data. We are given these group
+memberships and rather than just sparsity in  we would like a solution
+which uses only a few of the groups. Yuan and Lin (2007) proposed
+
+1
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)y  m(cid:88)
+
+l=1
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)2
+
+2
+
+(3) min
+
+1
+2n
+
+m(cid:88)
+
+l=1
+
+X (l)(l)
+
++ (1  )
+
+
+
+pl||(l)||2 + ||||1.
+
+2NOAH SIMON, JEROME FRIEDMAN, TREVOR HASTIE, AND ROB TIBSHIRANI
+
+the group lasso criterion for this problem; the problem is
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)y  m(cid:88)
+
+l=1
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)2
+
+2
+
+m(cid:88)
+
+l=1
+
+X (l)(l)
+
++ 
+
+
+
+pl||(l)||2
+
+(2)
+
+min
+
+1
+2
+
+where X (l) is the submatrix of X with columns corresponding to the
+predictors in group l, (l) the coecient vector of that group and pl
+is the length of (l) . This criterion exploits the non-dierentiability
+of ||(l)||2 at (l) = 0; setting groups of coecients to exactly 0. The
+sparsity of the solution is determined by the magnitude of the tuning
+parameter . If the size of each group is 1, this gives us exactly the
+regular lasso solution.
+While the group lasso gives a sparse set of groups, if it includes a group
+in the model then all coecients in the group will be nonzero. Some-
+times we would like both sparsity of groups and within each group
+for example if the predictors are genes we would like to identify partic-
+ularly important genes in pathways of interest. Toward this end we
+focus on the sparse-group lasso
+
+where   [0, 1]  a convex combination of the lasso and group lasso
+penalties ( = 0 gives the group lasso t,  = 1 gives the lasso t). Be-
+fore we move on, we would like to dene consistent terminology for our
+2 types of sparsity: we use groupwise sparsity to refer to the number
+of groups with at least one nonzero coecient, and within group spar-
+sity to refer to the number of nonzero coecients within each nonzero
+group. Occasionally, we will also use the term overall sparsity to refer
+to the total number of nonzero coecients irregardless of grouping.
+
+In this paper we discuss properties of this criterion, rst proposed
+in our unpublished note, Friedman et al.. We discuss using this idea
+for logistic and Cox regression, and develop an algorithm to solve the
+original problem and extensions to other loss functions. Our algorithm
+is based on Nesterovs method for generalized gradient descent. By
+employing warm starts we solve the problem along a path of constraint
+values. We demonstrate the ecacy of our objective function and algo-
+rithm on real and simulated data, and we provide a publically available
+R implementation of our algorithm in the package SGL. This paper is
+the continuation of Friedman et al., a brief note on the criterion.
+
+A SPARSE-GROUP LASSO
+
+3
+
+This criterion was also discussed in Zhou et al. (2010). They applied
+it to SNP data for linear and logistic regression with an emphasis on
+variable selection and found that it performed well.
+
+In Section 2 we develop the criterion and discuss some of its proper-
+ties. We present the details of the algorithm we use to t this model
+in Section 3.
+In Section 4 we extend this model to any log-concave
+likelihood in particular to logistic regression and the Cox proportional
+hazards model.
+In Section 5 we discuss when we might expect our
+model to outperform the lasso and group lasso, and give some real
+data examples. In Section 6 we show the ecacy of our model and the
+eciency of our algorithm on simulated data.
+
+2. Criterion
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+1
+2n
+
+X (l)(l)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)2
+
+2
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)y  m(cid:88)
+
+l=1
+
++ (1  )
+
+Returning to the usual regression framework we have an n response
+vector y, and an n by p covariate matrix X broken down into m sub-
+matrices, X (1), X (2), . . . , X (m), with each X (l) an n by pl matrix, where
+pl is the number of covariates in group l. We choose  to minimize
+pl||(l)||2 + ||||1.
+
+m(cid:88)
+
+(4)
+For the rest of the paper we will supress the 
+
+pl||(l)||2
+penalty term for ease of notation. To add it back in, simply replace all
+future (1  ) by 
+pk(1  ). One might note that this looks very
+similar to the elastic net penalty proposed by Zou and Hastie (2005).
+It diers because the ||  ||2 penalty is not dierentiable at 0, so some
+groups are completely zeroed out. However, as we show shortly, within
+each nonzero group it gives an elastic net t (though with the ||  ||2
+penalty parameter a function of the optimal || (k)||2).
+
+pl in the(cid:80)m
+
+The objective in (4) is convex, so the optimal solution is characterized
+by the subgradient equations. We consider these conditions to better
+understand the properties of . For group k, (k) must satisfy
+
+2
+
+l=1
+
+l=1
+
+X (k)(cid:62)
+
+1
+n
+
+X (l) (l)
+
+= (1  )u + v
+
+where u and v are subgradients of || (k)||2 and || (k)||1 respectively,
+evaluated at (k). So,
+
+(cid:33)
+
+(cid:32)
+y  m(cid:88)
+(cid:40) (k)
+
+l=1
+
+u =
+
+if (k) (cid:54)= 0
+|| (k)||2
+ {u : ||u||2  1} if (k) = 0
+
+4NOAH SIMON, JEROME FRIEDMAN, TREVOR HASTIE, AND ROB TIBSHIRANI
+
+(cid:40)
+
+(cid:16) (k)
+
+(cid:17)
+
+vj =
+
+if (k)
+sign
+ {vj : |vj|  1} if (k)
+
+j
+
+(cid:54)= 0
+j
+j = 0.
+
+(cid:12)(cid:12)(cid:12)(cid:12)S(cid:0)X (k)(cid:62)r(k)/n, (cid:1)(cid:12)(cid:12)(cid:12)(cid:12)2  (1  )
+
+With a little bit of algebra we see that the subgradient equations are
+satised with (k) = 0 if
+(5)
+where r(k) the partial residual of y, subtracting all group ts other
+than group k
+
+r(k) = y (cid:88)
+
+l(cid:54)=k
+
+X (l) (l)
+
+and with S() the coordinate-wise soft thresholding operator:
+
+(S(z, ))j = sign(zj)(|zj|  )+.
+In comparison, the usual group lasso has (k) = 0 if
+
+(cid:12)(cid:12)(cid:12)(cid:12)X (k)(cid:62)r(k)
+
+(cid:12)(cid:12)(cid:12)(cid:12)2  2
+
+On a group sparsity level the two act similarly, though the sparse-group
+lasso adds univariate shrinkage before checking if a group is nonzero.
+
+The subgradient equations can also give insight into the sparsity
+within a group which is at least partially nonzero. If (k) (cid:54)= 0 then the
+subgradient conditions for a particular (k)
+= (1  )
+
+(cid:32)
+Y  m(cid:88)
+
+(cid:32) (k)
+
+X (k)(cid:62)
+
+become
+
+X (l) (l)
+
+(cid:33)
+
+(cid:33)
+
++ vi.
+
+i
+
+i
+
+1
+n
+
+i
+
+|| (k)||2
+
+l=1
+This is satised for (k)
+(6)
+
+with r(k,i) = r(k)(cid:80)
+
+i = 0 if
+|X (k)(cid:62)
+j(cid:54)=i X (k)
+
+j
+
+i
+
+r(k,i)|  n
+(k) the partial residual of y subtracting
+. This is the same
+
+all other covariate ts, excluding only the t of X (k)
+condition for a covariate to be inactive as in the regular lasso.
+
+i
+
+For (k)
+
+i
+
+(7)
+
+nonzero, more algebra gives us that (k)
+
+satises
+
+(cid:17)
+
+(cid:16)
+X (k)
+i /n + (1  )/|| (k)||2
+X (k)
+
+r(k,i)/n, 
+
+(cid:62)
+
+i
+
+i
+
+S
+(cid:62)
+
+.
+
+(k)
+i =
+
+X (k)
+
+i
+
+These are elastic net type conditions as in Friedman et al. (2009). Un-
+like the usual elastic net, the proportional shrinkage here is a function
+of the optimal solution, net,2 = (1)/|| (k)||2. Formula (7) suggests
+
+A SPARSE-GROUP LASSO
+
+5
+
+a cyclical coordinate-wise algorithm to t the model within group. We
+tried this algorithm in a number of incarnations and found it inferior
+in both timing and accuracy to the algorithm discussed in section 3.
+Puig et al. (2009) and Foygel and Drton (2010) t the group lasso and
+sparse-group lasso respectively by explicitly solving for || (k)||2 and ap-
+plying (7) in a cyclic fashion for each group with all other groups xed.
+This requires doing matrix calculations, which may be slow for larger
+group sizes, so we take a dierent approach.
+
+From the subgradient conditions we see that this model promotes
+the desired sparsity pattern. Furthermore, it regularizes nicely within
+each group  giving an elastic net-like solution.
+
+3. Algorithm
+
+In this section we describe how to t the sparse-group lasso using
+blockwise descent  to solve within each group we employ an accel-
+erated generalized gradient algorithm with backtracking. Because our
+penalty is separable between groups, blockwise descent is guaranteed
+to converge to the global optimum.
+3.1. Within Group Solution. We choose a group k to minimize over,
+and consider the other group coecients as xed  we can ignore
+penalties corresponding to coecients in these groups. Our minimiza-
+tion problem becomes, nd (k) to minimize
+
+1
+2n
+
+(8)
+We denote our unpenalized loss function by
+
+2 + (1  )||(k)||2 + ||(k)||1
+
+(cid:12)(cid:12)(cid:12)(cid:12)r(k)  X (k)(k)(cid:12)(cid:12)(cid:12)(cid:12)2
+
+(cid:12)(cid:12)(cid:12)(cid:12)r(k)  X (k)(cid:12)(cid:12)(cid:12)(cid:12)2
+
+2
+
+1
+2n
+
+(cid:96)(r(k), ) =
+
+Note, we are using  here to denote the coecients in only group k. The
+modern approach to gradient descent is to consider it as a majorization
+minimization scheme. We majorize our loss function, centered at a
+point 0 by
+||  0||2
+(9) (cid:96)(r(k), )  (cid:96)(r(k), 0) + (  0)(cid:62)(cid:96)(r(k), 0) +
+where t is suciently small that the quadratic term dominates the
+Hessian of our loss; note, the gradient in (cid:96)(r(k), 0) is only taken
+over group k. Minimizing this function would give us our usual gradient
+step (with stepsize t) in the unpenalized case. Adding our penalty to
+(9) majorizes the objective (8).
+M () = (cid:96)(r(k), 0)+(0)(cid:62)(cid:96)(r(i), 0)+
+
+||0||2
+
+1
+2t
+
+2
+
+1
+2t
+
+2+(1)||||2+||||1.
+
+6NOAH SIMON, JEROME FRIEDMAN, TREVOR HASTIE, AND ROB TIBSHIRANI
+Our goal now is to nd  to minimize M (). Minimizing M () is equiv-
+alent to minimizing
+
+1
+2t
+
+(10) M () =
+
+||(0t(cid:96)(r(k), 0))||2
+
+2 +(1)||||2 +||||1.
+Combining the subgradient conditions with basic algebra, we get that
+ = 0 if
+
+and otherwise  satises
+t(1  )
+
+(cid:33)
+
+||S(0  t(cid:96)(r(k), 0), t)||2  t(1  )
+
+(cid:32)
+|| ||2 =(cid:0)||S(0  t(cid:96)(r(k), 0), t)||2  t(1  )(cid:1)
+
+ = S(0  t(cid:96)(r(k), 0), t).
+
+|| ||2
+
+Taking the norm of both sides we see that
+
+(11)
+
+1 +
+
++ .
+
+(cid:18)
+
+If we plug this into (11), we see that our generalized gradient step (ie.
+the solution to (10)) is
+(12)
+ =
+
+S(0t(cid:96)(r(k), 0), t).
+
+t(1  )
+
+||S(0  t(cid:96)(r(k), 0), t)||2
+
+(cid:19)
+
+1 
+
++
+
+If we iterate (12), and recenter each pass at (0)new = ( )old, then
+we will converge on the optimal solution for (k) given xed values of
+the other coecient vectors. If we apply this per block, and cyclically
+iterate through the blocks we will converge on the overall optimum.
+For ease of notation in the future we let U (0, t) denote our update
+formula
+(13)
+
+(cid:19)
+
+(cid:18)
+
+1 
+
+U (0, t) =
+
+||S(0  t(cid:96)(r(k), 0), t)||2
+
+S(0t(cid:96)(r(k), 0), t).
+
++
+
+t(1  )
+
+Note that in our case (linear regression)
+
+(cid:96)(r(k), 0) = X (k)(cid:62)r(k)/n.
+
+3.2. Algorithm Overview. This algorithm is a sequence of nested
+loops:
+
+(1) (Outer loop) Cyclically iterate through the groups; at each
+
+group (k) execute step 2
+
+(2) Check if the groups coecients are identically 0, by seeing if
+
+they obey(cid:12)(cid:12)(cid:12)(cid:12)S(cid:0)X (k)(cid:62)r(k), (cid:1)(cid:12)(cid:12)(cid:12)(cid:12)2  (1  ).
+
+A SPARSE-GROUP LASSO
+
+7
+
+(3) (Inner loop) Until convergence iterate:
+
+If not, within the group apply step 3
+(a) update the center by   (k)
+(b) update (k) from Eq (13), by
+(k)  U (, t)
+
+This is the basic idea behind our algorithm. Meier et al. (2008) have
+a similar approach to t the group lasso for generalized linear mod-
+els. For a convergence threshold of , in the worst-case scenario within
+each group this algorithm requires O(1/) steps to converge. However,
+recent work in rst order methods have shown vast improvements to
+
+gradient descent by a simple modication. As seen in Nesterov (2007)
+we can improve this class of algorithm to O(1/
+), by including a mo-
+mentum term (known as accelerated generalized gradient descent). In
+practice as well, we have seen signicant empirical improvement by
+including momentum in our gradient updates. We have also included
+step size optimization, which we have found important as often the
+Lipschitz constant for a problem of interest is unknown. The actual
+algorithm that we employ changes the inner loop to the following:
+
+0 , step size t = 1, and
+
+(Inner loop) Start with (k,l) = (k,l) = (k)
+counter l = 1. Repeat the following until convergence
+(2) Optimize step size by iterating t = 0.8  t until
+
+(1) Update gradient g by g = (cid:96)(cid:0)r(k), (k,l)(cid:1)
+(cid:96)(cid:0)U(cid:0)(k,l), t(cid:1)(cid:1)  (cid:96)(cid:0)(k,l)(cid:1) + g(cid:62)(l,t) +
+(k,l+1)  U(cid:0)(k,l), t(cid:1)
+
+(3) Update (k,l) by
+
+(14)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(l,t)
+
+(cid:12)(cid:12)(cid:12)(cid:12)2
+
+2
+
+1
+2t
+
+(4) Update the center via a Nesterov step by
+
+(15)
+
+(k,l+1)  (k,l) +
+
+l
+
+l + 3
+
+(5) Set l = l + 1.
+
+(cid:0)(k,l+1)  (k,l)(cid:1)
+
+Where (l,t) is the change between our old solution and new solution
+
+(l,t) = U(cid:0)(k,l), t(cid:1)  (k,l)
+
+Our choice of 0.8 in step 2 was somewhat arbitrary; any value in (0, 1)
+will work. This is very similar to the basic generalized gradient al-
+gorithm  the major dierences are steps 2 and 4. In 2, we search
+for a t such that in our direction of descent, the majorization scheme
+
+8NOAH SIMON, JEROME FRIEDMAN, TREVOR HASTIE, AND ROB TIBSHIRANI
+
+still holds. In 4 we apply Nesterov-style momentum updates  this
+allows us to leverage some higher order information while only calcu-
+lating gradients. While these momentum updates are unintuitive they
+have shown great theoretical and practical speedup in a large class of
+problems.
+
+3.3. Pathwise solution. Usually, we will be interested in models for
+more than one amount of regularization. One could solve over a 2
+dimensional grid of  and  values, however we found this to be com-
+putationally impractical, and to do a poor job of model selection. In-
+stead, we x the mixing parameter  and compute solutions for a path
+of  values (as  regulates the degree of sparsity). We begin the path
+with  suciently large to set  = 0, and decrease  until we are near
+the unregularized solution. By using the previous solution as the start
+position for our algorithm at the next -value along the path, we make
+this procedure ecient for nding a pathwise solution. Notice that in
+Eq 5 if
+
+||S(cid:0)X (l)(cid:62)y/n, (cid:1)||2 <
+fact that for a xed  ||S(cid:0)X (l)(cid:62)y/n, (cid:1)||2
+
+
+
+pl(1  )
+
+for all l, then  = 0 minimizes the objective. We can leverage the
+2  pl(1  )22 is piecewise
+quadratic in  to nd the smallest l for each group that sets that
+groups coecients to 0. Thus, we begin our path with
+
+max = maxi i
+
+This is the exact value at which the rst coecient enters the model.
+We choose min to be some small fraction of max (default value is 0.1 in
+our implementation) and log-linearly interpolate between these two for
+other values of  on this path. We do not have a theoretically optimal
+value for   the optimal value would need to be a function of the
+number of covariates and group sizes among other things. In practice
+for problems where we expect strong overall sparsity and would like
+to encourage grouping we have used  = 0.95 with reasonable success
+(this was used in our simulated data in Section 6). In contrast, if we
+expect strong group-wise sparsity, but only mild sparsity within group
+we have used  = 0.05 (an example of this is given in Section 5). That
+said, dierent problems will possibly be better served by dierent values
+of  and in practice some exploration may be needed.
+
+3.4. Simple Extensions. We can also use this algorithm to t either
+the lasso or group lasso penalty: setting  = 1 or  = 0. For the group
+lasso the only change is to remove the soft thresholding in update (13)
+
+and get
+
+U (0, t) =
+
+(cid:18)
+
+1 
+
+A SPARSE-GROUP LASSO
+
+9
+
+t(1  )
+
+||0 + t(cid:96)(r(i), 0)||2
+
+(cid:19)
+
++
+
+(cid:0)0  t(cid:96)(r(i), 0)(cid:1) .
+
+For the lasso penalty, the algorithm changes a bit more. There is no
+longer any grouping, so there is no need for an outer group loop. Our
+update becomes
+
+U (0, t) = S(0  t(cid:96)(y, 0), t)
+
+which we iterate, updating 0 at each step. Without backtracking, this
+is just the NESTA algorithm in Lagrange form as described in Becker
+et al. (2009).
+
+4. Extensions to other models
+
+With little eort we can extend the sparse-group penalty to other
+models. If the likelihood function, L(), for the model of interest is
+log-concave then for the sparse-group lasso we minimize
+
+(cid:96)() + (1  )
+
+m(cid:88)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(l)(cid:12)(cid:12)(cid:12)(cid:12)2 + ||||1
+
+
+
+pl
+
+where (cid:96)() = 1/n log (L()). Two commonly used cases, which we in-
+clude in our implementation, are logistic regression and the Cox model
+for survival data.
+
+l=1
+
+For logistic regression we have y, an n-vector of binary responses, and
+X, an n by p covariate matrix divided into m groups, X (1), . . . , X (m).
+In this case the sparse-group lasso takes the form
+
+log(cid:0)1 + exp(cid:0)x(cid:62)
+
+i (cid:1)(cid:1) + yix(cid:62)
+
+i 
+
+(cid:33)(cid:35)
+
+m(cid:88)
+
+
+
+pl
+
++(1)
+
+(cid:34)(cid:32) n(cid:88)
+
+ = argmin
+
+1
+n
+
+i=1
+
+l=1
+
+For Cox regression our data is a covariate matrix, X (again with sub-
+matrices by group), an n-vector y corresponding to failure/censoring
+times and an n-vector  indicating failure or censoring for each obser-
+vation (i = 1 if observation i failed, while i = 0 if censored). Here
+the sparse-group lasso corresponds to
+
+(cid:34)
+
+(cid:32)(cid:88)
+
+(cid:32)(cid:88)
+
+iD
+
+jRi
+
+exp(cid:0)x(cid:62)
+
+j (cid:1)  x(cid:62)
+
+i 
+
+(cid:33)(cid:33)(cid:35)
+
+ = argmin
+
+1
+n
+
+log
+
+m(cid:88)
+
+l=1
+
+
+
+pl
+
++(1)
+
+where D is the set of failure indices, Ri is the set of indices, j, with
+yj  yi (those still at risk at failure time i).
+
+(cid:12)(cid:12)(cid:12)(cid:12)(l)(cid:12)(cid:12)(cid:12)(cid:12)2+||||1
+
+(cid:12)(cid:12)(cid:12)(cid:12)(l)(cid:12)(cid:12)(cid:12)(cid:12)2+||||1
+
+10NOAH SIMON, JEROME FRIEDMAN, TREVOR HASTIE, AND ROB TIBSHIRANI
+
+4.1. Fitting extensions. Fitting the model in these cases is straight-
+forward. As before we use blockwise descent. Within each block our
+algorithm is nearly identical to the squared error case. While before
+we had
+
+(cid:12)(cid:12)(cid:12)(cid:12)r(k)  X (k)(cid:12)(cid:12)(cid:12)(cid:12)2
+
+2 ,
+
+(cid:96)(r(k), ) =
+
+1
+2
+
+that form is only applicable with squared error loss. We dene (cid:96)k((k), (k))
+to be our unpenalized loss function, (cid:96)(), considered as a function of
+only (k), with the rest of the coecients, (k), xed. In the case of
+square error loss, this is exactly (cid:96)(r(k), (k)). From here, we can use
+the algorithm in Section 3 only replacing every instance of (cid:96)(r(k), )
+by (cid:96)k((k), (k)). We would like to note that although the algorithm
+employed is straightforward, due to the curvature of these losses, in
+some cases our algorithm scales poorly (eg. Cox regression).
+4.2. Overlap Group Lasso. The sparse-group lasso can also be con-
+sidered as a special case of a group lasso model which allows overlap in
+groups (in this case many groups would be size 1). In the more general
+overlap case one may see strange behavior  if a variable in the overlap
+of many groups is included in a model then all of those groups will need
+to be active. Jacob et al. (2009) give a very nice x for this issue by
+slightly reformulating the problem, but this more general framework is
+beyond the scope of our paper.
+
+5. Applications
+
+In this section we discuss when one might expect good performance
+from the sparse-group lasso, and when another tool might be preferable.
+One common statistical scenario is regression with categorical predic-
+tors. For predictors with few levels it is reasonable to use the group
+lasso  sparsity within group is unnecessary as groups are small. As
+the number of levels per predictor rises, it becomes more likely that
+even for predictors which we include, many of the levels may not be
+informative. The sparse-group lasso will take this into account, set-
+ting the coecients for many levels equal to 0 even in nonzero groups.
+At the other extreme, few predictors each with many levels, groupwise
+sparsity often proves unhelpful and one may see the best performance
+with the lasso (for example, if there are only 5 groups and one is active
+in the true model, this is still 20% of groups active).
+
+Along similar lines, often we run regression in a setting where the
+predictors have a natural grouping. We mentioned gene pathways be-
+fore and will expand on it here. In many (if not all) genetic conditions,
+
+A SPARSE-GROUP LASSO
+
+11
+
+genes do not function (or fail to function) independently. If a number
+of genes in a given pathway all seem moderately successful at predict-
+ing outcome, we would like to up-weight this evidence over similarly
+predictive genes in dierent pathways. However, we also do not believe
+that every gene in an active pathway is necessarily indicated in the
+genetic condition. The sparse-group lasso is potentially useful for this
+scenario  it nds pathways of interest and, from them, selects driving
+genes. Furthermore, it shrinks the estimated eects of driving genes
+within a group toward one another.
+
+To further investigate this, we have compared the sparse-group lasso
+to the lasso and group lasso on two real data examples with gene ex-
+pression data. Our rst dataset was the colitis data of Burczynski et al.
+(2006). There were 127 total patients, 85 with colitis (59 crohns pa-
+tients + 26 ulcerative colitis patients) and 42 healthy controls. Each pa-
+tient had expression data for 22283 genes run on an aymetrix U133A
+microarray. These genes were grouped into genesets using cytoge-
+netic position data (the C1 set from Subramanian et al. (2005)). Of
+the original 22283 genes only 8298 of these genes were found in the
+C1 geneset  the others were removed from the analysis. The C1 set
+contains 277 cytogenetic bands, each averaging about 30 genes (from
+out dataset). We chose 50 observations at random and used these to
+t our models. We used the remaining 77 observations as a test set.
+
+Because there were a large number of small pathways we chose  =
+0.05 for the sparse-group lasso model. Each of the 3 models was t
+for a path of 100 -values with min = 0.01max (this value was chosen
+because the peak in validation accuracy occured at the end of the path
+for min = 0.1max).
+
+In Figure 1, we see that the lasso performed slightly better than the
+group lasso and sparse-group lasso with a 90% correct classication
+rate at its peak to the 87% of the sparse-group lasso and 84% for the
+group lasso. If we look into the solution slightly more we see that, at
+its peak, the lasso chose to include 19 genes from totally dierent cyto-
+genetic bands, whereas the sparse-group lasso included 43 genes from
+only 8 Cytogenetic bands, and the group lasso included all 36 genes
+from 7 bands. In this example the group lasso and sparse-group lasso
+chose nearly the same predictors (the sparse-group lasso included an
+additional group). All of these bands were very small (the largest had
+11 genes, 4.5 was the median), and the sparse-group lasso actually did
+not employ any within group sparsity. From our results, we can see
+that the sparse-group lasso (with our choice of genesets) was not ideal
+
+12NOAH SIMON, JEROME FRIEDMAN, TREVOR HASTIE, AND ROB TIBSHIRANI
+
+Figure 1. Classication accuracy on 77 test samples for
+colitis data. All models were t for a path of 100 -values
+with min = 0.1max. For the SGL,  = 0.05 was used.
+
+for this problem.
+
+One might question our choice of the positional bands rather than
+another collection of gene sets. We chose the C1 collection because it
+seemed reasonable and had no overlapping groups. In general, scien-
+tists with domain specic knowledge would likely do better choosing a
+domain specic collection (eg. using a colitis associated collection for
+the colitis data).
+
+The second dataset we used for comparison was the breast cancer
+data of Ma et al. (2004). This dataset contains gene expression values
+from 60 patients with estrogen positive breast cancer. The patients
+were treated with tamoxifen for 5 years and classied according to
+whether cancer recurred (there were 28 recurrences). Gene expression
+values were run on a GPL1223: Arcturus 22k human oligonucleotide
+microarray. Unfortunately, there was signicant missing data. As a
+rst pass, all genes with more than 50% missingness were removed.
+Other missing values were imputed by simple mean imputation. This
+left us with 12071 of our 22575 original genes. We again grouped genes
+together by cytogenetic position data, removing genes which were not
+recorded in the GSEA C1 dataset. Our nal design matrix had 4989
+genes in 270 pathways (an average of  18.5 genes per pathway). 30
+
+Correct Classification Rate for Colitis DataLambda IndexCorrect Classification Rate0.650.700.750.800.8520406080100MethodGLLassoSGLA SPARSE-GROUP LASSO
+
+13
+
+Figure 2. Classication accuracy on 30 test samples for
+cancer data. Both models were t for a path of 100 -
+values with min = 0.1max. For the SGL,  = 0.05 was
+used.
+
+patients were chosen at random and used to build the 3 models. The
+remaining 30 were used to test their accuracies.
+
+We again used  = 0.05 for the sparse-group lasso. Each of the 3
+
+models was t for a path of 100 -values with min = 0.1max.
+
+Referring to Figure 2, we see that in this example the sparse-group
+lasso outperforms the lasso and group lasso. The sparse-group lasso
+reaches 70% classication accuracy (though this is a narrow peak, so
+may be slightly biased high), while the group lasso peaks at 60% and
+the lasso comes in last at 53% accuracy. At its optimum the sparse-
+group lasso includes 54 genes from 11 bands, while the group lasso
+selects all 74 genes from 15 bands (again, largely smaller bands for the
+group lasso), and the lasso selects 3 genes all from separate bands. This
+example really highlights the advantage of the sparse-group lasso  it
+allows us to use group information, but does not force us to use entire
+groups.
+
+These two examples highlight two dierent possibilities for the sparse-
+group lasso. In the cancer data, the addition of group information is
+critical for classication, and the grouping may help give insight into
+the biological mechanisms.
+In the colitis data, the group informa-
+tion largely just increases model variance. The sparse-group lasso is
+
+Correct Classification Rate for Cancer DataLambda IndexCorrect Classification Rate0.450.500.550.600.650.7020406080100MethodGLLassoSGL14NOAH SIMON, JEROME FRIEDMAN, TREVOR HASTIE, AND ROB TIBSHIRANI
+
+certainly not perfect for every scenario with grouped data, but as evi-
+denced in the cancer data, it can sometimes be helpful.
+
+6. Simulated data
+
+In the previous section we compared the predictive accuracy of the
+lasso and sparse-group lasso on real data. One might also be interested
+in its accuracy as a variable selection tool  in this section we compare
+the regular lasso to the sparse-group lasso for variable selection on
+simulated data. We simulated our covariate matrix X with dierent
+numbers of covariates, observations, and groups. The columns of X
+were iid. gaussian, and the response, y was constructed as
+
+g(cid:88)
+
+(16)
+
+y =
+
+X (l)(l) + 
+
+l=1
+
+where   N (0, I), (l) = (1, 2, . . . , 5, 0, . . . , 0) for l = 1, . . . , g, and 
+set so that the signal to noise ratio was 2. The number of generative
+groups, g varied from 1 to 3 changing the amount of the sparsity.
+
+We chose penalty parameters for both the lasso and sparse-group
+lasso (with  = 0.95) so that the number of nonzero coecients chosen
+in the ts matched the true number of nonzero coecients in the gen-
+erative model (16) (5, 10, or 15 corresponding to g = 1, 2, 3). We then
+compared the proportion of correctly identied covariates averaged over
+10 trials. Referring to Table 1, we can see that the sparse-group lasso
+improves performance in almost all scenarios. The two scenarios where
+the sparse-group lasso is slightly outperformed is unsurprising as there
+are few groups (m = 10) and each group has more covariates than ob-
+servations (n = 60, p = 150), so we gain little by modeling sparsity of
+groups.
+
+We would like to note that in some trials we were unable to make the
+sparse-group lasso select exactly the true number of nonzero coecients
+(due to the grouping eects). In these cases we allowed the sparse-group
+lasso to select extra variables (as few as it could manage), however when
+calculating the proportion of correct nonzero coecient identications
+we used the total number of variables selected in our denominator, eg.
+if the sparse-group lasso selected 7 variables in the 5 true variable case,
+it would be unable to get a proportion better than 5/7 = 0.71. While
+not ideal, we nd no reason to believe that this would bias our results
+in favor of the sparse-group lasso.
+
+A SPARSE-GROUP LASSO
+
+15
+
+Number of Groups in
+
+Generative Model
+
+1 group 2 groups
+
+3 groups
+
+n = 60, p = 1500, m = 10
+
+SGL
+Lasso
+
+0.72
+0.60
+
+0.36
+0.38
+
+0.28
+0.31
+
+n = 70, p = 2000, m = 200
+
+SGL
+Lasso
+
+0.68
+0.54
+
+0.44
+0.30
+
+0.31
+0.26
+
+n = 150, p = 10000, m = 100
+
+SGL
+Lasso
+
+0.77
+0.76
+
+0.72
+0.62
+
+0.52
+0.43
+
+n = 200, p = 20000, m = 400
+
+SGL
+Lasso
+
+0.92
+0.82
+
+0.78
+0.68
+
+0.68
+0.52
+
+Table 1. Proportions of correct nonzero coecient
+identications
+standardized and unstandardized
+Group Lasso out of 10 simulated data sets.
+
+for
+
+6.1. Timings. We also timed our algorithm on simulated data for lin-
+ear, logistic, and Cox regression. Our linear data was simulated as in
+Section 6. To simulate binary responses, we applied a logit transfor-
+mation to a scaling of our linear responses
+exp(5yi)
+
+pi =
+
+1 + exp(5yi)
+
+and simulated Bernoulli random variables with these probabilities. For
+Cox regression, we set survival/censoring time for observation i to be
+exp(yi), and simulated our indicators death/censoring independently
+with equal probability of censoring and death (ber(0.5)). We used the
+same covariate matrix for each 3 regression types.
+
+16NOAH SIMON, JEROME FRIEDMAN, TREVOR HASTIE, AND ROB TIBSHIRANI
+
+We found that the unregularized end of the regularization path re-
+quired by far the most time to solve. To illustrate this we ran 2 sets of
+simulations. For the rst set we use min = 0.1max, running relatively
+far along the path. For the second set we ran a much shorter path with
+min = 0.6max. For some problems it may be necessary to solve for
+min small. However, these solutions have many nonzero variables. As
+such in large p, small n problems, these unregularized solutions gener-
+ally have very poor prediction accuracy as they tend to include many
+noise variables. In this situations, solving far into the regularization
+path may often be unnecessary.
+
+Our implementation of the sparse-group lasso is called from R, but
+much of the optimization code is written in C++ and compiled as a
+shared R/C++ library. All timings were carried out on an Intel Xeon
+3.33 GHz processor.
+
+Referring to Table 2, we see that while, in some cases, our algorithm
+scales somewhat poorly, it can still solve fairly large problems with
+times on the order of minutes. One noteworthy point is that smaller
+group sizes allow our algorithm to make better use of active sets, and
+this is reected in the runtime dierences between the 200 and 10 group
+cases. Also, as we run further into the regularization path, more groups
+become active. This is the main reason our solutions for min = 0.1 are
+much slower than for min = 0.6 even though the 2 paths solve for the
+same number of -values.
+
+7. Discussion
+
+We have proposed and given insight into a method for modeling
+groupwise and within group sparsity in regression. We have extended
+this model to other likelihoods. We have shown the ecacy of this
+method on real and simulated data, and given an algorithm to t this
+model. An R implementation of this algorithm is available on request,
+and will soon be uploaded to CRAN.
+
+8. Supplemental Materials
+
+R-package for SGL: R-package SGL containing the code used
+to t all the spare-group lasso models. (SGL_1.0.tar.gz, GNU
+zipped tar le)
+
+A SPARSE-GROUP LASSO
+
+17
+
+Number of Groups in
+
+Generative Model
+
+1 group 2 groups 3 groups 1 group 2 groups 3 groups
+
+Short Path
+
+Long Path
+
+n = 150, p = 1500, m = 10
+
+linear
+logit
+cox
+
+1.788
+5.954
+7.592
+
+7.052
+7.055
+10.09
+
+8.278
+8.72
+8.453
+
+30.86
+58.21
+72.87
+
+65.13
+63.14
+76.31
+
+n = 200, p = 2000, m = 200
+
+linear
+logit
+cox
+
+0.501
+1.594
+2.482
+
+0.8164
+3.121
+4.084
+
+1.345
+2.676
+3.315
+
+8.422
+32.48
+55.31
+
+14.18
+42.38
+58
+
+n = 150, p = 10000, m = 100
+
+linear
+logit
+cox
+
+6.566
+8.017
+21.61
+
+11.46
+48.01
+117.3
+
+15.15
+60.94
+117.2
+
+140.4
+424.1
+635.8
+
+269.6
+554.9
+793.4
+
+n = 200, p = 20000, m = 400
+
+linear
+logit
+cox
+
+9.743
+10.73
+23.86
+
+13.07
+23.6
+91.2
+
+15.75
+50.87
+128.2
+
+153.3
+600.8
+1324
+
+272.3
+815.7
+1473
+
+66.29
+65.12
+77.17
+
+18.35
+43.65
+53.41
+
+322
+595.6
+789.2
+
+401.3
+965.4
+1578
+
+Table 2. Time in seconds to solve for the short and
+long paths of 20 -values averaged over 10 simulated
+data sets. Where min = 0.6max for the short path and
+min = 0.1max for the long path.
+
+Test Code: All the R script les used for simulations and real
+data calculations run in the manuscript. (testCode.tar.gz, GNU
+zipped tar le)
+
+18NOAH SIMON, JEROME FRIEDMAN, TREVOR HASTIE, AND ROB TIBSHIRANI
+

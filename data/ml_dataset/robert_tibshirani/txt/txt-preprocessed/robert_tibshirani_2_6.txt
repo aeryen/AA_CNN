@@ -1,0 +1,3863 @@
+Abstract
+
+We use convex relaxation techniques to provide a sequence of regularized low-rank solutions for
+large-scale matrix completion problems. Using the nuclear norm as a regularizer, we provide a sim-
+ple and very efcient convex algorithm for minimizing the reconstruction error subject to a bound
+on the nuclear norm. Our algorithm SOFT-IMPUTE iteratively replaces the missing elements with
+those obtained from a soft-thresholded SVD. With warm starts this allows us to efciently compute
+an entire regularization path of solutions on a grid of values of the regularization parameter. The
+computationally intensive part of our algorithm is in computing a low-rank SVD of a dense matrix.
+Exploiting the problem structure, we show that the task can be performed with a complexity of or-
+der linear in the matrix dimensions. Our semidenite-programming algorithm is readily scalable to
+large matrices; for example SOFT-IMPUTE takes a few hours to compute low-rank approximations
+of a 106  106 incomplete matrix with 107 observed entries, and ts a rank-95 approximation to the
+full Netix training set in 3.3 hours. Our methods achieve good training and test errors and exhibit
+superior timings when compared to other competitive state-of-the-art techniques.
+Keywords: collaborative ltering, nuclear norm, spectral regularization, netix prize, large scale
+convex optimization
+
+1. Introduction
+
+In many applications measured data can be represented in a matrix Xmn, for which only a rela-
+tively small number of entries are observed. The problem is to complete the matrix based on
+the observed entries, and has been dubbed the matrix completion problem (Cand`es and Recht,
+2008; Cand`es and Tao, 2009; Rennie and Srebro, 2005). The Netix competition (for example,
+SIGKDD and Netix, 2007) is a popular example, where the data is the basis for a recommender
+system. The rows correspond to viewers and the columns to movies, with the entry Xi j being the
+rating  {1, . . . , 5} by viewer i for movie j. There are about 480K viewers and 18K movies, and
+hence 8.6 billion (8.6  109) potential entries. However, on average each viewer rates about 200
+
+. Also in the Department of Health, Research and Policy.
+. Also in the Department of Statistics.
+
+c(cid:13)2010 Rahul Mazumder, Trevor Hastie and Rob Tibshirani.
+
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+movies, so only 1.2% or 108 entries are observed. The task is to predict the ratings that viewers
+would give to movies they have not yet rated.
+
+These problems can be phrased as learning an unknown parameter (a matrix Zmn) with very
+high dimensionality, based on very few observations. In order for such inference to be meaningful,
+we assume that the parameter Z lies in a much lower dimensional manifold. In this paper, as is
+relevant in many real life applications, we assume that Z can be well represented by a matrix of low
+rank, that is, Z  VmkGkn, where k  min(n, m). In this recommender-system example, low rank
+structure suggests that movies can be grouped into a small number of genres, with G j the relative
+score for movie j in genre . Viewer i on the other hand has an afnity Vi for genre , and hence the
+modeled score for viewer i on movie j is the sum (cid:229)
+k
+=1ViG j of genre afnities times genre scores.
+Typically we view the observed entries in X as the corresponding entries from Z contaminated with
+noise.
+
+Srebro et al. (2005a) studied generalization error bounds for learning low-rank matrices. Re-
+cently Cand`es and Recht (2008), Cand`es and Tao (2009), and Keshavan et al. (2009) showed the-
+oretically that under certain assumptions on the entries of the matrix, locations, and proportion of
+unobserved entries, the true underlying matrix can be recovered within very high accuracy.
+
+For a matrix Xmn let W  {1, . . . , m}  {1, . . . , n} denote the indices of observed entries. We
+
+consider the following optimization problem:
+
+minimize
+subject to
+
+rank(Z)
+
+(i, j)W
+
+(Xi j  Zi j)2  d ,
+
+(1)
+
+where d  0 is a regularization parameter controlling the tolerance in training error. The rank con-
+straint in (1) makes the problem for general W
+combinatorially hard (Srebro and Jaakkola, 2003).
+For a fully-observed X on the other hand, the solution is given by a truncated singular value decom-
+position (SVD) of X. The following seemingly small modication to (1),
+
+minimize
+subject to
+
+kZk
+
+(i, j)W
+
+(Xi j  Zi j)2  d ,
+
+(2)
+
+makes the problem convex (Fazel, 2002). Here kZk is the nuclear norm, or the sum of the singular
+values of Z. Under many situations the nuclear norm is an effective convex relaxation to the rank
+constraint (Fazel, 2002; Cand`es and Recht, 2008; Cand`es and Tao, 2009; Recht et al., 2007). Op-
+timization of (2) is a semi-denite programming problem (Boyd and Vandenberghe, 2004) and can
+be solved efciently for small problems, using modern convex optimization software like SeDuMi
+and SDPT3 (Grant and Boyd., 2009). However, since these algorithms are based on second order
+methods (Liu and Vandenberghe, 2009), they can become prohibitively expensive if the dimensions
+of the matrix get large (Cai et al., 2008). Equivalently we can reformulate (2) in Lagrange form
+
+minimize
+
+Z
+
+1
+2
+
+(i, j)W
+
+(Xi j  Zi j)2 + l kZk.
+
+(3)
+
+Here l  0 is a regularization parameter controlling the nuclear norm of the minimizer Zl of (3);
+there is a 1-1 mapping between d  0 and l  0 over their active domains.
+
+2288
+
+(cid:229)
+(cid:229)
+(cid:229)
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+In this paper we propose an algorithm SOFT-IMPUTE for the nuclear norm regularized least-
+squares problem (3) that scales to large problems with m, n  105106 with around 106108 or more
+observed entries. At every iteration SOFT-IMPUTE decreases the value of the objective function
+towards its minimum, and at the same time gets closer to the set of optimal solutions of the prob-
+lem (2). We study the convergence properties of this algorithm and discuss how it can be extended
+to other more sophisticated forms of spectral regularization.
+
+To summarize some performance results1
+ We obtain a rank-40 solution to (2) for a problem of size 105 105 and |W
+
+| = 5106 observed
+
+entries in less than 18 minutes.
+ For the same sized matrix with |W
+ For a 106  105 sized matrix with |W
+
+| = 107 we obtain a rank-5 solution in less than 21 minutes.
+
+| = 108 a rank-5 solution is obtained in approximately
+
+4.3 hours.
+
+ We t a rank-66 solution for the Netix data in 2.2 hours. Here there are 108 observed entries
+in a matrix with 4.8  105 rows and 1.8  104 columns. A rank 95 solution takes 3.27 hours.
+
+The paper is organized as follows. In Section 2, we discuss related work and provide some context
+for this paper. In Section 3 we introduce the SOFT-IMPUTE algorithm and study its convergence
+properties in Section 4. The computational aspects of the algorithm are described in Section 5,
+and Section 6 discusses how nuclear norm regularization can be generalized to more aggressive
+and general types of spectral regularization. Section 7 describes post-processing of selectors and
+initialization. We discuss comparisons with related work, simulations and experimental studies in
+Section 9 and application to the Netix data in Section 10.
+
+2. Context and Related Work
+
+Cand`es and Tao (2009), Cai et al. (2008), and Cand`es and Recht (2008) consider the criterion
+
+minimize
+subject to
+
+kZk
+Zi j = Xi j, (i, j)  W
+
+.
+
+(4)
+
+With d = 0, the criterion (1) is equivalent to (4), in that it requires the training error to be zero.
+Cai et al. (2008) propose a rst-order singular-value-thresholding algorithm SVT scalable to large
+matrices for the problem (4). They comment on the problem (2) with d > 0, but dismiss it as being
+computationally prohibitive for large problems.
+
+We believe that (4) will almost always be too rigid and will result in over-tting. If minimization
+of prediction error is an important goal, then the optimal solution Z will typically lie somewhere in
+the interior of the path indexed by d
+
+(Figures 2, 3 and 4).
+
+In this paper we provide an algorithm SOFT-IMPUTE for computing solutions of (3) on a grid of
+l values, based on warm restarts. The algorithm is inspired by SVD-IMPUTE (Troyanskaya et al.,
+
+1. For large problems data transfer, access and reading take quite a lot of time and is dependent upon the platform
+and machine. Over here we report the times taken for the computational bottle-neck, that is, the SVD computations
+over all iterations. All times are reported based on computations done in a Intel Xeon Linux 3GHz processor using
+MATLAB, with no C or Fortran interlacing.
+
+2289
+
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+2001)an EM-type (Dempster et al., 1977) iterative algorithm that alternates between imputing the
+missing values from a current SVD, and updating the SVD using the complete data matrix. In its
+very motivation, SOFT-IMPUTE is different from generic rst order algorithms (Cai et al., 2008; Ma
+et al.; Ji and Ye, 2009). The latter require the specication of a step size, and can be quite sensitive
+to the chosen value. Our algorithm does not require a step-size, or any such parameter.
+
+The iterative algorithms proposed in Ma et al. and Ji and Ye (2009) require the computation
+of a SVD of a dense matrix (with dimensions equal to the size of the matrix X) at every iteration,
+as the bottleneck. This makes the algorithms prohibitive for large scale computations. Ma et al.
+use randomized algorithms for the SVD computation. Our algorithm SOFT-IMPUTE also requires
+an SVD computation at every iteration, but by exploiting the problem structure, can easily handle
+matrices of very large dimensions. At each iteration the non-sparse matrix has the structure:
+
+Y = YSP (Sparse) + YLR (Low Rank).
+
+(5)
+
+In (5) YSP has the same sparsity structure as the observed X, and YLR has rank r  m, n, where r
+is very close to r  m, n the rank of the estimated matrix Z (upon convergence of the algorithm).
+For large scale problems, we use iterative methods based on Lanczos bidiagonalization with partial
+re-orthogonalization (as in the PROPACK algorithm, Larsen, 1998), for computing the rst r sin-
+gular vectors/values of Y. Due to the specic structure of (5), multiplication by Y and Y  can both
+be achieved in a cost-efcient way. In decomposition (5), the computationally burdensome work
+in computing a low-rank SVD is of an order that depends linearly on the matrix dimensions. More
+precisely, evaluating each singular vector requires computation of the order of O((m+n)r)+O(|W
+|)
+ops and evaluating r of them requires O((m + n)rr) + O(|W
+|r) ops. Exploiting warm-starts, we
+observe that r  rhence every SVD step of our algorithm computes r singular vectors, with com-
+plexity of the order O((m + n)r2) + O(|W
+|r) ops. This computation is performed for the number
+of iterations SOFT-IMPUTE requires to run till convergence or a certain tolerance.
+
+In this paper we show asymptotic convergence of SOFT-IMPUTE and further derive its non-
+asymptotic rate of convergence which scales as O(1/k) (k denotes the iteration number). However,
+in our experimental studies on low-rank matrix completion, we have observed that our algorithm
+is faster (based on timing comparisons) than the accelerated version of Nesterov (Ji and Ye, 2009;
+Nesterov, 2007), having a provable (worst case) convergence rate of O( 1
+k2 ) . With warm-starts SOFT-
+IMPUTE computes the entire regularization path very efciently along a dense series of values for
+.
+
+Although the nuclear norm is motivated here as a convex relaxation to a rank constraint, we
+believe in many situations it will outperform the rank-restricted estimator (1). This is supported by
+our experimental studies. We draw the natural analogy with model selection in linear regression, and
+compare best-subset regression (0 regularization) with the LASSO (1 regularization, Tibshirani,
+1996; Hastie et al., 2009). There too the 1 penalty can be viewed as a convex relaxation of the
+0 penalty. But in many situations with moderate sparsity, the LASSO will outperform best subset
+in terms of prediction accuracy (Friedman, 2008; Hastie et al., 2009; Mazumder et al., 2009). By
+shrinking the parameters in the model (and hence reducing their variance), the lasso permits more
+parameters to be included. The nuclear norm is the 1 penalty in matrix completion, as compared
+to the 0 rank. By shrinking the singular values, we allow more dimensions to be included without
+incurring undue estimation variance.
+
+Another class of techniques used in collaborative ltering problems are close in spirit to (2).
+These are known as maximum margin matrix factorization methodsin short MMMFand use
+
+2290
+
+l
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+a factor model for the matrix Z (Srebro et al., 2005b). Let Z = UV  where Umr and Vnr, and
+consider the following problem
+
+minimize
+
+U,V
+
+1
+2
+
+(i, j)W
+
+(Xi j  (UV )i j)2 +
+
+2
+
+(kUk2
+
+F + kV k2
+
+F ).
+
+(6)
+
+It turns out that (6) is intimately related to (3), since (see Lemma 6)
+
+||Z|| = min
+
+U,V : Z=UV 
+
+1
+
+2(cid:0)kUk2
+
+F + kV k2
+
+F(cid:1) .
+
+For example, if r = min(m, n), the solution to (6) coincides with the solution to (3).2 However, (6)
+is not convex in its arguments, while (3) is. We compare these two criteria in detail in Section 8,
+and the relative performance of their respective algorithms in Section 9.2.
+
+3. SOFT-IMPUTEan Algorithm for Nuclear Norm Regularization
+
+We rst introduce some notation that will be used for the rest of this article.
+
+3.1 Notation
+
+We adopt the notation of Cai et al. (2008). Dene a matrix PW (Y ) (with dimension m  n)
+
+PW (Y ) (i, j) =(cid:26) Yi j
+
+0
+
+if (i, j)  W
+if (i, j) / W
+
+,
+
+(7)
+
+which is a projection of the matrix Ymn onto the observed entries. In the same spirit, dene the
+complementary projection PW (Y ) via PW (Y ) + PW (Y ) = Y. Using (7) we can rewrite (cid:229)
+(i, j)W (Xi j 
+Zi j)2 as kPW (X)  PW (Z)k2
+F.
+
+3.2 Nuclear Norm Regularization
+
+We present the following lemma, which forms a basic ingredient in our algorithm.
+
+Lemma 1 Suppose the matrix Wmn has rank r. The solution to the optimization problem
+
+minimize
+
+Z
+
+1
+2
+
+kW  Zk2
+
+F + l kZk
+
+is given by Z = Sl (W ) where
+
+Sl (W )  UDl V  with Dl = diag [(d1  l )+, . . . , (dr  l )+] ,
+
+(8)
+
+(9)
+
+UDV  is the SVD of W , D = diag [d1, . . . , dr], and t+ = max(t, 0).
+The notation Sl (W ) refers to soft-thresholding (Donoho et al., 1995). Lemma 1 appears in Cai
+et al. (2008) and Ma et al. where the proof uses the sub-gradient characterization of the nuclear
+norm. In Appendix A.1 we present an entirely different proof, which can be extended in a relatively
+straightforward way to other complicated forms of spectral regularization discussed in Section 6.
+Our proof is followed by a remark that covers these more general cases.
+
+2. We note here that the original MMMF formulation uses r = min{m, n}. In this paper we will consider it for a family
+
+of r values.
+
+2291
+
+(cid:229)
+l
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+3.3 Algorithm
+
+Using the notation in 3.1, we rewrite (3) as:
+
+minimize
+
+Z
+
+fl (Z) :=
+
+1
+2
+
+kPW (X)  PW (Z)k2
+
+F + l kZk .
+
+(10)
+
+We now present Algorithm 1SOFT-IMPUTEfor computing a series of solutions to (10) for
+
+different values of l using warm starts.
+
+Algorithm 1 SOFT-IMPUTE
+
+1. Initialize Zold = 0.
+2. Do for l 1 > l 2 > . . . > l K:
+
+(a) Repeat:
+
+i. Compute Znew  Sl k (PW (X) + PW (Zold)).
+ii. If kZnewZoldk2
+iii. Assign Zold  Znew.
+
+< e exit.
+
+F
+
+kZoldk2
+F
+
+(b) Assign Zl k  Znew.
+
+3. Output the sequence of solutions Zl 1, . . . , Zl K .
+
+The algorithm repeatedly replaces the missing entries with the current guess, and then updates
+the guess by solving (8). Figures 2, 3 and 4 show some examples of solutions using SOFT-IMPUTE
+(blue continuous curves). We see test and training error in the top rows as a function of the nuclear
+norm, obtained from a grid of values L
+. These error curves show a smooth and very competitive
+performance.
+
+4. Convergence Analysis
+
+In this section we study the convergence properties of Algorithm 1. Unlike generic rst-order
+methods (Nesterov, 2003) including competitive rst-order methods for nuclear norm regularized
+problems (Cai et al., 2008; Ma et al.), SOFT-IMPUTE does not involve the choice of any additional
+step-size. Most importantly our algorithm is readily scalable for solving large scale semidenite
+programming problems (2) and (10) as will be explained later in Section 5.
+
+For an arbitrary matrix Z, dene
+
+Ql (Z| Z) =
+
+1
+2
+
+kPW (X) + PW ( Z)  Zk2
+
+F + l kZk
+
+(11)
+
+as a surrogate of the objective function fl (z). Note that fl ( Z) = Ql ( Z| Z) for any Z.
+
+In Section 4.1, we show that the sequence Zk
+
+l generated via SOFT-IMPUTE converges asymptot-
+ically, that is, as k  
+to a minimizer of the objective function fl (Z). SOFT-IMPUTE produces a
+sequence of solutions for which the criterion decreases to the optimal solution with every iteration
+and the successive iterates get closer to the optimal set of solutions of the problem 10. Section 4.2
+
+2292
+
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+derives the non-asymptotic convergence rate of the algorithm. The latter analysis concentrates on
+the objective values fl (Zk
+l ). Due to computational resources if one wishes to stop the algorithm
+after K iterations, then Theorem 2 provides a certicate of how far Zk
+is from the solution. Though
+Section 4.1 alone establishes the convergence of fl (Zk
+l ) to the minimum of fl (Z), this does not, in
+general, settle the convergence of Zk
+l unless further conditions (like strong convexity) are imposed
+on fl ().
+
+4.1 Asymptotic Convergence
+Lemma 2 For every xed l  0, dene a sequence Zk
+
+l by
+
+Zk+1
+
+= argmin
+
+Z
+
+Ql (Z|Zk
+l )
+
+with any starting point Z0
+
+l . The sequence Zk
+
+l satises
+
+fl (Zk+1
+
+)  Ql (Zk+1
+
+|Zk
+
+l )  fl (Zk
+
+l ).
+
+Proof Note that
+
+Zk+1
+
+= Sl (PW (X) + PW (Zk
+
+l )).
+
+(12)
+
+By Lemma 1 and the denition (11) of Ql (Z|Zk
+
+l ), we have:
+
+fl (Zk
+
+l ) = Ql (Zk
+
+l |Zk
+l )
+
+=
+
+kPW (X) + PW (Zk
+
+l )  Zk
+
+l k2
+
+F + l kZk
+
+l k
+
+l )  Zk2
+
+Fo + l kZk
+
+1
+2
+
+1
+2
+
+ min
+
+= Ql (Zk+1
+
+Z
+
+1
+
+|Zk
+l )
+
+2nkPW (X) + PW (Zk
+knPW (X)  PW (Zk+1
+2 nkPW (X)  PW (Zk+1
+
+kPW (X)  PW (Zk+1
+
+1
+2
+1
+
+)k2
+
+=
+
+=
+
+
+|Zk+1
+= Ql (Zk+1
+= f (Zk+1
+).
+
+)
+
+)o +nPW (Zk
+
+)k2
+F + kPW (Zk
+F + l kZk+1
+
+k
+
+l )  PW (Zk+1
+
+l )  PW (Zk+1
+
+k
+
+F + l kZk+1
+
+)o k2
+Fo + l kZk+1
+
+)k2
+
+k
+
+(13)
+
+(14)
+
+Lemma 3 The nuclear norm shrinkage operator Sl () satises the following for any W1, W2 (with
+matching dimensions)
+
+kSl (W1)  Sl (W2)k2
+
+F  kW1 W2k2
+F .
+
+In particular this implies that Sl (W ) is a continuous map in W .
+
+2293
+
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+Lemma 3 is proved in Ma et al.; their proof is complex and based on trace inequalities. We give a
+concise proof based on elementary convex analysis in Appendix A.2.
+Lemma 4 The successive differences kZk
+
+l are monotone decreasing:
+
+l  Zk1
+l k2
+
+F  kZk
+
+k2
+F of the sequence Zk
+l  Zk1
+
+k2
+F k.
+
+kZk+1
+
+l  Zk
+
+(15)
+
+(16)
+
+(17)
+
+Moreover the difference sequence converges to zero. That is
+l  0 as k  
+
+Zk+1
+l  Zk
+
+.
+
+The proof of Lemma 4 is given in Appendix A.3.
+Lemma 5 Every limit point of the sequence Zk
+
+l dened in Lemma 2 is a stationary point of
+
+kPW (X)  PW (Z)k2
+
+F + l kZk.
+
+1
+2
+
+Hence it is a solution to the xed point equation
+
+Z = Sl (PW (X) + PW (Z)).
+
+The proof of Lemma 5 is given in Appendix A.4.
+Theorem 1 The sequence Zk
+
+l dened in Lemma 2 converges to a limit Z
+
+that solves
+
+minimize
+
+Z
+
+1
+2
+
+kPW (X)  PW (Z)k2
+
+F + l kZk.
+
+Proof It sufces to prove that Zk
+
+l converges; the theorem then follows from Lemma 5.
+
+Let Zl be a limit point of the sequence Zk
+
+l . There exists a subsequence mk such that Zmk
+
+l  Zl .
+
+By Lemma 5, Zl solves the problem (17) and satises the xed point equation (16).
+
+Hence
+
+k Zl  Zk
+
+l k2
+
+F = kSl (PW (X) + PW ( Zl ))  Sl (PW (X) + PW (Zk1
+))k2
+F
+
+ k(PW (X) + PW ( Zl ))  (PW (X) + PW (Zk1
+= kPW ( Zl  Zk1
+ k Zl  Zk1
+k2
+F .
+
+)k2
+F
+
+))k2
+F
+
+(18)
+
+(19)
+
+In (18) two substitutions were made; the left one using (16) in Lemma 5, the right one using (12).
+Inequality (19) implies that the sequence k Zl  Zk1
+. To show the conver-
+gence of the sequence Zk
+l converges to zero. We prove
+this by contradiction.
+
+it sufces to prove that the sequence Zl  Zk
+
+F converges as k  
+k2
+
+Suppose the sequence Zk
+
+l has another limit point Z+l
+
+6= Zl . Then Zl  Zk
+
+l converges to Zl
+
+6= 0. This contradicts the convergence of the sequence k Zl  Zk1
+
+points 0 and Z+l  Zl
+the sequence Zk
+The inequality in (19) implies that at every iteration Zk
+l gets closer to an optimal solution for the
+problem (17).3 This property holds in addition to the decrease of the objective function (Lemma 2)
+at every iteration.
+
+:= Z
+
+.
+
+l has two distinct limit
+k2
+F . Hence
+
+3. In fact this statement can be strengthened furtherat every iteration the distance of the estimate decreases from the
+
+set of optimal solutions.
+
+2294
+
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+4.2 Convergence Rate
+
+In this section we derive the worst case convergence rate of SOFT-IMPUTE.
+Theorem 2 For every xed l  0, the sequence Zk
+non-asymptotic (worst) rate of convergence:
+
+l ; k  0 dened in Lemma 2 has the following
+
+fl (Zk
+
+l )  fl (Z
+
+l ) 
+
+2kZ0
+
+l  Z
+k + 1
+
+l k2
+F
+
+.
+
+(20)
+
+The proof of this theorem is in Appendix A.6.
+
+In light of Theorem 2, a d > 0 accurate solution of fl (Z) is obtained after a maximum of
+l  Z
+F iterations. Using warm-starts, SOFT-IMPUTE traces out the path of solutions on a grid
+
+l k2
+
+2
+d kZ0
+of l values l 1 > l 2 > . . . > l K with a total of 4
+
+K(cid:229)
+
+i=1
+
+2
+d k Zl
+
+i1  Z
+
+ik2
+F
+
+(21)
+
+iterations. Here Zl 0 = 0 and Zl
+(i  {1, . . . , K  1}). The solutions Z
+dense grid of l
+be signicantly smaller than that obtained via arbitrary cold-starts.
+
+i denotes the output of SOFT-IMPUTE (upon convergence) for l = l
+i
+are likely to be close to each other, especially on a
+is. Hence every summand of (21) and the total number of iterations is expected to
+
+and Z
+
+i1
+
+i
+
+5. Computational Complexity
+
+The computationally demanding part of Algorithm 1 is in Sl (PW (X) + PW (Zk
+l )). This requires cal-
+culating a low-rank SVD of a matrix, since the underlying model assumption is that rank(Z) 
+min{m, n}. In Algorithm 1, for xed l , the entire sequence of matrices Zk
+l have explicit5 low-rank
+k corresponding to Sl (PW (X) + PW (Zk1
+representations of the form UkDkV 
+)).
+
+In addition, observe that PW (X) + PW (Zk
+
+l ) can be rewritten as
+
+PW (X) + PW (Zk
+
+l ) = (cid:8)PW (X)  PW (Zk
+
+Sparse
+
+l )(cid:9) +
+
+=
+
+Zk
+
++ Low Rank.
+
+(22)
+
+In the numerical linear algebra literature, there are very efcient direct matrix factorization methods
+for calculating the SVD of matrices of moderate size (at most a few thousand). When the matrix is
+sparse, larger problems can be solved but the computational cost depends heavily upon the sparsity
+structure of the matrix. In general however, for large matrices one has to resort to indirect iterative
+methods for calculating the leading singular vectors/values of a matrix. There is a lot research in
+numerical linear algebra for developing sophisticated algorithms for this purpose. In this paper we
+will use the PROPACK algorithm (Larsen, 2004, 1998) because of its low storage requirements,
+effective op count and its well documented MATLAB version. The algorithm for calculating the
+truncated SVD for a matrix W (say), becomes efcient if multiplication operations W b1 and W b2
+(with b1  
+4. We assume the solution Zl at every l  {l 1, . . . ,l K} is computed to an accuracy of d > 0.
+5. Though we cannot prove theoretically that every iterate of the sequence Zkl will be of low-rank; this observation is
+rather practical based on the manner in which we trace out the entire path of solutions based on warm-starts. Our
+simulation results support this observation as well.
+
+n, b2   m) can be done with minimal cost.
+
+2295
+
+
+
+l
+l
+l
+l
+l
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+Algorithm SOFT-IMPUTE requires repeated computation of a truncated SVD for a matrix W
+l has rank r. Note that in
+|r) ops using only the required outer products (i.e.,
+
+with structure as in (22). Assume that at the current iterate, the matrix Zk
+(22) the term PW (Zk
+our algorithm does not compute the matrix explicitly).
+
+l ) can be computed in O(|W
+
+|r) to create the matrix PW (Zk
+
+The cost of computing the truncated SVD will depend upon the cost in the operations W b1 and
+|). Although it costs
+l ), this is used for each of the r such multiplications (which also
+|r)), so we need not include that cost here. The Low Rank part costs O((m + n)r) for the
+|) + O((m + n)r) per vector multiplication. Supposing
+|r) + O((m + n)(r)2)
+is r, then in
+
+W b2 (which are equal). For the sparse part these multiplications cost O(|W
+O(|W
+cost O(|W
+multiplication by b1. Hence the cost is O(|W
+we want a r rank SVD of the matrix (22), the cost will be of the order of O(|W
+(for that iteration, that is, to obtain Zk+1
+light of our above observations r  r  min{m, n} and the order is O(|W
+
+l ). Suppose the rank of the solution Zk
+
+from Zk
+
+|r) + O((m + n)r2).
+
+|  nr  poly(log n). In practice often |W
+
+For the reconstruction problem to be theoretically meaningful in the sense of Cand`es and Tao
+(2009) we require that |W
+| is very small. Hence introducing
+the Low Rank part does not add any further complexity in the multiplication by W and W . So the
+dominant cost in calculating the truncated SVD in our algorithm is O(|W
+|). The SVT algorithm
+(Cai et al., 2008) for exact matrix completion (4) involves calculating the SVD of a sparse matrix
+with cost O(|W
+|). This implies that the computational order of SOFT-IMPUTE and that of SVT is the
+same. This order computation does not include the number of iterations required for convergence. In
+our experimental studies we use warm-starts for efciently computing the entire regularization path.
+On small scale examples, based on comparisons with the accelerated gradient method of Nesterov
+(see Section 9.3; Ji and Ye, 2009; Nesterov, 2007) we nd that our algorithm converges faster
+than the latter in terms of run-time and number of SVD computations/ iterations. This supports
+the computational effectiveness of SOFT-IMPUTE. In addition, since the true rank of the matrix
+r  min{m, n}, the computational cost of evaluating the truncated SVD (with rank  r) is linear in
+matrix dimensions. This justies the large-scale computational feasibility of our algorithm.
+
+The above discussions focus on the computational complexity for obtaining a low-rank SVD,
+which is to be performed at every iteration of SOFT-IMPUTE. Similar to the total iteration complexity
+bound of SOFT-IMPUTE (21), the total cost to compute the regularization path on a grid of l values
+is given by:
+
+K(cid:229)
+
+i=1
+
+O(cid:18)(|W
+
+|rl
+
+i + (m + n)r2
+
+i)
+
+2
+d k Zl
+
+i1  Z
+
+ik2
+
+F(cid:19) .
+
+Here rl denotes the rank6 (on an average) of the iterates Zk
+
+l generated by SOFT-IMPUTE for xed l
+.
+The PROPACK package does not allow one to request (and hence compute) only the singular
+values larger than a threshold l one has to specify the number in advance. So once all the com-
+puted singular values fall above the current threshold l
+, our algorithm increases the number to be
+computed until the smallest is smaller than l
+. In large scale problems, we put an absolute limit on
+the maximum number.
+
+6. We assume, above that the grid of values l 1 > . . .l K is such that all the solutions Zl ,l  {l 1, . . . ,l K} are of small
+
+rank, as they appear in Section 5.
+
+2296
+
+l
+l
+l
+
+l
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+6. Generalized Spectral Regularization: From Soft to Hard Thresholding
+
+In Section 1 we discussed the role of the nuclear norm as a convex surrogate for the rank of a matrix,
+and drew the analogy with LASSO regression versus best-subset selection. We argued that in many
+problems 1 regularization gives better prediction accuracy. However, if the underlying model is
+very sparse, then the LASSO with its uniform shrinkage can both overestimate the number of non-
+zero coefcients (Friedman, 2008) in the model, and overly shrink (bias) those included toward zero.
+In this section we propose a natural generalization of SOFT-IMPUTE to overcome these problems.
+
+Consider again the problem
+
+minimize
+rank(Z)k
+
+1
+2
+
+kPW (X)  PW (Z)k2
+F ,
+
+a rephrasing of (1). This best rank-k solution also solves
+F + l
+
+kPW (X)  PW (Z)k2
+
+minimize
+
+1
+2
+
+I(g
+
+j
+
+j(Z) > 0),
+
+j(Z) is the jth singular value of Z, and for a suitable choice of l
+
+where g
+with rank k.
+
+that produces a solution
+
+The fully observed matrix version of the above problem is given by the 0 version of (8) as
+
+follows:
+
+kW  Zk2
+
+F + l kZk0,
+
+1
+2
+
+minimize
+
+(23)
+where kZk0 = rank(Z). The solution of (23) is given by a reduced-rank SVD of W ; for every l
+there is a corresponding q = q(l ) number of singular-values to be retained in the SVD decompo-
+sition. Problem (23) is non-convex in W but its global minimizer can be evaluated. As in (9) the
+thresholding operator resulting from (23) is
+
+Z
+
+SHl (W ) = UDqV  where Dq = diag (d1, . . . , dq, 0, . . . , 0) .
+
+Similar to SOFT-IMPUTE (Algorithm 1), we present below HARD-IMPUTE (Algorithm 2) for the
+0 penalty. The continuous parameterization via l does not appear to offer obvious advantages
+over rank-truncation methods. We note that it does allow for a continuum of warm starts, and is a
+natural post-processor for the output of SOFT-IMPUTE (next section). But it also allows for further
+generalizations that bridge the gap between hard and soft regularization methods.
+
+In penalized regression there have been recent developments directed towards bridging the
+gap between the 1 and 0 penalties (Friedman, 2008; Zhang, 2010; Mazumder et al., 2009). This
+is done via using non-convex penalties that are a better surrogate (in the sense of approximating the
+penalty) to 0 over the 1. They also produce less biased estimates than those produced by the 1
+penalized solutions. When the underlying model is very sparse they often perform very well, and
+enjoy superior prediction accuracy when compared to softer penalties like 1. These methods still
+shrink, but are less aggressive than the best-subset selection.
+
+By analogy, we propose using a more sophisticated version of spectral regularization. This goes
+beyond nuclear norm regularization by using slightly more aggressive penalties that bridge the gap
+between 1 (nuclear norm) and 0(rank constraint). We propose minimizing
+
+fp,l (Z) =
+
+kPW (X)  PW (Z)k2
+
+F + l
+
+1
+2
+
+p(g
+
+j(Z); ),
+
+j
+
+(24)
+
+2297
+
+(cid:229)
+(cid:229)
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+Algorithm 2 HARD-IMPUTE
+
+1. Initialize Zl k k = 1, . . . , K (for example, using SOFT-IMPUTE; see Section 7).
+2. Do for l 1 > l 2 > . . . > l K:
+
+(a) Repeat:
+
+(PW (X) + PW (Zold)).
+
+i. Compute Znew  SHl k
+< e exit.
+ii. If kZnewZoldk2
+iii. Assign Zold  Znew.
+
+kZoldk2
+F
+
+F
+
+(b) Assign ZH,l k  Znew.
+
+3. Output the sequence of solutions ZH,l 1, . . . , ZH,l K .
+
+where p(|t|; ) is concave in |t|. The parameter   [inf, sup] controls the degree of concavity.
+We may think of p(|t|; inf) = |t| (1 penalty) on one end and p(|t|; sup) = ktk0 (0 penalty) on
+the other. In particular for the 0 penalty denote fp,l (Z) by fH,l (Z) for hard thresholding. See
+Friedman (2008), Mazumder et al. (2009) and Zhang (2010) for examples of such penalties.
+
+In Remark 1 in Appendix A.1 we argue how the proof can be modied for general types of
+spectral regularization. Hence for minimizing the objective (24) we will look at the analogous
+version of (8, 23) which is
+
+minimize
+
+Z
+
+kW  Zk2
+
+F + l
+
+1
+2
+
+j
+
+p(g
+
+j(Z); ).
+
+The solution is given by a thresholded SVD of W ,
+
+Sp
+l (W ) = UDp,l V ,
+
+where Dp,l
+is a entry-wise thresholding of the diagonal entries of the matrix D consisting of singular
+values of the matrix W . The exact form of the thresholding depends upon the form of the penalty
+function p(; ), as discussed in Remark 1. Algorithm 1 and Algorithm 2 can be modied for the
+penalty p(; ) by using a more general thresholding function Sp
+l () in Step 2(a)i. The corresponding
+step becomes:
+
+Znew  Sp
+
+l (PW (X) + PW (Zold)).
+
+However these types of spectral regularization make the criterion (24) non-convex and hence it
+becomes difcult to optimize globally. Recht et al. (2007) and Bach (2008) also consider the rank
+estimation problem from a theoretical standpoint.
+
+7. Post-processing of Selectors and Initialization
+
+Because the 1 norm regularizes by shrinking the singular values, the number of singular values
+retained (through cross-validation, say) may exceed the actual rank of the matrix. In such cases it is
+reasonable to undo the shrinkage of the chosen models, which might permit a lower-rank solution.
+
+2298
+
+(cid:229)
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+If Zl
+
+is the solution to (10), then its post-processed version Zu
+
+eigen-values of the matrix Zl
+
+is obtained by
+
+l obtained by unshrinking the
+
+a =
+
+argmin
+i0, i=1,...,rl
+
+kPW (X) 
+
+rl
+
+i=1
+
+iPW (uiv
+
+i)k2
+
+(25)
+
+Zu
+l = UDa V ,
+where Da = diag(a 1, . . . ,a
+is the rank of Zl and Zl = UDl V  is its SVD. The estimation
+in (25) can be done via ordinary least squares, which is feasible because of the sparsity of PW (uiv
+i)
+is small.7 If the least squares solutions a do not meet the positivity constraints, then the
+and that rl
+negative sign can be absorbed into the corresponding singular vector.
+
+rl ). Here rl
+
+Rather than estimating a diagonal matrix Da as above, one can insert a matrix Mrl rl between
+U and V above to obtain better training error for the same rank. Hence given U, V (each of rank rl )
+from the SOFT-IMPUTE algorithm, we solve
+
+M = argmin
+
+M
+
+where,
+
+Zl = U MV .
+
+kPW (X)  PW (UMV )k2,
+
+(26)
+
+The objective function in (26) is the Frobenius norm of an afne function of M and hence can be
+optimized very efciently. Scalability issues pertaining to the optimization problem (26) can be
+handled fairly efciently via conjugate gradients. Criterion (26) will denitely lead to a decrease
+in training error as that attained by Z = UDl V  for the same rank and is potentially an attractive
+proposal for the original problem (1). However this heuristic cannot be caste as a (jointly) convex
+problem in (U, M,V ). In addition, this requires the estimation of up to r2
+l parameters, and has the
+potential for over-tting. In this paper we report experiments based on (25).
+
+In many simulated examples we have observed that this post-processing step gives a good es-
+timate of the underlying true rank of the matrix (based on prediction error). Since xed points of
+Algorithm 2 correspond to local minima of the function (24), well-chosen warm starts Zl are help-
+ful. A reasonable prescription for warms-starts is the nuclear norm solution via (SOFT-IMPUTE),
+or the post processed version (25). The latter appears to signicantly speed up convergence for
+HARD-IMPUTE. This observation is based on our simulation studies.
+
+8. Soft-Impute and Maximum-Margin Matrix Factorization
+
+In this section we compare in detail the MMMF criterion (6) with the SOFT-IMPUTE criterion (3).
+For ease of comparison here, we put down these criteria again using our PW notation.
+
+MMMF solves
+
+minimize
+
+U,V
+
+1
+2
+
+||PW (X UV )||2
+
+F +
+
+2
+
+(kUk2
+
+F + kV k2
+
+F ),
+
+(27)
+
+where Umr and Vnr are arbitrary (non-orthogonal) matrices. This problem formulation and re-
+lated optimization methods have been explored by Srebro et al. (2005b) and Rennie and Srebro
+(2005).
+
+7. Observe that the PW (uiv
+
+i), i = 1, . . . , rl are not orthogonal, though the uiv
+
+i are.
+
+2299
+
+a
+(cid:229)
+a
+l
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+SOFT-IMPUTE solves
+
+minimize
+
+Z
+
+1
+2
+
+||PW (X  Z)||2
+
+F + l kZk.
+
+(28)
+
+For each given maximum rank, MMMF produces an estimate by doing further shrinkage with its
+quadratic regularization. SOFT-IMPUTE performs rank reduction and shrinkage at the same time,
+in one smooth convex operation. The following theorem shows that this one-dimensional SOFT-
+IMPUTE family lies exactly in the two-dimensional MMMF family.
+Theorem 3 Let X be m  n with observed entries indexed by W
+
+.
+
+1. Let r = min(m, n). Then the solutions to (27) and (28) coincide for all l  0.
+2. Suppose Z is a solution to (28) for l  > 0, and let r be its rank. Then for any solution
+U, V to (27) with r = r and l = l , U V T is a solution to (28). The SVD factorization of Z
+provides one such solution to (27). This implies that the solution space of (28) is contained in
+that of (27).
+
+Remarks:
+
+1. Part 1 of this theorem appears in a slightly different form in Srebro et al. (2005b).
+
+2. In part 1, we could use r > min(m, n) and get the same equivalence. While this might seem
+unnecessary, there may be computational advantages; searching over a bigger space might
+protect against local minima. Likewise in part 2, we could use r > r and achieve the same
+equivalence. In either case, no matter what r we use, the solution matrices U and V have the
+same rank as Z.
+
+3. Let Z(l ) be a solution to (28) at l
+
+. We conjecture that rank [ Z(l )] is monotone non-increasing
+. If this is the case, then Theorem 3, part 2 can be further strengthened to say that for all
+
+in l
+l  l  and r = r the solutions of (27) coincide with that of (28).
+
+The MMMF criterion (27) denes a two-dimensional family of models indexed by (r,l ), while the
+SOFT-IMPUTE criterion (28) denes a one-dimensional family. In light of Theorem 3, this family is
+a special path in the two-dimensional grid of solutions [ U(r,l ), V(r,l )]. Figure 1 depicts the situation.
+Any MMMF model at parameter combinations above the red squares are redundant, since their t
+is the same at the red square. However, in practice the red squares are not known to MMMF, nor
+is the actual rank of the solution. Further orthogonalization of U and V would be required to reveal
+the rank, which would only be approximate (depending on the convergence criterion of the MMMF
+algorithm).
+
+Despite the equivalence of (27) and (28) when r = min(m, n), the criteria are quite different.
+While (28) is a convex optimization problem in Z, (27) is a non-convex problem in the variables
+U,V and has possibly several local minima; see also Abernethy et al. (2009). It has been observed
+empirically and theoretically (Burer and Monteiro, 2005; Rennie and Srebro, 2005) that bi-convex
+methods used in the optimization of (27) can get stuck in sub-optimal local minima for a small value
+of r or a poorly chosen starting point. For a large number of factors r and large dimensions m, n
+the computational cost may be quite high (See also experimental studies in Section 9.2).
+
+Criterion (28) is convex in Z for every value of l
+
+, and it outputs the solution Z in the form of
+its soft-thresholded SVD, implying that the factors U,V are already orthogonal and the rank is
+known.
+
+2300
+
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+
+r
+K
+N
+A
+R
+
+0
+0
+1
+
+0
+8
+
+0
+6
+
+0
+4
+
+0
+2
+
+0
+
+4
+
+2
+
+0
+
+2
+
+4
+
+6
+
+log l
+
+Figure 1: Comparison of the parameter space for MMMF (grey and black points), and SOFT-
+IMPUTE (red squares) for a simple example. Since all MMMF solutions with parameters
+above the red squares are identical to the SOFT-IMPUTE solutions at the red squares, all
+the grey points are redundant.
+
+MMMF has two different tuning parameters r and l
+
+or spectral properties of the matrices U,V . SOFT-IMPUTE has only one tuning parameter l
+presence of two tuning parameters is problematic:
+
+, both of which are related to the rank
+. The
+
+ It results in a signicant increase in computational burden, since for every given value of r,
+(see Section 9 for illustra-
+
+one needs to compute an entire system of solutions by varying l
+tions).
+
+ In practice when neither the optimal values of r and l are known, a two-dimensional search
+
+(for example, by cross validation) is required to select suitable values.
+
+Further discussions and connections between the tuning parameters and spectral properties of the
+matrices can be found in Burer and Monteiro (2005) and Abernethy et al. (2009).
+
+The proof of Theorem 3 requires a lemma.
+
+Lemma 6 For any matrix Z, the following holds:
+
+F + kV k2
+
+F(cid:1) .
+
+(29)
+
+||Z|| = min
+
+U,V : Z=UV T
+
+1
+
+2(cid:0)kUk2
+
+nk.
+
+If rank(Z) = k  min{m, n}, then the minimum above is attained at a factor decomposition Z =
+UmkV T
+Note that in the decomposition Z = UV T in (29) there is no constraint on the number of columns r
+of the factor matrices Umr and Vnr. Lemma 6 is stronger than similar results appearing in Rennie
+and Srebro (2005) and Abernethy et al. (2009) which establish (29) for r = min{m, n}we give a
+tighter estimate of the rank k of the underlying matrices. The proof is given in Appendix A.5.
+
+2301
+
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+8.1 Proof of Theorem 3
+Part 1. For r = min(m, n), any matrix Zmn can be written in the form of Z = UV T . The criterion
+(27) can be written as
+
+min
+U,V
+= min
+U,V
+= min
+
+Z
+
+1
+2 ||PW (X UV T )||2
+
+F +
+1
+2 ||PW (X UV T )||2
+1
+2 ||PW (X  Z)||2
+
+F + kV k2
+F )
+
+2 (kUk2
+F + l kUV T k
+F + l kZk.
+
+(by Lemma 6)
+
+(30)
+
+(31)
+
+The equivalence of the criteria in (30) and (31) completes the proof of part 1.
+Part 2. Note that if we know that the solution Z to (28) with l = l  has rank r, then Z also solves
+
+min
+
+Z, rank(Z)=r
+
+1
+2 ||PW (X  Z)||2
+
+F +l kZk.
+
+We now repeat the steps (30)(31), restricting the rank r of U and V to be r = r, and the result
+follows.
+
+9. Numerical Experiments and Comparisons
+
+In this section we study the performance of SOFT-IMPUTE, its post-processed variants, and HARD-
+IMPUTE for noisy matrix completion problems. The examples assert our claim that the matrix
+reconstruction criterion (4) (Cai et al., 2008) is too rigid if one seeks good predictive models. We
+include the related procedures of Rennie and Srebro (2005) and Keshavan et al. (2009) in our com-
+parisons.
+
+The reconstruction algorithm OPTSPACE, described in Keshavan et al. (2009) considers crite-
+rion (1) (in the presence of noise). It uses the representation Z = USV  (which need not correspond
+to the SVD). OPTSPACE alternates between estimating S and U,V (in a Grassmann manifold) for
+computing a rank-r decomposition Z = U S V . It starts with a sparse SVD on a clean version of the
+observed matrix PW (X). This is similar to the formulation of MMMF (27) as detailed in Section 8,
+without the squared Frobenius norm regularization on the components U,V .
+
+To summarize, we study the following methods:
+
+1. SOFT-IMPUTEAlgorithm 1;
+
+2. SOFT-IMPUTE+post-processing on the output of SOFT-IMPUTE, as in Section 7;
+
+3. HARD-IMPUTEAlgorithm 2, starting with the output of SOFT-IMPUTE+;
+
+4. SVTalgorithm by Cai et al. (2008);
+
+5. OPTSPACEreconstruction algorithm by Keshavan et al. (2009);
+
+6. MMMFalgorithm for (6) as in Rennie and Srebro (2005).
+
+2302
+
+l
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+rn +e , where U and V are
+In all our simulation studies we use the underlying model Zmn = UmrV 
+random matrices with standard normal Gaussian entries, and e
+is uniformly
+random over the indices of the matrix with p% percent of missing entries. These are the models
+under which the coherence conditions hold true for the matrix completion problem to be meaningful
+(Cand`es and Tao, 2009; Keshavan et al., 2009). The signal to noise ratio for the model and the test-
+error (standardized) are dened as
+
+is i.i.d. Gaussian.
+
+SNR =svar(UV )
+
+var(e )
+
+; Test Error =
+
+kPW (UV   Z)k2
+F
+
+kPW (UV )k2
+F
+
+.
+
+Training error (standardized) is dened as
+
+Training Error =
+
+kPW (Z  Z)k2
+F
+
+kPW (Z)k2
+F
+
+,
+
+the fraction of the error explained on the observed entries by the estimate relative to a zero estimate.
+Figures 2, 3 and 4 show training and test error for all of the algorithms mentioned aboveboth
+as a function of nuclear norm and rankfor the three problem instances. The results displayed
+in the gures are averaged over 50 simulations, and also show one-standard-error bands (hardly
+visible). In all examples (m, n) = (100, 100). For MMMF we use r = min(m, n) = 100, the number
+of columns in U and V . The performance of MMMF is displayed only in the plots with the nuclear
+norm along the horizontal axis, since the algorithm does not deliver a precise rank. SNR, true rank
+and percentage of missing entries are indicated in the gures. There is a unique correspondence
+between l and nuclear norm. The plots versus rank indicate how effective the nuclear norm is as a
+rank approximationthat is whether it recovers the true rank while minimizing prediction error.
+
+For routines not our own we use the MATLAB code as supplied on webpages by the authors.
+For SVT second author of Cai et al. (2008), for OPTSPACE third author of Keshavan et al. (2009),
+and for MMMF rst author of Rennie and Srebro (2005).
+
+9.1 Observations
+
+The captions of each of Figures 24 detail the results, which we summarize here. For the rst two
+gures, the noise is quite high with SNR= 1, and 50% of the entries are missing. In Figure 2 the
+true rank is 10, while in Figure 3 it is 6. SOFT-IMPUTE, MMMF and SOFT-IMPUTE+ have the best
+prediction performance, while SOFT-IMPUTE+ is better at estimating the correct rank. The other
+procedures perform poorly here, although OPTSPACE improves somewhat in Figure 3. SVT has
+very poor prediction error, suggesting once again that exactly tting the training data is far too rigid.
+SOFT-IMPUTE+ has the best performance in Figure 3 (smaller rankmore aggressive tting), and
+HARD-IMPUTE starts recovering here. In both gures the training error for SOFT-IMPUTE (and
+hence MMMF) wins as a function of nuclear norm (as it must, by construction), but the more
+aggressive tters SOFT-IMPUTE+ and HARD-IMPUTE have better training error as a function of
+rank.
+
+Though the nuclear norm is often viewed as a surrogate for the rank of a matrix, we see in
+these examples that it can provide a superior mechanism for regularization. This is similar to the
+performance of LASSO in the context of regression. Although the LASSO penalty can be viewed as a
+convex surrogate for the 0 penalty in model selection, its 1 penalty provides a smoother and often
+better basis for regularization.
+
+2303
+
+W
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+50% missing entries with SNR=1, true rank =10
+
+Test Error
+
+Training Error
+
+1000
+
+Nuclear Norm
+
+2000
+
+Test Error
+
+
+
+
+
+SOFTIMP
+SOFTIMP+
+HARDIMP
+OPTSPACE
+
+SVT
+
+MMMF
+
+1000
+
+Nuclear Norm
+
+2000
+
+Training Error
+
+SOFTIMP
+SOFTIMP+
+HARDIMP
+OPTSPACE
+
+SVT
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0
+
+
+0
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+20
+
+40
+
+Rank
+
+60
+
+0
+
+
+
+20
+
+40
+
+Rank
+
+60
+
+1
+
+0.95
+
+0.9
+
+0.85
+
+0.8
+
+0.75
+
+0.7
+
+0.65
+
+0.6
+
+0.55
+
+0.5
+
+0
+
+1
+
+0.95
+
+0.9
+
+0.85
+
+0.8
+
+0.75
+
+0.7
+
+0.65
+
+0.6
+
+0.55
+
+0.5
+
+Figure 2: SOFTIMP+ refers to the post-processing after SOFT-IMPUTE; HARD-IMPUTE uses SOFT-
+IMP+ as starting values. Both SOFT-IMPUTE and SOFT-IMPUTE+ perform well (predic-
+tion error) in the presence of noise; the latter estimates the actual rank of the matrix.
+MMMF (with full rank 100 factor matrices) has performance similar to SOFT-IMPUTE.
+HARD-IMPUTE and OPTSPACE show poor prediction error. SVT also has poor predic-
+tion error, conrming our claim in this example that criterion (4) can result in overtting;
+it recovers a matrix with high nuclear norm and rank > 60 where the true rank is only 10.
+Values of test error larger than one are not shown in the gure. OPTSPACE is evaluated
+for a series of ranks  30.
+
+2304
+
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+50% missing entries with SNR=1, true rank =6
+
+Test Error
+
+Training Error
+
+500
+
+1000
+Nuclear Norm
+
+1500
+
+Test Error
+
+
+
+
+
+SOFTIMP
+SOFTIMP+
+HARDIMP
+OPTSPACE
+
+SVT
+
+MMMF
+
+500
+
+1000
+Nuclear Norm
+
+1500
+
+Training Error
+
+SOFTIMP
+SOFTIMP+
+HARDIMP
+OPTSPACE
+
+SVT
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0
+
+
+0
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+20
+
+40
+
+Rank
+
+60
+
+0
+
+
+
+20
+
+40
+
+Rank
+
+60
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+Figure 3: SOFT-IMPUTE+ has the best prediction error, closely followed by SOFT-IMPUTE and
+MMMF. Both HARD-IMPUTE and OPTSPACE have poor prediction error apart from
+near the true rank 6 of the matrix, where they show reasonable performance. SVT has
+very poor prediction error; it recovers a matrix with high nuclear norm and rank > 60,
+where the true rank is only 6. OPTSPACE is evaluated for a series of ranks  35.
+
+2305
+
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+80% missing entries with SNR=10, true rank =5
+
+Test Error
+
+Training Error
+
+200
+Nuclear Norm
+
+400
+
+Test Error
+
+
+
+
+
+SOFTIMP
+SOFTIMP+
+HARDIMP
+OPTSPACE
+
+SVT
+
+MMMF
+
+200
+Nuclear Norm
+
+400
+
+Training Error
+
+SOFTIMP
+SOFTIMP+
+HARDIMP
+OPTSPACE
+
+SVT
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0
+
+
+0
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+10
+
+20
+
+Rank
+
+30
+
+0
+
+
+
+10
+
+20
+
+Rank
+
+30
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0
+
+0
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0
+
+Figure 4: With low noise the performance of HARD-IMPUTE improves. It gets the correct rank
+whereas OPTSPACE slightly overestimates the rank. HARD-IMPUTE has the best pre-
+diction error, followed by OPTSPACE. Here MMMF has slightly better prediction error
+than SOFT-IMPUTE. Although the noise is low here, SVT recovers a matrix with high
+rank (approximately 30) and has poor prediction error as well. The test error of SVT is
+found to be different from the limiting solution of SOFT-IMPUTE; although in theory the
+limiting solution of (10) should coincide with that of SVT, in practice we never go to the
+limit.
+
+2306
+
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+In Figure 4 with SNR= 10 the noise is relatively small compared to the other two cases. The
+true underlying rank is 5, but the proportion of missing entries is much higher at eighty percent. Test
+errors of both SOFT-IMPUTE+ and SOFT-IMPUTE are found to decrease till a large nuclear norm
+after which they become roughly the same, suggesting no further impact of regularization. MMMF
+has slightly better test error than SOFT-IMPUTE around a nuclear norm of 350, while in theory
+they should be identical. Notice, however, that the training error is slightly worse (everywhere),
+suggesting that MMMF is sometimes trapped in local minima. The fact that this slightly undert
+solution does better in test error is a quirk of this particular example. OPTSPACE performs well in
+this high-SNR example, achieving a sharp minima at the true rank of the matrix. HARD-IMPUTE
+performs the best in this example. The better performance of both OPTSPACE and HARD-IMPUTE
+over SOFT-IMPUTE can be attributed both to the low-rank truth and the high SNR. This is reminis-
+cent of the better predictive performance of best-subset or concave penalized regression often seen
+over LASSO in setups where the underlying model is very sparse (Friedman, 2008).
+
+9.2 Comparison with Fast MMMF (Rennie and Srebro, 2005)
+
+In this section we compare SOFT-IMPUTE with MMMF in terms of computational efciency. We
+also examine the consequences of two regularization parameters (r,l ) for MMMF over one for
+SOFT-IMPUTE.
+
+Rennie and Srebro (2005) describes a fast algorithm based on conjugate-gradient descent for
+minimization of the MMMF criterion (6). With (6) being non-convex, it is hard to provide theo-
+retical optimality guarantees for the algorithm for arbitrary r,l that is, what type of solution it
+converges to or how far it is from the global minimizer.
+
+In Table 1 we summarize the performance results of the two algorithms. For both SOFT-IMPUTE
+and MMMF we consider a equi-spaced grid of 150 l  [l min,l max], with l min corresponding to a
+full-rank solution of SOFT-IMPUTE and l max the zero solution. For MMMF, three different values
+of r were used, and for each ( U, V ) were solved for over the grid of l values. A separate held-out
+validation set with twenty percent of the missing entries sampled from W  were used to train the
+tuning parameter l
+(for each value of r) for MMMF and SOFT-IMPUTE. Finally we evaluate the
+standardized prediction errors on a test set consisting of the remaining eighty percent of the missing
+entries in W .
+In all cases we report the training errors and test errors on the optimally tuned
+. SOFT-IMPUTE was run till a tolerance of 104 was achieved (fraction of decrease of objective
+value). Likewise for MMMF we set the tolerance of the conjugate gradient method to 104.
+
+In Table 1, for every algorithm total time indicates the time required for evaluating solutions
+over the entire grid of l values. In these examples, we used direct SVD factorization based methods
+for the SVD computation, since the size of the problems were quite small. In all these examples
+we observe that SOFT-IMPUTE performs very favorably in terms of total times. For MMMF the
+time to train the models increase with increasing rank r; and in case the underlying matrix has rank
+which is larger than r, the computational cost will be large in order to get competitive predictive
+accuracy. This point is supported in the examples of Table 1.
+It is important to note that, the
+prediction error of SOFT-IMPUTE as obtained on the validation set is actually within standard error
+of the best prediction error produced by all the MMMF models. In addition we also performed
+some medium-scale examples increasing the dimensions of the matrices. To make comparisons fair,
+SOFT-IMPUTE made use of direct SVD computations (in MATLAB) instead of iterative algorithms
+
+2307
+
+l
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+Method (rank)
+SOFT-IMPUTE (39)
+
+| = 5  103(50%) MMMF (20)
+MMMF (60)
+MMMF (100)
+SOFT-IMPUTE (37)
+
+| = 2  103(20%) MMMF (20)
+MMMF (60)
+MMMF (100)
+SOFT-IMPUTE (59)
+
+Data
+(m, n) = (102, 102)
+|W
+SNR= 3
+rank (R)= 30
+(m, n) = (102, 102)
+|W
+SNR= 10
+rank(R)= 10
+(m, n) = (102, 102)
+|W
+SNR= 10
+rank(R)= 45
+
+| = 8  103(80%) MMMF (20)
+MMMF (60)
+MMMF (100)
+
+Test error
+
+0.7238 (0.0027)
+0.7318 (0.0031)
+0.7236 (0.0027)
+0.7237 (0.0027)
+0.5877 (0.0047)
+0.5807 (0.0049)
+0.5823 (0.0049)
+0.5823 (0.0049)
+0.6008 (0.0028)
+0.6880 (0.0029)
+0.5999 (0.0028)
+0.5999 (0.0028)
+
+Training error Time (secs)
+4.1745
+48.1090
+62.0230
+96.2750
+4.0976
+53.7533
+62.0230
+84.0375
+3.8447
+33.8685
+57.3488
+89.4525
+
+0.0720
+0.2875
+0.1730
+0.1784
+0.0017
+0.0186
+0.0197
+0.0197
+0.0086
+0.4037
+0.0275
+0.0275
+
+Table 1: Performances of SOFT-IMPUTE and MMMF for different problem instances, in terms of
+test error (with standard errors in parentheses), training error and times for learning the
+models. SOFT-IMPUTE,rank denotes the rank of the recovered matrix, at the optimally
+chosen value of l
+. For the MMMF, rank indicates the value of r in Umr,Vnr. Results
+are averaged over 50 simulations.
+
+exploiting the specialized Sparse+Low-Rank structure (22). We report our ndings on one such
+simulation example:
+
+ For (m, n) = (2000, 1000), |W
+
+|/(m  n) = 0.2, rank = 500 and SNR=10; SOFT-IMPUTE takes
+1.29 hours to compute solutions on a grid of 100 l values. The test error on the validation set
+and training error are 0.9630 and 0.4375 with the recovered solution having a rank of 225.
+For the same problem, MMMF with r = 200 takes 6.67 hours returning a solution with test-
+error 0.9678 and training error 0.6624. With r = 400 it takes 12.89 hrs with test and training
+errors 0.9659 and 0.6564 respectively.
+
+We will like to note that DeCoste (2006) proposed an efcient implementation of MMMF via an
+ensemble based approach, which is quite different in spirit from the batch optimization algorithms
+we are studying in this paper. Hence we do not compare it with SOFT-IMPUTE.
+
+9.3 Comparison with Nesterovs Accelerated Gradient Method
+
+Ji and Ye (2009) proposed a rst-order algorithm based on Nesterovs acceleration scheme (Nes-
+terov, 2007), for nuclear norm minimization for a generic multi-task learning problem (Argyriou
+et al., 2008, 2007). Their algorithm (Liu et al., 2009; Ji and Ye, 2009) can be adapted to the SOFT-
+IMPUTE problem (10); hereafter we refer to it as NESTEROV. It requires one to compute the SVD of
+a dense matrix having the dimensions of X, which makes it prohibitive for large-scale problems. We
+instead would make use of the structure (22) for the SVD computation, a special characteristic of
+matrix completion which is not present in a generic multi-task learning problem. Here we compare
+the performances of SOFT-IMPUTE and NESTEROV on small scale examples, where direct SVDs
+can be computed easily.
+
+2308
+
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+Since both algorithms solve the same criterion, the quality of the solutionsobjective values,
+training and test errorswill be the same (within tolerance). We hence compare their performances
+based on the times taken by the algorithms to converge to the optimal solution of (10) on a grid of
+values of l . Both algorithms compute a path of solutions using warm starts. Results are shown in
+Figure 5, for four different scenarios described in Table 2.
+
+|W
+
+Example
+i
+ii
+iii
+iv
+
+(m, n)
+
+(100, 100)
+(100, 100)
+(100, 100)
+(1000, 500)
+
+|/(m  n) Rank Test Error
+0.5
+0.2
+0.8
+0.5
+
+0.4757
+0.0668
+0.0022
+0.0028
+
+5
+5
+5
+30
+
+Table 2: Four different examples used for timing comparisons of SOFT-IMPUTE and NESTEROV
+
+(accelerated Nesterov algorithm of Ji and Ye 2009). In all cases the SNR= 10.
+
+Figure 5 shows the time to convergence for the two algorithms. Their respective number of
+iterations are not comparable. This is because NESTEROV uses a line-search to compute an adaptive
+step-size (approximate the Lipschitz constant) at every iteration, whereas SOFT-IMPUTE does not.
+SOFT-IMPUTE has a rate of convergence given by Theorem 2, which for large k is worse than
+the accelerated version NESTEROV with rate O(1/k2). However, timing comparisons in Figure 5
+show that SOFT-IMPUTE performs very favorably. We do not know the exact reason behind this, but
+mention some possibilities. Firstly the rates are worst case convergence rates. On particular problem
+instances of the form (10), the rates of convergence in practice of SOFT-IMPUTE and NESTEROV
+may be quite similar. Since Ji and Ye (2009) uses an adaptive step-size strategy, the choice of a
+step-size may be time consuming. SOFT-IMPUTE on the other hand, uses a constant step size.
+
+Additionally, it appears that the use of the momentum term in NESTEROV affects the Sparse+Low-
+rank decomposition (22). This may prevent the algorithm to be adapted for solving large problems,
+due to costly SVD computations.
+
+9.4 Large Scale Simulations for SOFT-IMPUTE
+
+Table 3 reports the performance of SOFT-IMPUTE on some large-scale problems. All computations
+are performed in MATLAB and the MATLAB implementation of PROPACK is used. Data input,
+access and transfer in MATLAB take a sizable portion of the total computational time, given the
+size of these problems. However, the main computational bottle neck in our algorithm is the struc-
+tured SVD computation. In order to focus more on the essential computational task, Table 3 displays
+the total time required to perform the SVD computations over all iterations of the algorithm. Note
+that for all the examples considered in Table 3, the implementations of algorithms NESTEROV (Liu
+et al., 2009; Ji and Ye, 2009) and MMMF (Rennie and Srebro, 2005) are prohibitively expensive
+both in terms of computational time and memory requirements, and hence could not be run. We
+used the value l = ||PW (X)||2/K with SOFT-IMPUTE, with K = 1.5 for all examples but the last,
+where K = 2. l 0 = ||PW (X)||2 is the largest singular value of the input matrix X (padded with ze-
+ros); this is the smallest value of l
+for which Sl 0(PW (X)) = 0 in the rst iteration of SOFT-IMPUTE
+(Section 3).
+
+2309
+
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+i
+
+
+
+SoftImpute
+Nesterov
+
+0.2
+
+0.4
+
+0.6
+
+iii
+
+3
+
+2.5
+
+2
+
+1.5
+
+1
+
+0.5
+
+0
+
+
+
+0
+
+3
+
+2.5
+
+2
+
+1.5
+
+1
+
+0.5
+
+)
+s
+c
+e
+s
+
+n
+i
+(
+
+e
+m
+T
+
+i
+
+)
+s
+c
+e
+s
+n
+i
+(
+
+e
+m
+T
+
+i
+
+0
+0.1
+
+0.2
+
+0.4
+
+0.3
+0.5
+log(k Zl k/C + 1)
+
+0.6
+
+3
+
+2.5
+
+2
+
+1.5
+
+1
+
+0.5
+
+0
+
+0
+
+120
+
+100
+
+80
+
+60
+
+40
+
+20
+
+0
+
+0.45
+
+ii
+
+0.2
+
+0.4
+
+0.6
+
+iv
+
+0.55
+
+0.5
+log(k Zl k/C + 1)
+
+0.6
+
+0.65
+
+0.7
+
+Figure 5: Timing comparisons of SOFT-IMPUTE and NESTEROV (accelerated Nesterov algorithm
+of Ji and Ye 2009). The horizontal axis corresponds to the standardized nuclear norm,
+with C = maxl k Zl k. Shown are the times till convergence for the two algorithms over
+an entire grid of l values for examples iiv (in the last the matrix dimensions are much
+larger). The overall time differences between Examples iiii and Example iv is due to the
+increased cost of the SVD computations. Results are averaged over 10 simulations. The
+times for NESTEROV change far more erratically with l
+than they do for SOFT-IMPUTE.
+
+The prediction performance is awful for all but one of the models, because in most cases the
+fraction of observed data is very small. These simulations were mainly to show the computational
+capabilities of SOFT-IMPUTE on very large problems.
+
+10. Application to the Netix Data Set
+
+The Netix training data consists of the ratings of 17,770 movies by 480,189 Netix customers. The
+resulting data matrix is extremely sparse, with 100,480,507 or 1% of the entries observed. The task
+was to predict the unseen ratings for a qualifying set and a test set of about 1.4 million ratings each,
+with the true ratings in these data sets held in secret by Netix. A probe set of about 1.4 million
+
+2310
+
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+|/(m  n) Recovered Time (mins) Test error Training error
+100%
+
+|W
+
+(m, n)
+
+(104, 104)
+(104, 104)
+(104, 104)
+(104, 104)
+(105, 105)
+(105, 105)
+(106, 105)
+(106, 106)
+
+|W
+
+|
+
+105
+105
+105
+106
+
+5  106
+
+107
+108
+107
+
+0.1
+0.1
+0.1
+1.0
+0.05
+0.1
+0.1
+0.001
+
+rank
+40
+40
+50
+5
+40
+5
+5
+20
+
+0.2754
+0.3770
+0.4292
+1.6664
+17.2518
+20.3142
+259.9620
+99.6780
+
+0.9946
+0.9959
+0.9962
+0.6930
+0.9887
+0.9803
+0.9913
+0.9998
+
+0.6160
+0.6217
+0.3862
+0.6600
+0.8156
+0.9761
+0.9901
+0.5834
+
+Table 3: Performance of SOFT-IMPUTE on different problem instances. All models are generated
+with SNR=10 and underlying rank=5. Recovered rank is the rank of the solution matrix
+Z at the value of l used in (10). Those with stars reached the maximum rank threshold,
+and option in our algorithm. Convergence criterion is taken as fraction of improvement of
+objective value less than 104 or a maximum of 15 iterations for the last four examples.
+All implementations are done in MATLAB including the MATLAB implementation of
+PROPACK on a Intel Xeon Linux 3GHz processor.
+
+ratings was distributed to participants, for calibration purposes. The movies and customers in the
+qualifying, test and probe sets are all subsets of those in the training set.
+
+The ratings are integers from 1 (poor) to 5 (best). Netixs own algorithm has an RMSE of
+0.9525, and the contest goal was to improve this by 10%, or an RMSE of 0.8572 or better. The
+contest ran for about 3 years, and the winning team was Bellkors Pragmatic Chaos, a merger
+of three earlier teams (see http://www.netflixprize.com/ for details). They claimed the grand
+prize of $1M on September 21, 2009.
+
+Many of the competitive algorithms build on a regularized low-rank factor model similar to (6)
+using randomization schemes like mini-batch, stochastic gradient descent or sub-sampling to reduce
+the computational cost over making several passes over the entire data-set (see Salakhutdinov et al.,
+2007; Bell and Koren., 2007; Takacs et al., 2009, for example). In this paper, our focus is not on
+using randomized or sub-sampling schemes. Here we demonstrate that our nuclear-norm regular-
+ization algorithm can be applied in batch mode on the entire Netix training set with a reasonable
+computation time. We note however that the conditions under which the nuclear-norm regulariza-
+tion is theoretically meaningful (Cand`es and Tao, 2009; Srebro et al., 2005a) are not met on the
+Netix data set.
+
+We applied SOFT-IMPUTE to the training data matrix and then performed a least-squares un-
+shrinking on the singular values with the singular vectors and the training data row and column
+means as the bases. The latter was performed on a data-set of size 105 randomly drawn from the
+probe set. The prediction error (RMSE) is obtained on a left out portion of the probe set. Table 4
+reports the performance of the procedure for different choices of the tuning parameter l
+(and the
+corresponding rank); times indicate the total time taken for the SVD computations over all itera-
+tions. A maximum of 10 iterations were performed for each of the examples. Again, these results
+are not competitive with those of the competition leaders, but rather demonstrate the feasibility of
+applying SOFT-IMPUTE to such a large data set.
+
+2311
+
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+l 0/250
+l 0/300
+l 0/500
+l 0/600
+
+Rank Time (hrs) RMSE
+0.9622
+42
+66
+0.9572
+0.9543
+81
+95
+0.9497
+
+1.36
+2.21
+2.83
+3.27
+
+Table 4: Results of applying SOFT-IMPUTE to the Netix data. l 0 = ||PW (X)||2; see Section 9.4.
+The computations were done on a Intel Xeon Linux 3GHz processor; timings are reported
+based on MATLAB implementations of PROPACK and our algorithm. RMSE is root-
+mean squared error, as dened in the text.
+
+Acknowledgments
+
+We thank the reviewers for their suggestions that lead to improvements in this paper. We thank
+Stephen Boyd, Emmanuel Candes, Andrea Montanari, and Nathan Srebro for helpful discussions.
+Trevor Hastie was partially supported by grant DMS-0505676 from the National Science Founda-
+tion, and grant 2R01 CA 72028-07 from the National Institutes of Health. Robert Tibshirani was
+partially supported from National Science Foundation Grant DMS-9971405 and National Institutes
+of Health Contract N01-HV-28183.
+
+Appendix A. Proofs
+
+We begin with the proof of Lemma 1.
+
+A.1 Proof of Lemma 1
+Proof Let Z = Umn Dnn V 
+explicitly evaluate the closed form solution of the problem (8). Note that
+
+nn be the SVD of Z. Assume without loss of generality, m  n. We will
+
+kZ W k2
+
+F + l kZk =
+
+1
+2
+
+1
+
+2(kZk2
+
+F  2
+
+n(cid:229)
+
+i=1
+
+di u
+
+iW vi +
+
+i) + l
+
+d2
+
+n(cid:229)
+
+i=1
+
+n(cid:229)
+
+i=1
+
+di
+
+(32)
+
+where
+
+Minimizing (32) is equivalent to minimizing
+n(cid:229)
+
+D = diag(cid:2) d1, . . . , dn(cid:3) ,
+n(cid:229)
+
+n(cid:229)
+
+2
+
+di u
+
+iW vi +
+
+d2
+i +
+
+U = [ u1, . . . , un] ,
+
+V = [ v1, . . . , vn] .
+
+i=1
+
+i=1
+
+i=1
+
+2l
+
+di; w.r.t. ( ui, vi, di), i = 1, . . . , n,
+
+under the constraints U  U = In, V  V = In and di  0 i.
+
+Observe the above is equivalent to minimizing (w.r.t. U, V ) the function Q( U, V ):
+
+Q( U, V ) = min
+D0
+
+1
+
+2(2
+
+n(cid:229)
+
+i=1
+
+di u
+
+iW vi +
+
+i) + l
+
+d2
+
+n(cid:229)
+
+i=1
+
+n(cid:229)
+
+i=1
+
+di.
+
+(33)
+
+2312
+
+l
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+Since the objective (33) to be minimized w.r.t.
+minimize it w.r.t. each di separately.
+
+D, is separable in di, i = 1, . . . , n; it sufces to
+
+The problem
+
+minimize
+
+di0
+
+iW vi + d2
+
+di
+
+(34)
+
+1
+
+2(cid:8)2 di u
+
+i(cid:9) + l
+
+can be solved looking at the stationary conditions of the function using its sub-gradient (Nes-
+iW vi  l )+, the soft-
+iW vi) = ( u
+terov, 2003). The solution of the above problem is given by Sl ( u
+iW vi (without loss of generality, we can take u
+thresholding of u
+iW vi to be non-negative). More
+generally the soft-thresholding operator (Friedman et al., 2007; Hastie et al., 2009) is given by
+Sl (x) = sgn(x)(|x|  l )+. See Friedman et al. (2007) for more elaborate discussions on how the
+soft-thresholding operator arises in univariate penalized least-squares problems with the 1 penal-
+ization.
+
+Plugging the values of optimal di, i = 1, . . . , n; obtained from (34) in (33) we get
+
+Q( U, V ) =
+
+F  2
+
+( u
+
+iW vi  l )+( u
+
+iW vi  l ) + ( u
+
+iX vi  l )2
+
+1
+
+2(kZk2
+
+n(cid:229)
+
+i=1
+
++) .
+
+(35)
+
+(36)
+
+Minimizing Q( U, V ) w.r.t. ( U, V ) is equivalent to maximizing
+
+n(cid:229)
+i=1(cid:8)2( u
+
+iW vi  l )+( u
+
+iW vi  l )  ( u
+
+iW vi  l )2
+
+( u
+
+iW vi  l )2.
+
++(cid:9) = (cid:229)
+
+iW vi>l
+u
+
+It is a standard fact that for every i the problem
+
+maximize
+21,kvk2
+kuk2
+21
+
+uW v; such that u  { u1, . . . , ui1}, v  { v1, . . . , vi1}
+
+is solved by ui, vi, the left and right singular vectors of the matrix W corresponding to its ith largest
+singular value. The maximum value equals the singular value. It is easy to see that maximizing
+the expression to the right of (36) wrt (ui, vi), i = 1, . . . , n is equivalent to maximizing the individual
+terms u
+then the ( ui, vi) , i =
+
+iW vi. If r(l ) denotes the number of singular values of W larger than l
+
+and right singular vectors of W corresponding to the largest singular values. From (34) the optimal
+
+1, . . . that maximize the expression (36) correspond to(cid:2)u1, . . . , ur(l )(cid:3) and(cid:2)v1, . . . , vr(l )(cid:3); the r(l ) left
+D = diag(cid:2) d1, . . . , dn(cid:3) is given by Dl = diag [(d1  l )+, . . . , (dn  l )+] .
+
+Since the rank of W is r, the minimizer Z of (8) is given by UDl V  as in (9).
+
+Remark 1 For a more general spectral regularization of the form l
+i l
+of the resultant univariate minimization problem will be given by Sp
+thresholding operator Sp
+
+i(Z)) (as compared to
+i(Z) used above) the optimization problem (34) will be modied accordingly. The solution
+iW vi) for some generalized
+
+i p(g
+
+l ( u
+
+l (), where
+
+The optimization problem analogous to (35) will be
+
+Sp
+l ( u
+
+iW vi) = argmin
+
+di0
+
+iW vi + d2
+
+minimize
+
+U, V
+
+1
+
+2(kZk2
+
+F  2
+
+iW vi +
+
+n(cid:229)
+
+i=1
+
+d2
+
+i(cid:9) + l p( di).
+i) + l
+
+i
+
+p( di),
+
+1
+
+2(cid:8)2 di u
+n(cid:229)
+
+di u
+
+i=1
+
+2313
+
+(37)
+
+(cid:229)
+(cid:229)
+g
+(cid:229)
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+l ( u
+
+where di = Sp
+iW vi), i. Any spectral function for which the above (37) is monotonically increas-
+ing in u
+iW vi for every i can be solved by a similar argument as given in the above proof. The solution
+will correspond to the rst few largest left and right singular vectors of the matrix W . The optimal
+singular values will correspond to the relevant shrinkage/ threshold operator Sp
+l () operated on the
+singular values of W . In particular for the indicator function p(t) = l 1(t 6= 0), the top few singular
+values (un-shrunk) and the corresponding singular vectors is the solution.
+
+A.2 Proof of Lemma 3
+
+This proof is based on sub-gradient characterizations and is inspired by some techniques used in
+Cai et al. (2008).
+Proof From Lemma 1, we know that if Z solves the problem (8), then it satises the sub-gradient
+stationary conditions:
+
+0  (W  Z) + l
+
+k Zk.
+
+(38)
+
+Sl (W1) and Sl (W2) solve the problem (8) with W = W1 and W = W2 respectively, hence (38) holds
+with W = W1, Z1 = Sl (W1) and W = W2, Z2 = Sl (W1).
+
+The sub-gradients of the nuclear norm kZk are given by
+
+ kZk = {UV  + w
+
+: w mn, U w = 0, w V = 0, kw k2  1},
+
+(39)
+
+where Z = UDV  is the SVD of Z.
+
+Let p( Zi) denote an element in  k Zik. Then
+
+Zi Wi + l p( Zi) = 0, i = 1, 2.
+
+The above gives
+
+from which we obtain
+
+( Z1  Z2)  (W1 W2) + l (p( Z1)  p( Z2)) = 0,
+
+(40)
+
+h Z1  Z2, Z1  Z2i  hW1 W2, Z1  Z2i + l hp( Z1)  p( Z2), Z1  Z2i = 0,
+
+where ha, bi = trace(ab).
+
+Now observe that
+
+hp( Z1)  p( Z2), Z1  Z2i = hp( Z1), Z1i  hp( Z1), Z2i  hp( Z2), Z1i + hp( Z2), Z2i.
+
+(41)
+
+By the characterization of subgradients as in (39), we have
+
+hp( Zi), Zii = k Zik and kp( Zi)k2  1, i = 1, 2.
+
+This implies
+
+|hp( Zi), Z ji|  kp( Zi)k2k Z jk  k Z jk for i 6= j  {1, 2}.
+
+Using the above inequalities in (41) we obtain:
+
+hp( Z1), Z1i + hp( Z2), Z2i = k Z1k + k Z2k
+
+hp( Z1), Z2i  hp( Z2), Z1i  k Z2k  k Z1k.
+
+(42)
+(43)
+
+2314
+
+
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+Using (42,43) we see that the r.h.s. of (41) is non-negative. Hence
+
+hp( Z1)  p( Z2), Z1  Z2i  0.
+
+Using the above in (40), we obtain:
+
+k Z1  Z2k2
+
+F = h Z1  Z2, Z1  Z2i  hW1 W2, Z1  Z2i.
+
+(44)
+
+Using the Cauchy-Schwarz Inequality, k Z1  Z2kF kW1 W2kF  h Z1  Z2,W1 W2i in (44) we
+
+get
+
+and in particular
+
+k Z1  Z2k2
+
+F  h Z1  Z2,W1 W2i  k Z1  Z2kF kW1 W2kF
+
+k Z1  Z2k2
+
+F  k Z1  Z2kF kW1 W2kF .
+
+The above further simplies to
+
+kW1 W2k2
+
+F  k Z1  Z2k2
+
+F = kSl (W1)  Sl (W2)k2
+F .
+
+A.3 Proof of Lemma 4
+
+Proof We will rst show (15) by observing the following inequalities:
+
+kZk+1
+
+l  Zk
+
+l k2
+
+F = kSl (PW (X) + PW (Zk
+
+l ))  Sl (PW (X) + PW (Zk1
+
+))k2
+F
+
+(by Lemma 3)  k(cid:16)PW (X) + PW (Zk
+
+l )(cid:17) (cid:16)PW (X) + PW (Zk1
+
+)(cid:17) k2
+
+F
+
+= kPW (Zk
+ kZk
+
+l  Zk1
+k2
+F .
+
+l  Zk1
+
+)k2
+F
+
+(45)
+(46)
+
+The above implies that the sequence {kZk
+below). We still require to show that {kZk
+
+l  Zk1
+l  Zk1
+
+k2
+F } converges (since it is decreasing and bounded
+k2
+F } converges to zero.
+
+The convergence of {kZk
+
+l  Zk1
+
+k2
+F } implies that:
+
+kZk+1
+
+l  Zk
+
+l k2
+
+F  kZk
+
+l  Zk1
+
+F  0 as k  
+k2
+
+.
+
+The above observation along with the inequality in (45,46) gives
+
+kPW (Zk
+
+l  Zk1
+
+.
+
+as k  
+
+)k2
+
+F  kZk
+
+l  Zk1
+
+k2
+F  0 = PW (Zk
+
+l  Zk1
+
+)  0,
+
+Lemma 2 shows that the non-negative sequence fl (Zk
+
+l ) is decreasing in k. So as k  
+
+sequence fl (Zk
+
+l ) converges.
+
+Furthermore from (13,14) we have
+
+(47)
+
+the
+
+Ql (Zk+1
+
+|Zk
+
+l )  Ql (Zk+1
+
+|Zk+1
+
+)  0 as k  
+
+,
+
+2315
+
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+l
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+which implies that
+
+kPW (Zk
+
+l )  PW (Zk+1
+
+)k2
+
+F  0 as k  
+
+.
+
+The above along with (47) gives
+
+l  Zk1
+Zk
+
+l  0 as k  
+
+.
+
+This completes the proof.
+
+A.4 Proof of Lemma 5
+
+Proof The sub-gradients of the nuclear norm kZk are given by
+
+ kZk = {UV  +W : Wmn, U W = 0, WV = 0, kW k2  1},
+
+where Z = UDV  is the SVD of Z. Since Zk
+
+l minimizes Ql (Z|Zk1
+
+), it satises:
+
+0  (PW (X) + PW (Zk1
+
+)  Zk
+
+l ) +  kZk
+
+l k k.
+
+(48)
+
+(49)
+
+Suppose Z is a limit point of the sequence Zk
+
+l . Then there exists a subsequence {nk}  {1, 2, . . .}
+
+such that Znkl  Z as k  
+
+.
+
+By Lemma 4 this subsequence Znkl
+
+satises
+
+Znkl  Znk1
+
+l  0
+
+implying
+
+Hence,
+
+PW (Znk1
+
+)  Znkl  PW (Zl )  Zl = PW (Z).
+
+(PW (X) + PW (Znk1
+l )   kZk
+
+For every k, a sub-gradient p(Zk
+ties of the set  kZk
+
+l k (48).
+
+)  Znkl )  (PW (X)  PW (Zl )).
+
+(50)
+
+l k corresponds to a tuple (uk, vk, wk) satisfying the proper-
+
+Consider p(Znkl ) along the sub-sequence nk. As nk  
+Let
+
+, Znkl  Zl .
+
+Znkl = unkDnkv
+
+nk , Z = u Dv
+
+denote the SVDs. The product of the singular vectors converge u
+. Furthermore due
+. The limit u v + w
+to boundedness (passing on to a further subsequence if necessary) wnk  w
+clearly satises the criterion of being a sub-gradient of Z. Hence this limit corresponds to p(Zl ) 
+ kZl k.
+
+nkvnk  u v
+
+Furthermore from (49, 50), passing on to the limits along the subsequence nk, we have
+
+0  (PW (X)  PW (Zl )) +  kZl k.
+
+Hence the limit point Zl
+
+is a stationary point of fl (Z).
+
+2316
+
+l
+l
+l
+l
+l
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+We shall now prove (16). We know that for every nk
+
+Znkl = Sl (PW (X) + PW (Znk1
+
+)).
+
+(51)
+
+From Lemma 4, we know Znkl Znk1
+
+l  0. This observation along with the continuity of Sl () gives
+
+Sl (PW (X) + PW (Znk1
+
+))  Sl (PW (X) + PW (Zl )).
+
+Thus passing over to the limits on both sides of (51) we get
+
+Zl = Sl (PW (X) + PW (Zl )),
+
+therefore completing the proof.
+
+A.5 Proof of Lemma 6
+
+The proof is motivated by the principle of embedding an arbitrary matrix into a positive semidenite
+matrix (Fazel, 2002). We require the following proposition, which we prove using techniques used
+in the same reference.
+Proposition 1 Suppose matrices Wmm, Wnn, Zmn satisfy the following:
+
+(cid:18) W Z
+
+W (cid:19) (cid:23) 0.
+
+ZT
+
+Then trace(W ) + trace( W )  2kZk.
+Proof Let Zmn = LmrS
+nr denote the SVD of Z, where r is the rank of the matrix Z. Observe
+that the trace of the product of two positive semidenite matrices is always non-negative. Hence we
+have the following inequality:
+
+rrRT
+
+trace(cid:18) LLT LRT
+
+RRT (cid:19)(cid:18) W Z
+
+RLT
+
+W (cid:19) (cid:23) 0.
+
+ZT
+
+Simplifying the above expression we get:
+
+trace(LLTW )  trace(LRT ZT )  trace(RLT Z) + trace(RRT W )  0.
+
+(52)
+
+Due to the orthogonality of the columns of L, R we have the following inequalities:
+
+trace(LLTW )  trace(W ) and trace(RRT W )  trace( W ).
+
+Furthermore, using the SVD of Z:
+
+trace(LRT ZT ) = trace(S ) = trace(LRT ZT ).
+
+Using the above in (52), we have:
+
+trace(W ) + trace( W )  2trace(S ) = 2 kZk.
+
+2317
+
+l
+l
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+Proof [Proof of Lemma 6.] For the matrix Z, consider any decomposition of the form Z = Umr V T
+nr
+and construct the following matrix
+
+(cid:18) U U T
+
+ZT
+
+Z
+
+V V T (cid:19) =(cid:18) U
+
+V (cid:19) ( U T V T ),
+
+(53)
+
+which is positive semidenite. Applying Proposition 1 to the left hand matrix in (53), we have:
+
+trace( U U T ) + trace( V V T )  2 kZk.
+
+Minimizing both sides above w.r.t. the decompositions Z = Umr V T
+
+nr; we have
+
+min
+
+U, V ; Z= U V T(cid:8)trace( U U T ) + trace( V V T )(cid:9)  2 kZk.
+
+(54)
+
+Through the SVD of Z we now show that equality is attained in (54). Suppose Z is of rank
+k  min(m, n), and denote its SVD by Zmn = LmkS kkRT
+kk and V =
+RnkS
+
+nk. Then for U = LmkS
+
+kk the equality in (54) is attained.
+
+1
+2
+
+1
+2
+
+Hence, we have:
+
+kZk =
+
+=
+
+min
+
+U, V ;Z= U V T(cid:8)trace( U U T ) + trace( V V T )(cid:9)
+
+nk(cid:8)trace( U U T ) + trace( V V T )(cid:9) .
+
+U, V ;Z= Umk V T
+
+min
+
+Note that the minimum can also be attained for matrices with r  k or even r  min(m, n); however,
+it sufces to consider matrices with r = k. Also it is easily seen that the minimum cannot be attained
+for any r < k; hence the minimal rank r for which (29) holds true is r = k.
+
+A.6 Proof of Theorem 2
+
+There is a close resemblance between SOFT-IMPUTE and Nesterovs gradient method (Nesterov,
+2007, Section 3). However, as mentioned earlier the original motivation of our algorithm is very
+different.
+
+The techniques used in this proof are adapted from Nesterov (2007).
+
+Proof Plugging Zk
+
+l = Z in (11), we have
+
+Ql (Z|Zk
+
+l ) = fl (Zk
+ fl (Zk
+
+l ).
+
+l ) +
+
+1
+2
+
+kPW (Zk
+
+l  Z)k2
+F
+
+Let Zk
+
+l (q ) denote a convex combination of the optimal solution (Z
+
+l ) and the kth iterate (Zk
+
+l ):
+
+l (q ) = q Z
+Zk
+
+l + (1  q )Zk
+l .
+
+2318
+
+(55)
+
+(56)
+
+
+MATRIX COMPLETION BY SPECTRAL REGULARIZATION
+
+Using the convexity of fl () we get:
+
+Expanding Zk
+
+l (q ) using (56), and simplifying PW (Zk
+
+l  Zk
+
+fl (Zk
+
+l (q ))  (1  q ) fl (Zk
+
+l ).
+
+fl (Z
+
+l ) + q
+l (q )) we have:
+
+(57)
+
+(58)
+(59)
+
+kPW (Zk
+
+l  Zk
+
+l (q ))k2
+
+l )k2
+F
+
+F = q 2kPW (Zk
+l  Z
+l  Z
+
+ q 2kZk
+ q 2kZ0
+l  Z
+
+l  Z
+l k2
+F
+l k2
+F .
+ Z
+
+F  kZm1
+
+l k2
+Line 59 follows from (58) by observing that kZm
+the inequalities (19) and (18), established in Theorem 1.
+
+l k2
+
+F , ma consequence of
+
+Using (55), the value of fl (Z) at the (k + 1)th iterate satises the following chain of inequalities:
+
+fl (Zk+1
+
+)  min
+
+kPW (Zk
+
+l  Z)k2
+
+F(cid:27)
+
+1
+2
+
+Z (cid:26) fl (Z) +
+q [0,1](cid:26) fl (Zk
+q [0,1](cid:26) fl (Zk
+
+ min
+
+ min
+
+l (q )) +
+
+kPW (Zk
+
+l  Zk
+
+l (q ))k2
+
+1
+2
+
+l ) + q ( fl (Z
+
+l )  fl (Zk
+
+l )) +
+
+q 2kZ0
+
+l  Z
+
+F(cid:27)
+
+1
+2
+
+(60)
+
+(61)
+
+l k2
+
+F(cid:27) .
+
+Line 61 follows from Line 60, by using (57) and (59).
+
+The r.h.s. expression in (61), is minimized atbq (k + 1) given by
+bq (k + 1) = min{1,q k}  [0, 1], where,
+
+q k =
+
+l )
+
+.
+
+fl (Zk
+kZ0
+
+l )  fl (Z
+l  Z
+l k2
+F
+
+If kZ0
+
+l k2
+
+F = 0, then we take q k = 
+
+l  Z
+Note that q k is a decreasing sequence. This implies that if q k0  1 then q m  1 for all m  k0.
+
+.
+
+Suppose, q 0 > 1. Thenbq (1) = 1. Hence using (61) we have:
+
+fl (Z1
+
+l )  fl (Z
+
+l ) 
+
+kZ0
+
+l  Z
+
+l k2
+
+F = q 1 
+
+1
+2
+
+1
+2
+
+.
+
+Thus we get back to the former case.
+
+Hence q k  1 for all k  1.
+In addition, observe the previous deductions show that, if q 0 > 1 then (20) holds true for k = 1.
+in (61) and simplifying, we get:
+
+Combining the above observations, plugging in the value ofbq
+
+l ))2
+
+.
+
+(62)
+
+fl (Zk+1
+
+)  fl (Zk
+
+l )  
+
+( fl (Zk
+2kZ0
+
+l )  fl (Z
+l  Z
+l k2
+F
+
+For the sake of notational convenience, we dene the sequence a k = fl (Zk
+seen that a k is a non-negative decreasing sequence.
+
+l )  fl (Z
+
+l ). It is easily
+
+2319
+
+
+
+
+
+l
+l
+
+
+
+
+l
+MAZUMDER, HASTIE AND TIBSHIRANI
+
+Using this notation in (62) we get:
+
+a k 
+
+(Since a k ) 
+
+a 2
+k
+l  Z
+a ka k+1
+l  Z
+
+l k2
+F
+
+l k2
+F
+
+2kZ0
+
+2kZ0
+
++ a k+1
+
++ a k+1.
+
+Dividing both sides of the inequality in (63), by a ka k+1 we have:
+
+a 1
+k+1 
+
+1
+l  Z
+
+2kZ0
+
+l k2
+F
+
++ a 1
+k
+
+.
+
+Summing both sides of (64) over 1  k  (k  1) we get:
+
+a 1
+k 
+
+k  1
+l  Z
+
+2kZ0
+
+l k2
+F
+
++ a 1
+1 .
+
+(63)
+
+(64)
+
+(65)
+
+Since q 1  1, we observe a 1/(2kZ0
+get, the desired inequality (20)completing the proof of the Theorem.
+
+l  Z
+
+l k2
+
+F )  1/2using this in (65) and rearranging terms we
+

@@ -1,0 +1,1146 @@
+Abstract
+
+A key problem in statistical modeling is model selection, how to choose a model at an
+appropriate level of complexity. This problem appears in many settings, most prominently in
+choosing the number of clusters in mixture models or the number of factors in factor analysis.
+In this tutorial we describe Bayesian nonparametric methods, a class of methods that side-steps
+this issue by allowing the data to determine the complexity of the model. This tutorial is a
+high-level introduction to Bayesian nonparametric methods and contains several examples of
+their application.
+
+1 Introduction
+
+How many classes should I use in my mixture model? How many factors should I use in factor
+analysis? These questions regularly exercise scientists as they explore their data. Most scientists
+address them by rst tting several models, with dierent numbers of clusters or factors, and then
+selecting one using model comparison metrics (Claeskens and Hjort, 2008). Model selection metrics
+usually include two terms. The rst term measures how well the model ts the data. The second
+term, a complexity penalty, favors simpler models (i.e., ones with fewer components or factors).
+
+Bayesian nonparametric (BNP) models provide a dierent approach to this problem (Hjort
+et al., 2010). Rather than comparing models that vary in complexity, the BNP approach is to t
+a single model that can adapt its complexity to the data. Furthermore, BNP models allow the
+complexity to grow as more data are observed, such as when using a model to perform prediction.
+For example, consider the problem of clustering data. The traditional mixture modeling approach
+to clustering requires the number of clusters to be specied in advance of analyzing the data. The
+Bayesian nonparametric approach estimates how many clusters are needed to model the observed
+data and allows future data to exhibit previously unseen clusters.1
+
+Using BNP models to analyze data follows the blueprint for Bayesian data analysis in gen-
+eral (Gelman et al., 2004). Each model expresses a generative process of the data that includes
+
+1The origins of these methods are in the distribution of random measures called the Dirichlet process (Ferguson,
+1973; Antoniak, 1974), which was developed mainly for mathematical interest. These models were dubbed Bayesian
+nonparametric because they place a prior on the innite-dimensional space of random measures. With the maturity
+of Markov chain Monte Carlo sampling methods, nearly twenty years later, Dirichlet processes became a practical
+statistical tool (Escobar and West, 1995). Bayesian nonparametric modeling is enjoying a renaissance in statistics
+and machine learning; we focus here on their application to latent component models, which is one of their central
+applications. We describe their formal mathematical foundations in Appendix A.
+
+1
+
+hidden variables. This process articulates the statistical assumptions that the model makes, and
+also species the joint probability distribution of the hidden and observed random variables. Given
+an observed data set, data analysis is performed by posterior inference, computing the conditional
+distribution of the hidden variables given the observed data. Loosely, posterior inference is akin to
+reversing the generative process to nd the distribution of the hidden structure that likely gen-
+erated the observed data. What distinguishes Bayesian nonparametric models from other Bayesian
+models is that the hidden structure is assumed to grow with the data. Its complexity, e.g., the num-
+ber of mixture components or the number of factors, is part of the posterior distribution. Rather
+than needing to be specied in advance, it is determined as part of analyzing the data.
+
+In this tutorial, we survey Bayesian nonparametric methods. We focus on Bayesian nonparamet-
+ric extensions of two common models, mixture models and latent factor models. As we mentioned
+above, traditional mixture models group data into a prespecied number of latent clusters. The
+Bayesian nonparametric mixture model, which is called a Chinese restaurant process mixture (or
+a Dirichlet process mixture), infers the number of clusters from the data and allows the number of
+clusters to grow as new data points are observed.
+
+Latent factor models decompose observed data into a linear combination of latent factors.
+Dierent assumptions about the distribution of factors lead to variants such as factor analysis,
+principal components analysis, independent components analysis, and others. As for mixtures, a
+limitation of latent factor models is that the number of factors must be specied in advance. The
+Indian Buet Process latent factor model (or Beta process latent factor model) infers the number
+of factors from the data and allows the number of factors to grow as new data points are observed.
+We focus on these two types of models because they have served as the basis for a exible suite
+of BNP models. Models that are built on BNP mixtures or latent factor models include those
+tailored for sequential data (Beal et al., 2002; Paisley and Carin, 2009; Fox et al., 2008, 2009),
+grouped data (Teh et al., 2006; Navarro et al., 2006), data in a tree (Johnson et al., 2007; Liang
+et al., 2007), relational data (Kemp et al., 2006; Navarro and Griths, 2008; Miller et al., 2009),
+and spatial data (Gelfand et al., 2005; Duan et al., 2007; Sudderth and Jordan, 2009).
+
+This tutorial is organized as follows. In Sections 2 and 3 we describe mixture and latent factor
+models in more detail, starting from nite-capacity versions and then extending these to their
+innite-capacity counterparts. In Section 4 we summarize the standard algorithms for inference
+in mixture and latent factor models. Finally, in Section 5 we describe several limitations and
+extensions of these models. In Appendix A, we detail some of the mathematical and statistical
+foundations of BNP models.
+
+We hope to demonstrate how Bayesian nonparametric data analysis provides a exible alterna-
+tive to traditional Bayesian (and non-Bayesian) modeling. We give examples of BNP analysis of
+published psychological studies, and we point the reader to available software for performing her
+own analyses.
+
+2 Mixture models and clustering
+
+In posterior
+In a mixture model, each observed data point is assumed to belong to a cluster.
+inference, we infer a grouping or clustering of the data under these assumptionsthis amounts
+to inferring both the identities of the clusters and the assignments of the data to them. Mixture
+models are used for understanding the group structure of a data set and for exibly estimating the
+distribution of a population.
+
+2
+
+For concreteness, consider the problem of modeling response time (RT) distributions. Psychol-
+ogists believe that several cognitive processes contribute to producing behavioral responses (Luce,
+1986), and therefore it is a scientically relevant question how to decompose observed RTs into their
+underlying components. The generative model we describe below expresses one possible process by
+which latent causes (e.g., cognitive processes) might give rise to observed data (e.g., RTs).2 Using
+Bayes rule, we can invert the generative model to recover a distribution over the possible set of
+latent causes of our observations. The inferred latent causes are commonly known as clusters.
+
+2.1 Finite mixture modeling
+
+One approach to this problem is nite mixture modeling. A nite mixture model assumes that
+there are K clusters, each associated with a parameter k. Each observation yn is assumed to be
+generated by rst choosing a cluster cn according to P (cn) and then generating the observation
+from its corresponding observation distribution parameterized by cn. In the RT modeling problem,
+each observation is a scalar RT and each cluster species a hypothetical distribution F (yn|cn) over
+the observed RT.3
+
+Finite mixtures can accommodate many kinds of data by changing the data generating distri-
+bution. For example, in a Gaussian mixture model the dataconditioned on knowing their cluster
+assignmentsare assumed to be drawn from a Gaussian distribution. The cluster parameters k
+are the means of the components (assuming known variances). Figure 1 illustrates data drawn from
+a Gaussian mixture with four clusters.
+Bayesian mixture models further contain a prior over the mixing distribution P (c), and a prior
+over the cluster parameters:   G0. (We denote the prior over cluster parameters G0 to later make
+a connection to BNP mixture models.) In a Gaussian mixture, for example, it is computationally
+convenient to choose the cluster parameter prior to be Gaussian. A convenient choice for the
+distribution on the mixing distribution is a Dirichlet. We will build on fully Bayesian mixture
+modeling when we discuss Bayesian nonparametric mixture models.
+
+This generative process denes a joint distribution over the observations, cluster assignments,
+
+and cluster parameters,
+
+K(cid:89)
+
+k=1
+
+N(cid:89)
+
+n=1
+
+G0(k)
+
+P (y, c, ) =
+
+F (yn|cn)P (cn),
+
+(1)
+
+where the observations are y = {y1, . . . , yN}, the cluster assignments are c = {c1, . . . , cN}, and
+the cluster parameters are  = {1, . . . , K}. The product over n follows from assuming that
+each observation is conditionally independent given its latent cluster assignment and the cluster
+
+2A number of papers in the psychology literature have adopted a mixture model approach to modeling RTs
+(e.g., Ratcli and Tuerlinckx, 2002; Wagenmakers et al., 2008). It is worth noting that the decomposition of RTs
+into constituent cognitive processes performed by the mixture model is fundamentally dierent from the diusion
+model analysis (Ratcli and Rouder, 1998), which has become the gold standard in psychology and neuroscience.
+In the diusion model, behavioral eects are explained in terms of variations in the underlying parameters of the
+model, whereas the mixture model attempts to explain these eects in terms of dierent latent causes governing each
+response.
+
+3The interpretation of a cluster as a psychological process must be made with caution.
+
+In our example, the
+hypothesis is that some number of cognitive processes produces the RT data, and the mixture model provides a
+characterization of the cognitive process under that hypothesis. Further scientic experimentation is required to
+validate the existence of these processes and their causal relationship to behavior.
+
+3
+
+Figure 1: Draws from a Gaussian mixture model. Ellipses show the standard deviation
+contour for each mixture component.
+
+parameters. Returning to the RT example, the RTs are assumed to be independent of each other
+once we know which cluster generated each RT and the parameters of the latent clusters.
+
+Given a data set, we are usually interested in the cluster assignments, i.e., a grouping of the
+data.4 We can use Bayes rule to calculate the posterior probability of assignments given the data:
+
+P (c|y) =
+
+(cid:90)
+
+(cid:34) N(cid:89)
+
+(cid:80)
+
+,
+
+P (y|c)P (c)
+c P (y|c)P (c)
+K(cid:89)
+
+F (y|cn)
+
+(cid:35)
+
+(2)
+
+(3)
+
+where the likelihood is obtained by marginalizing over settings of :
+
+P (y|c) =
+
+
+
+n=1
+
+k=1
+
+G0(k)
+
+d.
+
+A G0 that is conjugate to F allows this integral to be calculated analytically. For example, the
+Gaussian is the conjugate prior to a Gaussian with xed variance, and this is why it is computa-
+tionally convenient to select G0 to be Gaussian in a mixture of Gaussians model.
+
+The posterior over assignments is intractable because computing the denominator (marginal
+likelihood) requires summing over every possible partition of the data into K groups. (This problem
+becomes more salient in the next section, where we consider the limiting case K  .) We can
+use approximate methods, such as Markov chain Monte Carlo (McLachlan and Peel, 2000) or
+variational inference (Attias, 2000); these methods are discussed further in Section 4.
+
+4Under the Dirichlet prior, the assignment vector c = [1, 2, 2] has the same probability as c = [2, 1, 1]. That
+is, these vectors are equivalent up to a label switch. Generally we do not care about what particular labels are
+associated with each class; rather, we care about partitionsequivalence classes of assignment vectors that preserve
+the same groupings but ignore labels.
+
+4
+
+21.510.500.511.522.51.510.500.511.52Figure 2: The Chinese restaurant process. The generative process of the CRP, where numbered
+diamonds represent customers, attached to their corresponding observations (shaded circles). The
+large circles represent tables (clusters) in the CRP and their associated parameters (). Note that
+technically the parameter values {} are not part of the CRP per se, but rather belong to the full
+mixture model.
+
+2.2 The Chinese restaurant process
+
+When we analyze data with the nite mixture of Equation 1, we must specify the number of latent
+clusters (e.g., hypothetical cognitive processes) in advance. In many data analysis settings, however,
+we do not know this number and would like to learn it from the data. BNP clustering addresses this
+problem by assuming that there is an innite number of latent clusters, but that a nite number
+of them is used to generate the observed data. Under these assumptions, the posterior provides a
+distribution over the number of clusters, the assignment of data to clusters, and the parameters
+associated with each cluster. Furthermore, the predictive distribution, i.e., the distribution of the
+next data point, allows for new data to be assigned to a previously unseen cluster.
+
+The BNP approach nesses the problem of choosing the number of clusters by assuming that it is
+innite, while specifying the prior over innite groupings P (c) in such a way that it favors assigning
+data to a small number of groups. The prior over groupings is called the Chinese Restaurant
+Process (CRP; Aldous, 1985; Pitman, 2002), a distribution over innite partitions of the integers;
+this distribution was independently discovered by Anderson (1991) in the context of his rational
+model of categorization (see Section 6.1 for more discussion of psychological implications). The
+CRP derives its name from the following metaphor. Imagine a restaurant with an innite number
+of tables,5 and imagine a sequence of customers entering the restaurant and sitting down. The rst
+customer enters and sits at the rst table. The second customer enters and sits at the rst table
+with probability 1
+1+ , where  is a positive real. When
+the nth customer enters the restaurant, she sits at each of the occupied tables with probability
+proportional to the number of previous customers sitting there, and at the next unoccupied table
+with probability proportional to . At any point in this process, the assignment of customers to
+tables denes a random partition. A schematic of this process is shown in Figure 2.
+
+1+ , and the second table with probability 
+
+More formally, let cn be the table assignment of the nth customer. A draw from this distribution
+
+5The Chinese restaurant metaphor is due to Pitman and Dubins, who were inspired by the seemingly innite
+
+seating capacity of Chinese restaurants in San Francisco.
+
+5
+
+12345678910TablesCustomersObservationsParameters13452can be generated by sequentially assigning observations to classes with probability
+
+P (cn = k|c1:n1) 
+
+if k  K+ (i.e., k is a previously occupied table)
+otherwise (i.e., k is the next unoccupied table)
+
+(4)
+
+(cid:26) mk
+
+n1+
+n1+
+
+
+
+where mk is the number of customers sitting at table k, and K+ is the number of tables for which
+mk > 0. The parameter  is called the concentration parameter. Intuitively, a larger value of 
+will produce more occupied tables (and fewer customers per table).
+
+The CRP exhibits an important invariance property: The cluster assignments under this dis-
+tribution are exchangeable. This means that p(c) is unchanged if the order of customers is shued
+(up to label changes). This may seem counter-intuitive at rst, since the process in Equation 4 is
+described sequentially.
+
+Consider the joint distribution of a set of customer assignments c1:N . It decomposes according
+
+to the chain rule,
+
+p(c1, c2, . . . , cN ) = p(c1)p(c2 | c1)p(c3 | c1, c2) p(cN | c1, c2, . . . , cN1),
+
+(5)
+
+where each terms comes from Equation 4. To show that this distribution is exchangeable, we will
+introduce some new notation. Let K(c1:N ) be the number of groups in which these assignments
+place the customers, which is a number between 1 and N . (Below, well suppress its dependence
+on c1:N .) Let Ik be the set of indices of customers assigned to the kth group, and let Nk be the
+number of customers assigned to that group (i.e., the cardinality of Ik).
+
+Now, examine the product of terms in Equation 5 that correspond to the customers in group
+
+k. This product is
+
+  1  2 (Nk  1)
+
+(Ik,1  1 + )(Ik,2  1 + ) (Ik,N  1 + )
+
+.
+
+(6)
+
+To see this, notice that the rst customer in group k contributes probability
+starting a new table; the second customer contributes probability
+
+1
+
+table with one customer at it; the third customer contributes probability
+numerator of Equation 6 can be more succinctly written as (Nk  1)!
+
+
+
+Ik,11+ because he is
+Ik,21+ because he is sitting a
+Ik,31+ , and so on. The
+
+2
+
+With this expression, we now rewrite the joint distribution in Equation 5 as a product over
+
+per-group terms,
+
+K(cid:89)
+
+k=1
+
+p(c1:N ) =
+
+(Nk  1)!
+
+(Ik,1  1 + )(Ik,2  1 + ) (Ik,Nk  1 + )
+
+.
+
+(7)
+
+Finally, notice that the union of Ik across all groups k identies each index once, because each
+customer is assigned to exactly one group. This simplies the denominator and lets us write the
+joint as
+
+p(c1:N ) =
+
+.
+
+(8)
+
+K(cid:81)K
+(cid:81)N
+k=1(Nk  1)!
+i=1(i  1 + )
+
+Equation 8 reveals that Equation 5 is exchangeable. It only depends on the number of groups K
+and the size of each group Nk. The probability of a particular seating conguration c1:N does not
+depend on the order in which the customers arrived.
+
+6
+
+2.3 Chinese restaurant process mixture models
+
+The BNP clustering model uses the CRP in an innite-capacity mixture model (Antoniak, 1974;
+Anderson, 1991; Escobar and West, 1995; Rasmussen, 2000). Each table k is associated with a
+cluster and with a cluster parameter k, drawn from a prior G0. We emphasize that there are an
+innite number of clusters, though a nite data set only exhibits a nite number of active clusters.
+Each data point is a customer, who sits at a table cn and then draws its observed value from
+the distribution F (yn|cn). The concentration parameter  controls the prior expected number
+of clusters (i.e., occupied tables) K+. In particular, this number grows logarithmically with the
+number of customers N : E[K+] =  log N (for  < N/ log N ). If  is treated as unknown, one can
+put a hyperprior over it and use the same Bayesian machinery discussed in Section 4 to infer its
+value.
+
+Returning to the RT example, the CRP allows us to place a prior over partitions of RTs into
+the hypothetical cognitive processes that generated them, without committing in advance to a
+particular number of processes. As in the nite setting, each process k is associated with a set of
+parameters k specifying the distribution over RTs (e.g., the mean of a Gaussian for log-transformed
+RTs). Figure 3 shows the clustering of RTs obtained by approximating the posterior of the CRP
+mixture model using Gibbs sampling (see Section 4); in this gure, the cluster assignments from
+a single sample are shown. These data were collected in an experiment on two-alternative forced-
+choice decision making (Simen et al., 2009). Notice that the model captures the two primary modes
+of the data, as well as a small number of left-skewed outliers.
+
+By examining the posterior over partitions, we can infer both the assignment of RTs to hypothet-
+ical cognitive processes and the number of hypothetical processes. In addition, the (approximate)
+posterior provides a measure of condence in any particular clustering, without committing to a
+single cluster assignment. Notice that the number of clusters can grow as more data are observed.
+This is both a natural regime for many scientic applications, and it makes the CRP mixture robust
+to new data that is far away from the original observations.
+
+When we analyze data with a CRP, we form an approximation of the joint posterior over all
+latent variables and parameters. In practice, there are two uses for this posterior. One is to examine
+the likely partitioning of the data. This gives us a sense of how are data are grouped, and how
+many groups the CRP model chose to use. The second use is to form predictions with the posterior
+predictive distribution. With a CRP mixture, the posterior predictive distribution is
+
+(cid:90)
+
+(cid:88)
+
+P (yn+1|y1:n) =
+
+P (yn+1|cn+1, )P (cn+1|c1:n)P (c1:n, |y1:n)d.
+
+(9)
+
+c1:n+1
+
+
+
+Since the CRP prior, P (cn+1|c1:n), appears in the predictive distribution, the CRP mixture allows
+new data to possibly exhibit a previously unseen cluster.
+
+3 Latent factor models and dimensionality reduction
+
+Mixture models assume that each observation is assigned to one of K components. Latent factor
+models weaken this assumption: each observation is inuenced by each of K components in a
+dierent way (see Comrey and Lee, 1992, for an overview). These models have a long history in
+psychology and psychometrics (Pearson, 1901; Thurstone, 1931), and one of their rst applications
+was to modeling human intelligence (Spearman, 1904). We will return to this application shortly.
+
+7
+
+Figure 3: Response time modeling with the CRP mixture model. An example distribution
+of response times from a two-alternative forced-choice decision making experiment (Simen et al.,
+2009) Colors denote clusters inferred by 100 iterations of Gibbs sampling.
+
+8
+
+Response time (log sec)Count0204060801001203210Cluster123Cluster 1Cluster 3Cluster 2Latent factor models provide dimensionality reduction in the (usual) case when the number of
+components is smaller than the dimension of the data. Each observation is associated with a vector
+of component activations (latent factors) that describes how much each component contributes
+to it, and this vector can be seen as a lower dimensional representation of the observation itself.
+When t to data, the components parsimoniously capture the primary modes of variation in the
+observations.
+
+The most popular of these modelsfactor analysis (FA), principal component analysis (PCA)
+and independent components analysis (ICA)all assume that the number of factors (K) is known.
+The Bayesian nonparametric variant of latent factor models we describe below allows the number
+of factors to grow as more data are observed. As with the BNP mixture model, the posterior
+distribution provides both the properties of the latent factors and how many are exhibited in the
+data.6
+In classical factor analysis, the observed data is a collection of N vectors, Y = {y1, . . . , yN},
+each of which are M -dimensional. Thus, Y is a matrix where rows correspond to observations and
+columns correspond to observed dimensions. The data (e.g., intelligence test scores) are assumed
+to be generated by a noisy weighted combination of latent factors (e.g., underlying intelligence
+faculties):
+
+yn = Gxn + n,
+
+(10)
+where G is a M  K factor loading matrix expressing how latent factor k inuences observation
+dimension m, xn is a K-dimensional vector expressing the activity of each latent factor, and n is a
+vector of independent Gaussian noise terms.7 We can extend this to a sparse model by decomposing
+the factor loading into the product of two components: Gmk = zmkwmk, where zmk is a binary
+mask variable that indicates whether factor k is on (zmk = 1) or o (zmk = 0) for dimension
+m, and wmk is a continuous weight variable. This is sometimes called a spike and slab model
+(Mitchell and Beauchamp, 1988; Ishwaran and Rao, 2005) because the marginal distribution over
+xmk is a mixture of a (typically Gaussian) slab P (wmk) over the space of latent factors and a
+spike at zero, P (zmk = 0).
+We take a Bayesian approach to inferring the latent factors, mask variables, and weights. We
+place priors over them and use Bayes rule to compute the posterior P (G, Z, W|Y). In contrast,
+classical techniques like ICA, FA and PCA t point estimates of the parameters (typically maximum
+likelihood estimates).
+
+As mentioned above, a classic application of factor analysis in psychology is to the modeling
+of human intelligence (Spearman, 1904). Spearman (1904) argued that there exists a general
+intelligence factor (the so-called g-factor) that can be extracted by applying classical factor analysis
+methods to intelligence test data. Spearmans hypothesis was motivated by the observation that
+scores on dierent tests tend to be correlated: Participants who score highly on one test are likely
+to score highly on another. However, several researchers have disputed the notion that this pattern
+arises from a unitary intelligence construct, arguing that intelligence consists of a multiplicity of
+components (Gould, 1981). Although we do not aspire to resolve this controversy, the question of
+
+6Historically, psychologists have explored a variety of rotation methods for enforcing sparsity and interpretability
+in FA solutions, starting with early work summarized by Thurstone (1947). Many recent methods are reviewed by
+Browne (2001). The Bayesian approach we adopt diers from these methods by specifying a preference for certain
+kinds of solutions in terms of the prior.
+
+7The assumption of Gaussian noise in Eq. 10 is not fundamental to the latent factor model, but is the most
+
+common choice of noise distribution.
+
+9
+
+Figure 4: The Indian buet process. The generative process of the IBP, where numbered
+diamonds represent customers, attached to their corresponding observations (shaded circles). Large
+circles represent dishes (factors) in the IBP, along with their associated parameters (). Each
+customer selects several dishes, and each customers observation (in the latent factor model) is a
+linear combination of the selected dishs parameters. Note that technically the parameter values
+{} are not part of the IBP per se, but rather belong to the full latent factor model.
+
+how many factors underlie human intelligence is a convenient testbed for the BNP factor analysis
+model described below.
+
+Since in reality the number of latent intelligence factors is unknown, we would like to avoid
+specifying K and instead allow the data to determine the number of factors. Following the model
+proposed by Knowles and Ghahramani (2011), Z is a binary matrix with a nite number of rows
+(each corresponding to an intelligence measure) and an innite number of columns (each corre-
+sponding to a latent factor).
+
+Like the CRP, the innite-capacity distribution over Z has been furnished with a similarly
+colorful culinary metaphor, dubbed the Indian buet process (IBP; Griths and Ghahramani,
+2005, 2011). A customer (dimension) enters a buet with an innite number of dishes (factors)
+arranged in a line. The probability that a customer m samples dish k (i.e., sets zmk = 1) is
+proportional to its popularity hk (the number of prior customers who have sampled the dish).
+When the customer has considered all the previously sampled dishes (i.e., those for which hk > 0),
+she samples an additional Poisson(/N ) dishes that have never been sampled before. When all
+M customers have navigated the buet, the resulting binary matrix Z (encoding which customers
+sampled which dishes) is a draw from the IBP.
+
+The IBP plays the same role for latent factor models that the CRP plays for mixture models:
+It functions as an innite-capacity prior over the space of latent variables, allowing an unbounded
+number of latent factors (Knowles and Ghahramani, 2011). Whereas in the CRP, each observation
+is associated with only one latent component, in the IBP each observation (or, in the factor analysis
+model described above, each dimension) is associated with a theoretically innite number of latent
+components.8 A schematic of the IBP is shown in Figure 4. Comparing to Figure 2, the key
+
+8Most of these latent factors will be o because the IBP preserves the sparsity of the nite Beta-Bernoulli prior
+(Griths and Ghahramani, 2005). The degree of sparsity is controlled by : for larger values, more latent factors
+
+10
+
+124512345334521CustomersObservationsParametersDishesFigure 5: Draws from the CRP and IBP. (Left) Random draw from the Chinese restaurant
+process.
+In the CRP, each customer is
+assigned to a single component. In the IBP, a customer can be assigned to multiple components.
+
+(Right) Random draw from the Indian buet process.
+
+11
+
+CustomersTablesDishesA draw from a Chinese restaurant processA draw from an Indian buffet processFigure 6: IBP factor analysis of human performance on reasoning tasks. (Left) Histogram
+of the number of latent factors inferred by Gibbs sampling applied to reasoning task data from Kane
+et al. (2004). 1000 samples were generated, and the rst 500 were discarded as burn-in. (Right)
+Relationship between the loading of the rst factor inferred by IBP factor analysis and Spearmans
+g (i.e., the loading of the rst factor inferred by classical factor analysis; Spearman, 1904).
+
+dierence between the CRP and the IBP is that in the CRP, each customer sits at a single table,
+whereas in the IBP, a customer can sample several dishes. This dierence is illustrated in Figure
+5, which shows random draws from both models side-by-side.
+
+Returning to the intelligence modeling example, posterior inference in the innite latent factor
+model yields a distribution over matrices of latent factors which describe hypothetical intelligence
+structures:
+
+P (X, W, Z|Y)  P (Y|X, W, Z)P (X)P (W)P (Z).
+
+(11)
+
+Exact inference is intractable because the normalizing constant requires a sum over all possible
+binary matrices. However, we can approximate the posterior using one of the techniques described
+in the next section (e.g., with a set of samples). Given posterior samples of Z, one typically examines
+the highest-probability sample (the maximum a posteriori, or MAP, estimate) to get a sense of the
+latent factor structure. As with the CRP, if one is interested in predicting some function of Z, then
+it is best to average this function over the samples.
+
+Figure 6 shows the results of the IBP factor analysis applied to data collected by Kane et al.
+(2004). We consider the 13 reasoning tasks administered to 234 participants. The left panel displays
+a histogram of the factor counts (the number of times zmk = 1 across posterior samples). This
+plot indicates that the dataset is best described by a combination of around 4 7 factors; although
+this is obviously not a conclusive argument against the existence of a general intelligence factor,
+it suggests that additional factors merit further investigation. The right panel displays the rst
+factor loading from the IBP factor analysis plotted against the g-factor, demonstrating that the
+nonparametric method is able to extract structure consistent with classical methods.9
+
+will tend to be active.
+
+9It is worth noting that the eld of intelligence research has developed its methods far beyond Spearmans g-factor.
+
+In particular, hierarchical factor analysis is now in common use. See Kane et al. (2004) for an example.
+
+12
+
+00.20.40.60.8100.20.40.60.81Classical factor loadingsIBP factor loadings05101520020406080100120Number of latent factorsCountFigure 7: Inference in a Chinese restaurant process mixture model. The approximate
+predictive distribution given by variational inference at dierent stages of the algorithm. The data
+are 100 points generated by a Gaussian DP mixture model with xed diagonal covariance. Figure
+reproduced with permission from Blei and Jordan (2006).
+
+4
+
+Inference
+
+We have described two classes of BNP modelsmixture models based on the CRP and latent
+factor models based on the IBP. Both types of models posit a generative probabilistic process of a
+collection of observed (and future) data that includes hidden structure. We analyze data with these
+models by examining the posterior distribution of the hidden structure given the observations; this
+gives us a distribution over which latent structure likely generated our data.
+
+Thus, the basic computational problem in BNP modeling (as in most of Bayesian statistics)
+is computing the posterior. For many interesting modelsincluding those discussed herethe
+posterior is not available in closed form. There are several ways to approximate it. While a
+comprehensive treatment of inference methods in BNP models is beyond the scope of this tutorial,
+we will describe some of the most widely-used algorithms.
+In Appendix B, we provide links to
+software packages implementing these algorithms.
+
+The most widely used posterior inference methods in Bayesian nonparametric models are
+Markov Chain Monte Carlo (MCMC) methods. The idea MCMC methods is to dene a Markov
+chain on the hidden variables that has the posterior as its equilibrium distribution (Andrieu et al.,
+2003). By drawing samples from this Markov chain, one eventually obtains samples from the poste-
+rior. A simple form of MCMC sampling is Gibbs sampling, where the Markov chain is constructed
+by considering the conditional distribution of each hidden variable given the others and the ob-
+servations. Thanks to the exchangeability property described in Section 2.2, CRP mixtures are
+particularly amenable to Gibbs samplingin considering the conditional distributions, each obser-
+vation can be considered to be the last one and the distribution of Equation 4 can be used as one
+term of the conditional distribution. (The other term is the likelihood of the observations under
+each partition.) Neal (2000) provides an excellent survey of Gibbs sampling and other MCMC
+algorithms for inference in CRP mixture models (see also Escobar and West, 1995; Rasmussen,
+2000; Ishwaran and James, 2001; Jain and Neal, 2004; Fearnhead, 2004; Wood and Griths, 2007).
+Gibbs sampling for the IBP factor analysis model is described in Knowles and Ghahramani (2011).
+MCMC methods, although guaranteed to converge to the posterior with enough samples, have
+
+13
+
+two drawbacks: (1) The samplers must be run for many iterations before convergence and (2)
+it is dicult to assess convergence. An alternative approach to approximating the posterior is
+variational inference (Jordan et al., 1999). This approach is based on the idea of approximating
+the posterior with a simpler family of distributions and searching for the member of that family that
+is closest to it.10 Although variational methods are not guaranteed to recover the true posterior
+(unless it belongs to the simple family of distributions), they are typically faster than MCMC
+and convergence assessment is straightforward. These methods have been applied to CRP mixture
+models (Blei and Jordan, 2006; Kurihara et al., 2007, see Fig. 7 for an example) and IBP latent
+factor models (Doshi-Velez et al., 2009; Paisley et al., 2010). We note that variational inference
+usually operates on a the random measure representation of CRP mixtures and IBP factor models,
+which are described in Appendix A. Gibbs samplers that operate on this representation are also
+available (Ishwaran and James, 2001).
+
+As we mentioned in the introduction, BNP methods provide an alternative to model selection
+over a parameterized family of models.11
+In eect, both MCMC and variational strategies for
+posterior inference provide a data-directed mechanism for simultaneously searching the space of
+models and nding optimal parameters. This is convenient in settings like mixture modeling or
+factor analysis because we avoid needing to t models for each candidate number of components.
+It is essential in more complex settings, where the algorithm searches over a space that is dicult
+to eciently enumerate and explore.
+
+5 Limitations and extensions
+
+We have described the most widely used BNP models, but this is only the tip of the iceberg. In this
+section we highlight some key limitations of the models described above, and the extensions that
+have been developed to address these limitations. It is worth mentioning here that we cannot do
+full justice to the variety of BNP models that have been developed over the past 40 years; we have
+omitted many exciting and widely-used ideas, such as Pitman-Yor processes, gamma processes,
+Dirichlet diusion trees and Kingmans coalescent. To learn more about these ideas, see the recent
+volume edited by Hjort et al. (2010).
+
+5.1 Hierarchical structure
+
+The rst limitation concerns grouped data: how can we capture both commonalities and idiosyn-
+crasies across individuals within a group? For example, members of an animal species will tend
+to be similar to each other, but also unique in certain ways. The standard Bayesian approach
+to this problem is based on hierarchical models (Gelman et al., 2004), in which individuals are
+coupled by virtue of being drawn from the same group-level distribution.12 The parameters of
+this distribution govern both the characteristics of the group and the degree of coupling. In the
+nonparametric setting, hierarchical extensions of the Dirichlet process (Teh et al., 2006) and beta
+
+10Distance between probability distributions in this setting is measured by the Kullback-Leibler divergence (relative
+
+entropy).
+
+11The Journal of Mathematical Psychology has published two special issues (Myung et al., 2000; Wagenmakers
+and Waldorp, 2006) on model selection which review a broad array of model selection techniques (both Bayesian and
+non-Bayesian).
+
+12See also the recent issue of Journal of Mathematical Psychology (Volume 55, Issue 1) devoted to hierarchical
+
+Bayesian models. Lee (2010) provides an overview for cognitive psychologists.
+
+14
+
+process (Thibaux and Jordan, 2007) have been developed, allowing an innite number of latent
+components to be shared by multiple individuals. For example, hierarchical Dirichlet processes can
+be applied to modeling text documents, where each document is represented by an innite mixture
+of word distributions (topics) that are shared across documents.
+
+Returning to the RT example from Section 2, imagine measuring RTs for several subjects. The
+goal again is to infer which underlying cognitive process generated each response time. Suppose
+we assume that the same cognitive processes are shared across subjects, but they may occur in
+dierent proportions. This is precisely the kind of structure the HDP can capture.
+
+5.2 Time series models
+
+The second limitation concerns sequential data: how can we capture dependencies between obser-
+vations arriving in a sequence? One of the most well-known models for capturing such dependencies
+is the hidden Markov model (see, e.g., Bishop, 2006), in which the latent class for observation n
+depends on the latent class for observation n  1. The innite hidden Markov model (HMM; Beal
+et al., 2002; Teh et al., 2006; Paisley and Carin, 2009) posits the same sequential structure, but
+employs an innite number of latent classes. Teh et al. (2006) showed that the innite HMM is a
+special case of the hierarchical Dirichlet process.
+
+As an alternative to the HMM (which assumes a discrete latent state), a linear dynamical
+system (also known as an autoregressive moving average model) assumes that the latent state is
+continuous and evolves over time according to a linear-Gaussian Markov process. In a switching
+linear dynamical system, the system can have a number of dynamical modes; this allows the
+marginal transition distribution to be non-linear. Fox et al. (2008) have explored nonparametric
+variants of switching linear dynamical systems, where the number of dynamical modes is inferred
+from the data using an HDP prior.
+
+5.3 Spatial models
+
+Another type of dependency arising in many datasets is spatial. For example, one expects that if
+a disease occurs in one location, it is also likely to occur in a nearby location. One way to capture
+such dependencies in a BNP model is to make the base distribution G0 of the DP dependent on a
+location variable (Gelfand et al., 2005; Duan et al., 2007). In the eld of computer vision, Sudderth
+and Jordan (2009) have applied a spatially-coupled generalization of the DP to the task of image
+segmentation, allowing them to encode a prior bias that nearby pixels belong to the same segment.
+We note in passing a burgeoning area of research attempting to devise more general specications
+of dependencies in BNP models, particularly for DPs (MacEachern, 1999; Grin and Steel, 2006;
+Blei and Frazier, 2010). These dependencies could be arbitrary functions dened over a set of
+covariates (e.g., age, income, weight). For example, people with similar age and weight will tend
+to have similar risks for certain diseases.
+
+More recently, several authors have attempted to apply these ideas to the IBP and latent factor
+
+models (Miller et al., 2008; Doshi-Velez and Ghahramani, 2009; Williamson et al., 2010).
+
+5.4 Supervised learning
+
+We have restricted ourselves to a discussion of unsupervised learning problems, where the goal is
+to discover hidden structure in data. In supervised learning, the goal is to predict some output
+
+15
+
+variable given a set of input variables (covariates). When the output variable is continuous, this
+corresponds to regression; when the output variable is discrete, this corresponds to classication.
+For many supervised learning problems, the outputs are non-linear functions of the inputs.
+The BNP approach to this problem is to place a prior distribution (known as a Gaussian pro-
+cess) directly over the space of non-linear functions, rather than specifying a parametric family
+of non-linear functions and placing priors over their parameters. Supervised learning proceeds by
+posterior inference over functions using the Gaussian process prior. The output of inference is itself
+a Gaussian process, characterized by a mean function and a covariance function (analogous to a
+mean vector and covariance matrix in parametric Gaussian models). Given a new set of inputs,
+the posterior Gaussian process induces a predictive distribution over outputs. Although we do
+not discuss this approach further, Rasmussen and Williams (2006) is an excellent textbook on this
+topic.
+
+Recently, another nonparametric approach to supervised learning has been developed, based
+on the CRP mixture model (Shahbaba and Neal, 2009; Hannah et al., 2010). The idea is to
+place a DP mixture prior over the inputs and then model the mean function of the outputs as
+conditionally linear within each mixture component (see also Rasmussen and Ghahramani, 2002;
+Meeds and Osindero, 2006, for related approaches). The result is a marginally non-linear model
+of the outputs with linear sub-structure. Intuitively, each mixture component isolates a region of
+the input space and models the mean output linearly within that region. This is an example of a
+generative approach to supervised learning, where the joint distribution over both the inputs and
+outputs is modeled. In contrast, the Gaussian process approach described above is a discriminative
+approach, modeling only the conditional distribution of the outputs given the inputs.
+
+6 Conclusions
+
+BNP models are an emerging set of statistical tools for building exible models whose structure
+grows and adapts to data.
+In this tutorial, we have reviewed the basics of BNP modeling and
+illustrated their potential in scientic problems.
+
+It is worth noting here that while BNP models address the problem of choosing the number of
+mixture components or latent factors, they are not a general solution to the model selection problem
+which has received extensive attention within mathematical psychology and other disciplines (see
+Claeskens and Hjort, 2008, for a comprehensive treatment). In some cases, it may be preferable to
+place a prior over nite-capacity models and then compare Bayes factors (Kass and Raftery, 1995;
+Vanpaemel, 2010), or to use selection criteria motivated by other theoretical frameworks, such as
+information theory (Grunwald, 2007).
+
+6.1 Bayesian nonparametric models of cognition
+
+We have treated BNP models purely as a data analysis tool. However, there is a ourishing tradition
+of work in cognitive psychology on using BNP models as theories of cognition. The earliest example
+dates back to Anderson (1991), who argued that a version of the CRP mixture model could explain
+human categorization behavior. The idea in this model is that humans adaptively learn the number
+of categories from their observations. A number of recent authors have extended this work (Griths
+et al., 2007; Heller et al., 2009; Sanborn et al., 2010) and applied it to other domains, such as classical
+conditioning (Gershman et al., 2010).
+
+16
+
+The IBP has also been applied to human cognition.
+
+In particular, Austerweil and Griths
+(2009a) argued that humans decompose visual stimuli into latent features in a manner consistent
+with the IBP. When the parts that compose objects strongly covary across objects, humans treat
+whole objects as features, whereas individual parts are treated as features if the covariance is weak.
+This nding is consistent with the idea that the number of inferred features changes exibly with
+the data.
+
+BNP models have been fruitfully applied in several other domains, including word segmentation
+(Goldwater et al., 2009), relational theory acquisition (Kemp et al., 2010) and function learning
+(Austerweil and Griths, 2009b).
+
+6.2 Suggestions for further reading
+
+A recent edited volume by Hjort et al. (2010) is a useful resource on applied Bayesian nonparamet-
+rics. For a more general introduction to statistical machine learning with probabilistic models, see
+Bishop (2006). For a review of applied Bayesian statistics, see Gelman et al. (2004).
+
+Acknowledgements
+
+We are grateful to Andrew Conway, Katherine Heller, Irvin Hwang, Ed Vul, James Pooley and
+Ken Norman who oered comments on an earlier version of the manuscript. The manuscript was
+greatly improved by suggestions from the reviewers. We are also grateful to Patrick Simen, Andrew
+Conway and Michael Kane for sharing their data and oering helpful suggestions. This work was
+supported by a graduate research fellowship from the NSF to SJG. DMB is supported by ONR
+175-6343, NSF CAREER 0745520, AFOSR 09NL202, the Alfred P. Sloan foundation, and a grant
+from Google.
+
+17
+
+Appendix A: Foundations
+
+We have developed BNP methods via the CRP and IBP, both of which are priors over combinatorial
+structures (innite partitions and innite binary matrices). These are the easiest rst ways to
+understand this class of models, but their mathematical foundations are found in constructions of
+random distributions.
+In this section, we review this perspective of the CRP mixture and IBP
+factor model.
+
+The Dirichlet process
+
+The Dirichlet process (DP) is a distribution over distributions. It is parameterized by a concentra-
+tion parameter  > 0 and a base distribution G0, which is a distribution over a space . A random
+variable drawn from a DP is itself a distribution over . A random distribution G drawn from a
+DP is denoted G  DP(, G0).
+its nite dimensional distributions. Consider a measurable partition of , {T1, . . . , TK}.13
+G  DP(, G0) then every measurable partition of  is Dirichlet-distributed,
+
+The DP was rst developed in Ferguson (1973), who showed its existence by appealing to
+If
+
+(G(T1), . . . , G(TK))  Dir(G0(T1), . . . , G0(TK)).
+
+(12)
+
+This means that if we draw a random distribution from the DP and add up the probability mass
+in a region T  , then there will on average be G0(T ) mass in that region. The concentration
+parameter plays the role of an inverse variance; for higher values of , the random probability mass
+G(T ) will concentrate more tightly around G0(T ).
+
+Ferguson (1973) proved two properties of the Dirichlet process. The rst property is that
+random distributions drawn from the Dirichlet process are discrete. They place their probability
+mass on a countably innite collection of points, called atoms,
+
+(cid:88)
+
+(cid:90) (cid:32) n(cid:89)
+
+(cid:33)
+
+G =
+
+k
+
+k
+
+.
+
+(13)
+
+In this equation, k is the probability assigned to the kth atom and 
+that atom. Further, these atoms are drawn independently from the base distribution G0.
+
+k is the location or value of
+
+The second property connects the Dirichlet process to the Chinese restaurant process. Consider
+a random distribution drawn from a DP followed by repeated draws from that random distribution,
+
+k=1
+
+G  DP(, G0)
+i  G i  {1, . . . , n}.
+
+(14)
+
+(15)
+
+Ferguson (1973) examined the joint distribution of 1:n, which is obtained by marginalizing out the
+random distribution G,
+
+p(1, . . . , n | , G0) =
+
+p(i | G)
+
+dP (G| , G0).
+
+(16)
+
+13A partition of  denes a collection of subsets whose union is . A partition is measurable if it is closed under
+
+complementation and countable union.
+
+i=1
+
+18
+
+He showed that, under this joint distribution, the i will exhibit a clustering propertythey will
+share repeated values with positive probability. (Note that, for example, repeated draws from a
+Gaussian do not exhibit this property.) The structure of shared values denes a partition of the
+integers from 1 to n, and the distribution of this partition is a Chinese restaurant process with
+parameter . Finally, he showed that the unique values of i shared among the variables are
+independent draws from G0.
+
+Note that this is another way to conrm that the DP assumes exchangeability of 1:n. In the
+foundations of Bayesian statistics, De Finettis representation theorem (De Finetti, 1931) says that
+an exchangeable collection of random variables can be represented as a conditionally independent
+collection: rst, draw a data generating distribution from a prior over distributions; then draw
+random variables independently from that data generating distribution. This reasoning in Equa-
+tion 16 shows that 1:n are exchangeable. (For a detailed discussion of De Finettis representation
+theorems, see Bernardo and Smith (1994).)
+
+Dirichlet process mixtures
+
+A DP mixture adds a third step to the model above Antoniak (1974),
+
+G  DP(, G0)
+i  G
+xi  p(| i).
+
+(17)
+
+(18)
+
+(19)
+
+Marginalizing out G reveals that the DP mixture is equivalent to a CRP mixture. Good Gibbs
+sampling algorithms for DP mixtures are based on this representation (Escobar and West, 1995;
+Neal, 2000).
+
+The stick-breaking construction
+
+Ferguson (1973) proved that the DP exists via its nite dimensional distributions. Sethuraman
+(1994) provided a more constructive denition based on the stick-breaking representation.
+Consider a stick with unit length. We divide the stick into an innite number of segments k by
+the following process. First, choose a beta random variable 1  beta(1, ) and break of 1 of the
+stick. For each remaining segment, choose another beta distributed random variable, and break o
+that proportion of the remainder of the stick. This gives us an innite collection of weights k,
+
+k  Beta(1, )
+
+k1(cid:89)
+
+k = k
+
+(1  j) k = 1, 2, 3, . . .
+
+(20)
+
+(21)
+
+j=1
+
+Finally, we construct a random distribution using Equation 13, where we take an innite number
+of draws from a base distribution G0 and draw the weights as in Equation 21. Sethuraman (1994)
+showed that the distribution of this random distribution is a DP(, G0).
+
+This representation of the Dirichlet process, and its corresponding use in a Dirichlet process
+mixture, allows us to compute a variety of functions of posterior DPs (Gelfand and Kottas, 2002)
+and is the basis for the variational approach to approximate inference (Blei and Jordan, 2006).
+
+19
+
+Figure 8: Stick-breaking construction. Procedure for generating  by breaking a stick of length
+1 into segments. Inset shows the beta distribution from which k is drawn, for dierent values of
+.
+
+20
+
+. . . 1 = 1 2 = 2(1-1) 2 = 3(1-2) (1-1) Beta distribution The beta process and Bernoulli process
+
+Latent factor models admit a similar analysis (Thibaux and Jordan, 2007). We dene the random
+measure B as a set of weighted atoms:
+
+K(cid:88)
+
+k=1
+
+K(cid:88)
+
+B =
+
+wkk ,
+
+(22)
+
+where wk  (0, 1) and the atoms {k} are drawn from a base measure B0 on . Note that in this
+case (in contrast to the DP), the sum of the weights does not sum to 1 (almost surely), which
+means that B is not a probability measure. Analogously to the DP, we can dene a distribution
+on distributions for random measures with weights between 0 and 1namely the beta process,
+which we denote by B  BP(, B0). Unlike the DP (which we could dene in terms of Dirichlet-
+distributed marginals), the beta process cannot be dened in terms of beta-distributed marginals.
+A formal denition requires an excursion into the theory of completely random measures, which
+would take us beyond the scope of this appendix (see Thibaux and Jordan, 2007).
+
+To build a latent factor model from the beta process, we dene a new random measure
+
+Xn =
+
+znkk ,
+
+(23)
+
+k=1
+
+where znk  Bernoulli(wk). The random measure Xn is then said to be distributed according to a
+Bernoulli process with base measure B, written as Xn  BeP(B). A draw from a Bernoulli process
+places unit mass on atoms for which znk = 1; this denes which latent factors are on for the
+nth observation. N draws from the Bernoulli process yield an IBP-distributed binary matrix Z, as
+shown by Thibaux and Jordan (2007).
+
+In the context of factor analysis, the factor loading matrix G is generated from this process
+by rst drawing the atoms and their weights from the beta process, and then constructing each
+G by turning on a subset of these atoms according to a draw from the Bernoulli process. Finally,
+observation yn is generated according to Eq. 10.
+
+Stick breaking construction of the beta process
+
+A double-use of the same breakpoints  leads to a stick-breaking construction of the beta process
+(Teh et al., 2007); see also Paisley et al. (2010).
+In this case, the weights correspond to the
+length of the remaining stick, rather than the length of the segment that was just broken o:
+
+k =(cid:81)k
+
+j=1(1  j).
+
+The innite limit of nite models
+
+In this section, we show BNP models can be derived by taking the innite limit of a corresponding
+nite-capacity model. For mixture models, we assume that the class assignments z were drawn
+from a multinomial distribution with parameters  = {1, . . . , K}, and place a symmetric Dirichlet
+distribution with concentration parameter  on . The nite mixture model can be summarized
+as follows:
+
+|  Dir(),
+k|G0  G0, yn|zn,   F (zn).
+
+zn|  
+
+21
+
+(24)
+
+When K  , this mixture converges to a Dirichlet process mixture model (Neal, 1992; Rasmussen,
+2000; Ishwaran and Zarepour, 2002).
+
+To construct a nite latent factor model, we assume that each mask variable is drawn from the
+
+following two-stage generative process:
+
+wk|  Beta(/K, 1)
+znk|wk  Bernoulli(wk).
+
+(25)
+
+(26)
+
+Intuitively, this generative process corresponds to creating a bent coin with bias wk, and then ip-
+ping it N times to determine whether to activate factors {z1k, . . . , zN k}. Griths and Ghahramani
+(2005) showed that taking the limit of this model as K   yields the IBP latent factor model.
+
+Appendix B: Software packages
+
+Below we present a table of several available software packages implementing the models presented
+in the main text.
+
+Link
+http://people.csail.mit.
+edu/jacobe/software.html
+http://people.csail.mit.
+edu/jacobe/software.html
+http://sites.google.com/
+site/kenichikurihara/
+academic-software
+http://mlg.eng.cam.ac.uk/
+dave
+
+http://people.csail.mit.
+edu/finale/new-wiki/
+doku.php?id=publications_
+posters_presentations_code
+
+Model
+CRP mix-
+ture model
+CRP mix-
+ture model
+CRP mix-
+ture model
+
+la-
+factor
+
+la-
+factor
+
+IBP
+tent
+model
+IBP
+tent
+model
+
+Algorithm Language Author
+MCMC
+
+Matlab
+
+Jacob Eisenstein
+
+MCMC
+
+R
+
+Variational Matlab
+
+Matthew
+Shotwell
+Kenichi Kurihara
+
+MCMC
+
+Matlab
+
+David Knowles
+
+Variational Matlab
+
+Finale
+Velez
+
+Doshi-
+
+22
+

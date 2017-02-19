@@ -1,0 +1,1569 @@
+Abstract
+
+We show how the Hamiltonian Monte Carlo algorithm can sometimes be speeded up by
+splitting the Hamiltonian in a way that allows much of the movement around the state
+space to be done at low computational cost. One context where this is possible is when the
+log density of the distribution of interest (the potential energy function) can be written as
+the log of a Gaussian density, which is a quadratic function, plus a slowly varying function.
+Hamiltonian dynamics for quadratic energy functions can be analytically solved. With the
+splitting technique, only the slowly-varying part of the energy needs to be handled numer-
+ically, and this can be done with a larger stepsize (and hence fewer steps) than would be
+necessary with a direct simulation of the dynamics. Another context where splitting helps is
+when the most important terms of the potential energy function and its gradient can be eval-
+uated quickly, with only a slowly-varying part requiring costly computations. With splitting,
+the quick portion can be handled with a small stepsize, while the costly portion uses a larger
+stepsize. We show that both of these splitting approaches can reduce the computational cost
+of sampling from the posterior distribution for a logistic regression model, using either a
+Gaussian approximation centered on the posterior mode, or a Hamiltonian split into a term
+that depends on only a small number of critical cases, and another term that involves the
+larger number of cases whose inuence on the posterior distribution is small. Supplemental
+materials for this paper are available online.
+
+Keywords: Markov chain Monte Carlo, Hamiltonian dynamics, Bayesian analysis
+
+1
+
+Introduction
+
+The simple Metropolis algorithm (Metropolis et al., 1953) is often eective at exploring low-
+
+dimensional distributions, but it can be very inecient for complex, high-dimensional distributions
+
+ successive states may exhibit high autocorrelation, due to the random walk nature of the
+
+movement. Faster exploration can be obtained using Hamiltonian Monte Carlo, which was rst
+
+Department of Statistics, University of California, Irvine, USA.
+Department of Statistics and Department of Computer Science, University of Toronto, Canada.
+
+1
+
+introduced by Duane et al. (1987), who called it hybrid Monte Carlo, and which has been recently
+
+reviewed by Neal (2010). Hamiltonian Monte Carlo (HMC) reduces the random walk behavior
+
+of Metropolis by proposing states that are distant from the current state, but nevertheless have
+
+a high probability of acceptance. These distant proposals are found by numerically simulating
+
+Hamiltonian dynamics for some specied amount of ctitious time.
+
+For this simulation to be reasonably accurate (as required for a high acceptance probability),
+
+the stepsize used must be suitably small. This stepsize determines the number of steps needed to
+
+produce the proposed new state. Since each step of this simulation requires a costly evaluation of
+
+the gradient of the log density, the stepsize is the main determinant of computational cost.
+
+In this paper, we show how the technique of splitting the Hamiltonian (Leimkuhler and
+
+Reich, 2004; Neal, 2010) can be used to reduce the computational cost of producing proposals for
+
+Hamiltonian Monte Carlo. In our approach, splitting separates the Hamiltonian, and consequently
+
+the simulation of the dynamics, into two parts. We discuss two contexts in which one of these
+
+parts can capture most of the rapid variation in the energy function, but is computationally cheap.
+
+Simulating the other, slowly-varying, part requires costly steps, but can use a large stepsize. The
+
+result is that fewer costly gradient evaluations are needed to produce a distant proposal. We
+
+illustrate these splitting methods using logistic regression models. Computer programs for our
+
+methods are publicly available from http://www.ics.uci.edu/~babaks/Site/Codes.html.
+
+Before discussing the splitting technique, we provide a brief overview of HMC. (See Neal,
+
+2010, for an extended review of HMC.) To begin, we briey discuss a physical interpretation of
+
+Hamiltonian dynamics. Consider a frictionless puck that slides on a surface of varying height.
+
+The state space of this dynamical system consists of its position, denoted by the vector q, and its
+
+momentum (mass, m, times velocity, v), denoted by a vector p. Based on q and p, we dene the
+
+potential energy, U (q), and the kinetic energy, K(p), of the puck. U (q) is proportional to the height
+of the surface at position q. The kinetic energy is m|v|2/2, so K(p) = |p|2/(2m). As the puck
+moves on an upward slope, its potential energy increases while its kinetic energy decreases, until
+
+it becomes zero. At that point, the puck slides back down, with its potential energy decreasing
+
+and its kinetic energy increasing.
+
+The above dynamic system can be represented by a function of q and p known as the Hamil-
+
+tonian, which for HMC is usually dened as the sum of a potential energy, U , depending only on
+
+2
+
+the position and a kinetic energy, K, depending only on the momentum:
+
+H(q, p) = U (q) + K(p)
+
+(1)
+
+The partial derivatives of H(q, p) determine how q and p change over time, according to Hamiltons
+
+equations:
+
+dqj
+dt
+
+dpj
+dt
+
+=
+
+H
+pj
+= H
+qj
+
+=
+
+K
+pj
+=  U
+qj
+
+(2)
+
+These equations dene a mapping Ts from the state at some time t to the state at time t + s.
+
+We can use Hamiltonian dynamics to sample from some distribution of interest by dening
+
+the potential energy function to be minus the log of the density function of this distribution
+
+(plus any constant). The position variables, q, then correspond to the variables of interest. We
+
+also introduce ctitious momentum variables, p, of the same dimension as q, which will have a
+
+distribution dened by the kinetic energy function. The joint density of q and p is dened by the
+
+Hamiltonian function as
+
+P (q, p) =
+
+1
+Z
+
+exp[ H(q, p)]
+
+When H(q, p) = U (q) + K(p), as we assume in this paper, we have
+
+P (q, p) =
+
+1
+Z
+
+exp[ U (q)] exp [ K(p)]
+
+matrix with elements m1, . . . , md, so that K(p) = (cid:80)
+
+so q and p are independent. Typically, K(p) = pT M1p / 2, with M usually being a diagonal
+i /2mi. The pj are then independent and
+
+i p2
+
+Gaussian with mean zero, with pj having variance mj.
+
+In applications to Bayesian statistics, q consists of the model parameters (and perhaps latent
+
+variables), and our objective is to sample from the posterior distribution for q given the observed
+
+data D. To this end, we set
+
+U (q) =  log[P (q)L(q|D)]
+
+where P (q) is our prior and L(q|D) is the likelihood function given data D.
+
+3
+
+Having dened a Hamiltonian function corresponding to the distribution of interest (e.g., a
+
+posterior distribution of model parameters), we could in theory use Hamiltons equations, ap-
+
+plied for some specied time period, to propose a new state in the Metropolis algorithm. Since
+
+Hamiltonian dynamics leaves invariant the value of H (and hence the probability density), and
+
+preserves volume, this proposal would always be accepted. (For a more detailed explanation, see
+
+Neal (2010).)
+
+In practice, however, solving Hamiltonians equations exactly is too hard, so we need to ap-
+
+proximate these equations by discretizing time, using some small step size . For this purpose,
+
+the leapfrog method is commonly used. It consists of iterating the following steps:
+
+pj(t + /2) = pj(t)  (/2)
+
+U
+qj
+
+(q(t))
+
+qj(t + ) = qj(t) + 
+
+K
+pj
+
+(p(t + /2))
+
+(3)
+
+In a typical case when K(p) = (cid:80)
+
+pj(t + ) = pj(t + /2)  (/2)
+
+U
+qj
+
+(q(t + ))
+
+i p2
+
+i /2mi, the time derivative of qj is K/pj = pj/mj. The
+
+computational cost of a leapfrog step will then usually be dominated by evaluation of U/qj.
+
+We can use some number, L, of these leapfrog steps, with some stepsize, , to propose a new
+
+state in the Metropolis algorithm. We apply these steps starting at the current state (q, p), with
+ctitious time set to t = 0. The nal state, at time t = L, is taken as the proposal, (q, p).
+(To make the proposal symmetric, we would need to negate the momentum at the end of the
+trajectory, but this can be omitted when, as here, K(p) = K(p) and p will be replaced (see
+below) before the next update.) This proposal is then either accepted or rejected (with the state
+
+remaining unchanged), with the acceptance probability being
+
+min[1, exp(H(q, p) + H(q, p))] = min[1, exp(U (q) + U (q)  K(p) + K(p))]
+
+These Metropolis updates will leave H approximately constant, and therefore do not explore
+
+the whole joint distribution of q and p. The HMC method therefore alternates these Metropolis
+
+updates with updates in which the momentum is sampled from its distribution (which is inde-
+
+pendent of q when H has the form in Eq. (1)). When K(p) = (cid:80)
+
+i p2
+
+i /2mi, each pj is sampled
+
+independently from the Gaussian distribution with mean zero and variance mj.
+
+4
+
+Figure 1: Comparison of Hamiltonian Monte Carlo (HMC) and Random Walk Metropolis (RWM)
+
+when applied to a bivariate normal distribution. Left plot: The rst 30 iterations of HMC with
+
+20 leapfrog steps. Right plot: The rst 30 iterations of RWM with 20 updates per iterations.
+
+As an illustration, consider sampling from the following bivariate normal distribution
+
+q  N (, ), with  =
+
+and  =
+
+(cid:18)3
+(cid:19)
+
+3
+
+(cid:18)1 0.95
+(cid:19)
+
+0.95 1
+
+For HMC, we set L = 20 and  = 0.15. The left plot in Figure 1 shows the rst 30 states from an
+
+HMC run started with q = (0, 0). The density contours of the bivariate normal distribution are
+
+shown as gray ellipses. The right plot shows every 20th state from the rst 600 iterations of a run
+
+of a simple random walk Metropolis (RWM) algorithm. (This takes time comparable to that for
+
+the HMC run.) The proposal distribution for RWM is a bivariate normal with the current state
+
+as the mean, and 0.152I2 as the covariance matrix. (The standard deviation of this proposal is the
+
+same as the stepsize of HMC.) Figure 1 shows that HMC explores the distribution more eciently,
+
+with successive samples being further from each other, and autocorrelations being smaller. For
+
+an extended review of HMC, its properties, and its advantages over the simple random walk
+
+Metropolis algorithm, see Neal (2010).
+
+In this example, we have assumed that one leapfrog step for HMC (which requires evaluating
+
+5
+
+q1q201234560123456q1q201234560123456the gradient of the log density) takes approximately the same computation time as one Metropolis
+
+update (which requires evaluating the log density), and that both move approximately the same
+
+distance. The benet of HMC comes from this movement being systematic, rather than in a
+
+random walk.1 We now propose a new approach called Split Hamiltonian Monte Carlo (Split
+
+HMC), which further improves the performance of HMC by modifying how steps are done, with
+
+the eect of reducing the time for one step or increasing the distance that one step moves.
+
+2 Splitting the Hamiltonian
+
+As discussed by Neal (2010), variations on HMC can be obtained by using discretizations of
+
+Hamiltonian dynamics derived by splitting the Hamiltonian, H, into several terms:
+
+H(q, p) = H1(q, p) + H2(q, p) +  + HK(q, p)
+
+We use Ti,t, for i = 1, . . . , k to denote the mapping dened by Hi for time t. Assuming that we
+can implement Hamiltonian dynamics Hk exactly, the composition T1,  T2,  . . .  Tk, is a valid
+discretization of Hamiltonian dynamics based on H if the Hi are twice dierentiable (Leimkuhler
+
+and Reich, 2004). This discretization is symplectic and hence preserves volume. It will also be
+
+reversible if the sequence of Hi are symmetric: Hi(q, p) = HKi+1(q, p).
+
+Indeed, the leapfrog method (3) can be regarded as a symmetric splitting of the Hamiltonian
+
+H(q, p) = U (q) + K(p) as
+
+H(q, p) = U (q)/2 + K(p) + U (q)/2
+
+(4)
+
+In this case, H1(q, p) = H3(q, p) = U (q)/2 and H2(q, p) = K(p). Hamiltonian dynamics for H1 is
+
+dqj
+dt
+
+dpj
+dt
+
+=
+
+H1
+pj
+
+= 0
+
+= H1
+qj
+
+= 1
+2
+
+U
+qj
+
+1Indeed, in this two-dimensional example, it is better to use Metropolis with a large proposal standard deviation,
+
+even though this leads to a low acceptance probability, because this also avoids a random walk. However, in higher-
+
+dimensional problems with more than one highly-conning direction, a large proposal standard deviation leads to
+
+such a low acceptance probability that this strategy is not viable.
+
+6
+
+which for a duration of  gives the rst part of a leapfrog step. For H2, the dynamics is
+
+dqj
+dt
+
+dpj
+dt
+
+=
+
+H2
+pj
+
+=
+
+K
+pj
+
+= H2
+qj
+
+= 0
+
+For time , this gives the second part of the leapfrog step. Hamiltonian dynamics for H3 is the
+
+same as that for H1 since H1 = H3, giving the the third part of the leapfrog step.
+
+2.1 Splitting the Hamiltonian when a partial analytic solution
+
+is available
+
+Suppose the potential energy U (q) can be written as U0(q) + U1(q). Then, we can split H as
+
+H(q, p) = U1(q)/2 + [U0(q) + K(p)] + U1(q)/2
+
+(5)
+
+Here, H1(q, p) = H3(q, p) = U1(q)/2 and H2(q, p) = U0(p) + K(p). The rst and the last terms in
+
+this splitting are similar to Eq. (4), except that U1(q) replaces U (q), so the rst and the last part
+
+of a leapfrog step remain as before, except that we use U1(q) rather than U (q) to update p. Now
+
+suppose that the middle part of the leapfrog, which is based on the Hamiltonian U0(q) + K(p),
+
+can be handled analytically  that is, we can compute the exact dynamics for any duration of
+
+time. We hope that since this part of the simulation introduces no error, we will be able to use
+
+a larger step size, and hence take fewer steps, reducing the computation time for the dynamical
+
+simulations.
+
+We are mainly interested in situations where U0(q) provides a reasonable approximation to
+
+U (q), and in particular on Bayesian applications, where we approximate U by focusing on the
+
+the posterior mode, q, and the second derivatives of U at that point. We can obtain q using fast
+
+methods such as Newton-Raphson iteration when analytical solutions are not available. We then
+approximate U (q) with U0(q), the energy function for N (q,J 1(q)), where J (q) is the Hessian
+matrix of U at q. Finally, we set U1(q) = U (q)  U0(q), the error in this approximation.
+
+Beskos et al. (2011) have recently proposed a similar splitting strategy for HMC, in which a
+
+Gaussian component is handled analytically, in the context of high-dimensional approximations
+
+to a distribution on an innite-dimensional Hilbert space.
+
+In such applications, the Gaussian
+
+7
+
+distribution will typically be derived from the problem specication, rather than being found as a
+
+numerical approximation, as we do here.
+
+Using a normal approximation in which U0(q) = 1
+
+2pT p
+(the energy for the standard normal distribution), H2(q, p) = U0(q) + K(p) in Eq. ((5)) will be
+
+2(q q)TJ (q)(q q), and letting K(p) = 1
+
+quadratic, and Hamiltons equations will be a system of rst-order linear dierential equations
+that can be handled analytically (Polyanin et al., 2002). Specically, setting q = q  q, the
+dynamical equations can be written as follows:
+
+q(t)
+ =
+
+p(t)
+
+d
+dt
+
+ 0
+
+I
+J (q) 0
+
+q(t)
+
+
+
+p(t)
+
+where I is the identity matrix. Dening X = (q, p), this can be written as
+
+where
+
+A =
+
+ 0
+
+I
+J (q) 0
+
+
+
+d
+dt
+
+X(t) = AX(t),
+
+The solution of this system is X(t) = eAt X0, where X0 is the initial value at time t = 0, and
+eAt = I + (At) + (At)2/2! +  is a matrix exponential. This can be simplied by diagonalizing
+the coecient matrix A as
+
+A = D1
+
+where  is invertible and D is a diagonal matrix. The system of equations can then be written as
+
+Now, let Y (t) = 1X(t). Then,
+
+X(t) = D1X(t)
+
+d
+dt
+
+d
+dt
+
+Y (t) = DY (t)
+
+The solution for the above equation is Y (t) = eDt Y0, where Y0 = 1X0. Therefore,
+
+X(t) = eDt 1 X0
+
+and eDt can be easily computed by simply exponentiating the diagonal elements of D times t.
+
+8
+
+Algorithm 1: Leapfrog for split Hamiltonian
+
+Algorithm 2: Nested leapfrog for split Hamil-
+
+Monte Carlo with a partial analytic solution.
+
+tonian Monte Carlo with splitting of data.
+
+R  eD1
+Sample initial values for p from N (0, I)
+
+Sample initial values for p from N (0, I)
+
+for (cid:96) = 1 to L do
+
+for (cid:96) = 1 to L do
+
+p  p  (/2)
+q  q  q
+X0  (q, p)
+(q, p)  RX0
+q  q + q
+p  p  (/2)
+
+U1
+q
+
+U1
+q
+
+end for
+
+U1
+q
+
+p  p  (/2)
+for m = 1 to M do
+p  p  (/2M )
+q  q + (/M )p
+p  p  (/2M )
+
+U0
+q
+
+U0
+q
+
+end for
+p  p  (/2)
+
+U1
+q
+
+end for
+
+The above analytical solution is of course for the middle part (denoted as H2) of Eq. (5) only.
+
+We still need to approximate the overall Hamiltonian dynamics based on H, using the leapfrog
+
+method. Algorithm 1 shows the corresponding leapfrog steps  after an initial step of size /2
+
+based on U1(q), we obtain the exact solution for a time step of  based on H2(q, p) = U0(q) + K(p),
+
+and nish by taking another step of size /2 based on U1(q).
+
+2.2 Splitting the Hamiltonian by splitting the data
+
+The method discussed in the previous section requires that we be able to handle the Hamiltonian
+
+H2(q, p) = U0(q) + K(p) analytically. If this is not so, splitting the Hamiltonian in this way may
+
+still be benecial if the computational cost for U0(q) is substantially lower than for U (q). In these
+
+situations, we can use the following split:
+
+M(cid:88)
+
+H(q, p) = U1(q)/2 +
+
+[U0(q)/2M + K(p)/M + U0(q)/2M ] + U1(q)/2
+
+(6)
+
+m=1
+
+for some M > 1. The above discretization can be considered as a nested leapfrog, where the outer
+
+part takes half steps to update p based on U1 alone, and the inner part involves M leapfrog steps
+
+of size /M based on U0. Algorithm 2 implements this nested leapfrog method.
+
+9
+
+For example, suppose our statistical analysis involves a large data set with many observations,
+
+but we believe that a small subset of data is sucient to build a model that performs reasonably
+
+well (i.e., compared to the model that uses all the observations). In this case, we can construct
+
+U0(q) based on a small part of the observed data, and use the remaining observations to construct
+
+U1(q). If this strategy is successful, we will able to use a large stepsize for steps based on U1,
+
+reducing the cost of a trajectory computation.
+
+In detail, we divide the observed data, y, into two subsets: R0, which is used to construct
+
+U0(q), and R1, which is used to construct U1:
+
+U () = U0() + U1()
+
+U0() =  log[P ()] (cid:88)
+U1() = (cid:88)
+
+iR0
+log[P (yi(cid:48)|)]
+
+i(cid:48)R1
+
+log[P (yi|)]
+
+(7)
+
+Note that the prior appears in U0() only.
+
+Neal (2010) discusses a related strategy for splitting the Hamiltonian by splitting the observed
+
+data into multiple subsets. However, instead of randomly splitting data, as proposed there, here
+
+we split data by building an initial model based on the maximum a posterior (MAP) estimate, q,
+
+and use this model to identify a small subset of data that captures most of the information in the
+
+full data set. We next illustrate this approach for logistic regression models.
+
+3 Application of Split HMC to logistic regression models
+
+We now look at how Split HMC can be applied to Bayesian logistic regression models for binary
+
+classication problems. We will illustrate this method using the simulated data set with n = 100
+
+data points and p = 2 covariates that is shown in Figure 2.
+
+The logistic regression model assigns probabilities to the two possible classes (denoted by 0
+
+and 1) in case i (for i = 1, . . . , n) as follows:
+
+P (yi = 1| xi, , ) =
+
+exp( + xT
+
+i )
+1 + exp( + xT
+
+i )
+
+(8)
+
+Here, xi is the vector of length p with the observed values of the covariates in case i,  is the
+
+10
+
+Figure 2: An illustrative binary classication problem with n = 100 data points and two covariates,
+
+x1 and x2, with the two classes represented by white circles and black squares.
+
+intercept, and  is the vector of p regression coecients. We use  to denote the vector of all p + 1
+
+unknown parameters, (, ).
+
+proportional to P ()(cid:81)n
+
+Let P () be the prior distribution for . The posterior distribution of  given x and y is
+
+i=1 P (yi|xi, ). The corresponding potential energy function is
+
+U () =  log[P ()]  n(cid:88)
+
+log[P (yi|xi, )]
+
+We assume the following (independent) priors for the model parameters:
+
+i=1
+
+  N (0, 2
+)
+j  N (0, 2
+),
+
+j = 1, . . . , p
+
+where  and  are known constants.
+
+The potential energy function for the above logistic regression model is therefore as follows:
+
+U () =
+
+2
+22
+
+
++
+
+[yi( + xT
+
+i )  log(1 + exp( + xT
+
+i ))]
+
+p(cid:88)
+
+j=1
+
+2
+j
+22
+
+
+ n(cid:88)
+
+i=1
+
+11
+
+-2-1012-2-1012x1x2The partial derivatives of the energy function with respect to  and the j are
+
+[yi  exp( + xT
+
+i )
+i )],
+1 + exp( + xT
+
+U
+j
+
+=
+
+j
+2
+
+
+xij[yi  exp( + xT
+
+i )
+i )]
+1 + exp( + xT
+
+ n(cid:88)
+
+i=1
+
+U
+
+
+=
+
+
+2
+
+
+ n(cid:88)
+
+i=1
+
+3.1 Split HMC with a partial analytical solution for a logistic model
+
+To apply Algorithm 1 for Split HMC to this problem, we approximate the potential energy function
+
+U () for the logistic regression model with the potential energy function U0() of the normal
+distribution N (,J 1()), where  is the MAP estimate of model parameters. U0() usually
+provides a reasonable approximation to U (), as illustrated in Figure 3. In the plot on the left,
+
+the solid curve shows the value of the potential energy, U , as 1 varies, with 2 and  xed to their
+
+MAP values, while the dashed curve shows U0 for the approximating normal distribution. The
+
+right plot of Figure 3 compares the partial derivatives of U and U0 with respect to 1, showing
+
+that U0/j provides a reasonable linear approximation to U /j.
+
+Since there is no error when solving Hamiltonian dynamics based on U0(), we would expect
+
+that the total discretization error of the steps taken by Algorithm 1 will be less that for the
+
+standard leapfrog method, for a given stepsize, and that we will therefore be able to use a larger
+
+stepsize  and hence need fewer steps for a given trajectory length  while still maintaining a
+
+good acceptance rate. The stepsize will still be limited to the region of stability imposed by the
+discretization error from U1 = U  U0, but this limit will tend to be larger than for the standard
+leapfrog method.
+
+3.2 Split HMC with splitting of data for a logistic model
+
+To apply Algorithm 2 to this logistic regression model, we split the Hamiltonian by splitting the
+
+data into two subsets. Consider the illustrative example discussed above. In the left plot of Figure
+4, the thick line represents the classication boundary using the MAP estimate, . For the points
+
+that fall on this boundary line, the estimated probabilities for the two groups are equal, both
+
+being 1/2. The probabilities of the two classes become less equal as the distance of the covariates
+
+from this line increases. We will dene U0 using the points within the region, R0, within some
+
+distance of this line, and dene U1 using the points in the region, R1, at a greater distance from
+
+12
+
+Figure 3: Left plot: The potential energy, U , for the logistic regression model (solid curve) and
+
+its normal approximation, U0 (dashed curve), as 1 varies, with other parameters at their MAP
+
+values. Right plot: The partial derivatives of U and U0 with respect to 1.
+
+this line. Equivalently, R0 contains those points for which the probability that y = 1 (based on
+
+the MAP estimates) is closest to 1/2.
+
+The shaded area in Figure 4 shows the region, R0, containing the 30% of the observations
+
+closest to the MAP line, or equivalently the 30% of observations for which the probability of
+
+class 1 is closest (in either direction) to 1/2. The unshaded region containing the remaining data
+
+points is denoted as R1. Using these two subsets, we can split the energy function U () into two
+
+terms: U0() based on the data points that fall within R0, and U1 based on the data points that
+
+fall within R1 (see Eq. (7)). Then, we use Eq. (6) to split the Hamiltonian dynamics.
+
+Note that U0 is not used to approximate the potential energy function, U , for the acceptance
+
+test at the end of the trajectory  the exact value of U is used for this test, ensuring that the
+
+equilibrium distribution is exactly correct. Rather, U0/j is used to approximate U /j, which
+
+is the costly computation when we simulate Hamiltonian dynamics.
+
+To see that it is appropriate to split the data according to how close the probability of class 1
+
+is to 1/2, note rst that the leapfrog step of Eq. (3) will have no error when the derivatives U/qj
+
+13
+
+01234354045501Energy functionUU001234-20-15-10-505101Partial derivative of the energy function w.r.t. 1U/1U0/1Figure 4: Left plot: A split of the data into two parts based on the MAP model, represented by
+
+the solid line; the energy function U is then divided into U0, based on the data points in R0, and
+
+U1, based on the data points in R1. Right plot: The partial derivatives of U and U0 with respect
+
+to 1, with other parameters at their MAP values.
+
+do not depend on q  that is, when the second derivatives of U are zero. Recall that for the
+
+logistic model,
+
+from which we get
+
+U
+j
+
+=
+
+j
+2
+
+
+yi  exp( + xT
+i )
+1 + exp( + xT
+
+i )
+
+(cid:21)
+
+(cid:20)
+
+xij
+
+ n(cid:88)
+(cid:34)
+
+i=1
+
+2U
+jj(cid:48)
+
+=
+
+=
+
+jj(cid:48)
+2
+
+
+jj(cid:48)
+2
+
+
++
+
++
+
+n(cid:88)
+n(cid:88)
+
+i=1
+
+i=1
+
+xijxij(cid:48)
+
+exp( + xT
+
+i )
+1 + exp( + xT
+
+i )
+
+(cid:18) exp( + xT
+
+i )
+1 + exp( + xT
+
+i )
+
+
+
+(cid:19)2(cid:35)
+
+xijxij(cid:48)P (yi = 1|xi, , )[1  P (yi = 1|xi, , )]
+
+The product P (yi = 1|xi, , )[1  P (yi = 1|xi, , )] is symmetrical around its maximum where
+P (yi = 1|xi, , ) is 1/2, justifying our criterion for selecting points in R0. The right plot of Figure
+4 shows the approximation of U /1 by U0/1 with 2 and  xed to their MAP values.
+
+14
+
+-2-1012-2-1012x1x2R1R0R101234-20-15-10-505101Partial derivative of the energy function w.r.t. 1U/1U0/13.3 Experiments
+
+In this section, we use simulated and real data to compare our proposed methods to standard
+
+HMC. For each problem, we set the number of leapfrog steps to L = 20 for standard HMC, and
+
+nd  such that the acceptance probability (AP) is close to 0.65 (Neal, 2010). We set L and  for
+
+the Split HMC methods such that the trajectory length, L, remains the same, but with a larger
+
+stepsize and hence a smaller number of steps. Note that this trajectory length is not necessarily
+
+optimal for these problems, but this should not aect our comparisons, in which the length is kept
+
+x.
+
+We try to choose  for the Split HMC methods such that the acceptance probability is equal to
+
+that of standard HMC. However, increasing the stepsize beyond a certain point leads to instability
+
+of trajectories, in which the error of the Hamiltonian grows rapidly with L (Neal, 2010), so that
+
+proposals are rejected with very high probability. This sometimes limits the stepsize of Split HMC
+
+to values at which the acceptance probability is greater than the 0.65 aimed at for standard HMC.
+
+Additionally, to avoid near periodic Hamiltonian dynamics (Neal, 2010), we randomly vary the
+
+stepsize over a small range. Specically, at each iteration of MCMC, we sample the stepsize from
+
+the Uniform(0.8, ) distribution, where  is the reported stepsize for each experiment.
+
+To measure the eciency of each sampling method, we use the autocorrelation time (ACT)
+
+by dividing the N posterior samples into batches of size B, and estimating ACT as follows (Neal,
+
+1993; Geyer, 1992):
+
+ = B
+
+S2
+b
+S2
+
+Here, S2 is the sample variance and S2
+
+b is the sample variance of batch means. Following Thomp-
+son (2010), we divide the posterior samples into N 1/3 batches of size B = N 2/3. Throughout
+
+this section, we set the number of Markov chain Monte Carlo (MCMC) iterations for simulating
+
+posterior samples to N = 50000.
+
+The autocorrelation time can be roughly interpreted as the number of MCMC transitions
+
+required to produce samples that can be considered as independent. For the logistic regression
+
+problems discussed in this section, we could nd the autocorrelation time separately for each pa-
+
+rameter and summarize the autocorrelation times using their maximum value (i.e., for the slowest
+
+moving parameter) to compare dierent methods. However, since one common goal is to use
+
+logistic regression models for prediction, we look at the autocorrelation time for the log likelihood,
+
+15
+
+HMC
+
+Split HMC
+
+Normal Appr. Data Splitting
+
+L
+
+g
+
+s
+
+AP
+
+
+  g
+  s
+
+  g
+  s
+
+20
+
+20
+
+0.187
+
+0.69
+
+4.6
+
+92
+
+0.864
+
+11.7
+
+234
+
+2.189
+
+10
+
+10
+
+0.087
+
+0.74
+
+3.2
+
+32
+
+0.284
+
+13.5
+
+135
+
+1.180
+
+3
+
+12.6
+
+0.096
+
+0.74
+
+3.0
+
+38
+
+0.287
+
+7.3
+
+92
+
+0.703
+
+Table 1: Split HMC (with normal approximation and data splitting) compared to standard HMC
+
+using simulated data, on a data set with n = 10000 observations and p = 100 covariates.
+
+(cid:80)n
+for(cid:80)
+i=1 log[P (yi|xi, )] using the posterior samples of . We also look at the autocorrelation time
+j(j)2 (denoting it ), since this may be more relevant when the goal is interpretation of
+
+parameter estimates.
+
+We adjust  (and similarly ) to account for the varying computation time needed by the
+dierent methods in two ways. One is to compare dierent methods using s, where s is the CPU
+time per iteration, using an implementation written in R. This measures the CPU time required
+
+to produce samples that can be regarded as independent samples. We also compare in terms of
+  g, where g is the number of gradient computations on the number of cases in the full data set
+required for each trajectory simulated by HMC. This will be equal to the number of leapfrog steps,
+
+L, for standard HMC or Split HMC using a normal approximation. When using data splitting
+with a fraction f of data in R0 and M inner leapfrog steps, g will be (f M +(1f ))L. In general,
+we expect that computation time will be dominated by the gradient computations counted by g,
+so that  g will provide a measure of performance independent of any particular implementation.
+In our experiments, s was close to being proportional to g, except for slightly larger than expected
+
+times for Split HMC with data splitting.
+
+16
+
+3.3.1 Simulated data
+
+We rst tested the methods on a simulated data set with 100 covariates and 10000 observations.
+The covariates were sampled as xij  N (0, 2
+j ), for i = 1, . . . , 10000 and j = 1, . . . , 100, with j
+set to 5 for the rst ve variables, to 1 for the next ve variables, and to 0.2 for the remaining 90
+
+variables. We sampled true parameter values,  and j, independently from N (0, 1) distributions.
+Finally, we sampled the class labels according to the model, as yi  Bernoulli(pi) with logit(pi) =
+ + xT
+
+i .
+
+For the Bayesian logistic regression model, we assumed normal priors with mean zero and
+
+standard deviation 5 for  and j, where j = 1, . . . , 100. We ran standard HMC, Split HMC
+
+with normal approximation, and Split HMC with data splitting for N = 50000 iterations. For the
+standard HMC, we set L = 20 and  = 0.015, so the trajectory length was 20  0.015 = 0.3. For
+Split HMC with normal approximation and Split HMC with data splitting, we reduce the number
+
+of leapfrog steps to 10 and 3 respectively, while increasing the stepsizes so that the trajectory
+
+length remained 0.3. For the data splitting method, we use 40% of the data points for U0 and set
+
+M = 9, which makes g equal 4.2L. For this example, we set L = 3 so g = 12.6, which is smaller
+
+than g = L = 20 used for the standard HMC algorithm
+
+Table 1 shows the results for the three methods. The CPU times (in seconds) per iteration,
+s, and   s for the Split HMC methods are substantially lower than for standard HMC. The
+comparison is similar looking at   g. Based on   s and   g, however, the improvement in
+eciency is more substantial for the data splitting method compared to the normal approximation
+
+method mainly because of the dierence in their corresponding values of .
+
+3.3.2 Results on real data sets
+
+In this section, we evaluate our proposed method using three real binary classication prob-
+
+lems. The data for these three problems are available from the UCI Machine Learning Repository
+
+(http://archive.ics.uci.edu/ml/index.html). For all data sets, we standardized the numeri-
+
+cal variables to have mean zero and standard deviation 1. Further, we assumed normal priors with
+
+mean zero and standard deviation 5 for the regression parameters. We used the setup described
+
+at the beginning of Section 3.3, running each Markov chain for N = 50000 iterations. Table 2
+
+17
+
+StatLog
+
+n = 4435, p = 37
+
+CTG
+
+n = 2126, p = 21
+
+Chess
+
+n = 3196, p = 36
+
+HMC
+
+Split HMC
+
+Normal Appr. Data Splitting
+
+20
+
+20
+
+0.033
+
+0.69
+
+5.6
+
+112
+
+14
+
+14
+
+0.026
+
+0.74
+
+6.0
+
+84
+
+3
+
+13.8
+
+0.023
+
+0.85
+
+4.0
+
+55
+
+0.190
+
+0.144
+
+0.095
+
+5.6
+
+112
+
+4.7
+
+66
+
+3.8
+
+52
+
+0.191
+
+0.122
+
+0.090
+
+20
+
+20
+
+0.011
+
+0.69
+
+6.2
+
+124
+
+0.069
+
+24.4
+
+488
+
+0.271
+
+20
+
+20
+
+13
+
+13
+
+0.008
+
+0.77
+
+7.0
+
+91
+
+0.055
+
+19.6
+
+255
+
+0.154
+
+9
+
+13
+
+0.022
+
+0.011
+
+0.62
+
+10.7
+
+214
+
+0.234
+
+23.4
+
+468
+
+0.511
+
+0.73
+
+12.8
+
+115
+
+0.144
+
+18.9
+
+246
+
+0.212
+
+2
+
+9.8
+
+0.005
+
+0.81
+
+5.0
+
+47
+
+0.028
+
+11.5
+
+113
+
+0.064
+
+2
+
+11.8
+
+0.013
+
+0.62
+
+12.1
+
+143
+
+0.161
+
+19.0
+
+224
+
+0.252
+
+L
+
+g
+
+s
+
+AP
+
+
+  g
+  s
+
+  g
+  s
+L
+
+g
+
+s
+
+AP
+
+
+  g
+  s
+
+  g
+  s
+L
+
+g
+
+s
+
+AP
+
+
+  g
+  s
+
+  g
+  s
+
+Table 2: HMC and Split HMC (normal approximation and data splitting) on three real data sets.
+
+18
+
+summarizes the results using the three sampling methods.
+
+The rst problem, StatLog, involves using multi-spectral values of pixels in a satellite image in
+
+order to classify the associated area into soil or cotton crop. (In the original data, dierent types
+
+of soil are identied.) The sample size for this data set is n = 4435, and the number of features is
+
+p = 37. For the standard HMC, we set L = 20 and  = 0.08. For the two Split HMC methods with
+
+normal approximation and data splitting, we reduce L to 14 and 3 respectively while increasing
+ so   L remains the same as that of the standard HMC. For the data splitting methods, we
+use 40% of data points for U0 and set M = 10. As seen in the table, the Split HMC methods
+
+improve eciency with the data splitting method performing substantially better than the normal
+
+approximation method.
+
+The second problem, CTG, involves analyzing 2126 fetal cardiotocograms along with their
+
+respective diagnostic features (de Campos et al., 2000). The objective is to determine whether the
+
+fetal state class is pathologic or not. The data include 2126 observations and 21 features. For
+
+the standard HMC, we set L = 20 and  = 0.08. We reduced the number of leapfrog steps to 13
+
+and 2 for Split HMC with normal approximation and data splitting respectively. For the latter,
+
+we use 30% of data points for U0 and set M = 14. Both splitting methods improved performance
+
+signicantly. As before, the data splitting method outperforms the normal approximation method.
+
+The objective of the last problem, Chess, is to predict chess endgame outcomes  either white
+
+can win or white cannot win. This data set includes n = 3196 instances, where each instance
+
+is a board-descriptions for the chess endgame. There are p = 36 attributes describing the board.
+
+For the standard HMC, we set L = 20 and  = 0.09. For the two Split HMC methods with normal
+
+approximation and data splitting, we reduced L to 9 and 2 respectively. For the data splitting
+
+method, we use 35% of the data points for U0 and set M = 15. Using the Split HMC methods,
+
+the computational eciency is improved substantially compared to standard HMC. This time
+
+however, the normal approximation approach performs better than the data splitting method in
+terms of   g,   s, and   s, while the latter performs better in terms of   g.
+
+4 Discussion
+
+We have proposed two new methods for improving the eciency of HMC, both based on splitting
+
+the Hamiltonian in a way that allows much of the movement around the state space to be performed
+
+19
+
+at low computational cost.
+
+While we demonstrated our methods on binary logistic regression models, they can be extended
+
+to multinomial logistic (MNL) models for multiple classes. For MNL models, the regression
+
+parameters for p covariates and J classes form a matrix of (p + 1) rows and J columns, which
+we can vectorize so that the model parameters, , become a vector of (p + 1)  J elements. For
+Split HMC with normal approximation, we can dene U0() using an approximate multivariate
+normal N (,J 1()) as before. For Split HMC with data splitting, we can still construct U0()
+using a small subset of data, based on the class probabilities for each data item found using the
+
+MAP estimates for the parameters (the best way of doing this is a subject for future research).
+
+The data splitting method could be further extended to any model for which it is feasible to nd
+
+a MAP estimate, and then divide the data into two parts based on residuals of some form.
+
+Another area for future research is to look for tractable approximations to the posterior dis-
+
+tribution other than normal distributions. One could also investigate other methods for splitting
+
+the Hamiltonian dynamics by splitting the data  for example, tting a support vector machine
+
+(SVM) to binary classication data, and using the support vectors for constructing U0.
+
+While the results on simulated data and real problems presented in this paper have demon-
+
+strated the advantages of splitting the Hamiltonian dynamics in terms of improving the sampling
+
+eciency, our proposed methods do require preliminary analysis of data, mainly, nding the MAP
+
+estimate. The performance of our approach obviously depends on how well the corresponding
+
+normal distribution based on MAP estimates approximates the posterior distribution, or how well
+
+a small subset of data found using this MAP estimate captures the overall patterns in the whole
+
+data set. This preliminary analysis involves some computational overhead, but the computational
+
+cost associated with nding the MAP estimate is often negligible compared to the potential im-
+
+provement in sampling eciency for the full Bayesian model. For the data splitting method, one
+
+could also consider splitting based on the class probabilities produced by a model that is simpler
+
+than the one being tted using HMC.
+
+Another approach to improving HMC has recently been proposed by Girolami and Calderhead
+
+(2011). Their method, Riemannian Manifold HMC (RMHMC), can also substantially improve
+
+performance. RMHMC utilizes the geometric properties of the parameter space to explore the
+
+best direction, typically at higher computational cost, to produce distant proposals with high
+
+20
+
+probability of acceptance. In contrast, our method attempts to nd a simple approximation to
+
+the Hamiltonian to reduce the computational time required for reaching distant states.
+
+It is
+
+possible that these approaches could be combined, to produce a method that performs better
+
+than either method alone. The recent proposals of Homan and Gelman (2011) for automatic
+
+tuning of HMC could also be combined with our Split HMC methods.
+

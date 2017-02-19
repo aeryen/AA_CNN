@@ -1,0 +1,843 @@
+Abstract
+
+1. Introduction
+
+We present in this paper a novel approach
+for training deterministic auto-encoders. We
+show that by adding a well chosen penalty
+term to the classical reconstruction cost func-
+tion, we can achieve results that equal or sur-
+pass those attained by other regularized auto-
+encoders as well as denoising auto-encoders
+on a range of datasets. This penalty term
+corresponds to the Frobenius norm of the
+Jacobian matrix of the encoder activations
+with respect to the input. We show that
+this penalty term results in a localized space
+contraction which in turn yields robust fea-
+tures on the activation layer. Furthermore,
+we show how this penalty term is related to
+both regularized auto-encoders and denoising
+auto-encoders and how it can be seen as a link
+between deterministic and non-deterministic
+auto-encoders. We nd empirically that this
+penalty helps to carve a representation that
+better captures the local directions of varia-
+tion dictated by the data, corresponding to a
+lower-dimensional non-linear manifold, while
+being more invariant to the vast majority of
+directions orthogonal to the manifold. Fi-
+nally, we show that by using the learned fea-
+tures to initialize a MLP, we achieve state
+of the art classication error on a range of
+datasets, surpassing other methods of pre-
+training.
+
+Appearing in Proceedings of the 28 th International Con-
+ference on Machine Learning, Bellevue, WA, USA, 2011.
+Copyright 2011 by the author(s)/owner(s).
+
+A recent topic of interest1 in the machine learning
+community is the development of algorithms for un-
+supervised learning of a useful representation. This
+automatic discovery and extraction of features is often
+used in building a deep hierarchy of features, within
+the contexts of supervised, semi-supervised, or unsu-
+pervised modeling. See Bengio (2009) for a recent
+review of Deep Learning algorithms. Most of these
+methods exploit as basic building block algorithms for
+learning one level of feature extraction: the represen-
+tation learned at one level is used as input for learning
+the next level, etc. The objective is that these rep-
+resentations become better as depth is increased, but
+what denes a good representation? It is fairly well un-
+derstood what PCA or ICA do, but much remains to
+be done to understand the characteristics and theoret-
+ical advantages of the representations learned by a Re-
+stricted Boltzmann Machine (Hinton et al., 2006), an
+auto-encoder (Bengio et al., 2007), sparse coding (Ol-
+shausen and Field, 1997; Kavukcuoglu et al., 2009), or
+semi-supervised embedding (Weston et al., 2008). All
+of these produce a non-linear representation which, un-
+like that of PCA or ICA, can be stacked (composed) to
+yield deeper levels of representation. It has also been
+observed empirically (Lee et al., 2009) that the deeper
+levels often capture more abstract features. A sim-
+ple approach (Hinton et al., 2006; Bengio et al., 2007),
+also used here, to empirically verify that the learned
+representations are useful, is to use them to initialize
+a classier (such as a multi-layer neural network), and
+measure classication error. Many experiments show
+that deeper models can thus yield lower classication
+error (Bengio et al., 2007; Jarrett et al., 2009; Vincent
+
+1see NIPS2010 Workshop on Deep Learning and Unsu-
+
+pervised Feature Learning
+
+Contractive Auto-Encoders
+
+et al., 2010).
+Contribution. What principles should guide the
+learning of such intermediate representations? They
+should capture as much as possible of the information
+in each given example, when that example is likely
+under the underlying generating distribution. That is
+what auto-encoders (Vincent et al., 2010) and sparse
+coding aim to achieve when minimizing reconstruc-
+tion error. We would also like these representations
+to be useful in characterizing the input distribution,
+and that is what is achieved by directly optimizing
+a generative models likelihood (such as RBMs).
+In
+this paper, we introduce a penalty term that could be
+added in either of the above contexts, which encour-
+ages the intermediate representation to be robust to
+small changes of the input around the training exam-
+ples. We show through comparative experiments on
+many benchmark datasets that this characteristic is
+useful to learn representations that help training bet-
+ter classiers. We hypothesize that whereas the pro-
+posed penalty term encourages the learned features to
+be locally invariant without any preference for partic-
+ular directions, when it is combined with a reconstruc-
+tion error or likelihood criterion we obtain invariance
+in the directions that make sense in the context of the
+given training data, i.e., the variations that are present
+in the data should also be captured in the learned rep-
+resentation, but the other directions may be contracted
+in the learned representation.
+
+2. How to extract robust features
+
+To encourage robustness of the representation f(x) ob-
+tained for a training input x we propose to penalize its
+sensitivity to that input, measured as the Frobenius
+norm of the Jacobian Jf (x) of the non-linear map-
+ping. Formally, if input x  IRdx is mapped by encod-
+ing function f to hidden representation h  IRdh, this
+sensitivity penalization term is the sum of squares of
+all partial derivatives of the extracted features with
+respect to input dimensions:
+
+F =(cid:88)
+
+ij
+
+(cid:107)Jf (x)(cid:107)2
+
+(cid:18) hj(x)
+
+(cid:19)2
+
+xi
+
+.
+
+(1)
+
+Penalizing (cid:107)Jf(cid:107)2
+F encourages the mapping to the fea-
+ture space to be contractive in the neighborhood of the
+training data. This geometric perspective, which gives
+its name to our algorithm, will be further elaborated
+on, in section 5.3, based on experimental evidence.
+The atness induced by having low valued rst deriva-
+tives will imply an invariance or robustness of the rep-
+resentation for small variations of the input. Thus
+in this study, terms like invariance, (in-)sensitivity, ro-
+
+bustness, atness and contraction all point to the same
+notion.
+While such a Jacobian term alone would encourage
+mapping to a useless constant representation,
+it is
+counterbalanced in auto-encoder training2 by the need
+for the learnt representation to allow a good recon-
+struction of the input3.
+
+3. Auto-encoders variants
+
+In its simplest form, an auto-encoder (AE) is com-
+posed of two parts, an encoder and a decoder. It was
+introduced in the late 80s (Rumelhart et al., 1986;
+Baldi and Hornik, 1989) as a technique for dimen-
+sionality reduction, where the output of the encoder
+represents the reduced representation and where the
+decoder is tuned to reconstruct the initial input from
+the encoders representation through the minimization
+of a cost function. More specically when the en-
+coding activation functions are linear and the num-
+ber of hidden units is inferior to the input dimen-
+sion (hence forming a bottleneck), it has been shown
+that the learnt parameters of the encoder are a sub-
+space of the principal components of the input space
+(Baldi and Hornik, 1989). With the use of non-linear
+activation functions an AE can however be expected
+to learn more useful feature-detectors than what can
+be obtained with a simple PCA (Japkowicz et al.,
+2000). Moreover, contrary to their classical use as
+dimensionality-reduction techniques, in their modern
+instantiation auto-encoders are often employed in a so-
+called over-complete setting to extract a number of fea-
+tures larger than the input dimension, yielding a rich
+higher-dimensional representation. In this setup, using
+some form of regularization becomes essential to avoid
+uninteresting solutions where the auto-encoder could
+perfectly reconstruct the input without needing to ex-
+tract any useful feature. This section formally denes
+the auto-encoder variants considered in this study.
+Basic auto-encoder (AE). The encoder is a func-
+tion f that maps an input x  IRdx to hidden represen-
+tation h(x)  IRdh. It has the form
+
+h = f(x) = sf (W x + bh),
+
+(2)
+
+where sf is a nonlinear activation function, typi-
+1+ez . The encoder is
+cally a logistic sigmoid(z) = 1
+parametrized by a dh  dx weight matrix W , and a
+2Using also the now common additional constraint
+of encoder and decoder sharing the same (transposed)
+weights, which precludes a mere global contracting scal-
+ing in the encoder and expansion in the decoder.
+
+3A likelihood-related criterion would also similarly pre-
+
+vent a collapse of the representation.
+
+Contractive Auto-Encoders
+
+bias vector bh  IRdh.
+The decoder function g maps hidden representation h
+back to a reconstruction y:
+
+y = g(h) = sg(W (cid:48)h + by),
+
+(3)
+
+where sg is the decoders activation function, typically
+either the identity (yielding linear reconstruction) or
+a sigmoid. The decoders parameters are a bias vector
+by  IRdx, and matrix W (cid:48). In this paper we only explore
+the tied weights case, in which W (cid:48) = W T .
+Auto-encoder training consists in nding parameters
+ = {W, bh, by} that minimize the reconstruction error
+on a training set of examples Dn, which corresponds
+to minimizing the following objective function:
+
+JAE() = (cid:88)
+
+xDn
+
+L(x, g(f(x))),
+
+(4)
+
+where L is the reconstruction error. Typical choices
+include the squared error L(x, y) = (cid:107)x  y(cid:107)2 used
+in cases of linear reconstruction and the cross-entropy
+loss when sg is the sigmoid (and inputs are in [0, 1]):
+
+L(x, y) = (cid:80)dx
+
+i=1 xi log(yi) + (1  xi) log(1  yi).
+
+Regularized auto-encoders (AE+wd). The sim-
+plest form of regularization is weight-decay which fa-
+vors small weights by optimizing instead the following
+regularized objective:
+
+JAE+wd() =
+
+L(x, g(f(x)))
+
++ 
+
+W 2
+
+ij, (5)
+
+(cid:32)(cid:88)
+
+xDn
+
+(cid:33)
+
+(cid:88)
+
+ij
+
+where the  hyper-parameter controls the strength of
+the regularization.
+Note that rather than having a prior on what the
+weights should be, it is possible to have a prior on what
+the hidden unit activations should be. From this view-
+point, several techniques have been developed to en-
+courage sparsity of the representation (Kavukcuoglu
+et al., 2009; Lee et al., 2008).
+Denoising Auto-encoders (DAE). A successful al-
+ternative form of regularization is obtained through
+the technique of denoising auto-encoders (DAE) put
+forward by Vincent et al. (2010), where one simply
+corrupts input x before sending it through the auto-
+encoder, that is trained to reconstruct the clean ver-
+sion (i.e. to denoise). This yields the following objec-
+tive function:
+
+JDAE() = (cid:88)
+
+xDn
+
+Exq(x|x)[L(x, g(f(x)))],
+
+(6)
+
+where the expectation is over corrupted versions x of
+examples x obtained from a corruption process q(x|x).
+This objective is optimized by stochastic gradient de-
+scent (sampling corrupted examples).
+Typically, we consider corruptions such as additive
+isotropic Gaussian noise: x = x + ,   N (0, 2I) and
+a binary masking noise, where a fraction  of input
+components (randomly chosen) have their value set to
+0. The degree of the corruption ( or ) controls the
+degree of regularization.
+
+4. Contractive auto-encoders (CAE)
+
+From the motivation of robustness to small perturba-
+tions around the training points, as discussed in sec-
+tion 2, we propose an alternative regularization that
+favors mappings that are more strongly contracting
+at the training samples (see section 5.3 for a longer
+discussion). The Contractive auto-encoder (CAE) is
+obtained with the regularization term of eq. 1 yielding
+objective function
+
+JCAE() = (cid:88)
+
+(cid:0)L(x, g(f(x))) + (cid:107)Jf (x)(cid:107)2
+
+F
+
+(cid:1)
+
+(7)
+
+xDn
+
+Relationship with weight decay. It is easy to see
+that the squared Frobenius norm of the Jacobian cor-
+responds to a L2 weight decay in the case of a linear
+encoder (i.e. when sf is the identity function). In this
+special case JCAE and JAE+wd are identical. Note
+that in the linear case, keeping weights small is the
+only way to have a contraction. But with a sigmoid
+non-linearity, contraction and robustness can also be
+achieved by driving the hidden units to their saturated
+regime.
+Relationship with sparse auto-encoders. Auto-
+encoder variants that encourage sparse representations
+aim at having, for each example, a majority of the
+components of the representation close to zero. For
+these features to be close to zero, they must have been
+computed in the left saturated part of the sigmoid non-
+linearity, which is almost at, with a tiny rst deriva-
+tive. This yields a corresponding small entry in the
+Jacobian Jf (x). Thus, sparse auto-encoders that out-
+put many close-to-zero features, are likely to corre-
+spond to a highly contractive mapping, even though
+contraction or robustness are not explicitly encouraged
+through their learning criterion.
+Relationship with denoising auto-encoders. Ro-
+bustness to input perturbations was also one of the
+motivation of the denoising auto-encoder, as stated in
+
+Contractive Auto-Encoders
+
+Vincent et al. (2010). The CAE and the DAE dier
+however in the following ways:
+CAEs explicitly encourage robustness of representa-
+tion f(x), whereas DAEs encourages robustness of re-
+construction (g  f)(x) (which may only partially and
+indirectly encourage robustness of the representation,
+as the invariance requirement is shared between the
+two parts of the auto-encoder). We believe that this
+property make CAEs a better choice than DAEs to
+learn useful feature extractors. Since we will use only
+the encoder part for classication, robustness of the
+extracted features appears more important than ro-
+bustness of the reconstruction.
+DAEs robustness is obtained stochastically (eq. 6) by
+having several explicitly corrupted versions of a train-
+ing point aim for an identical reconstruction. By con-
+trast, CAEs robustness to tiny perturbations is ob-
+tained analytically by penalizing the magnitude of rst
+derivatives (cid:107)Jf (x)(cid:107)2
+Note that an analytic approximation for DAEs
+stochastic robustness criterion can be obtained in the
+limit of very small additive Gaussian noise, by follow-
+ing Bishop (1995). This yields, not surprisingly, a term
+in (cid:107)Jgf (x)(cid:107)2
+F (Jacobian of reconstruction) rather than
+the (cid:107)Jf (x)(cid:107)2
+F (Jacobian of representation) of CAEs.
+Computational considerations
+In the case of a sigmoid nonlinearity, the penalty on
+the Jacobian norm has the following simple expression:
+
+F at training points only (eq. 7).
+
+dh(cid:88)
+
+dx(cid:88)
+
+(cid:107)Jf (x)(cid:107)2
+
+F =
+
+(hi (1  hi))2
+
+W 2
+ij.
+
+i=1
+
+j=1
+
+Computing this penalty (or its gradient), is similar
+to and has about the same cost as computing the re-
+construction error (or, respectively, its gradient). The
+overall computational complexity is O(dx  dh).
+
+5. Experiments and results
+
+Considered models. In our experiments, we com-
+pare the proposed Contractive Auto Encoder (CAE)
+against the following models for unsupervised feature
+extraction:
+
+trained by Contrastive Divergence,
+
+ RBM-binary : Restricted Boltzmann Machine
+ AE: Basic auto-encoder,
+ AE+wd: Auto-encoder with weight-decay regu-
+ DAE-g: Denoising auto-encoder with Gaussian
+ DAE-b: Denoising auto-encoder with binary
+
+larization,
+
+noise,
+
+masking noise,
+
+All auto-encoder variants used tied weights, a sigmoid
+activation function for both encoder and decoder, and
+a cross-entropy reconstruction error (see Section 3).
+They were trained by optimizing their (regularized)
+objective function on the training set by stochastic
+gradient descent. As for RBMs, they were trained by
+Contrastive Divergence.
+These algorithms were applied on the training set
+without using the labels (unsupervised) to extract a
+rst layer of features. Optionally the procedure was
+repeated to stack additional feature-extraction layers
+on top of the rst one. Once thus trained, the learnt
+parameter values of the resulting feature-extractors
+(weight and bias of the encoder) were used as initiali-
+sation of a multilayer perceptron (MLP) with an extra
+random-initialised output layer. The whole network
+was then ne-tuned by a gradient descent on a super-
+vised objective appropriate for classication 4, using
+the labels in the training set.
+Datasets used. We have tested our approach on a
+benchmark of image classication problems, namely:
+CIFAR-bw:
+a gray-scale version of the CIFAR-
+10 image-classication task(Krizhevsky and Hinton,
+2009) and MNIST: the well-known digit classica-
+tion problem. We also used problems from the same
+benchmark as Vincent et al. (2010) which includes ve
+harder digit recognition problems derived by adding
+extra factors of variation to MNIST digits, each with
+10000 examples for training, 2000 for validation, 50000
+for test as well as two articial shape classication
+problems5.
+
+5.1. Classication performance
+
+Our rst series of experiments focuses on the MNIST
+and CIFAR-bw datasets. We compare the classica-
+tion performance obtained by a neural network with
+one hidden layer of 1000 units, initialized with each of
+the unsupervised algorithms under consideration. For
+each case, we selected the value of hyperparameters
+(such as the strength of regularization) that yielded,
+after supervised ne-tuning, the best classication per-
+
+4We used sigmoid+cross-entropy for binary classica-
+
+tion, and log of softmax for multi-class problems
+
+5These datasets are available at http://www.iro.
+umontreal.ca/~lisa/icml2007: basic: smaller subset of
+MNIST; rot: digits with added random rotation; bg-rand:
+digits with random noise background; bg-img: digits with
+random image background; bg-img-rot: digits with rota-
+tion and image background; rect: discriminate between tall
+and wide rectangles (white on black); rect-img: discrimi-
+nate between tall and wide rectangular image on a dierent
+background image.
+
+Contractive Auto-Encoders
+
+Table 1. Performance comparison of the considered models
+on MNIST (top half) and CIFAR-bw (bottom half). Re-
+sults are sorted in ascending order of classication error on
+the test set. Best performer and models whose dierence
+with the best performer was not statistically signicant are
+in bold. Notice how the average Jacobian norm (before
+ne-tuning) appears correlated with the nal test error.
+SAT is the average fraction of saturated units per exam-
+ple. Not surprisingly, the CAE yields a higher proportion
+of saturated units.
+
+Model
+
+CAE
+DAE-g
+RBM-binary
+DAE-b
+AE+wd
+AE
+
+T
+S
+I
+N
+M
+
+w CAE
+b
+-
+R
+A
+F
+I
+C
+
+DAE-b
+DAE-g
+AE+wd
+AE
+
+Test Average
+(cid:107)Jf (x)(cid:107)F
+error
+0.73 104
+1.14
+0.86 104
+1.18
+2.50 104
+1.30
+7.87 104
+1.57
+5.00 104
+1.68
+17.5 104
+1.78
+2.40 105
+47.86
+4.85 105
+49.03
+4.94 105
+54.81
+34.9 105
+55.03
+44.9 105
+55.47
+
+SAT
+
+86.36%
+17.77%
+78.59%
+68.19%
+12.97%
+49.90%
+85,65%
+80,66%
+19,90%
+23,04%
+22,57%
+
+formance on the validation set. Final classication er-
+ror rate was then computed on the test set. With the
+parameters obtained after unsupervised pre-training
+(before ne-tuning), we also computed in each case the
+average value of the encoders contraction (cid:107)Jf (x)(cid:107)F
+on the validation set, as well as a measure of the av-
+erage fraction of saturated units per example6. These
+results are reported in Table 1. We see that the lo-
+cal contraction measure (the average (cid:107)Jf(cid:107)F ) on the
+pre-trained model strongly correlates with the nal
+classication error. The CAE, which explicitly tries to
+minimize this measure while maintaining a good re-
+construction, is the best-performing model. datasets.
+Results given in Table 2 compares the performance
+of stacked CAEs on the benchmark problems of
+Larochelle et al. (2007) to the three-layer models re-
+ported in Vincent et al. (2010). Stacking a second layer
+CAE on top of a rst layer appears to signicantly
+improves performance, thus demonstrating their use-
+fulness for building deep networks. Moreover on the
+majority of datasets, 2-layer CAE beat the state-of-
+the-art 3-layer model.
+
+6We consider a unit saturated if its activation is below
+0.05 or above 0.95. Note that in general the set of saturated
+units is expected to vary with each example.
+
+5.2. Closer examination of the contraction
+
+further away:
+
+To better understand the feature extractor produced
+by each algorithm, in terms of their contractive prop-
+erties, we used the following analytical tools:
+What happens locally: looking at the singular
+values of the Jacobian. A high dimensional Jaco-
+bian contains directional information: the amount of
+contraction is generally not the same in all directions.
+This can be examined by performing a singular value
+decomposition of Jf . We computed the average singu-
+lar value spectrum of the Jacobian over the validation
+set for the above models. Results are shown in Fig-
+ure 2 and will be discussed in section 5.3.
+What happens
+contraction
+curves. The Frobenius norm of the Jacobian at some
+point x measures the contraction of the mapping lo-
+cally at that point. Intuitively the contraction induced
+by the proposed penalty term can be measured beyond
+the immediate training examples, by the ratio of the
+distances between two points in their original (input)
+space and their distance once mapped in the feature
+space. We call this isotropic measure contraction ra-
+tio. In the limit where the variation in the input space
+is innitesimal, this corresponds to the derivative (i.e.
+Jacobian) of the representation map.
+For any encoding function f, we can measure the aver-
+age contraction ratio for pairs of points, one of which,
+x0 is picked from the validation set, and the other
+x1 randomly generated on a sphere of radius r cen-
+tered on x0 in input space. How this average ratio
+evolves as a function of r yields a contraction curve.
+We have computed these curves for the models for
+which we reported classication performance (the con-
+traction curves are however computed with their initial
+parameters prior to ne tuning). Results are shown in
+Figure 1 for single-layer mappings and in Figure 3 for 2
+and 3 layer mappings. They will be discussed in detail
+in the next section.
+
+5.3. Discussion: Local Space Contraction
+
+From a geometrical point of view, the robustness of
+the features can be seen as a contraction of the input
+space when projected in the feature space, in particu-
+lar in the neighborhood of the examples from the data-
+generating distribution: otherwise (if the contraction
+was the same at all distances) it would not be useful,
+because it would just be a global scaling. Such a con-
+traction is happening with the proposed penalty, but
+much less without it, as illustrated on the contraction
+curves of Figure 1. For all algorithms tested except
+the proposed CAE and the Gaussian corruption DAE
+
+Contractive Auto-Encoders
+
+Table 2. Comparison of stacked contractive auto-encoders with 1 and 2 layers (CAE-1 and CAE-2) with other 3-layer
+stacked models and baseline SVM. Test error rate on all considered classication problems is reported together with a
+95% condence interval. Best performer is in bold, as well as those for which condence intervals overlap. Clearly CAEs
+can be successfully used to build top-performing deep networks. 2 layers of CAE often outperformed 3 layers of other
+stacked models.
+
+Data Set
+basic
+rot
+bg-rand
+bg-img
+bg-img-rot
+rect
+rect-img
+
+SVMrbf
+3.030.15
+11.110.28
+14.580.31
+22.610.379
+55.180.44
+2.150.13
+24.040.37
+
+SAE-3
+3.460.16
+10.300.27
+11.280.28
+23.000.37
+51.930.44
+2.410.13
+24.050.37
+
+RBM-3 DAE-b-3
+2.840.15
+3.110.15
+9.530.26
+10.300.27
+6.730.22
+10.300.27
+16.680.33
+16.310.32
+43.760.43
+47.390.44
+1.990.12
+2.600.14
+22.500.37
+21.590.36
+
+CAE-1
+2.830.15
+11.590.28
+13.570.30
+16.700.33
+48.100.44
+1.480.10
+21.860.36
+
+CAE-2
+2.480.14
+9.660.26
+10.90 0.27
+15.500.32
+45.230.44
+1.210.10
+21.540.36
+
+(DAE-g), the contraction ratio decreases (i.e., towards
+more contraction) as we move away from the train-
+ing examples (this is due to more saturation, and was
+expected), whereas for the CAE the contraction ratio
+initially increases, up to the point where the eect of
+saturation takes over (the bump occurs at about the
+maximum distance between two training examples).
+Think about the case where the training examples con-
+gregate near a low-dimensional manifold. The vari-
+ations present in the data (e.g.
+translation and ro-
+tations of objects in images) correspond to local di-
+mensions along the manifold, while the variations that
+are small or rare in the data correspond to the direc-
+tions orthogonal to the manifold (at a particular point
+near the manifold, corresponding to a particular ex-
+ample). The proposed criterion is trying to make the
+features invariant in all directions around the training
+examples, but the reconstruction error (or likelihood)
+is making sure that that the representation is faith-
+ful, i.e., can be used to reconstruct the input exam-
+ple. Hence the directions that resist to this contract-
+ing pressure (strong invariance to input changes) are
+the directions present in the training set. Indeed, if the
+variations along these directions present in the training
+set were not preserved, neighboring training examples
+could not be distinguished and properly reconstructed.
+Hence the directions where the contraction is strong
+(small ratio, small singular values of the Jacobian ma-
+trix) are also the directions where the model believes
+that the input density drops quickly, whereas the di-
+rections where the contraction is weak (closer to 1,
+larger contraction ratio, larger singular values of the
+Jacobian matrix) correspond to the directions where
+the model believes that the input density is at (and
+large, since we are near a training example).
+We believe that this contraction penalty thus helps
+the learner carve a kind of mountain supported by the
+
+training examples, and generalizing to a ridge between
+them. What we would like is for these ridges to cor-
+respond to some directions of variation present in the
+data, associated with underlying factors of variation.
+How far do these ridges extend around each training
+example and how at are they? This can be visual-
+ized comparatively with the analysis of Figure 1, with
+the contraction ratio for dierent distances from the
+training examples.
+Note that dierent features (elements of the represen-
+tation vector) would be expected to have ridges (i.e.
+directions of invariance) in dierent directions, and
+that the dimensionality of these ridges (we are in
+a fairly high-dimensional space) gives a hint as to the
+local dimensionality of the manifold near which the
+data examples congregate. The singular value spec-
+trum of the Jacobian informs us about that geometry.
+The number of large singular values should reveal the
+dimensionality of these ridges, i.e., of that manifold
+near which examples concentrate. This is illustrated
+in Figure 2, showing the singular values spectrum of
+the encoders Jacobian. The CAE by far does the best
+job at representing the data variations near a lower-
+dimensional manifold, and the DAE is second best,
+while ordinary auto-encoders (regularized or not) do
+not succeed at all in this respect.
+What happens when we stack a CAE on top of an-
+other one, to build a deeper encoder? This is illus-
+trated in Figure 3, which shows the average contrac-
+tion ratio for dierent distances around each training
+point, for depth 1 vs depth 2 encoders. Composing
+two CAEs yields even more contraction and even more
+non-linearity, i.e. a sharper prole, with a atter level
+of contraction at short and medium distances, and a
+delayed eect of saturation (the bump only comes up
+at farther distances). We would thus expect higher-
+level features to be more invariant in their feature-
+
+Contractive Auto-Encoders
+
+Figure 2. Average spectrum of the encoders Jacobian, for
+the CIFAR-bw dataset. Large singular values correspond
+to the local directions of allowed variation learnt from
+the dataset. The CAE having fewer large singular values
+and a sharper decreasing spectrum, it suggests that it does
+a better job of characterizing a low-dimensional manifold
+near the training examples.
+
+6. Conclusion
+
+In this paper, we attempt to answer the following ques-
+tion: what makes a good representation? Besides be-
+ing useful for a particular task, which we can measure,
+or towards which we can train a representation, this
+paper highlights the advantages for representations to
+be locally invariant in many directions of change of
+the raw input. This idea is implemented by a penalty
+on the Frobenius norm of the Jacobian matrix of the
+encoder mapping, which computes the representation.
+The paper also introduces empirical measures of ro-
+bustness and invariance, based on the contraction ra-
+tio of the learned mapping, at dierent distances and
+in dierent directions around the training examples.
+We hypothesize that this reveals the manifold struc-
+ture learned by the model, and we nd (by look-
+ing at the singular value spectrum of the mapping)
+that the Contractive Auto-Encoder discovers lower-
+dimensional manifolds.
+In addition, experiments on
+many datasets suggest that this penalty always helps
+an auto-encoder to perform better, and competes or
+improves upon the representations learned by Denois-
+ing Auto-Encoders or RBMs, in terms of classication
+error.
+

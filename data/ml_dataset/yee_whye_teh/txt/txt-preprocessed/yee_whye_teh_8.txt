@@ -1,0 +1,1188 @@
+Abstract
+
+1. Introduction
+
+In spite of their superior performance, neural
+probabilistic language models (NPLMs) re-
+main far less widely used than n-gram mod-
+els due to their notoriously long training
+times, which are measured in weeks even for
+moderately-sized datasets. Training NPLMs
+is computationally expensive because they
+are explicitly normalized, which leads to hav-
+ing to consider all words in the vocabulary
+when computing the log-likelihood gradients.
+
+We propose a fast and simple algorithm for
+training NPLMs based on noise-contrastive
+estimation, a newly introduced procedure for
+estimating unnormalized continuous distri-
+butions. We investigate the behaviour of the
+algorithm on the Penn Treebank corpus and
+show that it reduces the training times by
+more than an order of magnitude without af-
+fecting the quality of the resulting models.
+The algorithm is also more ecient and much
+more stable than importance sampling be-
+cause it requires far fewer noise samples to
+perform well.
+
+We demonstrate the scalability of the pro-
+posed approach by training several neural
+language models on a 47M-word corpus with
+a 80K-word vocabulary, obtaining state-of-
+the-art results on the Microsoft Research
+Sentence Completion Challenge dataset.
+
+Appearing in Proceedings of the 29 th International Confer-
+ence on Machine Learning, Edinburgh, Scotland, UK, 2012.
+Copyright 2012 by the author(s)/owner(s).
+
+By assigning probabilities to sentences, language mod-
+els allow distinguishing between probable and improb-
+able sentences, which makes such models an impor-
+tant component of speech recognition, machine trans-
+lation, and information retrieval systems. Probabilis-
+tic language models are typically based on the Markov
+assumption, which means that they model the condi-
+tional distribution of the next word in a sentence given
+some xed number of words that immediately precede
+it. The group of words conditioned on is called the
+context, denoted h, while the word being predicted is
+called the target word, denoted w. n-gram models,
+which are eectively smoothed tables of normalized
+word/context co-occurrence counts, have dominated
+language modelling for decades due to their simplicity
+and excellent performance.
+
+In the last few years neural language models have be-
+come competitive with n-grams and now routinely out-
+perform them (Mikolov et al., 2011). NPLMs model
+the distribution for the next word as a smooth function
+of learned multi-dimensional real-valued representa-
+tions of the context words and the target word. Similar
+representations are learned for words that are used in
+similar ways, ensuring that the network outputs simi-
+lar probability values for them. Word representations
+learned by language models are also used for natu-
+ral language processing applications such as semantic
+role labelling (Collobert & Weston, 2008), sentiment
+analysis (Maas & Ng, 2010), named entity recognition
+(Turian et al., 2010), and parsing (Socher et al., 2011).
+
+Unfortunately, NPLMs are very slow to train, which
+makes them unappealing for large-scale applications.
+This is a consequence of having to consider the entire
+vocabulary when computing the probability of a single
+word or the corresponding gradient. In fact, the time
+complexity of this computation scales as the product
+
+A fast and simple algorithm for training neural probabilistic language models
+
+of the vocabulary size and the word feature dimen-
+sionality. One way to accelerate this computation is
+to reduce the vocabulary size for the NPLM by using it
+to predict only the most frequent words and handling
+the rest using an n-gram model (Schwenk & Gauvain,
+2005).
+
+Alternatively, the vocabulary can be structured into a
+tree with words at the leaves, allowing exponentially
+faster computation of word probabilities and their gra-
+dients (Morin & Bengio, 2005). Unfortunately, the
+predictive performance of the resulting model is heav-
+ily dependent on the tree used and nding a good tree
+is a dicult problem (Mnih & Hinton, 2009).
+
+Perhaps a more elegant approach is to keep the model
+the same and to approximate the expensive gradient
+computations using importance sampling (Bengio &
+Senecal, 2003). Unfortunately, the variance in the im-
+portance sampling estimates can make learning unsta-
+ble, unless it is carefully controlled (Bengio & Senecal,
+2008).
+
+In this paper we propose an ecient algorithm for
+training NPLMs based on noise-contrastive estima-
+tion (Gutmann & Hyvarinen, 2010), which is much
+more stable than importance sampling. Though it also
+uses sampling to approximate the gradients needed
+for learning, neither the number of samples nor the
+proposal distribution require dynamic adaptation for
+achieving performance on par with maximum likeli-
+hood learning.
+
+2. Neural probabilistic language models
+
+they use: neural language models learn their features
+jointly with other parameters, while maximum entropy
+models use xed hand-engineered features and only
+learn the weights for those features. A neural language
+model represents each word in the vocabulary using a
+real-valued feature vector and denes the scoring func-
+tion in terms of the feature vectors of the context words
+and the next word. In some models, dierent feature
+vector tables are used for the context and the next
+word vocabularies (Bengio et al., 2000), while in oth-
+ers the table is shared (Bengio et al., 2003; Mnih &
+Hinton, 2007).
+
+The feature vectors account for the vast majority of pa-
+rameters in neural language models, which means that
+their memory requirements are linear in the vocabu-
+lary size. This compares favourably to the memory re-
+quirements of the n-gram models, which are typically
+linear in the training set size.
+
+2.1. Log-bilinear model
+
+The training method we propose is directly applicable
+to all neural probabilistic and maximum-entropy lan-
+guage models. For simplicity, we will perform our ex-
+periments using the log-bilinear language (LBL) model
+(Mnih & Hinton, 2007), which is the simplest neu-
+ral language model. The LBL model performs lin-
+ear prediction in the semantic word feature space and
+does not have non-linearities. In spite of its simplic-
+ity, the LBL model has been shown to outperform
+n-grams, though the more complex neural language
+models (Mikolov et al., 2010; Mnih et al., 2009) can
+outperform it.
+
+A statistical language model is simply a collection of
+conditional distributions for the next word, indexed
+by its context.1 In a neural language model the condi-
+tional distribution corresponding to context h, P h(w),
+is dened as
+
+(cid:80)
+
+P h
+
+ (w) =
+
+exp(s(w, h))
+w(cid:48) exp(s(w(cid:48), h))
+
+,
+
+(1)
+
+where s(w, h) is the scoring function with parameters
+ which quanties the compatibility of word w with
+context h. The negated scoring function is sometimes
+referred to as the energy function (Bengio et al., 2000).
+
+Depending on the form of s(w, h), Eq. 1 can de-
+scribe both neural and maximum entropy language
+models (Berger et al., 1996). The main dierence
+between these two model classes lies in the features
+
+1Though almost all statistical language models predict
+the next word, it is also possible to model the distribution
+of the word preceding the context or surrounded by the
+context.
+
+In this paper we will use a slightly extended version of
+the LBL model that uses separate feature vector tables
+for the context words and the target words. Thus a
+context word w will be represented with feature vector
+rw, while a target word w will be represented with fea-
+ture vector qw. Given a context h, the model computes
+the predicted representation for the target word by
+linearly combining the feature vectors for the context
+words using position-dependent context weight matri-
+ces Ci:
+
+q =
+
+Cirwi.
+
+(2)
+
+i=1
+
+The score for the match between the context and the
+next word is computed by taking the dot product be-
+tween the predicted representation and the represen-
+tation of the candidate target word w:
+s(w, h) = q(cid:62)qw + bw.
+
+(3)
+
+n1(cid:88)
+
+A fast and simple algorithm for training neural probabilistic language models
+
+Here bw is the base rate parameter used to model the
+popularity of w. The probability of w in context h
+is then obtained by plugging the above score function
+into Eq. 1.
+
+2.2. Maximum likelihood learning
+
+Maximum likelihood training of neural language mod-
+els is tractable but expensive because computing the
+gradient of
+log-likelihood takes time linear in the
+vocabulary size. The contribution of a single con-
+text/word observation to the gradient of the log-
+likelihood is given by
+
+
+
+
+log P h
+
+ (w) =
+
+
+
+
+s(w, h) (cid:88)
+
+w(cid:48)
+
+ (w(cid:48))
+P h
+
+
+
+
+s(w(cid:48), h)
+
+(cid:21)
+
+(4)
+
+(cid:20) 
+
+
+
+=
+
+
+
+
+s(w, h)  EP h
+
+
+
+s(w, h)
+
+.
+
+ (w(cid:48)) is expensive to evaluate
+The expectation w.r.t. P h
+because it requires computing s(w, h) for all words
+in the vocabulary. Since vocabularies typically con-
+tain tens of thousands of words, maximum likelihood
+learning tends to be very slow.
+
+2.3. Importance sampling
+
+Bengio and Senecal (2003) have proposed a method
+for speeding up training of neural language models
+based on approximating the expectation in Eq. 4 us-
+ing importance sampling. The idea is to generate k
+samples x1, ..., xk from an easy-to-sample-from distri-
+bution Qh(w) and estimate the gradient with
+
+
+
+
+log P h
+
+ (w)  
+
+
+s(w, h)  1
+V
+
+k(cid:88)
+and V = (cid:80)k
+
+j=1
+
+v(xj)
+
+
+
+
+s(xj, h),
+
+(5)
+
+where v(x) = exp(s(x,h))
+j=1 v(xj). The
+Qh(w=x)
+normalization by V is necessary here because the im-
+portance weights v are computed using the unnormal-
+ized model distribution exp(s(x, h)). Typically the
+proposal distribution is an n-gram model t to the
+training set, possibly with a context size dierent from
+the neural models.
+
+Though this approach is conceptually simple, it is non-
+trivial to use in practice because the high variance of
+the importance sampling estimates can make learn-
+ing unstable. The variance tends to grow as learn-
+ing progresses, because the model distribution moves
+away from the proposal distribution.2 One way to
+
+2Bengio and Senecal (2008) argue that this happens be-
+
+control the variance is to keep increasing the number
+of samples during training so that the eective sam-
+ple size stays above some predetermined value (Ben-
+gio & Senecal, 2003). Alternatively, the n-gram pro-
+posal distribution can be adapted to track the model
+distribution throughout training (Bengio & Senecal,
+2008). The rst approach is simpler but less e-
+cient because the increasing number of samples makes
+learning slower. The second approach leads to greater
+speedups but is considerably more dicult to imple-
+ment and requires additional memory for storing the
+adaptive proposal distribution.
+
+3. Noise-contrastive estimation
+
+We propose using noise-contrastive estimation (NCE)
+as a more stable alternative to importance sampling for
+ecient training of neural language models and other
+models dened by Eq. 1. NCE has recently been in-
+troduced by Gutmann and Hyvarinen (2010) for train-
+ing unnormalized probabilistic models. Though it has
+been developed for estimating probability densities, we
+are interested in applying it to discrete distributions
+and so will assume discrete distributions and use prob-
+ability mass functions instead of density functions.
+
+The basic idea of NCE is to reduce the problem of
+density estimation to that of binary classication, dis-
+criminating between samples from the data distribu-
+tion and samples from a known noise distribution. In
+the language modelling setting, the data distribution
+P h
+d (w) will be the distribution of words that occur af-
+ter a particular context h. Though it is possible to use
+context-dependent noise distributions, for simplicity
+we will use a context-independent (unigram) Pn(w).
+We are interested in tting the context-dependent
+model P h
+
+ (w) to P h
+
+d (w).
+
+Following Gutmann and Hyvarinen (2012), we assume
+that noise samples are k times more frequent than data
+samples, so that datapoints come from the mixture
+k+1 P h
+k+1 Pn(w). Then the posterior probability
+that sample w came from the data distribution is
+
+d (w)+ k
+
+1
+
+P h(D = 1|w) =
+
+P h
+
+d (w)
+
+P h
+
+d (w) + kPn(w)
+
+.
+
+(6)
+
+Since we would like to t P h
+place of P h
+a function of the model parameters :
+
+ in
+d in Eq. 6, making the posterior probability
+
+d , we use P h
+
+ to P h
+
+P h(D = 1|w, ) =
+
+P h
+
+ (w)
+
+P h
+
+ (w) + kPn(w)
+
+.
+
+(7)
+
+cause neural language models and n-gram models learn
+very dierent distributions.
+
+A fast and simple algorithm for training neural probabilistic language models
+
+This quantity can be too expensive to compute, how-
+ever, because of the normalization required for eval-
+uating P h
+ (w) (Eq. 1). NCE sidesteps this issue by
+avoiding explicit normalization and treating normal-
+ization constants as parameters. Thus the model is
+parameterized in terms of an unnormalized distribu-
+tion P h0
+0 and a learned parameter ch corresponding to
+the logarithm of the normalizing constant:
+
+P h
+ (w) = P h0
+
+0 (w) exp(ch).
+
+(8)
+
+Here 0 are the parameters of the unnormalized dis-
+tribution and  = {0, ch}.
+To t the context-dependent model to the data (for
+the moment ignoring the fact that it shares parameters
+with models for other contexts), we simply maximize
+the expectation of log P h(D|w, ) under the mixture of
+the data and noise samples. This leads to the objective
+function
+
+P h
+
+ (xi)
+
+ (xi)+kPn(xi) are always be-
+Note that the weights
+P h
+tween 0 and 1, which makes NCE-based learning very
+stable (Gutmann & Hyvarinen, 2010). In contrast, the
+weights produced by importance sampling can be ar-
+bitrarily large.
+
+Since the distributions for dierent contexts share pa-
+rameters, we cannot learn these distributions indepen-
+dently of each other by optimizing one J h() at a time.
+Instead, we dene a global NCE objective by combin-
+ing the per-context NCE objectives using the empirical
+context probabilities P (h) as weights:
+
+J() =
+
+P (h)J h().
+
+(14)
+
+h
+
+Note that this is the traditional approach for combin-
+ing the per-context ML objectives for training neural
+language models.
+
+(cid:88)
+
++
+
+(9)
+
+3.1. Dealing with normalizing constants
+
+(cid:21)
+(cid:21)
+
+
+
+(10)
+
+.
+
+(11)
+
+Our initial implementation of NCE training learned a
+(log-)normalizing constant (c in Eq. 8) for each con-
+text in the training set, storing them in a hash table
+indexed by the context.3 Though this approach works
+well for small datasets, it requires estimating one pa-
+rameter per context, making it dicult to scale to huge
+numbers of observed contexts encountered by models
+with large context sizes. Surprisingly, we discovered
+that xing the normalizing constants to 1,4 instead of
+learning them, did not aect the performance of the
+resulting models. We believe this is because the model
+has so many free parameters that meeting the approxi-
+mate per-context normalization constraint encouraged
+by the objective function is easy.
+
+
+
+
+log P h
+
+ (w),
+
+3.2. Potential speedup
+
+(cid:21)
+(cid:21)
+
+(cid:20)
+(cid:20)
+
+d
+
+(cid:20)
+(cid:20)
+(cid:88)
+
+w
+
+J h() =EP h
+
+d
+
+log
+
+kEPn
+
+log
+
+P h
+
+ (w)
+
+P h
+
+ (w) + kPn(w)
+
+kPn(w)
+
+P h
+
+ (w) + kPn(w)
+
+with the gradient
+
+
+
+
+J h() =EP h
+
+kPn(w)
+
+P h
+
+ (w) + kPn(w)
+
+log P h
+
+ (w)
+
+kEPn
+
+P h
+
+ (w)
+
+P h
+
+ (w) + kPn(w)
+
+log P h
+
+ (w)
+
+Note that the gradient can also be expressed as
+
+
+
+
+
+
+
+
+
+
+
+
+J h() =
+
+kPn(w)
+
+P h
+ (w) + kPn(w)
+d (w)  P h
+
+ (w))
+
+(P h
+
+and that as k  ,
+
+J h() (cid:88)
+
+(P h
+
+
+
+
+w
+
+d (w)  P h
+
+ (w))
+
+
+
+
+log P h
+
+ (w), (12)
+
+which is the maximum likelihood gradient. Thus as
+the ratio of noise samples to observations increases,
+the NCE gradient approaches the maximum likelihood
+gradient.
+
+In practice, given a word w observed in context h, we
+compute its contribution to the gradient by generating
+k noise samples x1, ..., xk and using the formula
+
+
+
+
+J h,w() =
+
+kPn(w)
+
+(cid:20)
+
+P h
+
+k(cid:88)
+
+ (w) + kPn(w)
+ (xi)
+
+P h
+
+
+
+
+P h
+
+ (xi) + kPn(xi)
+
+i=1
+
+log P h
+
+ (w) (13)
+(cid:21)
+
+log P h
+
+ (xi)
+
+.
+
+
+
+
+We will now compare the gradient computation costs
+for NCE and ML learning. Suppose c is the context
+size, d is the word feature vector dimensionality, and
+V is the vocabulary size of the model. Then com-
+puting the predicted representation using Eq. 2 takes
+about cd2 operations for both NCE and ML. For ML,
+computing the distribution of the next word from the
+predicted representation takes about V d operations.
+For NCE, evaluating the probability of k noise samples
+under the model takes about kd operations. Since the
+gradient computation in each model has the same com-
+plexity as computing the probabilities, the speedup for
+
+3We did not use the learned normalizing constants when
+computing the validation and test set perplexities. Rather
+we normalized the probabilities explicitly.
+
+4This amounts to setting the normalizing parameters c
+
+to 0.
+
+A fast and simple algorithm for training neural probabilistic language models
+
+Table 1. Results for the LBL model with 100D feature vec-
+tors and a 2-word context on the Penn Treebank corpus.
+
+Training
+
+Number of Test Training
+
+algorithm
+
+samples
+
+PPL
+
+time (h)
+
+ML
+NCE
+NCE
+NCE
+NCE
+
+163.5
+192.5
+172.6
+163.1
+159.1
+
+1
+5
+25
+100
+
+21
+1.5
+1.5
+1.5
+1.5
+
+Table 2. The eect of the noise distribution and the num-
+ber of noise samples on the test set perplexity.
+
+Number of
+
+PPL using
+
+PPL using
+
+samples
+
+unigram noise
+
+uniform noise
+
+1
+5
+25
+100
+
+192.5
+172.6
+163.1
+159.1
+
+291.0
+233.7
+195.1
+173.2
+
+each parameter update due to using NCE is about
+
+Speedup =
+
+cd2 + V d
+cd2 + kd
+
+=
+
+cd + V
+cd + k
+
+.
+
+(15)
+
+For a model with a 2-word context, 100D feature vec-
+tors, and a vocabulary size of 10K, an NCE update
+using 25 noise samples should be about 45 times faster
+than an ML update.
+
+Since the time complexity of computing the predicted
+representation is quadratic in the feature vector di-
+mensionality, it can dominate the cost of the parameter
+update, making learning slow even for a small number
+of noise samples. We can avoid this by making context
+weight matrices Ci diagonal, reducing the complexity
+of computing the predicted representation to cd, and
+making the speedup factor c+V
+c+k . For the model above
+this would amount to a factor of 370. The use of di-
+agonal context matrices was introduced by Mnih &
+Hinton (2009) to speed up their hierarchical LBL-like
+model.
+
+Since the cost of a parameter update for importance-
+sampling-based learning is the same as for NCE with
+the same number of noise samples, the algorithm that
+needs fewer samples to perform well will be faster.
+
+4. Penn Treebank results
+
+We investigated the properties of the proposed algo-
+rithm empirically on the Penn Treebank corpus. As is
+common practice, we trained on sections 0-20 (930K
+
+words) and used sections 21-22 (74k words) as the val-
+idation set and sections 23-24 (82k words) as the test
+set. The standard vocabulary of 10K most frequent
+words was used with the remaining words replaced by
+a special token. We chose to use this dataset to keep
+the training time for exact maximum likelihood learn-
+ing reasonable.
+
+The learning rates were adapted at the end of each
+epoch based on the change in the validation set per-
+plexity since the end of the previous epoch. The rates
+were halved when the perplexity increased and were
+left unchanged otherwise. Parameters were updated
+based on mini-batches of 1000 context/word pairs
+each. Except when stated otherwise, NCE training
+generated 25 noise samples from the empirical unigram
+distribution per context/word observation. Noise sam-
+ples were generated anew for each update. We did
+not use a weight penalty as the validation-score-based
+learning rate reduction appeared to be sucient to
+avoid overtting. All models used a two-word context
+and dierent 100D feature vector tables for context
+and target words.
+
+Our rst experiment compared ML learning to NCE
+learning for various numbers of noise samples. The re-
+sulting test perplexities and training times are shown
+in Table 1.
+It is clear that increasing the number
+of noise samples produces better-performing models,
+with 25 samples being sucient to match the ML-
+trained model.
+In terms of training time, NCE was
+14 times faster than ML. The number of noise sam-
+ples did not have a signicant eect on the running
+time because computing the predicted representation
+was considerably more expensive than computing the
+probability of (at most) 100 samples. The main rea-
+son the speedup factor was less than 45 (the value pre-
+dicted in Section 3.2) is because NCE took about twice
+as many epochs as ML to converge. Our NCE imple-
+mentation is also less optimized than the ML imple-
+mentation which takes greater advantage of the BLAS
+matrix routines.
+
+To explore the eect of the noise distribution on the
+performance of the algorithm, we tried generating
+noise samples from the unigram as well as the uniform
+distribution. For each noise distribution we trained
+models using 1, 5, 25, and 100 noise samples per dat-
+apoint. As shown in Table 2, the unigram noise dis-
+tribution leads to much better test set perplexity in
+all cases. However, the perplexity gap shrinks as the
+number of noise samples increases, from almost 100
+for a single noise sample down to under 15 for 100
+noise samples. In spite of poor test set performance,
+a uniform noise distribution did not lead to learning
+
+A fast and simple algorithm for training neural probabilistic language models
+
+instability even when a single noise sample was used.
+
+In addition to the ML and NCE algorithms, we also
+implemented the importance sampling training algo-
+rithm from (Bengio & Senecal, 2003) to use as a base-
+line, but found it very unstable. It diverged in virtually
+all of our experiments, even with adaptive sample size
+and the target eective sample size set to hundreds.
+The only run that did not diverge involved learning a
+unigram model using the target unigram as the pro-
+posal distribution, which is the ideal situation for im-
+portance sampling. The cause of failure in all cases was
+the appearance of extremely large importance weights
+once the model distribution became suciently dier-
+ent from the unigram proposal distribution5, which is
+a known problem with importance sampling. Since
+IS-based methods seem to require well over a hundred
+samples per gradient computation (Bengio & Senecal,
+2008), even when an adaptive proposal distribution
+is used, we expect IS-based training to be consider-
+ably slower than NCE, which, as we have shown, can
+achieve ML-level performance with only 25 noise sam-
+ples.
+
+5. Sentence Completion Challenge
+
+To demonstrate the scalability and eectiveness of
+our approach we used it to train several large neu-
+ral language models for the Microsoft Research Sen-
+tence Completion Challenge (Zweig & Burges, 2011).
+The challenge was designed as a benchmark for seman-
+tic models and consists of SAT-style sentence comple-
+tion problems. Given 1,040 sentences, each of which is
+missing a word, the task is to select the correct word
+out of the ve candidates provided for each sentence.
+Candidate words have been chosen from relatively in-
+frequent words using a maximum entropy model to
+ensure that the resulting complete sentences were not
+too improbable. Human judges then picked the best
+four candidates for each sentence so that all comple-
+tions were grammatically correct but the correct an-
+swer was unambiguous. Though humans can achieve
+over 90% accuracy on the task, statistical models fare
+much worse with the best result of 49% produced
+by a whole-sentence LSA model, and n-gram models
+achieving only about 39% accuracy (Zweig & Burges,
+2011).
+
+Neural language models are a natural choice for this
+task because they can take advantage of larger con-
+texts than traditional n-gram models, which we expect
+
+5Though using a unigram proposal distribution might
+appear naive, Bengio and Senecal (2003) reported that
+higher-order n-gram proposal distributions worked much
+worse than the unigram.
+
+to be important for sentence completion. We used a
+slightly modied LBL architecture for our models for
+this task. In the interests of scalability, we used diag-
+onal context weight matrices which reduced the time
+complexity of gradient computations from quadratic
+to linear in the dimensionality of word feature vectors
+and allowed us to use more feature dimensions. Since
+the task was sentence completion, we made the mod-
+els aware of sentence boundaries by using a special
+out-of-sentence token for words in context positions
+outside of the sentence containing the word being pre-
+dicted. For example, this token would be used as the
+context word when predicting the rst word in a sen-
+tence using a model with a single-word context.
+
+We score a candidate sentence with a language model
+by using it to compute the probability of each word in
+the sentence and taking the product of those probabil-
+ities as the sentence score. We then pick the candidate
+word that produces the highest-scoring sentence as our
+answer. Note that this way of using a model with a c-
+word context takes into account c words on both sides
+of the candidate word because the probabilities of the
+c words following the candidate word depend on it.
+
+The models were trained on the standard training set
+for the challenge containing 522 works from Project
+Gutenberg. After removing the Project Gutenberg
+headers and footers from the les, we split them into
+sentences and then tokenized the sentences into words.
+We used the Punkt sentence tokenizer and the Penn
+Treebank word tokenizer from NLTK (Bird et al.,
+2009). We then converted all words to lowercase and
+replaced the ones that occurred fewer than 5 times
+with an unknown word token, resulting in a vocab-
+ulary size of just under 80,000. The sentences to be
+completed were preprocessed in the same manner. The
+resulting dataset was then randomly split at the sen-
+tence level into a test and validation sets of 10K words
+(500 sentences) each and a 47M-word training set.
+
+We used the training procedure described in Section 4,
+with the exception of using a small weight penalty to
+avoid overtting. Each model took between one and
+two days to train on a single core of a modern CPU. As
+a baseline for comparison, we also trained several n-
+gram models (with modied Kneser-Ney smoothing)
+using the SRILM toolkit (Stolcke, 2002), obtaining
+results similar to those reported by Zweig & Burges
+(2011).
+
+Since we selected hyperparameters based on the
+(Gutenberg) validation set perplexity, we report the
+scores on the entire collection of 1,040 sentences, which
+means that our results are directly comparable to those
+of Zweig & Burges (2011). As can be seen from Ta-
+
+A fast and simple algorithm for training neural probabilistic language models
+
+Table 3. Accuracy on the complete MSR Sentence Com-
+pletion Challenge dataset. n  2 indicates a bidirectional
+context. The LSA result is from (Zweig & Burges, 2011).
+
+Model
+
+Context Latent Percent Test
+
+type
+
+size
+
+dim
+
+correct
+
+PPL
+
+3-gram
+4-gram
+5-gram
+6-gram
+
+LSA
+LBL
+LBL
+LBL
+LBL
+LBL
+LBL
+LBL
+LBL
+LBL
+
+2
+3
+4
+5
+sentence
+2
+3
+5
+10
+5
+10
+10
+102
+102
+
+300
+100
+100
+100
+100
+200
+200
+300
+100
+200
+
+36.0
+39.1
+38.7
+38.4
+49
+41.5
+45.1
+49.3
+50.0
+50.8
+52.8
+54.7
+44.5
+49.8
+
+130.8
+122.1
+121.5
+121.7
+
+145.5
+135.6
+129.8
+124.0
+123.6
+117.7
+116.4
+38.6
+33.6
+
+ble 3, more word features and larger context leads to
+better performance in LBL models in terms of both ac-
+curacy and perplexity. The LBL models perform con-
+siderably better on sentence completion than n-gram
+models, in spite of having higher test perplexity. Even
+the LBL model with a two-word context performs bet-
+ter than any n-gram model. The LBL model with a
+ve-word context, matches the best published result
+on the dataset. Note that the LSA model that pro-
+duced that result considered all words in a sentence,
+while an LBL model with a c-word contexts considers
+only the 2c words that surround the candidate word.
+The model with a 10-word context and 300D feature
+vectors outperforms the LSA model by a large mar-
+gin and sets a new accuracy record for the dataset at
+54.7%.
+
+Language models typically use the words preceding
+the word of interest as the context. However, since
+we are interested in lling in a word in the middle of
+the sentence, it makes sense to use both the preceding
+and the following words as the context for the lan-
+guage model, making the context bidirectional. We
+trained several LBL models with bidirectional con-
+text to see whether such models are superior to their
+unidirectional-context counterparts for sentence com-
+pletion. Scoring a sentence with a bidirectional model
+is both simpler and faster: we simply compute the
+probability of the candidate word under the model us-
+ing the context surrounding the word. Thus a model
+is applied only once per sentence, instead of c+1 times
+required by the unidirectional models.
+
+As Table 3 shows, the LBL models with bidirectional
+
+contexts achieve much lower test perplexity than their
+unidirectional counterparts, which is not surprising be-
+cause they also condition on words that follow the
+word being predicted. What is surprising, however,
+is that bidirectional contexts appear to be consider-
+ably less eective for sentence completion than unidi-
+rectional contexts. Though the c-word context model
+and c  2-word context model look at the same words
+when using the scoring procedures we described above,
+the unidirectional model seems to make better use of
+the available information.
+
+6. Discussion
+
+We have introduced a simple and ecient method for
+training statistical language models based on noise-
+contrastive estimation. Our results show that the
+learning algorithm is very stable and can produce mod-
+els that perform as well as the ones trained using maxi-
+mum likelihood in less than one-tenth of the time. In a
+large-scale test of the approach, we trained several neu-
+ral language models on a collection of Project Guten-
+berg texts, achieving state-of-the-art performance on
+the Microsoft Research Sentence Completion Chal-
+lenge dataset.
+
+Though we have shown that the unigram noise distri-
+bution is sucient for training neural language models
+eciently, context-dependent noise distributions are
+worth investigating because they might lead to even
+faster training by reducing the number of noise sam-
+ples needed.
+
+Recently, Pihlaja et al. (2010) introduced a family of
+estimation methods for unnormalized models that in-
+cludes NCE and importance sampling as special cases.
+Other members of this family might be of interest for
+training language models, though our preliminary re-
+sults suggest that none of them outperform NCE.
+
+Finally, we believe that NCE can be applied to many
+models other than neural or maximum-entropy lan-
+guage models. Probabilistic classiers with many
+classes are a prime candidate.
+
+Acknowledgments
+
+We thank Vinayak Rao and Lloyd Elliot for their help-
+ful comments. We thank the Gatsby Charitable Foun-
+dation for generous funding.
+

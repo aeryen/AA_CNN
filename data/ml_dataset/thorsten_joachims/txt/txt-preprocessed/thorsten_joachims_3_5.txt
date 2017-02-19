@@ -1,0 +1,1586 @@
+Abstract
+
+We propose a discriminative method for learning the parameters of linear se-
+quence alignment models from training examples. Compared to conventional gen-
+erative approaches, the discriminative method is straightforward to use when op-
+erations (e.g. substitutions, deletions, insertions) and sequence elements are de-
+scribed by vectors of attributes. This admits learning exible and more complex
+alignment models. While the resulting training problem leads to an optimization
+problem with an exponential number of constraints, we present a simple algorithm
+that nds an arbitrarily close approximation after considering only a subset of the
+constraints that is linear in the number of training examples and polynomial in the
+length of the sequences. We also evaluate empirically that the method effectively
+learns good parameter values while being computationally feasible.
+
+1 Introduction
+
+Methods for sequence alignment are common tools for analyzing sequence data rang-
+ing from biological applications [3] to natural language processing [11][1]. They can
+be thought of as measures of similarity between sequences where the similarity score
+is the result of a discrete optimization problem that is typically solved via dynamic pro-
+gramming. While the dynamic programming algorithm determines the general notion
+of similarity (e.g. local alignment vs. global alignment), any such similarity measure
+requires specic parameter values before it is fully specied. Examples of such para-
+meter values are the costs for substituting one sequence elements for another, as well
+as costs for deletions and insertions. These parameter values determine how well the
+measure works for a particular task.
+
+In this paper we tackle the problem of inferring the parameter values from training
+data. Our goal is to nd parameter values so that the resulting similarity measure best
+
+1
+
+5
+
+2
+
+9
+3
+
+s1:
+s2:
+a:
+
+1
+1
+
+1
+2
+2
+1
+m m s m m i m m
+
+5
+5
+
+3
+2
+
+5
+5
+
+2
+2
+
+3
+
+9
+4
+
+2
+7
+
+1
+6
+
+5
+
+2
+
+Figure 1: Example of a local sequence alignment.
+
+reects the desired notion of similarity. Instead of assuming a generative model of se-
+quence alignment (e.g. [11]), we take a discriminative approach to training following
+the general algorithm described in [14]. A key advantage of discriminative training is
+that operations can easily be described by features without having to model their de-
+pendencies like in generative training. In particular, we aim to nd the set of parameter
+values that corresponds to the best similarity measure a given alignment model can
+represent. Taking a large-margin approach, we show that we can solve the resulting
+training problem efciently for a large class of alignment algorithms that implement
+a linear scoring function. While the resulting optimization problems have exponen-
+tially many constraints, our algorithm nds an arbitrarily good approximation after
+considering only a subset of constraints that scales polynomially with the length of
+the sequences and linearly with the number of training examples. We empirically and
+theoretically analyze the scaling of the algorithm and show that the learned similarity
+score performs well on test data.
+
+2 Sequence Alignment
+Sequence alignment computes a similarity score for two (or more) sequences s 1 and
+s2 from an alphabet  = {1, .., }. An alignment a is a sequence of operations that
+transforms one sequence into the other. In global alignment, the whole sequence is
+transformed. In local alignment, only an arbitrarily sized subsequence is aligned. Com-
+monly used alignment operations are match (m), substitution (s), deletion (d) and
+insertion (i). An example of a local alignment is given in Figure 1. In the example,
+there are 6 matches, 1 substitution, and 1 insertion/deletion. With each operation there
+is an associated cost/reward. Assuming a reward of 3 for match, a cost of 1 for substi-
+tution, and a cost of 2 for insertion/deletion, the total alignment score D (cid:1)w(s1, s2, a)
+in the example is 15. The optimal alignment a
+is the one that maximizes the score for
+a given cost model.
+
+
+
+More generally, we consider alignment algorithms that optimize a linear scoring
+
+function
+
+D (cid:1)w(s1, s2, a) = (cid:2)wT (s1, s2, a)
+
+(1)
+
+where (s1, s2, a) is a feature vector describing the alignment a applied to s 1 and
+s2. (cid:2)w is a given cost vector. Instead of assuming a nite alphabet  and a nite set
+of operations, we only require that the reward/cost of each operation a o on any two
+characters c1, c2   can be expressed as a linear function over attributes (c 1, c2, ao)
+(2)
+
+score(c1, c2, ao) = (cid:2)wT (c1, c2, ao).
+
+2
+
+(c1, c2, ao) can be thought of as a vector of attributes describing the match of c 1 and c2
+under operation ao. Note that c1 and c2 can take dummy values for insertions, deletions,
+etc. This representation allows different scores depending on various properties of the
+characters or the operation. The feature vector for a complete alignment (s 1, s2, a)
+is the sum of the individual feature vectors
+
+(s1, s2, a) =
+
+(c1(ai), c2(ai), ai)
+
+(3)
+
+where c1(ai) and c2(ai) indicate the characters that ai is applied to. Only those op-
+eration sequences are valid that transform s 1 into s2. Note that a special case of this
+model is the conventional parameterization using a substitution matrix and xed scores
+for deletions and insertions. Finding the optimal alignment corresponds to the follow-
+ing optimization problem
+
+|a|(cid:1)
+
+i=1
+
+D (cid:1)w(s1, s2) = maxa [D (cid:1)w(s1, s2, a)]
+(cid:2)wT (s1, s2, a)
+
+= maxa
+
+(cid:3)
+
+(cid:2)
+
+ |a|(cid:1)
+
+
+ .
+
+(4)
+(5)
+
+(6)
+
+= maxa
+
+score(c1(ai), c2(ai), ai)
+
+i=1
+
+This type of problem is typically solved via dynamic programming. In the following we
+consider local alignment via the Smith/Waterman algorithm [12]. However, the results
+can be extended to any alignment algorithm that optimizes a linear scoring function
+and that solves (6) globally optimally. This also holds for other structures besides
+sequences [14].
+
+3 Inverse Sequence Alignment
+Inverse sequence alignment is the problem of using training data to learn the parame-
+ters (cid:2)w of an alignment model and algorithm so that the resulting similarity measure
+D (cid:1)w(s1, s2) best represents the desired notion of similarity on new data. While previ-
+ous approaches to this problem exist [5, 13], they are limited to special cases and small
+numbers of parameters. We will present an algorithm that applies to any linear align-
+ment model with no restriction on the function or number of parameters, instantiating
+the general algorithm we described in [14]. An interesting related approach is outlined
+in [9, 10], but it is not clear in how far it leads to practical algorithms.
+
+We assume the following two scenarios, for which the notation is inspired by pro-
+
+tein alignment.
+
+3.1 Alignment Prediction
+
+In the rst scenario, the goal is to predict the optimal sequence of alignment operations
+a for a given pair of sequences s N and sH, which we call native and homolog sequence.
+We assume that examples are generated i.i.d. according to a distribution P (s N , sH , a).
+
+3
+
+We approach this prediction problem using the following linear prediction rule which
+is parameterized by (cid:2)w.
+
+(cid:2)
+
+(cid:3)
+
+a = argmaxa
+
+D (cid:1)w(sN , sH , a)
+
+(7)
+
+This rule predicts the alignment sequence a which scores highest according to the lin-
+ear model. By changing the cost of alignment operations via (cid:2)w, the behavior of the
+prediction rule can be modied. The error of a prediction a compared to the true align-
+ment a is measured using a loss function L(a, a). The goal of learning is to nd a (cid:2)w
+that minimizes the expected loss (i.e. risk).
+
+(cid:8)
+
+(cid:9)
+
+(cid:2)
+
+(cid:3)(cid:10)
+
+RL
+
+P ( (cid:2)w) =
+
+L
+
+a, argmaxa
+
+D (cid:1)w(sN , sH , a)
+
+dP (sN , sH , a)
+
+(8)
+
+One reasonable loss function L(., .) to use is the number of alignment operations that
+are different in a and a. For simplicity, however, we will only consider the 0/1-loss
+L(., .) in the following. It return the value 0 if both arguments are equal, and value 1
+otherwise.
+
+3.2 Homology Prediction
+
+In the second scenario the goal is to predict whether two proteins are homologous. We
+assume that examples are generated i.i.d. according to a distribution P (s N , sH , SD).
+sN is the native sequence, sH the homologous sequence, and S D is a set of decoy se-
+quences sD1, ..., sDd . The goal is a similarity measure D (cid:1)w(., .) so that native sequence
+sN and homolog sH are more similar than the native sequence s N and any decoy sDj ,
+i.e.
+
+D (cid:1)w(sN , sH) > D (cid:1)w(sN , sDj ).
+
+(9)
+
+The goal of learning is to nd the cost parameters (cid:2)w that minimize the probability
+Err
+P ( (cid:2)w) that the similarity with any decoy sequence D (cid:1)w(sN , sDj ) is higher than the
+similarity with the homolog sequence D (cid:1)w(sN , sH).
+
+(cid:8)
+
+(cid:11)
+
+(cid:12)
+sSD{sH} D (cid:1)w(sN , s)
+
+ErrL
+
+P ( (cid:2)w) =
+
+L
+
+sH , arg max
+
+dP (sN , sH , SD)
+
+(10)
+
+Again, we assume a 0/1-loss L(., .).
+
+4 A Maximum-Margin Approach to Learning the Cost
+
+Parameters
+
+In both scenarios, the data generating distributions P (s D, sH , a) and P (sD, sH , SD)
+are unknown. However, we have a training sample S drawn i.i.d from P (.). This
+training sample will be used to learn the parameters (cid:2)w. We will rst consider the case
+of Alignment Prediction, and then extend the algorithm to the problem of Homology
+Prediction.
+
+4
+
+4.1 Alignment Predictions
+Given is a training sample S = ((sD
+n , an)) of n sequence pairs
+with their desired alignment. In the following, we will design a discriminative training
+algorithm that nds a parameter vector (cid:2)w for rules of type (7) by minimizing the loss
+on the training data S.
+
+1 , a1), ..., (sD
+
+n , sH
+
+1 , sH
+
+n(cid:1)
+
+(cid:9)
+
+(cid:2)
+
+(cid:3)(cid:10)
+
+RL
+
+S ( (cid:2)w) =
+
+1
+n
+
+L
+
+ai, argmaxa
+
+i=1
+
+D (cid:1)w(sN
+
+i , sH
+
+i , a)
+
+(11)
+
+First, consider the case where there exists a (cid:2)w so that the training loss R L
+Since we assume a scoring function that is linear in the parameters
+
+S ( (cid:2)w) is zero.
+
+D (cid:1)w(s1, s2, a) = (cid:2)wT (s1, s2, a),
+
+(12)
+
+the condition of zero training error can be written as a set of linear inequality con-
+straints. For each native/homolog pair s N
+i , we need to introduce one linear con-
+i
+straint for each possible alignment a of s N
+i
+
+/ sH
+into sH
+i .
+
+a (cid:3)= a1 :
+...
+
+a (cid:3)= an :
+
+D (cid:1)w(sN
+
+1 , sH
+
+1 , a) < D (cid:1)w(sN
+
+1 , sH
+
+1 , a1)
+
+D (cid:1)w(sN
+
+n , sH
+
+n , a) < D (cid:1)w(sN
+
+n , sH
+
+n , an)
+
+(13)
+
+
+
+that fullls this set of constraints has a training loss RL
+
+)
+S ( (cid:2)w
+Any parameter vector (cid:2)w
+of zero. This approach of writing the training problem as a linear system follows the
+method in [8] proposed for the special case of global alignment without free inser-
+tions/deletions. However, for the general case in Equation (13) the number of con-
+straints is exponential, since the number of alignments a between s N
+i can be
+exponential in the length of s N
+i . Unlike the restricted case in [8], standard op-
+timization algorithms cannot handle this size of problem. To overcome this limitation,
+in Section 5 we will propose an algorithm that exploits the special structure of Equa-
+tion (13) so that it needs to examine only a subset that is polynomial in the length of
+i and sH
+sN
+i .
+
+i and sH
+
+i and sH
+
+. To specify a unique solution, we select the (cid:2)w
+
+If the set of inequalities in Equation (13) is feasible, there will typically be more
+than one solution (cid:2)w
+for which each
+score D (cid:1)w(sN
+i , a) for
+all i. This corresponds to the maximum-margin principle employed in Support Vector
+Machines (SVMs) [15]. Denoting the margin by  and restricting the L 2 norm of (cid:2)w to
+make the problem well-posed, this leads to the following optimization problem.
+
+i , ai) is uniformly most different from max a(cid:4)=ai D (cid:1)w(sN
+
+i , sH
+
+i , sH
+
+
+
+
+
+max (cid:1)w
+a (cid:3)= a1 :
+...
+
+a (cid:3)= an :
+
+
+D (cid:1)w(sN
+
+1 , sH
+
+n , sH
+
+D (cid:1)w(sN
+|| (cid:2)w|| = 1
+
+1 , a)  D (cid:1)w(sN
+n , a)  D (cid:1)w(sN
+
+1 , a1)  
+n , an)  
+
+1 , sH
+
+n , sH
+
+(14)
+
+(15)
+
+(16)
+
+5
+
+Due to the linearity of the similarity function (12), the length of (cid:2)w is a free variable
+and we can x it to 1/. Substituting for  and rearranging leads to the equivalent
+optimization problem
+
+min (cid:1)w
+a (cid:3)= a1 :
+...
+
+a (cid:3)= an :
+
+(cid:9)
+1
+2 (cid:2)wT (cid:2)w
+(sN
+(cid:9)
+
+1 , sH
+
+1 , a1)  (sN
+n , an)  (sN
+
+(sN
+
+n , sH
+
+n , sH
+
+n , a)
+
+1 , sH
+
+1 , a)
+
+(cid:10)
+(cid:10)
+
+(cid:2)w  1
+
+(cid:2)w  1
+
+(17)
+
+(18)
+(19)
+(20)
+
+Since this quadratic program (QP) has a positive-denite objective function and (feasi-
+ble) linear constraints, it is strictly convex. This means it has a unique global minimum
+and no local minima [4]. The constraints are similar to the ordinal regression approach
+in [6] and it has a structure similar to the Ranking SVM described in [7] for information
+retrieval. However, the number of constraints is much larger.
+
+To allow errors in the training set, we introduce slack variables  i [2]. Correspond-
+P ( (cid:2)w) we have one slack variable for each native sequence.
+ing to the error measure R L
+This is different from a normal classication or regression SVM, where there is a differ-
+ent slack variable for each constraint. The slacks enter the objective function according
+to a trade-off parameter C. For simplicity, we consider only the case where the slacks
+enter the objective function squared.
+
+n(cid:1)
+
+2
+i
+
+min (cid:1)w,(cid:1)
+a (cid:3)= a1 :
+...
+
+a (cid:3)= an :
+
+1
+(cid:9)
+2 (cid:2)wT (cid:2)w + C
+(sN
+1 , sH
+(cid:9)
+
+(sN
+
+n , sH
+
+i=1
+
+1 , a1)  (sN
+n , an)  (sN
+
+1 , sH
+
+1 , a)
+
+n , sH
+
+n , a)
+
+(cid:10)
+(cid:10)
+
+(cid:2)w  1  1
+
+(cid:2)w  1  n
+
+(21)
+
+(22)
+(23)
+(24)
+
+Analogous to classication and regression SVMs [15], this formulation minimizes a
+regularized upper bound on the training loss R L
+
+S ( (cid:2)w).
+
+Proposition 1 For any feasible point ( (cid:2)w, (cid:2)) of (21)-(24), 1
+n
+on the training loss RL
+
+S ( (cid:2)w) for the 0/1-loss L(., .).
+
+n
+
+i=1 2
+
+i is an upper bound
+
+(cid:13)
+
+The proof is given in [14]. The quadratic program and the proposition can be extended
+to any non-negative loss function.
+
+4.2 Homology Prediction
+
+1 , ..., sH
+
+For the problem of Homology Prediction, we can derive a similar training problem.
+Here, the training sample S consists of native sequences s N
+n , homolog se-
+quences sH
+1 , ..., sN
+n .
+As a simplifying assumption, we assume that between native and homolog sequences
+of maximum score is known1. The goal is to nd an op-
+the alignment aN H
+P ( (cid:2)w) is low. Again, nding a (cid:2)w such that the error
+timal (cid:2)w so that the error rate ErrL
+
+n , and a set of decoy sequences S D
+
+n for each native sN
+
+1 , ..., SD
+
+1 , ..., sN
+
+, ..., aN H
+
+n
+
+1
+
+1For protein alignment, for example, this could be generated via structural alignment.
+
+6
+
+on the training set
+
+ErrL
+
+P ( (cid:2)w) =
+
+(cid:14)
+
+n(cid:1)
+
+i=1
+
+1
+n
+
+L
+
+i , arg max
+sH
+
+sSD
+
+i
+
+{sH
+
+i
+
+(cid:15)
+
+} D (cid:1)w(sN
+
+i , s)
+
+(25)
+
+is zero can be written as a set of linear inequality constraints. There is one constraint for
+each combination of native sequence s N
+, and possible alignment
+a of sN
+i
+
+i , decoy sequence sDj
+
+i
+
+i
+
+into sDj
+.
+1  SD
+sDj
+ SD
+
+sDj
+
+1 a :
+...
+a :
+
+n
+
+n
+
+D (cid:1)w(sN
+
+1 , sDj
+
+1 , a) < D (cid:1)w(sN
+
+1 , sH
+
+1 , aN H
+
+1
+
+)
+
+(26)
+
+D (cid:1)w(sN
+
+n , sDj
+
+n , a) < D (cid:1)w(sN
+
+n , sH
+
+n )
+n , aN H
+
+Similar to the case of Alignment Prediction, one can add a margin criterion and slacks
+and arrives at the following convex quadratic program.
+
+n(cid:1)
+
+i=1
+
+2
+i
+)  (sN
+
+1 , aN H
+
+1
+
+1
+(cid:16)
+2 (cid:2)wT (cid:2)w + C
+(sN
+(cid:9)
+
+1 , sH
+
+1 , sDj
+
+1 , a)
+
+(cid:2)w  1  1
+
+(cid:17)
+(cid:10)
+
+(27)
+
+(28)
+
+(29)
+(30)
+
+(sN
+
+n , sH
+
+n , aN H
+
+n )  (sN
+
+n , sDj
+
+n , a)
+
+(cid:2)w  1  n
+
+Again, 1
+n
+
+i is an upper bound on the training error Err L
+
+S ( (cid:2)w).
+
+min (cid:1)w,(cid:1)
+1 a :
+...
+a :
+
+sDj
+
+1  SD
+
+n
+
+ SD
+
+sDj
+(cid:13)
+i=1 2
+
+n
+
+n
+
+5 Training Algorithm
+
+Due to the exponential number of constraints in both the optimization problem for
+Alignment Prediction and Homology Prediction, naive use of off-the-shelf tools for
+their solution is computationally intractable for problems of interesting size. However,
+by exploiting the special structure of the problem, we propose the algorithms shown
+in Figures 2 and 3 that nd the solutions of (21)-(24) and (27)-(30) after examining
+only a small number of constraints. The algorithms proceeds by greedily adding con-
+straints from (21)-(24) or (28)-(30) to a working set K. The algorithms stop, when all
+constraints in (21)-(24) or (28)-(30) are fullled up to a precision of .
+
+The following two theorems show that the algorithms return a solutions of (21)-
+(24) and (27)-(30) that are accurate with a precision of some predened , and that they
+stop after a polynomially bounded number of iterations through the repeat-loop.
+
+Theorem 1 (CORRECTNESS)
+The algorithms return an approximation that has an objective value not higher than
+the solution of (21)-(24) and (27)-(30), and that fullls all constraints up to a precision
+of . For  = 0, the algorithm returns the exact solution ( (cid:2)w
+
+).
+
+, (cid:2)
+
+
+
+7
+
+Input: native sequences sN
+
+a1, ..., an, tolerated approximation error   0.
+
+n , homolog sequences sH
+
+1 , ..., sN
+
+1 , ..., sH
+
+n , alignments
+
+K = , (cid:2)w = 0, (cid:2) = 0
+repeat
+
+ Korg = K
+ for i from 1 to n
+
+(cid:2)
+
+(cid:3)
+
+i , sH
+
+ nd a = argmaxa
+ if (cid:2)wT ((sN
+
+(cid:2)wT (sN
+i , ai)  (sN
+(cid:2)wT ((sN
+i , sH
+
+ K = K (cid:18)
+i , sH
+i , sH
+i , ai)  (sN
+ solve QP ( (cid:2)w, (cid:2)) = argmin (cid:1)w,(cid:1)
+1
+2 (cid:2)wT (cid:2)w + C
+K.
+
+i , a)
+i , a)) < 1  i  
+(cid:13)
+i , a))  1  i
+
+i=1 2
+
+i , sH
+
+via dynamic programming
+
+i subject to
+
+(cid:19)
+
+n
+
+until(K = Korg)
+
+Output: (cid:2)w
+
+Figure 2: Sparse Approximation Algorithm for the Alignment Prediction task.
+
+
+
+and 
+
+
+Proof Let (cid:2)w
+i be the solution of (21)-(24) or (27)-(30) respectively. Since the
+algorithm solves the QP on a subset of the constraints in each iteration, it returns a
+solution (cid:2)w with 1
+. This follows from the
+fact that restricting the feasible region cannot lead to a lower minimum.
+
+2 (cid:2)wT (cid:2)w + C
+
+2
+n
+i=1 
+i
+
+ 1
+2 (cid:2)w
+
+ + C
+
+i=1 2
+
+(cid:13)
+
+(cid:13)
+
+T (cid:2)w
+
+n
+
+i
+
+i
+
+i , sH
+
+i , sDj
+
+It is left to show that the algorithm does not terminate before all constraints (21)-
+(24) or (28)-(30) are fullled up to precision . In the nal iteration, the algorithms
+nd the most violated constraint. For Alignment Prediction, this is the constraint
+i , a)) < 1  i corresponding to the highest scoring
+i , ai)  (sN
+(cid:2)wT ((sN
+i , sH
+) 
+alignment a. For Homology Prediction, it is the constraint (cid:2)w T ((sN
+, a)) < 1  i corresponding to the highest scoring alignment a for each
+(sN
+decoy. Three cases can occur: First, the constraint can be violated by more than 
+and the algorithm will not terminate yet. Second, it is already in K and is fullled by
+construction. Third, the constraint is not in K but fullled anyway and it is not added.
+If the constraint is fullled, the constraints for all other alignments into this decoy are
+fullled as well, since we checked the constraint for which the margin was smallest for
+the given (cid:2)w. It follows that the algorithm terminates only if all constraints are fullled
+up to precision .
+
+i , aN H
+
+i , sH
+
+i
+
+It is left to show that the algorithms terminates after a number of iterations that is
+smaller than the set of constraints. The following theorem shows that the algorithm
+stops after a polynomial number of iterations.
+
+8
+
+Input: native sequences sN
+
+1 , ..., sN
+
+n , homolog sequences sH
+
+n , sets of decoy sequences S D
+
+1 , ..., SD
+
+1 , ..., sH
+
+n , alignments
+n , tolerated approximation
+
+aN H
+, ..., aN H
+error   0.
+1
+
+K = , (cid:2)w = 0, (cid:2) = 0
+repeat
+
+ Korg = K
+ for i from 1 to n
+
+ for j from 1 to |S D
+
+|
+
+i
+
+(cid:20)
+
+(cid:21)
+
+i
+
+, a)
+
+i , sDj
+
+(cid:2)wT (sN
+
+ nd a = argmaxa(cid:4)=ai
+gramming
+(cid:22)
+)  (sN
+ if (cid:2)wT ((sN
+ K = K
+)  (sN
+i , aN H
+i , sH
+ solve QP ( (cid:2)w, (cid:2)) = argmin (cid:1)w,(cid:1)
+1
+2 (cid:2)wT (cid:2)w + C
+to K.
+
+i , aN H
+(cid:2)wT ((sN
+
+i , sDj
+
+i , sH
+
+i
+
+i
+
+i
+
+via dynamic pro-
+
+(cid:23)
+
+, a)) < 1  i  
+
+(cid:13)
+i , sDj
+
+i
+
+, a))  1i
+i=1 2
+i subject
+
+n
+
+until(K = Korg)
+
+Output: (cid:2)w
+
+Figure 3: Sparse Approximation Algorithm for the Homology Prediction task.
+
+Theorem 2 (TERMINATION)
+The algorithms stops after adding at most
+
+2V R2
+
+2
+
+(31)
+
+constraints to the set K. V is the minimum of (21)-(24) or (27)-(30) respectively. R 2
+is a constant bounded by the maximum of ((s N
+2C or
+((sN
+
+i , ai)  (sN
+
+i , a))2 + 1
+
+)  (sN
+
+, a))2 + 1
+
+i , sH
+
+i , sH
+
+i , sH
+
+i , aN H
+
+i
+
+2C respectively.
+
+i , sDj
+
+i
+
+Proof
+In the following, we focuses on the Homology Prediction task. The proof for the
+Alignment Prediction task is analogous. The rst part of the proof is to show that the
+objective value increases by some constant with every constraint that is added to K.
+i=1 2
+Denote with Vk the solution Vk = P ( (cid:2)w
+i subject to
+Kk after adding k constraints. This primal optimization problem can be transformed
+(cid:5)
+(cid:5)T (cid:2)w
+into an equivalent problem of the form V k = P ( (cid:2)w
+subject to
+2 (cid:2)w
+k, where each constraint has the form (cid:2)w T (cid:2)x  1 with (cid:2)x = ((sN
+) 
+(cid:5)
+(cid:13)
+i , sH
+i , aN H
+K
+i
+
+i , sDj
+k) =
+Its corresponding Wolfe dual is D((cid:2)
+(sN
+i
+
+(cid:5)
+max(cid:1)0
+k) = P ( (cid:2)w
+k ) =
+k) = Vk and for every feasible point D((cid:2))  P ( (cid:2)w, (cid:2)). Primal and dual are
+
+
+k, (cid:2)
+P ( (cid:2)w
+
+
+
+k, (cid:2)
+k) = min (cid:1)w,(cid:1)
+(cid:5)
+k ) = min (cid:1)w(cid:1) 1
+
+
+(cid:13)
+2C; 0; ...; 0).
+
+j=1 ij(cid:2)xi(cid:2)xj. At the solution D((cid:2)
+
+, a); 0; ...; 0; 1/
+i=1 i  1
+k
+
+1
+2 (cid:2)wT (cid:2)w + C
+
+(cid:13)
+
+(cid:13)
+
+k
+i=1
+
+n
+
+k
+
+2
+
+9
+
+(cid:13)
+
+connected via (cid:2)w
+
+i (cid:2)xi(cid:2)xk+1  1   means extending the dual to
+
+k
+i=1 
+
+
+k
+i (cid:2)xi. Adding a constraint to the dual with (cid:2)w
+i=1 
+
+(cid:5)T (cid:2)xk+1 =
+
+(cid:13)
+(cid:5) =
+k(cid:1)
+
+
+k+1) = max
+Dk+1((cid:2)
+(cid:1)k+10
+
+i 1
+2
+
+i=1
+
+i=1
+
+j=1
+
+i(cid:2)xi(cid:2)xk+1 1
+
+k+1(cid:2)x2
+
+k+1
+
+2 2
+
+i=1
+
+k(cid:1)
+
+k(cid:1)
+
+k(cid:1)
+ij(cid:2)xi(cid:2)xj +k+1k+1
+
+k(cid:1)
+
+ Dk((cid:2)
+
+k) + max
+k+10
+ Dk((cid:2)
+
+k) + max
+k+10
+
+i (cid:2)xi(cid:2)xk+1  1
+
+
+
+k+1  k+1
+k+1  k+1(1  )  1
+
+i=1
+
+2 2
+k+1(cid:2)x2
+
+k+1
+
+2 2
+
+k+1(cid:2)x2
+
+k+1
+
+k+1  0
+
+
+Solving the remaining scalar optimization problem over  k+1 shows that 
+and that Vk+1  Vk + 
+
+2
+
+2R2 .
+
+2
+
+Since the algorithm only adds constraints that are violated by the current solution
+by more than , after adding kmax = 2V R
+constraints the solution Vkmax over the
+2
+subset Kkmax is at least Vkmax  V0 + 2V R
+2
+2R2 = 0 + V . Any additional constraint
+
+that is violated by more than  would lead to a minimum that is larger than V . Since
+the minimum over a subset of constraints can only be smaller than the minimum over
+all constraints, there cannot be any more constraints violated by more than  and the
+algorithm stops.
+
+2
+
+2
+
+Since V can be upper bounded as V  C  n using the feasible point (cid:2)w = 0
+and (cid:2) = 1 in (21)-(24) or (27)-(30), the theorem directly leads to the conclusion that
+the maximum number of constraints in K scales linearly with the number of training
+examples n. Furthermore, it scales only polynomially with the length of the sequences,
+since R is polynomial in the length of the sequences.
+
+While the number of constraints can potentially explode for small values of , ex-
+perience with Support Vector Machines for classication showed that relatively large
+values of  are sufcient without loss of generalization performance. We will verify the
+efciency and the prediction performance of the algorithm empirically in the following.
+
+6 Experiments
+
+To analyze the behavior of the algorithm under varying conditions, we constructed a
+synthetic dataset according to the following sequence and alignment model. While
+this simple model does not exploit the exibility of the parameterized linear model
+D (cid:1)w(s1, s2, a) = (cid:2)wT (s1, s2, a), it does serve as a feasibility check of the learning
+algorithm. The native sequence and the decoys are generated by drawing randomly
+from a 20 letter alphabet  = {1, .., 20} so that letter c   has probability c/210.
+Each sequence has length 50, and there are 10 decoys per native. To generate the ho-
+molog, we generate an alignment string of length 30 consisting of 4 characters match,
+substitute, insert , delete. For simplicity of illustration, substitutions are always
+c  (c mod 20) + 1. While we experiment with several alignment models, we only
+report typical results here where matches occur with probability 0.2, substitutions with
+
+10
+
+0.9
+
+0.8
+
+)
+a
+
+ThreeParam Train
+ThreeParam Test
+IndivSubstCost Train
+IndivSubstCost Test
+
+t
+l
+
+e
+d
+(
+
+r
+o
+r
+r
+
+E
+
+i
+
+/
+
+
+t
+s
+e
+T
+n
+a
+r
+T
+e
+g
+a
+r
+e
+v
+A
+
+
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0
+
+0
+
+10
+
+20
+
+30
+
+40
+
+Number of Training Examples
+
+50
+
+60
+
+70
+
+80
+
+Figure 4: Left: Train and test error rates for the 3 and the 403 parameter model depend-
+ing on the number of training examples. Right: Typical learned substitution matrix
+after 40 training examples for the 403-parameter model.
+
+0.4, insertion with 0.2, deletion with 0.2. The homolog is created by applying the
+alignment string to a randomly selected substring of the native. The shortening of the
+sequences through insertions and deletions is padded by additional random characters.
+In the following experiments, we focus on the problem of Homology Prediction.
+Figure 4 shows training and test error rates for two models depending on the number
+of training examples averaged over 10 trials. The rst model has only 3 parameters
+(match, substitute, insert/delete) and uses a uniform substitution matrix. This
+makes the feature vectors (c1, c2, ai) three-dimensional with a 1 indicating the appro-
+priate operation. The second model also learns the 400 parameters of the substitution
+matrix, resulting in a total of 403 parameters. Here, (c 1, c2, ai) indicates the element
+of the substitution matrix in addition to the operation type. We chose C = 0.01 and
+ = 0.1. The left-hand graph of Figure 4 shows that for the 403-parameter model, the
+generalization error is high for small numbers of training examples, but quickly drops
+as the number of examples increases. The 3-parameter model cannot t the data as well.
+Its training error starts out much higher and training and test error essentially converge
+after only a few examples. The right-hand graph of Figure 4 shows the learned matrix
+of substitution costs for the 403-parameter model. As desired, the elements of the ma-
+trix are close to zero except for the off-diagonal. This captures the substitution model
+c  (c mod 20) + 1.
+
+Figure 5 analyzes the efciency of the algorithm via the number of constraints that
+are added to K before convergence. The left-hand graph shows the scaling with the
+number of training examples. As predicted by Theorem 2, the number of constraints
+grows (sub-)linearly with the number of examples. Furthermore, the actual number
+of constraints encountered during any iteration of the algorithm is small enough to be
+handled by standard quadratic optimization software. The right-hand graph shows how
+the number of constraints in the nal K changes with log(). The observed scaling
+appears to be better than suggested by the upper bound in Theorem 2. A good value
+for  is 0.1. We observed that larger values lead to worse prediction accuracy, while
+smaller values decrease efciency while not providing further benet.
+
+11
+
+300
+
+250
+
+200
+
+s
+t
+
+i
+
+n
+a
+r
+t
+s
+n
+o
+C
+
+
+f
+
+o
+
+r
+e
+b
+m
+u
+N
+e
+g
+a
+r
+e
+v
+A
+
+
+
+150
+
+100
+
+ThreeParam
+IndivSubstCost
+
+400
+
+350
+
+s
+t
+
+ThreeParam
+IndivSubstCost
+
+300
+
+250
+
+200
+
+150
+
+100
+
+i
+
+n
+a
+r
+t
+s
+n
+o
+C
+
+
+f
+
+o
+
+r
+e
+b
+m
+u
+N
+e
+g
+a
+r
+e
+v
+A
+
+
+
+50
+
+0
+0.001
+
+0.01
+
+Epsilon
+
+0.1
+
+1
+
+70
+
+80
+
+50
+
+0
+
+0
+
+10
+
+20
+
+30
+
+40
+
+50
+
+60
+
+Number of Training Examples
+
+Figure 5: Number of constraints added to K depending on the number of training
+examples (left) and the value of  (right). If not stated otherwise,  = 0.1, C = 0.01,
+and n = 20.
+
+7 Conclusions
+The paper presented a discriminative learning approach to inferring the cost parameters
+of a linear sequence alignment model from training data. We proposed an algorithm for
+solving the resulting training problem and showed that it is computationally efcient.
+Experiments show that the algorithm can effectively learn the alignment parameters on
+a synthetic task. We are currently applying the algorithm to learning alignment models
+for protein homology detection and protein alignment prediction.
+

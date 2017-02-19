@@ -1,0 +1,1186 @@
+Abstract
+
+While classical kernel-based classiers are
+based on a single kernel, in practice it is often
+desirable to base classiers on combinations
+of multiple kernels. Lanckriet et al. (2004)
+considered conic combinations of kernel ma-
+trices for the support vector machine (SVM),
+and showed that the optimization of the co-
+ecients of such a combination reduces to
+a convex optimization problem known as a
+quadratically-constrained quadratic program
+(QCQP). Unfortunately, current convex op-
+timization toolboxes can solve this problem
+only for a small number of kernels and a
+small number of data points; moreover, the
+sequential minimal optimization (SMO) tech-
+niques that are essential in large-scale imple-
+mentations of the SVM cannot be applied be-
+cause the cost function is non-dierentiable.
+We propose a novel dual
+formulation of
+the QCQP as a second-order cone program-
+ming problem, and show how to exploit the
+technique of Moreau-Yosida regularization to
+yield a formulation to which SMO techniques
+can be applied. We present experimental re-
+sults that show that our SMO-based algo-
+rithm is signicantly more ecient than the
+general-purpose interior point methods avail-
+able in current optimization toolboxes.
+
+1. Introduction
+
+One of the major reasons for the rise to prominence
+of the support vector machine (SVM) is its ability to
+cast nonlinear classication as a convex optimization
+problem, in particular a quadratic program (QP). Con-
+
+Appearing in Proceedings of the 21 st International Confer-
+ence on Machine Learning, Ban, Canada, 2004. Copyright
+2004 by the authors.
+
+vexity implies that the solution is unique and brings a
+suite of standard numerical software to bear in nding
+the solution. Convexity alone, however, does not imply
+that the available algorithms scale well to problems of
+interest. Indeed, o-the-shelf algorithms do not suce
+in large-scale applications of the SVM, and a second
+major reason for the rise to prominence of the SVM
+is the development of special-purpose algorithms for
+solving the QP (Platt, 1998; Joachims, 1998; Keerthi
+et al., 2001).
+
+Recent developments in the literature on the SVM
+and other kernel methods have emphasized the need
+to consider multiple kernels, or parameterizations of
+kernels, and not a single xed kernel. This provides
+needed exibility and also reects the fact that prac-
+tical learning problems often involve multiple, hetero-
+geneous data sources. While this so-called multiple
+kernel learning problem can in principle be solved via
+cross-validation, several recent papers have focused on
+more ecient methods for kernel learning (Chapelle
+et al., 2002; Grandvalet & Canu, 2003; Lanckriet et al.,
+2004; Ong et al., 2003). In this paper we focus on the
+framework proposed by Lanckriet et al. (2004), which
+involves joint optimization of the coecients in a conic
+combination of kernel matrices and the coecients of
+a discriminative classier.
+In the SVM setting, this
+problem turns out to again be a convex optimization
+problema quadratically-constrained quadratic pro-
+gram (QCQP). This problem is more challenging than
+a QP, but it can also be solved in principle by general-
+purpose optimization toolboxes such as Mosek (Ander-
+sen & Andersen, 2000). Again, however, this existing
+algorithmic solution suces only for small problems
+(small numbers of kernels and data points), and im-
+proved algorithmic solutions akin to sequential mini-
+mization optimization (SMO) are needed.
+
+While the multiple kernel learning problem is convex,
+it is also non-smoothit can be cast as the minimiza-
+tion of a non-dierentiable function subject to linear
+
+constraints (see Section 3.1). Unfortunately, as is well
+known in the non-smooth optimization literature, this
+means that simple local descent algorithms such as
+SMO may fail to converge or may converge to incor-
+rect values (Bertsekas, 1995). Indeed, in preliminary
+attempts to solve the QCQP using SMO we ran into
+exactly these convergence problems.
+
+One class of solutions to non-smooth optimization
+problems involves constructing a smooth approximate
+problem out of a non-smooth problem.
+In particu-
+lar, Moreau-Yosida (MY) regularization is an eec-
+tive general solution methodology that is based on
+inf-convolution (Lemarechal & Sagastizabal, 1997). It
+can be viewed in terms of the dual problem as simply
+adding a quadratic regularization term to the dual ob-
+jective function. Unfortunately, in our setting, this
+creates a new dicultywe lose the sparsity that
+makes the SVM amenable to SMO optimization. In
+particular, the QCQP formulation of Lanckriet et al.
+(2004) does not lead to an MY-regularized problem
+that can be solved eciently by SMO techniques.
+
+In this paper we show how these problems can be re-
+solved by considering a novel dual formulation of the
+QCQP as a second-order cone programming (SOCP)
+problem. This new formulation is of interest on its
+own merit, because of various connections to existing
+algorithms. In particular, it is closely related to the
+classical maximum margin formulation of the SVM,
+diering only by the choice of the norm of the in-
+verse margin. Moreover, the KKT conditions arising
+in the new formulation not only lead to support vec-
+tors as in the classical SVM, but also to a dual notion
+of support kernelsthose kernels that are active in
+the conic combination. We thus refer to the new for-
+mulation as the support kernel machine (SKM).
+
+As we will show, the conic dual problem dening the
+SKM is exactly the multiple kernel learning problem
+of Lanckriet et al. (2004).1 Moreover, given this new
+formulation, we can design a Moreau-Yosida regular-
+ization which preserves the sparse SVM structure, and
+therefore we can apply SMO techniques.
+
+Making this circle of ideas precise requires a number
+of tools from convex analysis. In particular, Section 3
+denes appropriate approximate optimality conditions
+for the SKM in terms of subdierentials and approxi-
+mate subdierentials. These conditions are then used
+in Section 4 in the design of an MY regularization for
+the SKM and an SMO-based algorithm. We present
+
+1It is worth noting that this dual problem cannot be
+obtained directly as the Lagrangian dual of the QCQP
+problemLagrangian duals of QCQPs are semidenite
+programming problems.
+
+the results of numerical experiments with the new
+method in Section 5.
+
+2. Learning the kernel matrix
+
+In this section, we (1) begin with a brief review
+of the multiple kernel learning problem of Lanckriet
+et al.
+(2004), (2) introduce the support kernel ma-
+chine (SKM), and (3) show that the dual of the SKM
+is equivalent to the multiple kernel learning primal.
+
+2.1. Multiple kernel learning problem
+
+In the multiple kernel learning problem, we assume
+that we are given n data points (xi, yi), where xi  X
+for some input space X , and where yi  {1, 1}. We
+also assume that we are given m matrices Kj  Rnn,
+which are assumed to be symmetric positive semidef-
+inite (and might or might not be obtained from eval-
+uating a kernel function on the data {xi}). We con-
+sider the problem of learning the best linear combi-
+nation Pm
+j=1 jKj of the kernels Kj with nonnega-
+tive coecients j > 0 and with a trace constraint
+trPm
+j=1 j tr Kj = c, where c > 0 is
+(2004) show that this setup
+
+j=1 jKj = Pm
+
+xed. Lanckriet et al.
+yields the following optimization problem:
+
+(L) w.r.t.
+
+min   2e>
+
+  R,   Rn
+
+s.t. 0 6  6 C, >y = 0
+>D(y)KjD(y) 6
+
+tr Kj
+
+c , j  {1, . . . , m},
+where D(y) is the diagonal matrix with diagonal y, e 
+Rn the vector of all ones, and C a positive constant.
+The coecients j are recovered as Lagrange multipli-
+ers for the constraints >D(y)KjD(y) 6
+
+tr Kj
+
+c .
+
+2.2. Support kernel machine
+
+We now introduce a novel classication algorithm that
+we refer to as the support kernel machine (SKM).
+It will be motivated as a block-based variant of the
+SVM and related margin-based classication algo-
+rithms. But our underlying motivation is the fact that
+the dual of the SKM is exactly the problem (L). We
+establish this equivalence in the following section.
+
+2.2.1. Linear classification
+
+In this section we let X = Rk. We also assume we are
+given a decomposition of Rk as a product of m blocks:
+Rk = Rk1    Rkm, so that each data point xi can
+be decomposed into m block components, i.e. xi =
+(x1i, . . . , xmi), where each xji is in general a vector.
+
+The goal
+
+is to nd a linear classier of the form
+
+y = sign(w>x + b) where w has the same block de-
+composition w = (w1, . . . , wm)  Rk1++km. In the
+spirit of the soft margin SVM, we achieve this by min-
+imizing a linear combination of the inverse of the mar-
+gin and the training error. Various norms can be used
+to combine the two terms, and indeed many dierent
+algorithms have been explored for various combina-
+tions of `1-norms and `2-norms.
+In this paper, our
+goal is to encourage the sparsity of the vector w at
+the level of blocks; in particular, we want most of its
+(multivariate) components wi to be zero. A natural
+way to achieve this is to penalize the `1-norm of w.
+Since w is dened by blocks, we minimize the square
+of a weighted block `1-norm, (Pm
+j=1 dj||wj||2)2, where
+within every block, an `2-norm is used. Note that a
+standard `2-based SVM is obtained if we minimize the
+square of a block `2-norm, Pm
+2, which corre-
+sponds to ||w||2
+2, i.e., ignoring the block structure. On
+the other hand, if m = k and dj = 1, we minimize the
+square of the `1-norm of w, which is very similar to
+the LP-SVM proposed by Bradley and Mangasarian
+(1998). The primal problem for the SKM is thus:
+
+j=1 ||wj||2
+
+min 1
+
+j=1 dj||wj||2)2 + C Pn
+i=1 i
+(P ) w.r.t. w  Rk1    Rkm,   Rn
++, b  R
+
+2 (Pm
+
+s.t. yi(Pj w>
+
+j xji + b) > 1  i,i{1, . . . , n}.
+
+2.2.2. Conic duality and optimality
+
+conditions
+
+For a given optimization problem there are many ways
+of deriving a dual problem.
+In our particular case,
+we treat problem (P ) as a second-order cone program
+(SOCP) (Lobo et al., 1998), which yields the following
+dual (see Appendix A for the derivation):
+
+min 1
+
+2 2  >e
+
+(D) w.r.t.   R,   Rn
+
+s.t. 0 6  6 C, >y = 0
+
+||Pi iyixji||2 6 dj, j  {1, . . . , m}.
+In addition, the Karush-Kuhn-Tucker (KKT) optimal-
+ity conditions give the following complementary slack-
+ness equations:
+
+j xji + b)  1 + i) = 0, i
+
+(a) i(yi(Pj w>
+(b) (C  i)i = 0, i
+||wj ||2(cid:1)>(cid:0) P i iyixji
+(c) (cid:0) wj
+(d) (P djtj  ) = 0.
+
+dj 
+
+(cid:1) = 0, j
+
+Equations (a) and (b) are the same as in the classi-
+cal SVM, where they dene the notion of a support
+vector. That is, at the optimum, we can divide the
+
+v
+
+w
+
+0
+
+1u
+
+w
+
+u
+2
+
+Figure 1. Orthogonality of elements of the second-order
+cone K2 = {w = (u, v), u  R2
+, v  R, ||u||2 6 v}: two ele-
+0 of K2 are orthogonal and nonzero if and only
+ments w, w
+if they belong to the boundary and are anti-proportional.
+
+data points into three disjoint sets: I0 = {i, i = 0},
+IM = {i, i  (0, C)}, and IC = {i, i = C}, such that
+points belonging to I0 are correctly classied points
+not on the margin and such that i = 0; points in
+IM are correctly classied points on the margin such
+that i = 0 and yi(Pj w>
+j xji + b) = 1, and points
+in IC are points on the wrong side of the margin
+for which i > 0 (incorrectly classied if i > 1) and
+yi(Pj w>
+j xji + b) = 1  i. The points whose indices i
+are in IM or IC are the support vectors.
+
+While the KKT conditions (a) and (b) refer to the in-
+dex i over data points, the KKT conditions (c) and (d)
+refer to the index j over components of the input vec-
+tor. These conditions thus imply a form of sparsity not
+over data points but over input dimensions. Indeed,
+two non-zero elements (u, v) and (u0, v0) of a second-
+order cone Kd = {(u, v)  Rd  R, ||u||2 6 v} are or-
+thogonal if and only if they both belong to the bound-
+ary, and they are anti-proportional (Lobo et al.,
+||u0||2 =
+1998); that is,  > 0 such that ||u||2 = v,
+v0, (u, v) = (u0, v0) (see Figure 1).
+Thus, if  > 0, we have:
+ if ||Pi iyixji||2 < dj, then wj = 0,
+ if ||Pi iyixji||2 = dj, then j > 0, such that
+wj = j Pi iyixji, ||wj||2 = jdj.
+Sparsity thus emerges from the optimization prob-
+lem. Let J denote the set of active dimensions, i.e.,
+J (, ) = {j : ||Pi iyixji||2 = dj}. We can rewrite
+the optimality conditions as
+
+j, wj = j Pi iyixji, with j = 0 if j / J .
+
+Equation (d) implies that  = Pj dj||wj||2 =
+Pj dj(jdj), which in turn implies PjJ d2
+j j = 1.
+
+2.2.3. Kernelization
+
+We now remove the assumption that X is a Euclidean
+space, and consider embeddings of the data points xi
+in a Euclidean space via a mapping  : X  Rf . In
+correspondence with our block-based formulation of
+
+the classication problem, we assume that (x) has m
+distinct block components (x) = (1(x), . . . , m(x)).
+Following the usual recipe for kernel methods, we as-
+sume that this embedding is performed implicitly, by
+specifying the inner product in Rf using a kernel func-
+tion, which in this case is the sum of individual kernel
+functions on each block component:
+
+k(xi, xj) = (xi)>(xj) = Pm
+
+s=1 s(xi)>s(xj)
+
+= Pm
+
+s=1 ks(xi, xj).
+
+We now kernelize the problem (P ) using this ker-
+nel function.
+In particular, we consider the dual of
+(P ) and substitute the kernel function for the inner
+products in (D):
+
+min 1
+
+2 2  e>
+
+(DK ) w.r.t.   R,   Rn
+
+s.t. 0 6  6 C, >y = 0
+
+(>D(y)KjD(y))1/2 6 dj,j,
+
+where Kj is the j-th Gram matrix of the points {xi}
+corresponding to the j-th kernel.
+
+The sparsity that emerges via the KKT conditions (c)
+and (d) now refers to the kernels Kj, and we refer
+to the kernels with nonzero j as support kernels.
+The resulting classier has the same form as the SVM
+classier, but is based on the kernel matrix combina-
+tion K = Pj jKj, which is a sparse combination of
+support kernels.
+
+c
+
+2.3. Equivalence of the two formulations
+By simply taking dj = q tr Kj
+, we see that problem
+(DK) and (L) are indeed equivalentthus the dual of
+the SKM is the multiple kernel learning primal. Care
+must be taken here thoughthe weights j are dened
+for (L) as Lagrange multipliers and for (DK) through
+the anti-proportionality of orthogonal elements of a
+second-order cone, and a priori they might not coin-
+cide: although (DK) and (L) are equivalent, their dual
+problems have dierent formulations. It is straightfor-
+ward, however, to write the KKT optimality condi-
+tions for (, ) for both problems and verify that they
+are indeed equivalent. One direct consequence is that
+for an optimal pair (, ),  is an optimal solution of
+the SVM with kernel matrix Pj jKj.
+
+3. Optimality conditions
+
+In this section, we formulate our problem (in either
+of its two equivalent forms) as the minimization of
+a non-dierentiable convex function subject to linear
+
+constraints. Exact and approximate optimality condi-
+tions are then readily derived using subdierentials. In
+later sections we will show how these conditions lead
+to an MY-regularized algorithmic formulation that will
+be amenable to SMO techniques.
+
+3.1. Max-function formulation
+
+A rearrangement of the problem (DK) yields an equiv-
+alent formulation in which the quadratic constraints
+are moved into the objective function:
+
+min max
+
+j n 1
+(S) w.r.t.   Rn
+
+2d2
+j
+
+s.t. 0 6  6 C, >y = 0.
+
+>D(y)KjD(y)  >eo
+
+1
+2d2
+j
+
+>D(y)KjD(y)  >e and
+We let Jj() denote
+J() = maxj Jj(). Problem (S) is the minimization
+of the non-dierentiable convex function J() subject
+to linear constraints. Let J () be the set of active
+kernels, i.e., the set of indices j such that Jj() =
+J(). We let Fj()  Rn denote the gradient of Jj,
+that is, Fj = Jj
+
+D(y)KjD(y)  e.
+
+ = 1
+d2
+j
+
+3.2. Optimality conditions and subdierential
+
+Given any function J(), the subdierential of J at 
+J() is dened as (Bertsekas, 1995):
+J() = {g  Rn, 0, J(0) > J() + g>(0  )}.
+Elements of the subdierential J() are called sub-
+gradients. When J is convex and dierentiable at ,
+then the subdierential is a singleton and reduces to
+the gradient. The notion of subdierential is especially
+useful for characterizing optimality conditions of non-
+smooth problems (Bertsekas, 1995).
+
+The function J() dened in the earlier section is a
+pointwise maximum of convex dierentiable functions,
+and using subgradient calculus we can easily see that
+the subdierential J() of J at  is equal to the
+convex hull of the gradients Fj of Jj for the active
+kernels. That is:
+
+J() = convex hull{Fj(), j  J ()}.
+
+The Lagrangian for (S) is equal to L() = J() 
+> + >( Ce) + b>y, where b  R, ,   Rn
++, and
+the global minimum of L(, , , b) with respect to 
+is characterized by the equation
+
+0  L()      by  J().
+
+The optimality conditions are thus the following:
+, (b, , ) is a pair of optimal primal/dual variables
+
+if and only if:
+
+(OP T0)
+
+    by  J()
+i, ii = 0, i(C  i) = 0
+>y = 0, 0 6  6 C.
+
+As before, we dene IM () = {i, 0 < i < C},
+I0() = {i, i = 0}, IC() = {i, i = C}. We also de-
+ne, following (Keerthi et al., 2001), I0+ = I0{i, yi =
+1} and I0 = I0 {i, yi = 1}, IC+ = IC {i, yi = 1},
+IC = IC  {i, yi = 1}. We can then rewrite the
+optimality conditions as
+
+(OP T1)
+
+j jFj()
+
+j j = 1
+
+  be = D(y)PjJ () d2
+ > 0,Pj d2
+i  IM  I0+  IC, i > 0
+i  IM  I0+  IC, i 6 0.
+
+3.3. Approximate optimality conditions
+
+such as
+
+Exact optimality conditions
+(OP T0) or
+(OP T1) are generally not suitable for numerical op-
+timization.
+In non-smooth optimization theory, one
+instead formulates optimality criteria in terms of the
+-subdierential, which is dened as
+J() = {g  Rn,0, J(0) > J()+g>(0)}.
+When J() = maxj Jj(), then the -subdierential
+contains (potentially strictly) the convex hull of the
+gradients Fj(), for all -active functions, i.e., for all
+j such that maxi Ji()   6 Jj(). We let J()
+denote the set of all such kernels. So, we have C() =
+convex hull{Fj(), j  J()}  J().
+(1, 2)-
+Our
+optimality,
+is
+within 2 of zero, and that the usual KKT conditions
+are met. That is, we stop whenever there exist , b, g
+such that
+
+referred to as
+the 1-subdierential
+
+stopping criterion,
+requires that
+
+(OP T2)
+
+g  1J()
+i  IM  I0+  IC, i > 0
+i  IM  I0+  IC, i 6 0
+||  be  D(y)g|| 6 2.
+
+Note that for one kernel,
+i.e., when the SKM re-
+duces to the SVM, this corresponds to the approxi-
+mate KKT conditions usually employed for the stan-
+dard SVM (Platt, 1998; Keerthi et al., 2001; Joachims,
+1998). For a given , checking optimality is hard, since
+even computing 1J() is hard in closed form. How-
+ever, a sucient condition for optimality can be ob-
+tained by using the inner approximation C1() of this
+
+1-subdierential, i.e., the convex hull of gradients of
+1-active kernels. Checking this sucient condition
+is a linear programming (LP) existence problem, i.e.,
+nd  such that:
+
+(OP T3)
+
+ > 0, j = 0 if j / J1 (), Pj d2
+max
+
+iIM I0IC+{(K()D(y))i  yi}
+
+j j = 1
+
+6
+
+min
+
+iIM I0+IC{(K()D(y))i  yi} + 22,
+where K() = PjJ1 () jKj. Given , we can de-
+termine whether it is (1, 2)-optimal by solving the
+potentially large LP (OP T3). If in addition to having
+, we know a potential candidate for , then a suf-
+cient condition for optimality is that this  veries
+(OP T3), which doesnt require solving the LP. Indeed,
+the iterative algorithm that we present in Section 4
+outputs a pair (, ) and only these sucient optimal-
+ity conditions need to be checked.
+
+3.4. Improving sparsity
+
+Once we have an approximate solution, i.e., values 
+and  that satisfy (OP T3), we can ask whether  can
+be made sparser.
+Indeed, if some of the kernels are
+close to identical, then some of the s can potentially
+be removedfor a general SVM, the optimal  is not
+unique if data points coincide, and for a general SKM,
+the optimal  and  are not unique if data points or
+kernels coincide. When searching for the minimum
+`0-norm  which satises the constraints (OP T3), we
+can thus consider a simple heuristic approach where
+we loop through all the nonzero j and check whether
+each such component can be removed. That is, for all
+j  J1 (), we force j to zero and solve the LP. If it
+is feasible, then the j-th kernel can be removed.
+
+4. Regularized support kernel machine
+
+The function J() is convex but not dierentiable.
+It is well known that in this situation, steepest de-
+scent and coordinate descent methods do not necessar-
+ily converge to the global optimum (Bertsekas, 1995).
+SMO unfortunately falls into this class of methods.
+Therefore, in order to develop an SMO-like algorithm
+for the SKM, we make use of Moreau-Yosida regu-
+larization.
+In our specic case, this simply involves
+adding a second regularization term to the objective
+function of the SKM, as follows:
+2 (Pj dj||wj||2)2 + 1
+
+2 Pj a2
+(R) w.r.t. w  Rk1    Rkm ,   Rn
+
+j||wj||2
++, b  R
+
+min 1
+
+2 + C Pi i
+
+s.t. yi(Pj w>
+
+j xji + b) > 1  i, i  {1, . . . , n},
+
+where (aj) are the MY-regularization parameters.
+
+4.1. Dual problem
+
+The conic dual is readily computed as:
+
+min
+
+1
+2
+
+2 +
+
+1
+2 X
+
+j
+
+(j  dj)2
+
+a2
+j
+
+ X
+
+i
+
+i
+
+w.r.t.   R+,   Rm,   Rn
+
+s.t. 0 6 i 6 C, >y = 0
+
+||Pi iyixji||2 6 j, j.
+
+If we dene the function G() as
+
+(j dj )2
+
+a2
+j
+
+2 2 + 1
+
+G() = minR+,Rm{ 1
+
+2 Pj
+ Pi i,
+||Pi iyixji||2 6 j,j},
+then the dual problem is equivalent to minimizing
+G() subject to 0 6  6 C and >y = 0. We
+prove in Appendix B that G() is dierentiable and
+we show how to compute G() and its derivative in
+time O(m log m).
+
+4.2. Solving the MY-regularized SKM using
+
+SMO
+
+Since the objective function G() is dierentiable, we
+can now safely envisage an SMO-like approach, which
+consists in a sequence of local optimizations over only
+two components of . Since the -optimality con-
+ditions for the MY-regularized SKM are exactly the
+same as for the SVM, but with a dierent objective
+function (Platt, 1998; Keerthi et al., 2001):
+
+(OP T4)
+
+max
+
+iIM I0IC+{yiG()i}
+
+6
+
+min
+
+iIM I0+IC{yiG()i} + 2,
+
+choosing the pair of indices can be done in a manner
+similar to that proposed for the SVM, by using the fast
+heuristics of Platt (1998) and Keerthi et al. (2001). In
+addition, caching and shrinking techniques (Joachims,
+1998) that prevent redundant computations of kernel
+matrix values can also be employed.
+
+A dierence between our setting and the SVM set-
+ting is the line search, which cannot be performed in
+closed form for the MY-regularized SKM. However,
+since each line search is the minimization of a con-
+vex function, we can use ecient one-dimensional root
+nding, such as Brents method (Brent, 1973).
+
+4.3. Theoretical bounds
+
+In order to be able to check eciently the approxi-
+mate optimality condition (OP T3) of Section 3.3, we
+need estimates for  and  from the solution of the
+
+MY-regularized SKM obtained by SMO. It turns out
+that the KKT conditions for the MY-regularized SKM
+also lead to support kernels, i.e., there is a sparse non-
+negative weight vector  such that  is a solution of
+the SVM with the kernel K = Pj jKj. However, in
+the regularized case, those weights  can be obtained
+directly from  as a byproduct of the computation of
+G() and its derivative. Those weights () do not
+satisfy Pj d2
+j j = 1, but can be used to dene weights
+() that do (we give expressions for () and () in
+Appendix B).
+
+Let 1, 2 be the two tolerances for the approximate
+optimality conditions for the SKM. In this section,
+we show that if (aj) are small enough, then an 2/2-
+optimal solution of the MY-regularized SKM , to-
+gether with (), is an (1, 2)-optimal solution of the
+SKM, and an a priori bound on (aj) is obtained that
+does not depend on the solution .
+
+Theorem 1 Let 0 <  < 1. Let y  {1, 1}n and Kj,
+j = 1, . . . , m be m positive semidenite kernel matri-
+ces. Let dj and aj, j = 1, . . . , m, be 2m strictly posi-
+tive numbers. If  is an -optimal solution of the MY-
+regularized SKM, then (, ()) is an (1, 2)-optimal
+solution of the SKM, with
+
+1 = nC max
+
+j
+
+a2
+j
+d2
+j
+
+(2+max
+
+j
+
+a2
+j
+d2
+j
+
+) and 2 = +C max
+
+j
+
+a2
+j Mj
+d4
+j
+
+,
+
+where Mj = max
+
+u X
+
+v
+
+|(Kj)uv|.
+
+Corollary 1 With the same assumptions and
+
+||a||2
+
+ 6 min(cid:8) min
+
+j
+
+d2
+j
+
+1
+nC
+
+1 + (1 + 1
+
+nC )1/2 ,
+
+2/2
+
+maxj
+
+Mj C
+
+d4
+j
+
+(cid:9),
+
+if  is an 2/2-optimal solution of the MY-regularized
+SKM, then (, ()) is an (1, 2)-optimal solution of
+the SKM.
+
+4.4. A minimization algorithm
+
+We solve the SKM by solving the MY-regularized SKM
+with decreasing values of the regularization parameters
+(aj).
+In our simulations, the kernel matrices are all
+normalized, i.e., have unit diagonal, so we can choose
+all dj equal. We use aj() =  and dj() = (1  ),
+where  is a constant in [0, 1]. When  = 1, the MY-
+regularized SKM is exactly the SVM based on the sum
+of the kernels, while when  = 0, it is the non-MY-
+regularized SKM.
+
+The algorithm is as follows: given the data and pre-
+cision parameters 1, 2, we start with  = 1, which
+
+solves the SVM up to precision 2/2 using standard
+SMO, and then update  to  (where  < 1) and
+solve the MY-regularized SKM with constant  using
+the adjusted SMO up to precision 2/2, and so on. At
+the end of every SMO optimization, we can extract
+weights j() from the  solution, as shown in Ap-
+pendix B, and check the (1, 2)-optimality conditions
+(OP T3) of the original problem (without solving the
+LP). Once they are satised, the algorithm stops.
+
+Since each SMO optimization is performed on a
+dierentiable function with Lipschitz gradient and
+SMO is equivalent to steepest descent for the `1-
+norm (Joachims, 1998), classical optimization results
+show that each of those SMO optimizations is nitely
+convergent (Bertsekas, 1995). Corollary 1 directly im-
+plies there are only a nite number of such optimiza-
+tions; thus, the overall algorithm is nitely convergent.
+
+Additional speed-ups can be easily achieved here. For
+example, if for successive values of , some kernels have
+a zero weight, we might as well remove them from the
+algorithm and check after convergence if they can be
+safely kept out. In simulations, we use the following
+values for the free parameters:  = 0.5, 1/n = 0.0005,
+2 = 0.0001, where the value for 1/n corresponds to
+the average value this quantity attains when solving
+the QCQP (L) directly using Mosek.
+
+5. Simulations
+
+We compare the algorithm presented in Section 4.4
+with solving the QCQP (L) using Mosek for two
+datasets, ionosphere and breast cancer, from the UCI
+repository, and nested subsets of the adult dataset
+from Platt (1998). The basis kernels are Gaussian
+kernels on random subsets of features, with varying
+widths. We vary the number of kernels m for xed
+number of data points n, and vice versa. We report
+running time results (Athlon MP 2000+ processor,
+2.5G RAM) in Figure 2. Empirically, we obtain an
+average scaling of m1.1 and n1.4 for the SMO-based
+approach and m1.6 and n4.1 for Mosek. Thus the al-
+gorithm presented in this paper appears to provide a
+signicant improvement over Mosek in computational
+complexity, both in terms of the number of kernels and
+the number of data points.
+
+6. Conclusion
+
+We have presented an algorithm for ecient learning
+of kernels for the support vector machine. Our al-
+gorithm is based on applying sequential minimization
+techniques to a smoothed version of a convex non-
+smooth optimization problem. The good scaling with
+
+Ionosphere, n = 351
+m
+SMO Mosek
+2
+6
+3
+12
+54
+24
+48
+56
+88
+96
+192
+166
+
+4
+8
+20
+51
+162
+548
+
+Adult, n = 1605
+
+m SMO Mosek
+3
+6
+12
+24
+48
+96
+
+92
+205
+1313
+*
+*
+*
+
+20
+23
+36
+119
+618
+957
+
+Breast cancer, n = 683
+m SMO Mosek
+3
+6
+12
+24
+48
+96
+
+11
+20
+54
+141
+149
+267
+
+11
+17
+45
+120
+492
+764
+
+Adult, m = 4
+
+n
+450
+750
+1100
+1605
+2265
+3185
+4781
+6212
+
+SMO Mosek
+17
+29
+44
+72
+121
+202
+410
+670
+
+4
+17
+52
+114
+5455
+8625
+*
+*
+
+Figure 2. Running times in seconds for Mosek and SMO.
+(Top) Ionosphere and breast cancer data, with xed num-
+ber of data points n and varying number of kernels m.
+(Bottom) Adult dataset: (left) with xed n and varying
+m, (right) with xed m and varying n ( means Mosek ran
+out of memory).
+
+respect to the number of data points makes it pos-
+sible to learn kernels for large scale problems, while
+the good scaling with respect to the number of basis
+kernels opens up the possibility of application to large-
+scale feature selection, in which the algorithm selects
+kernels that dene non-linear mappings on subsets of
+input features.
+
+Appendix A. Dual of the SKM
+
+The primal problem (P) can be put in the following
+equivalent form, where Kk = {(u, v)  Rk+1,||u||2 6
+v} is the second-order cone of order k (we now omit the
+summation intervals, with the convention that index i
+goes from 1 to n and index j goes from 1 to m):
+
+w.r.t. u  R, t  Rm, b  R,   Rn
+j xji + b) > 1  i, i
+
+s.t. yi(Pj w>
+
++, (wj, tj)  Kkj , j
+
+min 1
+
+2 u2 + C Pi i
+
+Pj djtj 6 u.
+
+The cone Kk is self-dual, so the conic Lagrangian cor-
+responding to the problem is
+L = 1
+
+2 u2 +C Pi iPii(yi(Pj w>
+Pi ii +(Pjdjtju)Pj(>
+
+j xji +b)1+i)
+j wj +jtj),
+
+with i R+, i R+,   R+, (j, j)  Kkj .
+
+After computing derivatives with respect to the pri-
+mal variables and setting them to zero, we readily get
+the dual function: g(, , , , ) =  1
+2 2 + Pi i de-
+ned on the domain dened by i > 0, i > 0,  >
+0,||j||2 6 j, dj  j = 0,Pi iyixji + j =
+0,Pi iyi = 0, C  i  i = 0. After elimination
+of dummy variables, we obtain problem (D).
+
+Appendix B. Computation of G()
+Let j() = 1
+over each i; a short calculation reveals:
+
+dj ||Pi iyixji||2. We can rst maximize
+
+min
+
+j >|| P i iyixji||2
+which implies that
+
+(j  j)2 = d2
+
+j max(0, j  )2,
+
+G() = min{ 1
+
+2 2 + 1
+
+2 Pj
+
+d2
+j
+a2
+j
+
+(2
+
+j , )  Pi i},
+
+x , 
+
+where (x, y) = max(0,x  y)2. The function 
+is continuously dierentiable, with partial derivatives
+y (cid:17) = (1  y/x, 2y  2x) if y 6 x,
+equal to (cid:16) 
+and zero otherwise. Also, for given x, it is a piecewise
+quadratic function of y. We thus need to minimize a
+piecewise quadratic dierentiable strictly convex func-
+tion of , which can be done easily by inspecting all
+points of non-dierentiability, which requires sorting
+the sequence (j). The complexity of such an algo-
+rithm is O(m log m).
+
+Because of strict convexity the minimum with respect
+to  is unique and denoted ().
+In addition, this
+uniqueness implies that G() is dierentiable and that
+its derivative is equal to:
+
+G() = 1
+
+2 Pj
+
+d2
+j
+a2
+j
+
+j (), ())2
+
+j ()  e
+
+
+
+1
+a2
+
+x (2
+j (cid:16)1  ()
+j (cid:16)1  ()
+
+j ()(cid:17) D(y)KjD(y)  e.
+= PjJ ()
+j ()(cid:17) if j() > (), and
+We dene j() = 1
+a2
+zero otherwise. We also dene j() = j()/(1 
+a2
+j j()). Using the optimality conditions for (), it
+is easy to prove that Pj d2
+j j() = 1. The weights
+j() provide an estimate of the weights for the SKM,
+and can be used to check optimality. Corollary 1
+shows that if (aj) is small enough, then if  is ap-
+proximately optimal for the MY-regularized SKM, the
+pair (, ()) is approximately optimal for the SKM.
+
+Acknowledgements
+
+We wish to acknowledge support from a grant from
+Intel Corporation, and a graduate fellowship to Francis
+Bach from Microsoft Research.
+

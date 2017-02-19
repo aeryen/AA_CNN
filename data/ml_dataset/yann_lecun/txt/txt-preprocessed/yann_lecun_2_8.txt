@@ -1,0 +1,3937 @@
+Abstract
+
+Energy-Based Models (EBMs) capture dependencies between variables by as-
+sociating a scalar energy to each conguration of the variables. Inference consists
+in clamping the value of observed variables and nding congurations of the re-
+maining variables that minimize the energy. Learning consists in nding an energy
+function in which observed congurations of the variables are given lower energies
+than unobserved ones. The EBM approach provides a common theoretical frame-
+work for many learning models, including traditional discriminative and genera-
+tive approaches, as well as graph-transformer networks, conditional random elds,
+maximum margin Markov networks, and several manifold learning methods.
+
+Probabilistic models must be properly normalized, which sometimes requires
+evaluating intractable integrals over the space of all possible variable congura-
+tions. Since EBMs have no requirement for proper normalization, this problem is
+naturally circumvented. EBMs can be viewed as a form of non-probabilistic factor
+graphs, and they provide considerably more exibility in the design of architec-
+tures and training criteria than probabilistic approaches.
+
+1 Introduction: Energy-Based Models
+
+The main purpose of statistical modeling and machine learning is to encode depen-
+dencies between variables. By capturing those dependencies, a model can be used to
+answer questions about the values of unknown variables given the values of known
+variables.
+
+Energy-Based Models (EBMs) capture dependencies by associating a scalar en-
+ergy (a measure of compatibility) to each conguration of the variables. Inference,
+i.e., making a prediction or decision, consists in setting the value of observed variables
+
+1
+
+and nding values of the remaining variables that minimize the energy. Learning con-
+sists in nding an energy function that associates low energies to correct values of the
+remaining variables, and higher energies to incorrect values. A loss functional, mini-
+mized during learning, is used to measure the quality of the available energy functions.
+Within this common inference/learning framework, the wide choice of energy func-
+tions and loss functionals allows for the design of many types of statistical models,
+both probabilistic and non-probabilistic.
+
+Energy-based learning provides a unied framework for many probabilistic and
+non-probabilistic approaches to learning, particularly for non-probabilistic training of
+graphical models and other structured models. Energy-based learning can be seen as an
+alternative to probabilistic estimation for prediction, classication, or decision-making
+tasks. Because there is no requirement for proper normalization, energy-based ap-
+proaches avoid the problems associated with estimating the normalization constant in
+probabilistic models. Furthermore, the absence of the normalization condition allows
+for much more exibility in the design of learning machines. Most probabilistic mod-
+els can be viewed as special types of energy-based models in which the energy function
+satises certain normalizability conditions, and in which the loss function, optimized
+by learning, has a particular form.
+
+This chapter presents a tutorial on energy-based models, with an emphasis on their
+use for structured output problems and sequence labeling problems. Section 1 intro-
+duces energy-based models and describes deterministic inference through energy min-
+imization. Section 2 introduces energy-based learning and the concept of the loss func-
+tion. A number of standard and non-standard loss functions are described, including
+the perceptron loss, several margin-based losses, and the negative log-likelihood loss.
+The negative log-likelihood loss can be used to train a model to produce conditional
+probability estimates. Section 3 shows how simple regression and classication mod-
+els can be formulated in the EBM framework. Section 4 concerns models that contain
+latent variables. Section 5 analyzes the various loss functions in detail and gives suf-
+cient conditions that a loss function must satisfy so that its minimization will cause
+the model to approach the desired behavior. A list of good and bad loss functions
+is given. Section 6 introduces the concept of non-probabilistic factor graphs and infor-
+mally discusses efcient inference algorithms. Section 7 focuses on sequence labeling
+and structured output models. Linear models such as max-margin Markov networks
+and conditional random elds are re-formulated in the EBM framework. The liter-
+ature on discriminative learning for speech and handwriting recognition, going back
+to the late 80s and early 90s, is reviewed. This includes globally trained systems
+that integrate non-linear discriminant functions, such as neural networks, and sequence
+alignment methods, such as dynamic time warping and hidden Markov models. Hier-
+archical models such as the graph transformer network architecture are also reviewed.
+Finally, the differences, commonalities, and relative advantages of energy-based ap-
+proaches, probabilistic approaches, and sampling-based approximate methods such as
+contrastive divergence are discussed in Section 8.
+
+2
+
+H
+
+A
+
+d
+
+i
+
+p
+
+n
+
+u
+
+n
+
+p
+
+e
+
+r
+
+T
+u
+
+v
+
+A
+
+e
+
+i
+
+E
+
+n
+
+a
+c
+
+n
+
+y
+
+a
+
+a
+
+n
+k
+
+e
+
+a
+
+l
+
+r
+
+F
+
+b
+
+C
+
+a
+g
+
+m
+
+l
+
+m
+
+r
+
+u
+
+r
+
+)
+
+i
+r
+
+a
+
+t
+
+i
+
+u
+
+n
+
+e
+
+s
+
+l
+
+c
+
+t
+
+i
+
+o
+
+O
+
+b
+
+s
+
+e
+
+r
+
+v
+
+(
+
+E(Y, X)
+
+n E(Y, X)
+s
+e
+l
+b
+a
+i
+r
+a
+V
+p
+t
+i
+c
+d
+e
+r
+a
+s
+n
+e
+w
+(
+u
+m
+H
+m
+i
+n
+A
+l
+p
+r
+i
+A
+r
+a
+C
+k
+c
+u
+r
+T
+
+a
+
+b
+
+e
+
+e
+
+t
+
+n
+
+a
+
+r
+
+n
+
+a
+
+o
+
+d
+
+)
+
+e
+
+l
+
+X
+
+Y
+
+Figure 1: A model measures the compatibility between observed variables X and variables to
+be predicted Y using an energy function E(Y, X). For example, X could be the pixels of an
+image, and Y a discrete label describing the object in the image. Given X, the model produces
+the answer Y that minimizes the energy E.
+
+1.1 Energy-Based Inference
+
+Let us consider a model with two sets of variables, X and Y , as represented in Fig-
+ure 1. Variable X could be a vector containing the pixels from an image of an object.
+Variable Y could be a discrete variable that represents the possible category of the ob-
+ject. For example, Y could take six possible values: animal, human gure, airplane,
+truck, car, and none of the above. The model is viewed as an energy function which
+measures the goodness (or badness) of each possible conguration of X and Y . The
+output number can be interpreted as the degree of compatibility between the values of
+X and Y . In the following, we use the convention that small energy values correspond
+to highly compatible congurations of the variables, while large energy values corre-
+spond to highly incompatible congurations of the variables. Functions of this type are
+given different names in different technical communities; they may be called contrast
+functions, value functions, or negative log-likelihood functions. In the following, we
+will use the term energy function and denote it E(Y, X). A distinction should be made
+between the energy function, which is minimized by the inference process, and the loss
+functional (introduced in Section 2), which is minimized by the learning process.
+
+In the most common use of a model, the input X is given (observed from the world),
+and the model produces the answer Y that is most compatible with the observed X.
+More precisely, the model must produce the value Y , chosen from a set Y, for which
+E(Y, X) is the smallest:
+
+Y  = argminY Y E(Y, X).
+
+(1)
+
+When the size of the set Y is small, we can simply compute E(Y, X) for all possible
+values of Y  Y and pick the smallest.
+
+3
+
+E(Y, X)
+
+E(Y, X)
+
+E(Y, X)
+
+X
+
+Y
+
+X
+
+Y
+
+X
+
+Y
+
+E
+
+i
+
+n
+
+s
+
+t
+
+e
+
+i
+
+n
+
+"
+
+t
+
+h
+
+i
+
+s
+
+"
+
+(
+
+(
+
+a
+
+d
+
+)
+
+)
+
+E(Y, X)
+
+E(Y, X)
+
+X
+
+Y
+
+X
+
+Y
+
+"
+
+T
+
+h
+
+i
+
+s
+
+i
+
+s
+
+e
+
+a
+
+s
+
+y
+
+"
+
+o
+
+u
+
+n
+
+v
+
+e
+
+b
+
+d
+
+j
+
+)
+
+Figure 2: Several applications of EBMs: (a) face recognition: Y is a high-cardinality discrete
+variable; (b) face detection and pose estimation: Y is a collection of vectors with location
+and pose of each possible face; (c) image segmentation: Y is an image in which each pixel
+is a discrete label; (d-e) handwriting recognition and sequence labeling: Y is a sequence of
+symbols from a highly structured but potentially innite set (the set of English sentences). The
+situation is similar for many applications in natural language processing and computational
+biology; (f) image restoration: Y is a high-dimensional continuous variable (an image).
+
+1
+
+9
+.
+6
+8
+
+5
+
+1
+
+6
+1
+6
+1
+
+1
+
+1
+
+6
+
+1
+6
+1
+5
+
+8
+
+0
+4
+2
+4
+
+.
+
+9
+.
+3
+.
+
+5
+
+4
+8
+
+.
+.
+
+1
+
+6
+4
+3
+1
+
+2
+3
+
+3
+
+3
+3
+
+4
+
+3
+4
+3
+4
+
+.
+
+4
+.
+4
+.
+
+2
+
+2
+2
+
+2
+6
+4
+
+5
+
+2
+5
+2
+5
+
+5
+5
+
+%
+
+%
+0
+
+0
+
+0
+
+0
+0
+.
+
+3
+
+.
+
+1
+
+4
+
+.
+.
+
+3
+8
+8
+
+0
+
+2
+
+7
+5
+
+0
+
+0
+
+0
+
+0
+0
+
+%
+
+0
+
+0
+0
+
+%
+%
+
+.
+
+0
+.
+0
+.
+
+0
+
+1
+1
+
+.
+.
+
+5
+
+0
+6
+0
+4
+
+]
+
+4
+]
+4
+]
+
+]
+]
+
+X
+
+E(Y, X)
+
+Y
+
+(
+
+c
+
+(
+
+)
+
+f
+
+)
+
+.
+.
+r
+
+.
+a
+
+.
+
+9
+
+0
+
+4
+6
+7
+6
+
+p
+
+4
+
+0
+8
+4
+7
+
+o
+
+1
+6
+2
+1
+
+r
+
+.
+
+.
+.
+.
+
+n
+
+%
+0
+0
+0
+0
+)
+
+[
+[
+[
+[
+[
+
+e
+
+8
+7
+1
+1
+
+.
+.
+.
+.
+
+0
+
+)
+
+(
+
+(
+
+b
+
+(
+
+4
+
+In general, however, picking the best Y may not be simple. Figure 2 depicts sev-
+eral situations in which Y may be too large to make exhaustive search practical. In
+Figure 2(a), the model is used to recognize a face. In this case, the set Y is discrete
+and nite, but its cardinality may be tens of thousands [Chopra et al., 2005]. In Fig-
+ure 2(b), the model is used to nd the faces in an image and estimate their poses. The
+set Y contains a binary variable for each location indicating whether a face is present
+at that location, and a set of continuous variables representing the size and orienta-
+tion of the face [Osadchy et al., 2005]. In Figure 2(c), the model is used to segment
+a biological image: each pixel must be classied into one of ve categories (cell nu-
+cleus, nuclear membrane, cytoplasm, cell membrane, external medium). In this case,
+Y contains all the consistent label images, i.e. the ones for which the nuclear mem-
+branes are encircling the nuclei, the nuclei and cytoplasm are inside the cells walls,
+etc. The set is discrete, but intractably large. More importantly, members of the set
+must satisfy complicated consistency constraints [Ning et al., 2005]. In Figure 2(d),
+the model is used to recognize a handwritten sentence. Here Y contains all possible
+sentences of the English language, which is a discrete but innite set of sequences of
+symbols [LeCun et al., 1998a]. In Figure 2(f), the model is used to restore an image
+(by cleaning the noise, enhancing the resolution, or removing scratches). The set Y
+contains all possible images (all possible pixel combinations). It is a continuous and
+high-dimensional set.
+
+For each of the above situations, a specic strategy, called the inference procedure,
+must be employed to nd the Y that minimizes E(Y, X). In many real situations, the
+inference procedure will produce an approximate result, which may or may not be the
+global minimum of E(Y, X) for a given X. In fact, there may be situations where
+E(Y, X) has several equivalent minima. The best inference procedure to use often
+depends on the internal structure of the model. For example, if Y is continuous and
+E(Y, X) is smooth and well-behaved with respect to Y , one may use a gradient-based
+optimization algorithm. If Y is a collection of discrete variables and the energy func-
+tion can be expressed as a factor graph, i.e. a sum of energy functions (factors) that
+depend on different subsets of variables, efcient inference procedures for factor graphs
+can be used (see Section 6) [Kschischang et al., 2001, MacKay, 2003]. A popular ex-
+ample of such a procedure is the min-sum algorithm. When each element of Y can be
+represented as a path in a weighted directed acyclic graph, then the energy for a partic-
+ular Y is the sum of values on the edges and nodes along a particular path. In this case,
+the best Y can be found efciently using dynamic programming (e.g with the Viterbi
+algorithm or A). This situation often occurs in sequence labeling problems such as
+speech recognition, handwriting recognition, natural language processing, and biolog-
+ical sequence analysis (e.g. gene nding, protein folding prediction, etc). Different
+situations may call for the use of other optimization procedures, including continuous
+optimization methods such as linear programming, quadratic programming, non-linear
+optimization methods, or discrete optimization methods such as simulated annealing,
+graph cuts, or graph matching. In many cases, exact optimization is impractical, and
+one must resort to approximate methods, including methods that use surrogate energy
+functions (such as variational methods).
+
+5
+
+1.2 What Questions Can a Model Answer?
+
+In the preceding discussion, we have implied that the question to be answered by the
+model is What is the Y that is most compatible with this X?, a situation that occurs
+in prediction, classication or decision-making tasks. However, a model may be used
+to answer questions of several types:
+
+1. Prediction, classication, and decision-making: Which value of Y is most com-
+patible with this X? This situation occurs when the model is used to make hard
+decisions or to produce an action. For example, if the model is used to drive a
+robot and avoid obstacles, it must produce a single best decision such as steer
+left, steer right, or go straight.
+
+2. Ranking: Is Y1 or Y2 more compatible with this X? This is a more complex
+task than classication because the system must be trained to produce a complete
+ranking of all the answers, instead of merely producing the best one. This situ-
+ation occurs in many data mining applications where the model is used to select
+multiple samples that best satisfy a given criterion.
+
+3. Detection: Is this value of Y compatible with X? Typically, detection tasks,
+such as detecting faces in images, are performed by comparing the energy of a
+face label with a threshold. Since the threshold is generally unknown when the
+system is built, the system must be trained to produce energy values that increase
+as the image looks less like a face.
+
+4. Conditional density estimation: What is the conditional probability distribution
+over Y given X? This case occurs when the output of the system is not used
+directly to produce actions, but is given to a human decision maker or is fed to
+the input of another, separately built system.
+
+We often think of X as a high-dimensional variable (e.g. an image) and Y as a
+discrete variable (e.g. a label), but the converse case is also common. This occurs
+when the model is used for such applications as image restoration, computer graphics,
+speech and language production, etc. The most complex case is when both X and Y
+are high-dimensional.
+
+1.3 Decision Making versus Probabilistic Modeling
+
+For decision-making tasks, such as steering a robot, it is merely necessary that the sys-
+tem give the lowest energy to the correct answer. The energies of other answers are
+irrelevant, as long as they are larger. However, the output of a system must sometimes
+be combined with that of another system, or fed to the input of another system (or to a
+human decision maker). Because energies are uncalibrated (i.e. measured in arbitrary
+units), combining two, separately trained energy-based models is not straightforward:
+there is no a priori guarantee that their energy scales are commensurate. Calibrating
+energies so as to permit such combinations can be done in a number of ways. However,
+the only consistent way involves turning the collection of energies for all possible out-
+puts into a normalized probability distribution. The simplest and most common method
+
+6
+
+for turning a collection of arbitrary energies into a collection of numbers between 0 and
+1 whose sum (or integral) is 1 is through the Gibbs distribution:
+
+(2)
+
+P (Y |X) =
+
+eE(Y,X)
+
+RyY eE(y,X) ,
+
+where  is an arbitrary positive constant akin to an inverse temperature, and the denom-
+inator is called the partition function (by analogy with similar concepts in statistical
+physics). The choice of the Gibbs distribution may seem arbitrary, but other proba-
+bility distributions can be obtained (or approximated) through a suitable re-denition
+of the energy function. Whether the numbers obtained this way are good probability
+estimates does not depend on how energies are turned into probabilities, but on how
+E(Y, X) is estimated from data.
+
+It should be noted that the above transformation of energies into probabilities is
+
+only possible if the integral RyY eE(y,X) converges. This somewhat restricts the
+
+energy functions and domains Y that can be used. More importantly, there are many
+practical situations where computing the partition function is intractable (e.g. when
+Y has high cardinality), or outright impossible (e.g. when Y is a high dimensional
+variable and the integral has no analytical solution). Hence probabilistic modeling
+comes with a high price, and should be avoided when the application does not require
+it.
+
+2 Energy-Based Training: Architecture and Loss Func-
+
+tion
+
+Training an EBM consists in nding an energy function that produces the best Y for
+any X. The search for the best energy function is performed within a family of energy
+functions E indexed by a parameter W
+
+E = {E(W, Y, X) : W  W}.
+
+(3)
+
+The architecture of the EBM is the internal structure of the parameterized energy func-
+tion E(W, Y, X). At this point, we put no particular restriction on the nature of X,
+Y , W , and E. When X and Y are real vectors, E could be as simple as a linear com-
+bination of basis functions (as in the case of kernel methods), or a set of neural net
+architectures and weight values. Section gives examples of simple architectures for
+common applications to classication and regression. When X and Y are variable-size
+images, sequences of symbols or vectors, or more complex structured objects, E may
+represent a considerably richer class of functions. Sections 4, 6 and 7 discuss several
+examples of such architectures. One advantage of the energy-based approach is that it
+puts very little restrictions on the nature of E.
+
+To train the model for prediction, classication, or decision-making, we are given
+a set of training samples S = {(X i, Y i) : i = 1 . . . P }, where X i is the input for
+the i-th training sample, and Y i is the corresponding desired answer. In order to nd
+the best energy function in the family E, we need a way to assess the quality of any
+
+7
+
+particular energy function, based solely on two elements: the training set, and our prior
+knowledge about the task. This quality measure is called the loss functional (i.e. a
+function of function) and denoted L(E, S). For simplicity, we often denote it L(W, S)
+and simply call it the loss function. The learning problem is simply to nd the W that
+minimizes the loss:
+
+For most cases, the loss functional is dened as follows:
+
+W  = min
+W W
+
+L(W, S).
+
+L(E, S) =
+
+1
+P
+
+P
+
+Xi=1
+
+L(Y i, E(W, Y, X i)) + R(W ).
+
+(4)
+
+(5)
+
+It is an average taken over the training set of a per-sample loss functional, denoted
+L(Y i, E(W, Y, X i)), which depends on the desired answer Y i and on the energies
+obtained by keeping the input sample xed and varying the answer Y . Thus, for each
+sample, we evaluate a slice of the energy surface. The term R(W ) is the regularizer,
+and can be used to embed our prior knowledge about which energy functions in our
+family are preferable to others (in the absence of training data). With this denition,
+the loss is invariant under permutations of the training samples and under multiple
+repetitions of the training set.
+
+Naturally, the ultimate purpose of learning is to produce a model that will give
+good answers for new input samples that are not seen during training. We can rely
+on general results from statistical learning theory which guarantee that, under simple
+interchangeability conditions on the samples and general conditions on the family of
+energy functions (nite VC dimension), the deviation between the value of the loss
+after minimization on the training set, and the loss on a large, separate set of test
+samples is bounded by a quantity that converges to zero as the size of training set
+increases [Vapnik, 1995].
+
+2.1 Designing a Loss Functional
+
+Intuitively, the per-sample loss functional should be designed in such a way that it
+assigns a low loss to well-behaved energy functions: energy functions that give the
+lowest energy to the correct answer and higher energy to all other (incorrect) answers.
+Conversely, energy functions that do not assign the lowest energy to the correct answers
+would have a high loss. Characterizing the appropriateness of loss functions (the ones
+that select the best energy functions) is further discussed in following sections.
+
+Considering only the task of training a model to answer questions of type 1 (pre-
+diction, classication and decision-making), the main intuition of the energy-based ap-
+proach is as follows. Training an EBM consists in shaping the energy function, so that
+for any given X, the inference algorithm will produce the desired value for Y . Since
+the inference algorithm selects the Y with the lowest energy, the learning procedure
+must shape the energy surface so that the desired value of Y has lower energy than all
+other (undesired) values. Figures 3 and 4 show examples of energy as a function of Y
+for a given input sample X i in cases where Y is a discrete variable and a continuous
+scalar variable. We note three types of answers:
+
+8
+
+E(Y, X)
+
+E(Y, X)
+
+Figure 3: How training affects the energies of the possible answers in the discrete case: the
+energy of the correct answer is decreased, and the energies of incorrect answers are increased,
+particularly if they are lower than that of the correct answer.
+
+Figure 4: The effect of training on the energy surface as a function of the answer Y in the con-
+tinuous case. After training, the energy of the correct answer Y i is lower than that of incorrect
+answers.
+
+H
+
+A
+
+i
+
+u
+
+n
+
+p
+
+r
+
+A
+
+m
+
+l
+
+i
+r
+
+a
+
+m
+
+C
+u
+
+a
+n
+c
+
+a
+
+a
+
+n
+k
+
+e
+
+l
+
+r
+
+T
+
+s
+
+A
+
+)
+i
+
+X
+
+,
+
+
+
+,
+
+W
+(
+E
+
+p
+
+u
+
+n (Y )
+p
+
+u
+
+l
+
+l
+
+u
+
+p
+
+Y i
+
+Y i
+
+h
+
+n
+
+o
+
+d
+
+s
+
+w
+
+w
+
+e
+
+r
+
+t
+
+f
+
+n
+
+i
+
+e
+i
+
+r
+
+n
+
+g
+
+A
+
+H
+
+A
+
+i
+
+r
+
+u
+
+n
+
+p
+
+T
+
+m
+
+l
+
+i
+r
+
+m
+
+a
+
+C
+u
+
+a
+n
+c
+
+a
+
+a
+
+n
+k
+
+e
+
+l
+
+r
+
+a
+
+A
+
+e
+i
+
+r
+
+t
+
+t
+
+n
+
+A
+
+a
+
+r
+
+t
+
+f
+
+i
+
+r
+
+n
+
+g
+
+9
+
+)
+i
+
+X
+
+,
+
+
+
+,
+
+W
+(
+E
+
+Y i
+
+Y i
+
+(Y )
+
+A
+
+n
+
+s
+
+w
+
+e
+
+r
+
+ Y i: the correct answer
+
+ Y i: the answer produced by the model, i.e. the answer with the lowest energy.
+
+ Y i: the most offending incorrect answer, i.e.
+
+the answer that has the lowest
+energy among all the incorrect answers. To dene this answer in the continuous
+case, we can simply view all answers within a distance  of Y i as correct, and all
+answers beyond that distance as incorrect.
+
+With a properly designed loss function, the learning process should have the effect
+of pushing down on E(W, Y i, X i), and pulling up on the incorrect energies, par-
+ticularly on E(W, Y i, X i). Different loss functions do this in different ways. Section 5
+gives sufcient conditions that the loss function must satisfy in order to be guaranteed
+to shape the energy surface correctly. We show that some widely used loss functions
+do not satisfy the conditions, while others do.
+
+To summarize: given a training set S, building and training an energy-based model
+
+involves designing four components:
+
+1. The architecture: the internal structure of E(W, Y, X).
+
+2. The inference algorithm: the method for nding a value of Y that minimizes
+
+E(W, Y, X) for any given X.
+
+3. The loss function: L(W, S) measures the quality of an energy function using the
+
+training set.
+
+4. The learning algorithm: the method for nding a W that minimizes the loss
+
+functional over the family of energy functions E, given the training set.
+
+Properly designing the architecture and the loss function is critical. Any prior knowl-
+edge we may have about the task at hand is embedded into the architecture and into
+the loss function (particularly the regularizer). Unfortunately, not all combinations of
+architectures and loss functions are allowed. With some combinations, minimizing the
+loss will not make the model produce the best answers. Choosing the combinations of
+architecture and loss functions that can learn effectively and efciently is critical to the
+energy-based approach, and thus is a central theme of this tutorial.
+
+2.2 Examples of Loss Functions
+
+We now describe a number of standard loss functions that have been proposed and used
+in the machine learning literature. We shall discuss them and classify them as good
+or bad in an energy-based setting. For the time being, we set aside the regularization
+term, and concentrate on the data-dependent part of the loss function.
+
+2.2.1 Energy Loss
+
+The simplest and the most straightforward of all the loss functions is the energy loss.
+For a training sample (X i, Y i), the per-sample loss is dened simply as:
+
+Lenergy(Y i, E(W, Y, X i)) = E(W, Y i, X i).
+
+(6)
+
+10
+
+3
+
+2.5
+
+2
+
+1.5
+
+1
+
+0.5
+
+L
+
+
+:
+s
+s
+o
+L
+
+0
+4
+
+3
+
+1.8
+
+1.6
+
+1.4
+
+1.2
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+L
+
+
+:
+s
+s
+o
+L
+
+0
+
+1
+
+0
+2
+
+1.5
+
+1
+
+14
+
+12
+
+10
+
+8
+
+6
+
+4
+
+2
+
+L
+
+
+:
+s
+s
+o
+L
+
+0.5
+
+1
+
+1.5
+
+0
+
+0
+
+0.5
+
+0.5
+
+0
+
+EI  EC
+
+2
+
+1
+
+EI  EC
+
+1.5
+
+2
+
+2.5
+
+3
+
+3.5
+
+1
+
+Energy: EC / EI
+
+Figure 5: The hinge loss (left) and log loss (center) penalize E(W, Y i, X i)E(W, Y i, X i) lin-
+early and logarithmically, respectively. The square-square loss (right) separately penalizes large
+values of E(W, Y i, X i) (solid line) and small values of E(W, Y i, X i) (dashed line) quadrati-
+cally.
+
+This loss function, although very popular for things like regression and neural network
+training, cannot be used to train most architectures: while this loss will push down
+on the energy of the desired answer, it will not pull up on any other energy. With
+some architectures, this can lead to a collapsed solution in which the energy is con-
+stant and equal to zero. The energy loss will only work with architectures that are
+designed in such a way that pushing down on E(W, Y i, X i) will automatically make
+the energies of the other answers larger. A simple example of such an architecture is
+E(W, Y i, X i) = ||Y i  G(W, X i)||2, which corresponds to regression with mean-
+squared error with G being the regression function.
+
+2.2.2 Generalized Perceptron Loss
+
+The generalized perceptron loss for a training sample (X i, Y i) is dened as
+
+Lperceptron(Y i, E(W, Y, X i)) = E(W, Y i, X i)  min
+Y Y
+
+E(W, Y, X i).
+
+(7)
+
+This loss is always positive, since the second term is a lower bound on the rst term.
+Minimizing this loss has the effect of pushing down on E(W, Y i, X i), while pulling
+up on the energy of the answer produced by the model.
+
+While the perceptron loss has been widely used in many settings, including for
+models with structured outputs such as handwriting recognition [LeCun et al., 1998a]
+and parts of speech tagging [Collins, 2002], it has a major deciency: there is no mech-
+anism for creating an energy gap between the correct answer and the incorrect ones.
+Hence, as with the energy loss, the perceptron loss may produce at (or almost at)
+energy surfaces if the architecture allows it. Consequently, a meaningful, uncollapsed
+result is only guaranteed with this loss if a model is used that cannot produce a at
+energy surface. For other models, one cannot guarantee anything.
+
+2.2.3 Generalized Margin Losses
+
+Several loss functions can be described as margin losses; the hinge loss, log loss, LVQ2
+loss, minimum classication error loss, square-square loss, and square-exponential loss
+all use some form of margin to create an energy gap between the correct answer and the
+
+11
+
+incorrect answers. Before discussing the generalized margin loss we give the following
+denitions.
+
+Denition 1 Let Y be a discrete variable. Then for a training sample (X i, Y i), the
+most offending incorrect answer Y i is the answer that has the lowest energy among
+all answers that are incorrect:
+
+Y i = argminY YandY 6=Y i E(W, Y, X i).
+
+(8)
+
+If Y is a continuous variable then the denition of the most offending incorrect answer
+can be dened in a number of ways. The simplest denition is as follows.
+
+Denition 2 Let Y be a continuous variable. Then for a training sample (X i, Y i), the
+most offending incorrect answer Y i is the answer that has the lowest energy among
+all answers that are at least  away from the correct answer:
+
+Y i = argminY Y,kY Y ik>E(W, Y, X i).
+
+(9)
+
+The generalized margin loss is a more robust version of the generalized perceptron
+loss. It directly uses the energy of the most offending incorrect answer in the contrastive
+term:
+
+Lmargin(W, Y i, X i) = Qm(cid:0)E(W, Y i, X i), E(W, Y i, X i)(cid:1) .
+
+Here m is a positive parameter called the margin and Qm(e1, e2) is a convex function
+whose gradient has a positive dot product with the vector [1, 1] in the region where
+E(W, Y i, X i) + m > E(W, Y i, X i). In other words, the loss surface is slanted toward
+low values of E(W, Y i, X i) and high values of E(W, Y i, X i) wherever E(W, Y i, X i)
+is not smaller than E(W, Y i, X i) by at least m. Two special cases of the generalized
+margin loss are given below:
+
+(10)
+
+Hinge Loss: A particularly popular example of generalized margin loss is
+the hinge loss, which is used in combination with linearly parameterized en-
+ergies and a quadratic regularizer in support vector machines, support vector
+Markov models [Altun and Hofmann, 2003], and maximum-margin Markov net-
+works [Taskar et al., 2003]:
+
+Lhinge(W, Y i, X i) = max(cid:0)0, m + E(W, Y i, X i)  E(W, Y i, X i)(cid:1) ,
+
+where m is the positive margin. The shape of this loss function is given in Figure 5. The
+difference between the energies of the correct answer and the most offending incorrect
+answer is penalized linearly when larger than m. The hinge loss only depends on
+energy differences, hence individual energies are not constrained to take any particular
+value.
+
+(11)
+
+Log Loss: a common variation of the hinge loss is the log loss, which can be seen
+
+as a soft version of the hinge loss with an innite margin (see Figure 5, center):
+
+Llog(W, Y i, X i) = log(cid:16)1 + eE(W,Y i,X i)E(W, Y i,X i)(cid:17) .
+
+(12)
+
+LVQ2 Loss: One of
+
+ing
+
+sequence
+
+labeling
+
+systems
+
+the very rst proposals for discriminatively train-
+systems)
+
+(particularly
+
+recognition
+
+speech
+
+12
+
+loss has been advocated
+is a version of Kohonens LVQ2 loss.
+by Driancourt
+[Driancourt et al., 1991a,
+Driancourt and Gallinari, 1992b, Driancourt and Gallinari, 1992a, Driancourt, 1994,
+McDermott, 1997, McDermott and Katagiri, 1992]:
+
+and Bottou since
+
+early 90s
+
+This
+
+the
+
+Llvq2(W, Y i, X i) = min(cid:18)1, max(cid:18)0,
+
+E(W, Y i, X i)  E(W, Y i, X i)
+
+E(W, Y i, X i)
+
+(cid:19)(cid:19) ,
+
+(13)
+
+where  is a positive parameter. LVQ2 is a zero-margin loss, but it has the peculiarity of
+saturating the ratio between E(W, Y i, X i) and E(W, Y i, X i) to 1 + . This mitigates
+the effect of outliers by making them contribute a nominal cost M to the total loss.
+This loss function is a continuous approximation of the number of classication errors.
+Unlike generalized margin losses, the LVQ2 loss is non-convex in E(W, Y i, X i) and
+E(W, Y i, X i).
+
+MCE Loss: The Minimum Classication Error loss was originally proposed by
+Juang et al.
+in the context of discriminative training for speech recognition sys-
+tems [Juang et al., 1997]. The motivation was to build a loss function that also ap-
+proximately counts the number of classication errors, while being smooth and differ-
+entiable. The number of classication errors can be written as:
+
+(cid:0)E(W, Y i, X i)  E(W, Y i, X i)(cid:1) ,
+
+where  is the step function (equal to zero for negative arguments, and 1 for positive
+arguments). However, this function is not differentiable, and therefore very difcult to
+optimize. The MCE Loss softens it with a sigmoid:
+
+(14)
+
+Lmce(W, Y i, X i) = (cid:0)E(W, Y i, X i)  E(W, Y i, X i)(cid:1) ,
+
+where  is the logistic function (x) = (1 + ex)1. As with the LVQ2 loss, the satu-
+ration ensures that mistakes contribute a nominal cost to the overall loss. Although the
+MCE loss does not have an explicit margin, it does create a gap between E(W, Y i, X i)
+and E(W, Y i, X i). The MCE loss is non-convex.
+
+(15)
+
+Square-Square Loss: Unlike the hinge loss,
+
+the energy of
+rately [LeCun and Huang, 2005, Hadsell et al., 2006]:
+
+the correct answer and the most offending answer
+
+the square-square loss treats
+sepa-
+
+Lsqsq(W, Y i, X i) = E(W, Y i, X i)2 +(cid:0)max(0, m  E(W, Y i, X i))(cid:1)2
+
+(16)
+Large values of E(W, Y i, X i) and small values of E(W, Y i, X i) below the margin m
+are both penalized quadratically (see Figure 5). Unlike the margin loss, the square-
+square loss pins down the correct answer energy at zero and pins down the incor-
+rect answer energies above m. Therefore, it is only suitable for energy functions that
+are bounded below by zero, notably in architectures whose output module measures
+some sort of distance.
+
+.
+
+Square-Exponential
+
+Chopra et al., 2005,
+Osadchy et al., 2005]: The square-exponential loss is similar to the square-square
+loss.
+instead of a quadratic term it has the
+exponential of the negative energy of the most offending incorrect answer:
+
+It only differs in the contrastive term:
+
+[LeCun and Huang, 2005,
+
+Lsqexp(W, Y i, X i) = E(W, Y i, X i)2 + eE(W, Y i,X i),
+
+(17)
+
+13
+
+where  is a positive constant. Unlike the square-square loss, this loss has an innite
+margin and pushes the energy of the incorrect answers to innity with exponentially
+decreasing force.
+
+2.2.4 Negative Log-Likelihood Loss
+
+The motivation for the negative log-likelihood loss comes from probabilistic modeling.
+It is dened as:
+
+Lnll(W, Y i, X i) = E(W, Y i, X i) + F(W, Y, X i).
+
+(18)
+
+Where F is the free energy of the ensemble {E(W, y, X i), y  Y}:
+
+F(W, Y, X i) =
+
+1
+
+
+log(cid:18)ZyY
+
+exp(cid:0)E(W, y, X i)(cid:1)(cid:19) .
+
+(19)
+
+where  is a positive constant akin to an inverse temperature. This loss can only be
+used if the exponential of the negative energy is integrable over Y, which may not be
+the case for some choices of energy function or Y.
+
+The form of the negative log-likelihood loss stems from a probabilistic formulation
+of the learning problem in terms of the maximum conditional probability principle.
+Given the training set S, we must nd the value of the parameter that maximizes the
+conditional probability of all the answers given all the inputs in the training set. Assum-
+ing that the samples are independent, and denoting by P (Y i|X i, W ) the conditional
+probability of Y i given X i that is produced by our model with parameter W , the condi-
+tional probability of the training set under the model is a simple product over samples:
+
+P (Y 1, . . . , Y P |X 1, . . . , X P , W ) =
+
+P (Y i|X i, W ).
+
+(20)
+
+P
+
+Yi=1
+
+Applying the maximum likelihood estimation principle, we seek the value of W that
+maximizes the above product, or the one that minimizes the negative log of the above
+product:
+
+P
+
+P
+
+P (Y i|X i, W ) =
+
+ log P (Y i|X i, W ).
+
+(21)
+
+ log
+
+Yi=1
+
+Xi=1
+
+Using the Gibbs distribution (Equation 2), we get:
+
+ log
+
+P
+
+Yi=1
+
+P (Y i|X i, W ) =
+
+P
+
+Xi=1
+
+E(W, Y i, X i) + logZyY
+
+eE(W,y,X i).
+
+(22)
+
+The nal form of the negative log-likelihood loss is obtained by dividing the above
+expression by P and  (which has no effect on the position of the minimum):
+
+Lnll(W, S) =
+
+1
+P
+
+P
+
+Xi=1(cid:18)E(W, Y i, X i) +
+
+1
+
+
+logZyY
+
+eE(W,y,X i)(cid:19) .
+
+(23)
+
+14
+
+While many of the previous loss functions involved only E(W, Y i, X i) in their con-
+trastive term, the negative log-likelihood loss combines all the energies for all val-
+ues of Y in its contrastive term F(W, Y, X i). This term can be interpreted as the
+Helmholtz free energy (log partition function) of the ensemble of systems with ener-
+gies E(W, Y, X i), Y  Y. This contrastive term causes the energies of all the answers
+to be pulled up. The energy of the correct answer is also pulled up, but not as hard as it
+is pushed down by the rst term. This can be seen in the expression of the gradient for
+a single sample:
+
+Lnll(W, Y i, X i)
+
+W
+
+=
+
+E(W, Y i, X i)
+
+W
+
+ZY Y
+
+E(W, Y, X i)
+
+W
+
+where P (Y |X i, W ) is obtained through the Gibbs distribution:
+
+P (Y |X i, W ),
+
+(24)
+
+P (Y |X i, W ) =
+
+(25)
+
+eE(W,Y,X i)
+
+RyY eE(W,y,X i) .
+
+Hence, the contrastive term pulls up on the energy of each answer with a force propor-
+tional to the likelihood of that answer under the model. Unfortunately, there are many
+interesting models for which computing the integral over Y is intractable. Evaluating
+this integral is a major topic of research. Considerable efforts have been devoted to ap-
+proximation methods, including clever organization of the calculations, Monte-Carlo
+sampling methods, and variational methods. While these methods have been devised as
+approximate ways of minimizing the NLL loss, they can be viewed in the energy-based
+framework as different strategies for choosing the Y s whose energies will be pulled
+up.
+
+Interestingly, the NLL loss reduces to the generalized perceptron loss when   
+(zero temperature), and reduces to the log loss (Eq. 12) when Y has two elements (e.g.
+binary classication).
+
+It was also used by Bengio et al.
+
+The NLL loss has been used extensively by many authors under various
+In the neural network classication literature, it is known as the cross-
+names.
+to train an
+entropy loss [Solla et al., 1988].
+energy-based language model [Bengio et al., 2003].
+It has been widely used un-
+der the name maximum mutual information estimation for discriminatively train-
+ing speech recognition systems since the late 80s,
+including hidden Markov
+models with mixtures of Gaussians [Bahl et al., 1986], and HMM-neural net hy-
+brids [Bengio et al., 1990, Bengio et al., 1992, Haffner, 1993, Bengio, 1996].
+It has
+also been used extensively for global discriminative training of handwriting recog-
+nition systems that
+integrate neural nets and hidden Markov models under the
+names maximum mutual information [Bengio et al., 1993, LeCun and Bengio, 1994,
+Bengio et al., 1995, LeCun et al., 1997, Bottou et al., 1997] and discriminative for-
+ward training [LeCun et al., 1998a]. Finally, it is the loss function of choice for train-
+ing other probabilistic discriminative sequence labeling models such as input/output
+HMM [Bengio and Frasconi, 1996], conditional random elds [Lafferty et al., 2001],
+and discriminative random elds [Kumar and Hebert, 2004].
+
+Minimum Empirical Error Loss: Some authors have argued that the negative log
+likelihood loss puts too much emphasis on mistakes: Eq. 20 is a product whose value
+
+15
+
+is dominated by its smallest term. Hence, Ljolje et al. [Ljolje et al., 1990] proposed
+the minimum empirical error loss, which combines the conditional probabilities of the
+samples additively instead of multiplicatively:
+
+Lmee(W, Y i, X i) = 1  P (Y i|X i, W ).
+
+(26)
+
+(27)
+
+Substituting Equation 2 we get:
+
+Lmee(W, Y i, X i) = 1 
+
+eE(W,Y i,X i)
+
+RyY eE(W,y,X i) .
+
+As with the MCE loss and the LVQ2 loss, the MEE loss saturates the contribution
+of any single error. This makes the system more robust to label noise and outliers,
+which is of particular importance to such applications such as speech recognition, but
+it makes the loss non-convex. As with the NLL loss, MEE requires evaluating the
+partition function.
+
+3 Simple Architectures
+
+To substantiate the ideas presented thus far, this section demonstrates how simple mod-
+els of classication and regression can be formulated as energy-based models. This sets
+the stage for the discussion of good and bad loss functions, as well as for the discussion
+of advanced architectures for structured prediction.
+
+E(W, Y, X)
+
+E(W, Y, X)
+
+E(W, Y, X) =
+
+3
+
+!
+
+k=1
+
+(Y  k)gk
+
+D(GW (X), Y )
+
+Y  GW (X)
+
+GW (X)
+
+GW (X)
+
+g0
+
+g1
+
+g2
+
+GW (X)
+
+X
+
+Y
+
+X
+
+Y
+
+X
+
+Y
+
+Figure 6: Simple learning models viewed as EBMs: (a) a regressor: The energy is the dis-
+crepancy between the output of the regression function GW (X) and the answer Y . The best
+inference is simply Y  = GW (X); (b) a simple two-class classier: The set of possible an-
+swers is {1, +1}. The best inference is Y  = sign(GW (X)); (c) a multiclass classier: The
+discriminant function produces one value for each of the three categories. The answer, which
+can take three values, controls the position of a switch, which connects one output of the dis-
+criminant function to the energy function. The best inference is the index of the smallest output
+component of GW (X).
+
+16
+
+3.1 Regression
+
+Figure 6(a) shows a simple architecture for regression or function approximation. The
+energy function is the squared error between the output of a regression function GW (X)
+and the variable to be predicted Y , which may be a scalar or a vector:
+
+E(W, Y, X) =
+
+1
+2
+
+||GW (X)  Y ||2.
+
+(28)
+
+The inference problem is trivial: the value of Y that minimizes E is equal to GW (X).
+The minimum energy is always equal to zero. When used with this architecture, the
+energy loss, perceptron loss, and negative log-likelihood loss are all equivalent because
+the contrastive term of the perceptron loss is zero, and that of the NLL loss is constant
+(it is a Gaussian integral with a constant variance):
+
+Lenergy(W, S) =
+
+E(W, Y i, X i) =
+
+1
+P
+
+P
+
+Xi=1
+
+1
+2P
+
+P
+
+Xi=1
+
+||GW (X i)  Y i||2.
+
+(29)
+
+This corresponds to standard regression with mean-squared error.
+
+A popular form of regression occurs when G is a linear function of the parameters:
+
+GW (X) =
+
+N
+
+Xk=1
+
+wkk(X) = W T (X).
+
+(30)
+
+The k(X) are a set of N features, and wk are the components of an N -dimensional
+parameter vector W . For concision, we use the vector notation W T (X), where W T
+denotes the transpose of W , and (X) denotes the vector formed by each k(X). With
+this linear parameterization, training with the energy loss reduces to an easily solvable
+least-squares minimization problem, which is convex:
+
+W  = argminW " 1
+
+2P
+
+||W T (X i)  Y i||2# .
+
+P
+
+Xi=1
+
+(31)
+
+In simple models, the feature functions are hand-crafted by the designer, or separately
+trained from unlabeled data. In the dual form of kernel methods, they are dened as
+k(X) = K(X, X k), k = 1 . . . P , where K is the kernel function. In more complex
+models such as multilayer neural networks and others, the s may themselves be pa-
+rameterized and subject to learning, in which case the regression function is no longer
+a linear function of the parameters and hence the loss function may not be convex in
+the parameters.
+
+3.2 Two-Class Classier
+
+Figure 6(b) shows a simple two-class classier architecture. The variable to be pre-
+dicted is binary: Y = {1, +1}. The energy function can be dened as:
+
+E(W, Y, X) = Y GW (X),
+
+(32)
+
+17
+
+where GW (X) is a scalar-valued discriminant function parameterized by W . Inference
+is trivial:
+
+Y  = argminY {1,1}  Y GW (X) = sign(GW (X)).
+
+(33)
+Learning can be done using a number of different loss functions, which include the
+perceptron loss, hinge loss, and negative log-likelihood loss. Substituting Equations 32
+and 33 into the perceptron loss (Eq. 7), we get:
+
+Lperceptron(W, S) =
+
+1
+P
+
+P
+
+Xi=1(cid:0)sign(GW (X i))  Y i(cid:1) GW (X i).
+
+The stochastic gradient descent update rule to minimize this loss is:
+
+W  W + (cid:0)Y i  sign(GW (X i)(cid:1)
+
+GW (X i)
+
+W
+
+,
+
+where  is a positive step size. If we choose GW (X) in the family of linear models,
+the energy function becomes E(W, Y, X) = Y W T (X) and the perceptron loss
+becomes:
+
+Lperceptron(W, S) =
+
+1
+P
+
+P
+
+Xi=1(cid:0)sign(W T (X i))  Y i(cid:1) W T (X i),
+
+and the stochastic gradient descent update rule becomes the familiar perceptron learn-
+
+ing rule: W  W + (cid:0)Y i  sign(W T (X i))(cid:1) (X i).
+
+The hinge loss (Eq. 11) with the two-class classier energy (Eq. 32) yields:
+
+Lhinge(W, S) =
+
+1
+P
+
+P
+
+Xi=1
+
+max(0, m + 2Y iGW (X i)).
+
+(37)
+
+Using this loss with GW (X) = W T X and a regularizer of the form ||W ||2 gives the
+familiar linear support vector machine.
+
+The negative log-likelihood loss (Eq. 23) with Equation 32 yields:
+
+Lnll(W, S) =
+
+1
+P
+
+P
+
+Xi=1hY iGW (X i) + log(cid:16)eY iGW (X i) + eY iGW (X i)(cid:17)i .
+
+Using the fact that Y = {1, +1}, we obtain:
+
+(34)
+
+(35)
+
+(36)
+
+(38)
+
+(39)
+
+Lnll(W, S) =
+
+1
+P
+
+log(cid:16)1 + e2Y iGW (X i)(cid:17) ,
+
+which is equivalent to the log loss (Eq. 12). Using a linear model as described above,
+the loss function becomes:
+
+Lnll(W, S) =
+
+1
+P
+
+log(cid:16)1 + e2Y iW T (X i)(cid:17) .
+
+(40)
+
+This particular combination of architecture and loss is the familiar logistic regression
+method.
+
+P
+
+Xi=1
+
+P
+
+Xi=1
+
+18
+
+3.3 Multiclass Classier
+
+Figure 6(c) shows an example of architecture for multiclass classication for 3 classes.
+A discriminant function GW (X) produces an output vector [g1, g2, . . . , gC] with one
+component for each of the C categories. Each component gj can be interpreted as
+a penalty for assigning X to the jth category. A discrete switch module selects
+which of the components is connected to the output energy. The position of the switch
+is controlled by the discrete variable Y  {1, 2, . . . , C}, which is interpreted as the
+j=1 (Y  j)gj, where
+(Y  j) is the Kronecker delta function: (u) = 1 for u = 0; (u) = 0 otherwise.
+Inference consists in setting Y to the index of the smallest component of GW (X).
+
+category. The output energy is equal to E(W, Y, X) = PC
+
+The perceptron loss, hinge loss, and negative log-likelihood loss can be directly
+
+translated to the multiclass case.
+
+3.4 Implicit Regression
+
+E(W, Y, X)
+
+||G1W1 (X)  G2W2 (Y )||1
+
+G1W1 (X)
+GW (X)
+
+HW2(X)
+G2W2 (Y )
+
+X
+
+Y
+
+Figure 7: The implicit regression architecture. X and Y are passed through two functions
+. This architecture allows multiple values of Y to have low energies for a given
+G1W1
+X.
+
+and G2W2
+
+The architectures described in the previous section are simple functions of Y with a
+single minimum within the set Y. However, there are tasks for which multiple answers
+are equally good. Examples include robot navigation, where turning left or right may
+get around an obstacle equally well, or a language model in which the sentence segment
+the cat ate the can be followed equally well by mouse or bird.
+
+More generally, the dependency between X and Y sometimes cannot be expressed
+as a function that maps X to Y (e.g., consider the constraint X 2+Y 2 = 1). In this case,
+which we call implicit regression, we model the constraint that X and Y must satisfy
+and design the energy function such that it measures the violation of the constraint.
+Both X and Y can be passed through functions, and the energy is a function of their
+outputs. A simple example is:
+
+E(W, Y, X) =
+
+1
+2
+
+||GX (WX , X)  GY (WY , Y )||2.
+
+(41)
+
+19
+
+For some problems, the function GX must be different from the function GY . In
+other cases, GX and GY must be instances of the same function G. An interesting
+example is the Siamese architecture [Bromley et al., 1993]: variables X1 and X2 are
+passed through two instances of a function GW . A binary label Y determines the con-
+straint on GW (X1) and GW (X2): if Y = 0, GW (X1) and GW (X2) should be equal,
+and if Y = 1, GW (X1) and GW (X2) should be different. In this way, the regres-
+sion on X1 and X2 is implicitly learned through the constraint Y rather than explicitly
+learned through supervision. Siamese architectures are used to learn similarity metrics
+with labeled examples. When two input samples X1 and X2 are known to be similar
+(e.g. two pictures of the same person), Y = 0; when they are different, Y = 1.
+
+Siamese architectures were originally designed for signature verication [Bromley et al., 1993].
+
+More recently they have been used with the square-exponential loss (Eq. 17) to learn a
+similarity metric with application to face recognition [Chopra et al., 2005]. They have
+also been used with the square-square loss (Eq. 16) for unsupervised learning of mani-
+folds [Hadsell et al., 2006].
+
+In other applications, a single non-linear function combines X and Y . An example
+of such architecture is the trainable language model of Bengio et al [Bengio et al., 2003].
+Under this model, the input X is a sequence of a several successive words in a text, and
+the answer Y is the the next word in the text. Since many different words can follow
+a particular word sequence, the architecture must allow multiple values of Y to have
+low energy. The authors used a multilayer neural net as the function G(W, X, Y ), and
+chose to train it with the negative log-likelihood loss. Because of the high cardinal-
+ity of Y (equal to the size of the English dictionary), they had to use approximations
+(importance sampling) and had to train the system on a cluster machine.
+
+The current section often referred to architectures in which the energy was linear or
+quadratic in W , and the loss function was convex in W , but it is important to keep in
+mind that much of the discussion applies equally well to more complex architectures,
+as we will see later.
+
+4 Latent Variable Architectures
+
+Energy minimization is a convenient way to represent the general process of reasoning
+and inference. In the usual scenario, the energy is minimized with respect to the vari-
+ables to be predicted Y , given the observed variables X. During training, the correct
+value of Y is given for each training sample. However there are numerous applications
+where it is convenient to use energy functions that depend on a set of hidden variables
+Z whose correct value is never (or rarely) given to us, even during training. For ex-
+ample, we could imagine training the face detection system depicted in Figure 2(b)
+with data for which the scale and pose information of the faces is not available. For
+these architectures, the inference process for a given set of variables X and Y involves
+minimizing over these unseen variables Z:
+
+E(Y, X) = min
+ZZ
+
+E(Z, Y, X).
+
+(42)
+
+Such hidden variables are called latent variables, by analogy with a similar concept in
+probabilistic modeling. The fact that the evaluation of E(Y, X) involves a minimiza-
+
+20
+
+tion over Z does not signicantly impact the approach described so far, but the use of
+latent variables is so ubiquitous that it deserves special treatment.
+
+In particular, some insight can be gained by viewing the inference process in the
+
+presence of latent variables as a simultaneous minimization over Y and Z:
+
+Y  = argminY Y,ZZ E(Z, Y, X).
+
+(43)
+
+Latent variables can be viewed as intermediate results on the way to nding the best
+output Y . At this point, one could argue that there is no conceptual difference between
+the Z and Y variables: Z could simply be folded into Y . The distinction arises during
+training: we are given the correct value of Y for a number of training samples, but we
+are never given the correct value of Z.
+
+Latent variables are very useful in situations where a hidden characteristic of the
+process being modeled can be inferred from observations, but cannot be predicted di-
+rectly. One such example is in recognition problems. For example, in face recognition
+the gender of a person or the orientation of the face could be a latent variable. Knowing
+these values would make the recognition task much easier. Likewise in invariant object
+recognition the pose parameters of the object (location, orientation, scale) or the illumi-
+nation could be latent variables. They play a crucial role in problems where segmenta-
+tion of the sequential data must be performed simultaneously with the recognition task.
+A good example is speech recognition, in which the segmentation of sentences into
+words and words into phonemes must take place simultaneously with recognition, yet
+the correct segmentation into phonemes is rarely available during training. Similarly, in
+handwriting recognition, the segmentation of words into characters should take place
+simultaneously with the recognition. The use of latent variables in face recognition is
+discussed in this section, and Section 7.3 describes a latent variable architecture for
+handwriting recognition.
+
+4.1 An Example of Latent Variable Architecture
+
+To illustrate the concept of latent variables, we consider the task of face detection,
+beginning with the simple problem of determining whether a face is present or not in
+a small image. Imagine that we are provided with a face detecting function Gface(X)
+which takes a small image window as input and produces a scalar output. It outputs
+a small value when a human face lls the input image, and a large value if no face is
+present (or if only a piece of a face or a tiny face is present). An energy-based face
+detector built around this function is shown in Figure 8(a). The variable Y controls the
+position of a binary switch (1 = face, 0 = non-face). The output energy is equal
+to Gface(X) when Y = 1, and to a xed threshold value T when Y = 0:
+
+E(Y, X) = Y Gface(X) + (1  Y )T.
+
+The value of Y that minimizes this energy function is 1 (face) if Gface(X) < T and 0
+(non-face) otherwise.
+
+Let us now consider the more complex task of detecting and locating a single face
+in a large image. We can apply our Gface(X) function to multiple windows in the large
+image, compute which window produces the lowest value of Gface(X), and detect a
+
+21
+
+E(W, Y, X)
+
+E(W, Z, Y, X)
+
+T
+
+Gf ace(X)
+GW (X)
+
+T
+
+GW (X)
+
+Gf ace(X) Gf ace(X) Gf ace(X)
+
+Gf ace(X)
+
+X
+
+(a)
+
+X
+
+(b)
+
+"
+
+f
+
+o
+
+"
+
+n
+
+1
+
+a
+
+c
+
+f
+
+a
+
+Y
+
+e
+
+o
+
+c
+
+"
+
+e
+
+r
+
+=
+
+(
+
+"
+
+(
+
+=
+
+)
+
+0
+
+)
+
+p
+
+n
+
+o
+
+o
+
+f
+
+Z
+
+s
+
+i
+
+o
+
+a
+
+t
+
+f
+
+c
+
+i
+
+e
+
+"
+
+f
+o
+
+"
+
+n
+
+a
+
+f
+
+c
+
+e
+
+a
+
+Y
+
+"
+
+e
+
+o
+
+c
+
+r
+
+(
+
+"
+
+=
+
+(
+
+1
+
+=
+
+)
+0
+
+)
+
+Figure 8: (a): Architecture of an energy-based face detector. Given an image, it outputs a
+small value when the image is lled with a human face, and a high value equal to the threshold
+T when there is no face in the image. (b): Architecture of an energy-based face detector that
+simultaneously locates and detects a face in an input image by using the location of the face as
+a latent variable.
+
+face at that location if the value is lower than T . This process is implemented by
+the energy-based architecture shown in Figure 8(b). The latent location variable Z
+selects which of the K copies of the Gface function is routed to the output energy. The
+energy function can be written as
+
+E(Z, Y, X) = Y " K
+Xk=1
+
+(Z  k)Gface(Xk)# + (1  Y )T,
+
+(44)
+
+where the Xks are the image windows. Locating the best-scoring location in the image
+consists in minimizing the energy with respect to Y and Z. The resulting value of Y
+will indicate whether a face was found, and the resulting value of Z will indicate the
+location.
+
+4.2 Probabilistic Latent Variables
+
+When the best value of the latent variable for a given X and Y is ambiguous, one may
+consider combining the contributions of the various possible values by marginalizing
+over the latent variables instead of minimizing with respect to those variables.
+
+When latent variables are present, the joint conditional distribution over Y and Z
+
+22
+
+given by the Gibbs distribution is:
+
+P (Z, Y |X) =
+
+Marginalizing over Z gives:
+
+eE(Z,Y,X)
+
+RyY, zZ eE(y,z,X) .
+
+P (Y |X) = RzZ eE(Z,Y,X)
+RyY, zZ eE(y,z,X) .
+
+Finding the best Y after marginalizing over Z reduces to:
+
+(45)
+
+(46)
+
+Y  = argminY Y 
+
+1
+
+
+logZzZ
+
+eE(z,Y,X).
+
+(47)
+
+This is actually a conventional energy-based inference in which the energy function has
+merely been redened from E(Z, Y, X) to F(Z) =  1
+is the free energy of the ensemble {E(z, Y, X), z  Z}. The above inference formula
+by marginalization reduces to the previous inference formula by minimization when
+   (zero temperature).
+
+ logRzZ eE(z,Y,X), which
+
+5 Analysis of Loss Functions for Energy-Based Models
+
+This section discusses the conditions that a loss function must satisfy so that its mini-
+mization will result in a model that produces the correct answers. To give an intuition
+of the problem, we rst describe simple experiments in which certain combinations of
+architectures and loss functions are used to learn a simple dataset, with varying results.
+A more formal treatment follows in Section 5.2.
+
+5.1 Good and Bad Loss Functions
+
+Consider the problem of learning a function that computes the square of a number:
+Y = f (X), where f (X) = X 2. Though this is a trivial problem for a learning
+machine, it is useful for demonstrating the issues involved in the design of an energy
+function and loss function that work together. For the following experiments, we use
+a training set of 200 samples (X i, Y i) where Y i = X i2, randomly sampled with a
+uniform distribution between 1 and +1.
+
+First, we use the architecture shown in Figure 9(a). The input X is passed through
+a parametric function GW , which produces a scalar output. The output is compared
+with the desired answer using the absolute value of the difference (L1 norm):
+
+E(W, Y, X) = ||GW (X)  Y ||1.
+
+(48)
+
+Any reasonable parameterized family of functions could be used for GW . For these
+experiments, we chose a two-layer neural network with 1 input unit, 20 hidden units
+(with sigmoids) and 1 output unit. Figure 10(a) shows the initial shape of the energy
+
+23
+
+E(W, Y, X)
+
+E(W, Y, X)
+
+||GW (X)  Y ||1
+
+||G1W1 (X)  G2W2 (Y )||1
+
+GW (X)
+GW (X)
+
+G1W1 (X)
+GW (X)
+
+HW2(X)
+G2W2 (Y )
+
+X
+
+Y
+
+X
+
+Y
+
+(a)
+
+(b)
+
+Figure 9: (a): A simple architecture that can be trained with the energy loss. (b): An implicit
+respec-
+regression architecture where X and Y are passed through functions G1W1
+tively. Training this architecture with the energy loss causes a collapse (a at energy surface). A
+loss function with a contrastive term corrects the problem.
+
+and G2W2
+
+function in the space of the variables X and Y , using a set of random initial parameters
+W . The dark spheres mark the location of a few training samples.
+
+First, the simple architecture is trained with the energy loss (Eq. 6):
+
+Lenergy(W, S) =
+
+E(W, Y i, X i) =
+
+1
+P
+
+P
+
+Xi=1
+
+1
+P
+
+P
+
+Xi=1
+
+||GW (X)  Y ||1.
+
+(49)
+
+This corresponds to a classical form of robust regression. The learning process can be
+viewed as pulling down on the energy surface at the location of the training samples (the
+spheres in Figure 10), without considering the rest of the points on the energy surface.
+The energy surface as a function of Y for any X has the shape of a V with xed slopes.
+By changing the function GW (X), the apex of that V can move around for different
+X i. The loss is minimized by placing the apex of the V at the position Y = X 2 for
+any value of X, and this has the effect of making the energies of all other answers
+larger, because the V has a single minimum. Figure 10 shows the shape of the energy
+surface at xed intervals during training with simple stochastic gradient descent. The
+energy surface takes the proper shape after a few iterations through the training set.
+Using more sophisticated loss functions such as the NLL loss or the perceptron loss
+would produce exactly the same result as the energy loss because, with this simple
+architecture, their contrastive term is constant.
+
+Consider a slightly more complicated architecture, shown in Figure 9(b), to learn
+and Y is
+the same dataset. In this architecture X is passed through function G1W1
+. For the experiment, both functions were two-layer
+passed through function G2W2
+neural networks with 1 input unit, 10 hidden units and 10 output units. The energy is
+
+24
+
+(a)
+
+(b)
+
+(c)
+
+(d)
+
+Figure 10: The shape of the energy surface at four intervals while training the system in Fig-
+ure 9(a) with stochastic gradient descent to minimize the energy loss. The X axis is the input,
+and the Y axis the output. The energy surface is shown (a) at the start of training, (b) after 10
+epochs through the training set, (c) after 25 epochs, and (d) after 39 epochs. The energy surface
+has attained the desired shape where the energy around training samples (dark spheres) is low
+and energy at all other points is high.
+
+the L1 norm of the difference between their 10-dimensional outputs:
+
+E(W, X, Y ) = ||G1W1 (X)  G2W2 (Y )||1,
+
+(50)
+
+where W = [W1W2]. Training this architecture with the energy loss results in a col-
+lapse of the energy surface. Figure 11 shows the shape of the energy surface during
+training; the energy surface becomes essentially at. What has happened? The shape
+of the energy as a function of Y for a given X is no longer xed. With the energy loss,
+there is no mechanism to prevent G1 and G2 from ignoring their inputs and producing
+identical output values. This results in the collapsed solution: the energy surface is at
+and equal to zero everywhere.
+
+(a)
+
+(b)
+
+(c)
+
+(d)
+
+Figure 11: The shape of the energy surface at four intervals while training the system in Fig-
+ure 9(b) using the energy loss. Along the X axis is the input variable and along the Y axis is the
+answer. The shape of the surface (a) at the start of the training, (b) after 3 epochs through the
+training set, (c) after 6 epochs, and (d) after 9 epochs. Clearly the energy is collapsing to a at
+surface.
+
+Now consider the same architecture, but trained with the square-square loss:
+
+L(W, Y i, X i) = E(W, Y i, X i)2 (cid:0)max(0, m  E(W, Y i, X i))(cid:1)2
+
+Here m is a positive margin, and Y i is the most offending incorrect answer. The second
+term in the loss explicitly prevents the collapse of the energy by pushing up on points
+
+.
+
+(51)
+
+25
+
+whose energy threatens to go below that of the desired answer. Figure 12 shows the
+shape of the energy function during training; the surface successfully attains the desired
+shape.
+
+(a)
+
+(b)
+
+(c)
+
+(d)
+
+Figure 12: The shape of the energy surface at four intervals while training the system in Fig-
+ure 9(b) using square-square loss. Along the x-axis is the variable X and along the y-axis is the
+variable Y . The shape of the surface at (a) the start of the training, (b) after 15 epochs over the
+training set, (c) after 25 epochs, and (d) after 34 epochs. The energy surface has attained the
+desired shape: the energies around the training samples are low and energies at all other points
+are high.
+
+(a)
+
+(b)
+
+(c)
+
+(d)
+
+Figure 13: The shape of the energy surface at four intervals while training the system in Fig-
+ure 9(b) using the negative log-likelihood loss. Along the X axis is the input variable and along
+the Y axis is the answer. The shape of the surface at (a) the start of training, (b) after 3 epochs
+over the training set, (c) after 6 epochs, and (d) after 11 epochs. The energy surface has quickly
+attained the desired shape.
+
+Another loss function that works well with this architecture is the negative log-
+
+likelihood loss:
+
+L(W, Y i, X i) = E(W, Y i, X i) +
+
+1
+
+
+log(cid:18)ZyY
+
+eE(W,y,X i)(cid:19) .
+
+(52)
+
+The rst term pulls down on the energy of the desired answer, while the second term
+pushes up on all answers, particularly those that have the lowest energy. Note that
+the energy corresponding to the desired answer also appears in the second term. The
+shape of the energy function at various intervals using the negative log-likelihood loss
+is shown in Figure 13. The learning is much faster than the square-square loss. The
+minimum is deeper because, unlike with the square-square loss, the energies of the in-
+correct answers are pushed up to innity (although with a decreasing force). However,
+
+26
+
+each iteration of negative log-likelihood loss involves considerably more work because
+pushing up every incorrect answer is computationally expensive when no analytical
+expression for the derivative of the second term exists. In this experiment, a simple
+sampling method was used: the integral is approximated by a sum of 20 points regu-
+larly spaced between -1 and +1 in the Y direction. Each learning iteration thus requires
+computing the gradient of the energy at 20 locations, versus 2 locations in the case
+of the square-square loss. However, the cost of locating the most offending incorrect
+answer must be taken into account for the square-square loss.
+
+An important aspect of the NLL loss is that it is invariant to global shifts of energy
+values, and only depends on differences between the energies of the Y s for a given X.
+Hence, the desired answer may have different energies for different X, and may not be
+zero. This has an important consequence: the quality of an answer cannot be measured
+by the energy of that answer without considering the energies of all other answers.
+
+In this section we have seen the results of training four combinations of architec-
+tures and loss functions. In the rst case we used a simple architecture along with a
+simple energy loss, which was satisfactory. The constraints in the architecture of the
+system automatically lead to the increase in energy of undesired answers while de-
+creasing the energies of the desired answers. In the second case, a more complicated
+architecture was used with the simple energy loss and the machine collapsed for lack
+of a contrastive term in the loss. In the third and the fourth case the same architecture
+was used as in the second case but with loss functions containing explicit contrastive
+terms. In these cases the machine performed as expected and did not collapse.
+
+5.2 Sufcient Conditions for Good Loss Functions
+
+In the previous section we offered some intuitions about which loss functions are good
+and which ones are bad with the help of illustrative experiments. In this section a more
+formal treatment of the topic is given. First, a set of sufcient conditions are stated.
+The energy function and the loss function must satisfy these conditions in order to be
+guaranteed to work in an energy-based setting. Then we discuss the quality of the loss
+functions introduced previously from the point of view of these conditions.
+
+5.3 Conditions on the Energy
+
+Generally in energy-based learning, the inference method chooses the answer with
+minimum energy. Thus the condition for the correct inference on a sample (X i, Y i) is
+as follows.
+
+Condition 1 For sample (X i, Y i), the machine will give the correct answer for X i if
+
+E(W, Y i, X i) < E(X, Y, X i), Y  Y and Y 6= Y i.
+
+(53)
+
+In other words, the inference algorithm will give the correct answer if the energy of the
+desired answer Y i is less than the energies of all the other answers Y .
+
+27
+
+To ensure that the correct answer is robustly stable, we may choose to impose that
+its energy be lower than energies of incorrect answers by a positive margin m. If Y i
+denotes the most offending incorrect answer, then the condition for the answer to be
+correct by a margin m is as follows.
+
+Condition 2 For a variable Y and sample (X i, Y i) and positive margin m, the infer-
+ence algorithm will give the correct answer for X i if
+
+E(W, Y i, X i) < E(W, Y i, X i)  m.
+
+(54)
+
+5.4 Sufcient Conditions on the Loss Functional
+
+If the system is to produce the correct answers, the loss functional should be designed in
+such a way that minimizing it will cause E(W, Y i, X i) to be lower than E(W, Y i, X i)
+by some margin m. Since only the relative values of those two energies matter, we only
+need to consider the shape of a slice of the loss functional in the 2D space of those two
+energies. For example, in the case where Y is the set of integers from 1 to k, the loss
+functional can be written as:
+
+L(W, Y i, X i) = L(Y i, E(W, 1, X i), . . . , E(W, k, X i)).
+
+(55)
+
+The projection of this loss in the space of E(W, Y i, X i) and E(W, Y i, X i) can be
+viewed as a function Q parameterized by the other k  2 energies:
+
+L(W, Y i, X i) = Q[Ey](E(W, Y i, X i), E(W, Y i, X i)),
+
+(56)
+
+where the parameter [Ey] contains the vector of energies for all values of Y except Y i
+and Y i.
+
+We assume the existence of at least one set of parameters W for which condition 2
+is satised for a single training sample (X i, Y i). Clearly, if such a W does not exist,
+there cannot exist any loss function whose minimization would lead to condition 2. For
+the purpose of notational simplicity let us denote the energy E(W, Y i, X i) associated
+with the training sample (X i, Y i) by EC (as in correct energy) and E(W, Y i, X i)
+by EI (as in incorrect energy). Consider the plane formed by EC and EI . As an
+illustration, Figure 17(a) shows a 3-dimensional plot of the square-square loss function
+in which the abscissa is EC and the ordinate is EI. The third axis gives the value of
+the loss for the corresponding values of EC and EI .
+In general, the loss function
+is a family of 2D surfaces in this 3D space, where each surface corresponds to one
+particular conguration of all the energies except EC and EI. The solid red line in the
+gure corresponds to the points in the 2D plane for which EC = EI . The dashed blue
+line correspond to the margin line EC +m = EI. Let the two half planes EC +m < EI
+and EC + m  EI be denoted by HP1 and HP2 respectively.
+
+Let R be the feasible region, dened as the set of values (EC , EI ) corresponding
+to all possible values of W  W. This region may be non-convex, discontinuous,
+open, or one-dimensional and could lie anywhere in the plane. It is shown shaded in
+
+28
+
++ m = E
+E
+C
+I
+
+HP
+1
+
+R
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+I
+
+E
+
+
+:
+y
+g
+r
+e
+n
+E
+
+m
+
+0
+
+0
+
+0.1
+
+0.2
+
+0.3
+
+0.6
+
+0.5
+
+0.4
+Energy: E
+C
+
+= E
+E
+C
+I
+
+HP
+2
+
+0.7
+
+0.8
+
+0.9
+
+1
+
+Figure 14: Figure showing the various regions in the plane of the two energies EC and EI. EC
+are the (correct answer) energies associated with (X i, Y i), and EI are the (incorrect answer)
+energies associated with (X i, Y i).
+
+Figure 14. As a consequence of our assumption that a solution exists which satises
+conditions 2, R must intersect the half plane HP1.
+
+Let two points (e1, e2) and (e
+
+1, e
+
+(e1, e2)  HP1 (that is, e1 + m < e2) and (e
+2)  HP2 (that is, e
+are now ready to present the sufcient conditions on the loss function.
+
+1, e
+
+2) belong to the feasible region R, such that
+2). We
+
+1 + m  e
+
+Condition 3 Let (X i, Y i) be the ith training example and m be a positive margin.
+Minimizing the loss function L will satisfy conditions 1 or 2 if there exists at least one
+point (e1, e2) with e1 + m < e2 such that for all points (e
+2, we
+have
+
+1 + m  e
+
+2) with e
+
+1, e
+
+Q[Ey](e1, e2) < Q[Ey](e
+
+1, e
+
+2),
+
+where Q[Ey] is given by
+
+L(W, Y i, X i) = Q[Ey](E(W, Y i, X i), E(W, Y i, X i)).
+
+(57)
+
+(58)
+
+In other words, the surface of the loss function in the space of EC and EI should be
+such that there exists at least one point in the part of the feasible region R intersecting
+the half plane HP1 such that the value of the loss function at this point is less than its
+value at all other points in the part of R intersecting the half plane HP2.
+
+Note that this is only a sufcient condition and not a necessary condition. There
+may be loss functions that do not satisfy this condition but whose minimization still
+satises condition 2.
+
+29
+
+Table 1: A list of loss functions, together with the margin which allows them to satisfy con-
+dition 3. A margin > 0 indicates that the loss satises the condition for any strictly positive
+margin, and none indicates that the loss does not satisfy the condition.
+
+Loss (equation #)
+
+Formula
+
+energy loss (6)
+
+E(W, Y i, X i)
+
+perceptron (7)
+
+E(W, Y i, X i)  minY Y E(W, Y, X i)
+
+log (12)
+
+MCE (15)
+
+hinge (11)
+
+LVQ2 (13)
+
+max(cid:0)0, m + E(W, Y i, X i)  E(W, Y i, X i)(cid:1)
+log(cid:16)1 + eE(W,Y i,X i)E(W, Y i,X i)(cid:17)
+min(cid:0)M, max(0, E(W, Y i, X i)  E(W, Y i, X i)(cid:1)
+(cid:16)1 + e(E(W,Y i,X i)E(W, Y i,X i))(cid:17)1
+square-square (16) E(W, Y i, X i)2 (cid:0)max(0, m  E(W, Y i, X i))(cid:1)2
+
+square-exp (17)
+
+NLL/MMI (23)
+
+MEE (27)
+
+E(W, Y i, X i)2 + eE(W, Y i,X i)
+E(W, Y i, X i) + 1
+
+ logRyY eE(W,y,X i)
+1  eE(W,Y i,X i)/RyY eE(W,y,X i)
+
+Margin
+
+none
+
+0
+
+m
+
+> 0
+
+0
+
+> 0
+
+m
+
+> 0
+
+> 0
+
+> 0
+
+5.5 Which Loss Functions are Good or Bad
+
+Table 1 lists several loss functions, together with the value of the margin with which
+they satisfy condition 3. The energy loss is marked none because it does not satisfy
+condition 3 for a general architecture. The perceptron loss and the LVQ2 loss satisfy
+it with a margin of zero. All others satisfy condition 3 with a strictly positive value of
+the margin.
+
+5.5.1 Energy Loss
+
+The energy loss is a bad loss function in general, but there are certain forms of energies
+for which it is a good loss function. For example consider an energy function of the
+form
+
+K
+
+E(W, Y i, X i) =
+
+(Y i  k)||U k  GW (X i)||2.
+
+(59)
+
+This energy passes the output of the function GW through K radial basis functions
+(one corresponding to each class) whose centers are the vectors U k. If the centers U k
+are xed and distinct then the energy loss satises condition 3 and hence is a good loss
+function.
+
+To see this, consider the two-class classication case (the reasoning for K > 2
+
+follows along the same lines). The architecture of the system is shown in Figure 15.
+
+30
+
+Xk=1
+
+E(W, Y, X) =
+
+2
+
+!
+
+k=1
+
+(Y  k)  ||U k
+
+ GW (X)||2
+
+d1
+
+d2
+
+di = ||U i
+
+ GW (X)||2
+
+GW (X)
+GW
+
+GW (X)
+
+R
+
+B
+
+F
+
+U
+
+n
+
+i
+
+t
+
+s
+
+X
+
+Y
+
+Figure 15: The architecture of a system where two RBF units with centers U 1 and U 2 are
+placed on top of the machine GW , to produce distances d1 and d2.
+
+(a)
+
+(b)
+
+Figure 16: (a): When using the RBF architecture with xed and distinct RBF centers, only the
+shaded region of the (EC , EI) plane is allowed. The non-shaded region is unattainable because
+the energies of the two outputs cannot be small at the same time. The minimum of the energy
+loss is at the intersection of the shaded region and vertical axis. (b): The 3-dimensional plot of
+the energy loss when using the RBF architecture with xed and distinct centers. Lighter shades
+indicate higher loss values and darker shades indicate lower values.
+
+31
+
+Let d = ||U 1U 2||2, d1 = ||U 1GW (X i)||2, and d2 = ||U 2GW (X i)||2. Since
+U 1 and U 2 are xed and distinct, there is a strictly positive lower bound on d1 + d2
+for all GW . Being only a two-class problem, EC and EI correspond directly to the
+energies of the two classes. In the (EC , EI ) plane no part of the loss function exists
+in where EC + EI  d. The region where the loss function is dened is shaded in
+Figure 16(a). The exact shape of the loss function is shown in Figure 16(b). One can
+see from the gure that as long as d  m, the loss function satises condition 3. We
+conclude that this is a good loss function.
+
+However, when the RBF centers U 1 and U 2 are not xed and are allowed to be
+learned, then there is no guarantee that d1 + d2  d. Then the RBF centers could
+become equal and the energy could become zero for all inputs, resulting in a collapsed
+energy surface. Such a situation can be avoided by having a contrastive term in the loss
+function.
+
+5.5.2 Generalized Perceptron Loss
+
+The generalized perceptron loss has a margin of zero. Therefore, it could lead to a col-
+lapsed energy surface and is not generally suitable for training energy-based models.
+However, the absence of a margin is not always fatal [LeCun et al., 1998a, Collins, 2002].
+First, the set of collapsed solutions is a small piece of the parameter space. Second,
+although nothing prevents the system from reaching the collapsed solutions, nothing
+drives the system toward them either. Thus the probability of hitting a collapsed solu-
+tion is quite small.
+
+5.5.3 Generalized Margin Loss
+
+L
+
+:
+s
+s
+o
+L
+
+4
+
+3.5
+
+3
+
+2.5
+
+2
+
+1.5
+
+1
+
+0.5
+
+0
+1
+
+HP
+2
+
+1
+
+0.8
+
+0.6
+HP
+0.4
+1
+Energy: E
+I
+
+0.2
++ m = E
+E
+C
+I
+
+0
+
+0
+
+0.5
+Energy: E
+C
+= E
+E
+C
+I
+
+(a)
+
+1.5
+
+L
+
+
+:
+s
+s
+o
+L
+
+1
+
+0.5
+
+0
+HP
+1
+1
+
+HP
+2
+
+1
+
+0.5
+Energy: E
+C
+= E
+E
+C
+I
+
+0.8
+Energy: E
+I
+
+0.6
+
+0.4
+
++ m = E
+E
+C
+I
+
+0.2
+
+0
+
+0
+
+(b)
+
+Figure 17: (a) The square-square loss in the space of energies EC and EI). The value of
+the loss monotonically decreases as we move from HP2 into HP1, indicating that it satises
+condition 3. (b) The square-exponential loss in the space of energies EC and EI). The value
+of the loss monotonically decreases as we move from HP2 into HP1, indicating that it satises
+condition 3.
+
+32
+
+We now consider the square-square and square-exponential losses. For the two-
+class case, the shape of the surface of the losses in the space of EC and EI is shown in
+Figure 17. One can clearly see that there exists at least one point (e1, e2) in HP1 such
+that
+
+Q[Ey](e1, e2) < Q[Ey](e
+
+1, e
+
+2),
+
+(60)
+
+for all points (e
+
+1, e
+
+2) in HP2. These loss functions satisfy condition 3.
+
+5.5.4 Negative Log-Likelihood Loss
+
+It is not obvious that the negative log-likelihood loss satises condition 3. The proof
+follows.
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+I
+
+E
+
+
+:
+y
+g
+r
+e
+n
+E
+
+m
+
+0
+
+0
+
+HP
+1
+C  , E*
+
+B = (E*
+
+C + m + )
+
+EC + m = EI
+
+R
+
+g
+
+
+
+A = (E*
+
+C, E*
+
+C + m)
+
+gC
+g = gC + gI
+
+gI
+
+EC = EI
+
+HP
+2
+
+0.1
+
+0.2
+
+0.3
+
+0.4
+
+0.5
+
+0.6
+
+0.7
+
+0.8
+
+0.9
+
+1
+
+Energy: EC
+
+Figure 18: Figure showing the direction of gradient of the negative log-likelihood loss in the
+feasible region R in the space dened by the two energies EC and EI.
+
+For any xed parameter W and a sample (X i, Y i) consider the gradient of the loss
+with respect to the energy EC of the correct answer Y i and the energy EI of the most
+offending incorrect answer Y i. We have
+
+gC =
+
+L(W, Y i, X i)
+
+EC
+
+= 1 
+
+and
+
+gI =
+
+L(W, Y i, X i)
+
+EI
+
+= 
+
+eE(W,Y i,X i)
+
+PY Y eE(W,Y,X i) ,
+PY Y eE(W,Y,X i) .
+
+eE(W, Y i,X i)
+
+(61)
+
+(62)
+
+Clearly, for any value of the energies, gC > 0 and gI < 0. The overall direction of
+the gradient at any point in the space of EC and EI is shown in Figure 18. One can
+conclude that when going from HP2 to HP1, the loss decreases monotonically.
+
+Now we need to show that there exists at least one point in HP1 at which the loss
+C + m) be a point on the margin
+
+is less than at all the points in HP2. Let A = (E
+
+C , E
+
+33
+
+line for which the loss is minimum. E
+That is,
+
+C is the value of the correct energy at this point.
+
+E
+
+C = argmin{Q[Ey](EC , EC + m)}.
+
+(63)
+
+Since from the above discussion, the negative of the gradient of the loss Q[Ey] at all
+points (and in particular on the margin line) is in the direction which is inside HP1, by
+monotonicity of the loss we can conclude that
+
+Q[Ey](E
+
+C , E
+
+C + m)  Q[Ey](EC , EI ),
+
+(64)
+
+where EC + m > EI.
+
+Consider a point B at a distance  away from the point (E
+
+C , E
+
+C + m), and inside
+
+HP1 (see Figure 18). That is the point
+
+(E
+
+C  , E
+
+C + m + ).
+
+(65)
+
+Using the rst order Taylors expansion on the value of the loss at this point, we get
+
+Q[Ey](E
+
+C  , E
+
+C + m + )
+
+= Q[Ey](E
+
+C , E
+
+C + m)  
+
+Q[Ey]
+EC
+
++ 
+
+Q[Ey]
+EI
+
++ O(2)
+
+= Q[Ey](E
+
+C , E
+
+C + m) + (cid:20) Q[Ey]
+
+EC
+
++
+
+Q[Ey]
+
+EI (cid:21)
+
+
+1
+
+1 
+
+
++ O(2).
+
+(66)
+
+From the previous discussion the second term on the right hand side is negative. So for
+sufciently small  we have
+
+Q[Ey](E
+
+C  , E
+
+C + m + ) < Q[Ey](E
+
+C , E
+
+C + m).
+
+(67)
+
+Thus we conclude that there exists at least one point in HP1 at which the loss is less
+than at all points in HP2.
+
+Note that the energy of the most offending incorrect answer EI is bounded above
+by the value of the energy of the next most offending incorrect answer. Thus we only
+need to consider a nite range of EIs and the point B cannot be at innity.
+
+6 Efcient Inference: Non-Probabilistic Factor Graphs
+
+This section addresses the important issue of efcient energy-based inference. Se-
+quence labeling problems and other learning problem with structured outputs can often
+be modeled using energy functions whose structure can be exploited for efcient infer-
+ence algorithms.
+
+Learning and inference with EBMs involves a minimization of the energy over the
+set of answers Y and latent variables Z. When the cardinality of Y  Z is large, this
+minimization can become intractable. One approach to the problem is to exploit the
+structure of the energy function in order to perform the minimization efciently. One
+case where the structure can be exploited occurs when the energy can be expressed as a
+
+34
+
+E(Y, Z, X)
+
++
+
+Ea(X, Z1)
+
+Eb(X, Z1, Z2)
+
+Ec(Z2, Y1)
+
+Ed(Y1, Y2)
+
+X
+
+Z1
+
+Z2
+
+Y1
+
+Y2
+
+1
+
+Eb(X, 1, 1)
+
+1
+
+Ec(1, 1)
+
+1
+
+a( X , 1 )
+
+E
+
+E
+
+a(
+
+X
+
+,0)
+
+E
+
+b(
+
+X
+
+,
+
+1
+,
+
+0
+
+)
+
+E
+
+c(
+
+1
+,
+
+0
+
+)
+
+b( X ,0,1)
+
+E
+
+c(0, 1)
+
+E
+
+)
+
+2
+
+,
+
+1
+
+E d (
+
+Ed(1, 1)
+
+E
+
+d(1,0)
+
+d(0,2)
+
+E
+
+d ( 0 , 1 )
+
+E
+
+0
+Z1
+
+Eb(X, 0, 0)
+
+0
+Z2
+
+Ec(0, 0)
+
+0
+Y1
+
+Ed(0, 0)
+
+2
+
+1
+
+0
+
+Y2
+
+0
+
+0
+
+0
+
+Figure 19: Top: A log domain factor graph. The energy is a sum of factors that take differ-
+ent subsets of variables as inputs. Bottom: Each possible conguration of Z and Y can be
+represented by a path in a trellis. Here Z1, Z2, and Y1 are binary variables, while Y2 is ternary.
+
+35
+
+sum of individual functions (called factors) that each depend on different subsets of the
+variables in Y and Z. These dependencies are best expressed in the form of a factor
+graph [Kschischang et al., 2001, MacKay, 2003]. Factor graphs are a general form of
+graphical models, or belief networks.
+
+Graphical models are normally used to represent probability distributions over vari-
+ables by directly encoding the dependency relationships between variables. At rst
+glance, it is difcult to dissociate graphical models from probabilistic modeling (wit-
+ness their original name: Bayesian networks). However, factor graphs can be studied
+outside the context of probabilistic modeling, and EBM learning applies to them.
+
+A simple example of a factor graph is shown in Figure 19 (top). The energy func-
+
+tion is the sum of four factors:
+
+E(Y, Z, X) = Ea(X, Z1) + Eb(X, Z1, Z2) + Ec(Z2, Y1) + Ed(Y1, Y2),
+
+(68)
+
+where Y = [Y1, Y2] are the output variables and Z = [Z1, Z2] are the latent variables.
+Each factor can be seen as representing soft constraints between the values of its input
+variables. The inference problem consists in nding:
+
+( Y , Z) = argminyY, zZ (Ea(X, z1) + Eb(X, z1, z2) + Ec(z2, y1) + Ed(y1, y2)) .
+(69)
+This factor graph represents a structured output problem, because the factor Ed en-
+codes dependencies between Y 1 and Y 2 (perhaps by forbidding certain combinations
+of values).
+
+Lets assume that Z1, Z2, and Y1 are discrete binary variables, and Y2 is a ternary
+variable. The cardinality of the domain of X is immaterial since X is always observed.
+The number of possible congurations of Z and Y given X is 2  2  2  3 = 24.
+A naive minimization algorithm through exhaustive search would evaluate the entire
+energy function 24 times (96 single factor evaluations). However, we notice that for a
+given X, Ea only has two possible input congurations: Z1 = 0 and Z1 = 1. Sim-
+ilarly, Eb and Ec only have 4 possible input congurations, and Ed has 6. Hence,
+there is no need for more than 2 + 4 + 4 + 6 = 16 single factor evaluations. The set
+of possible congurations can be represented by a graph (a trellis) as shown in Fig-
+ure 19 (bottom). The nodes in each column represent the possible values of a single
+variable. Each edge is weighted by the output energy of the factor for the correspond-
+ing values of its input variables. With this representation, a single path from the start
+node to the end node represents one possible conguration of all the variables. The
+sum of the weights along a path is equal to the total energy for the corresponding con-
+guration. Hence, the inference problem can be reduced to searching for the shortest
+path in this graph. This can be performed using a dynamic programming method such
+as the Viterbi algorithm, or the A* algorithm. The cost is proportional to the number
+of edges (16), which is exponentially smaller than the number of paths in general. To
+compute E(Y, X) = minzZ E(Y, z, X), we follow the same procedure, but we re-
+strict the graph to the subset of arcs that are compatible with the prescribed value of
+Y .
+
+The above procedure is sometimes called the min-sum algorithm, and it is the log
+domain version of the traditional max-product for graphical models. The procedure can
+easily be generalized to factor graphs where the factors take more than two variables
+
+36
+
+logZY Y, zZ
+logZY Y
+
+1
+
+
+
+
+eE(Z,Y,X),
+
+eE(Y,X),
+
+(70)
+
+(71)
+
+as inputs, and to factor graphs that have a tree structure instead of a chain structure.
+However, it only applies to factor graphs that are bipartite trees (with no loops). When
+loops are present in the graph, the min-sum algorithm may give an approximate solu-
+tion when iterated, or may not converge at all. In this case, a descent algorithm such as
+simulated annealing could be used.
+
+As mentioned in Section 4, variables can be handled through minimization or
+through marginalization. The computation is identical to the one required for comput-
+ing the contrastive term of the negative log-likelihood loss (the log partition function),
+hence we will make no distinctions. The contrastive term in the negative log-likelihood
+loss function is:
+
+
+
+or simply
+
+1
+
+
+when no latent variables are present.
+
+At rst, this seems intractable, but the computation can be factorized just like with
+the min-sum algorithm. The result is the so-called forward algorithm in the log domain.
+Values are propagated forward, starting at the start node on the left, and following the
+arrows in the trellis. Each node k computes a quantity k:
+
+k = 
+
+1
+
+
+logXj
+
+e(Ekj+j ),
+
+(72)
+
+where Ejk is the energy attached to the edge linking node j to node k. The nal  at
+the end node is the quantity in Eq. 70. The procedure reduces to the min-sum algorithm
+for large values of .
+
+In a more complex factor graph with factors that take more than two variables as in-
+put, or that have a tree structure, this procedure generalizes to a non-probabilistic form
+of belief propagation in the log domain. For loopy graphs, the procedure can be iter-
+ated, and may lead to an approximate value for Eq. 70, if it converges at all [Yedidia et al., 2005].
+
+The above procedures are an essential component for constructing models with
+
+structures and/or sequential output.
+
+6.1 EBMs versus Internally Normalized Models
+
+It is important to note that at no point in the above discussion did we need to manip-
+ulate normalized probability distributions. The only quantities that are manipulated
+are energies. This is in contrast with hidden Markov models and traditional Bayesian
+nets. In HMMs, the outgoing transition probabilities of a node must sum to 1, and the
+emission probabilities must be properly normalized. This ensures that the overall dis-
+tribution over sequences is normalized. Similarly, in directed Bayesian nets, the rows
+of the conditional probability tables are normalized.
+
+EBMs manipulate energies, so no normalization is necessary. When energies are
+transformed into probabilities, the normalization over Y occurs as the very last step
+
+37
+
+in the process. This idea of late normalization solves several problems associated
+with the internal normalization of HMMs and Bayesian nets. The rst problem is the
+so-called label bias problem, rst pointed out by Bottou [Bottou, 1991]: transitions
+leaving a given state compete with each other, but not with other transitions in the
+model. Hence, paths whose states have few outgoing transitions tend to have higher
+probability than paths whose states have many outgoing transitions. This seems like
+an articial constraint. To circumvent this problem, a late normalization scheme was
+rst proposed by Denker and Burges in the context of handwriting and speech recogni-
+tion [Denker and Burges, 1995]. Another avor of the label bias problem is the miss-
+ing probability mass problem discussed by LeCun et al. in [LeCun et al., 1998a]. They
+also make use of a late normalization scheme to solve this problem. Normalized mod-
+els distribute the probability mass among all the answers that are explicitly modeled by
+the system. To cope with junk or other unforeseen and un-modeled inputs, designers
+must often add a so-called background model that takes some probability mass away
+from the set of explicitly-modeled answers. This could be construed as a thinly dis-
+guised way of removing the normalization constraint. To put it another way, since every
+explicit normalization is another opportunity for mishandling unforeseen events, one
+should strive to minimize the number of explicit normalizations in a model. A recent
+demonstration of successful handling of the label bias problem through normalization
+removal is the comparison between maximum entropy Markov models by McCallum,
+Freitag and Pereira [McCallum et al., 2000], and conditional random elds by Lafferty,
+McCallum and Pereira [Lafferty et al., 2001].
+
+The second problem is controlling the relative importance of probability distribu-
+tions of different natures. In HMMs, emission probabilities are often Gaussian mix-
+tures in high dimensional spaces (typically 10 to 100), while transition probabilities
+are discrete probabilities over a few transitions. The dynamic range of the former
+is considerably larger than that of the latter. Hence transition probabilities count for
+almost nothing in the overall likelihood. Practitioners often raise the transition prob-
+abilities to some power in order to increase their inuence. This trick is difcult to
+justify in a probabilistic framework because it breaks the normalization. In the energy-
+based framework, there is no need to make excuses for breaking the rules. Arbitrary
+coefcients can be applied to any subset of energies in the model. The normalization
+can always be performed at the end.
+
+The third problem concerns discriminative learning. Discriminative training often
+uses iterative gradient-based methods to optimize the loss. It is often complicated, ex-
+pensive, and inefcient to perform a normalization step after each parameter update by
+the gradient method. The EBM approach eliminates the problem [LeCun et al., 1998a].
+More importantly, the very reason for internally normalizing HMMs and Bayesian nets
+is somewhat contradictory with the idea of training them discriminatively. The normal-
+ization is only necessary for generative models.
+
+38
+
+7 EBMs for Sequence Labeling and Structured Out-
+
+puts
+
+The problem of classifying or labeling sequences of symbols or sequences of vec-
+tors has long been a topic of great interest in several technical communities. The
+earliest and most notable example is speech recognition. Discriminative learning
+methods were proposed to train HMM-based speech recognition systems in the late
+1980s [Bahl et al., 1986, Ljolje et al., 1990]. These methods for HMMs brought about
+a considerable improvement in the accuracy of speech recognition systems, and re-
+mains an active topic of research to this day.
+
+With the appearance of multi-layer neural network training procedures, several
+groups proposed combining neural networks and time alignment methods for speech
+recognition. The time alignment was implemented either through elastic template
+matching (Dynamic Time Warping) with a set of reference words, or using a hidden
+Markov model. One of the main challenges was to design an integrated training
+method for simultaneously training the neural network and the time alignment module.
+In the early 1990s, several authors proposed such methods for combining neural nets
+time warping [Driancourt et al., 1991a, Driancourt et al., 1991b,
+and dynamic
+Driancourt and Gallinari, 1992a,
+Driancourt and Gallinari, 1992b,
+Driancourt, 1994],
+and HMM
+[Bengio et al., 1990, Bourlard and Morgan, 1990, Bottou, 1991, Haffner et al., 1991,
+Haffner and Waibel, 1991,
+Haffner and Waibel, 1992,
+Haffner, 1993, Driancourt, 1994, Morgan and Bourlard, 1995, Konig et al., 1996].
