@@ -183,7 +183,7 @@ class TrainTask:
                 if current_step % self.checkpoint_every == 0:
                     path = saver.save(sess, checkpoint_prefix, global_step=current_step)
                     print("Saved model checkpoint to {}\n".format(path))
-                if current_step == 30000:  # TODO: change here to stop training early...
+                if current_step == 100000:  # TODO: change here to stop training early...
                     break
         return timestamp
 

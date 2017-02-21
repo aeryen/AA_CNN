@@ -7,23 +7,14 @@ class TextCNN(object):
     A CNN for text classification.
     Uses an embedding layer, followed by a convolutional, max-pooling and softmax layer.
     """
-    batch_size = None
 
     def __init__(
-            self, sequence_length, num_classes,
-            word_vocab_size, embedding_size, filter_sizes, num_filters,
-            pref2_vocab_size, pref3_vocab_size, suff2_vocab_size, suff3_vocab_size, pos_vocab_size,
-            l2_reg_lambda=0.0, init_embedding=None):
+            self, sequence_length, num_classes, word_vocab_size,
+            embedding_size, filter_sizes, num_filters, l2_reg_lambda=0.0,
+            init_embedding=None):
         # Placeholders for input, output and dropout, First None is batch size.
-        self.input_x = tf.placeholder(tf.int32, [self.batch_size, sequence_length], name="input_x")
-
-        self.input_pref2 = tf.placeholder(tf.int32, [self.batch_size, sequence_length], name="input_pref2")
-        self.input_pref3 = tf.placeholder(tf.int32, [self.batch_size, sequence_length], name="input_pref3")
-        self.input_suff2 = tf.placeholder(tf.int32, [self.batch_size, sequence_length], name="input_suff2")
-        self.input_suff3 = tf.placeholder(tf.int32, [self.batch_size, sequence_length], name="input_suff3")
-        self.input_pos = tf.placeholder(tf.int32, [self.batch_size, sequence_length], name="input_pos")
-
-        self.input_y = tf.placeholder(tf.float32, [self.batch_size, num_classes], name="input_y")
+        self.input_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_x")
+        self.input_y = tf.placeholder(tf.float32, [None, num_classes], name="input_y")
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
 
         # Keeping track of l2 regularization loss (optional)
@@ -40,56 +31,21 @@ class TextCNN(object):
             self.embedded_chars = tf.nn.embedding_lookup(W, self.input_x)
             self.embedded_chars_expanded = tf.expand_dims(self.embedded_chars, -1)
 
-            W_pref2 = tf.Variable(tf.random_uniform([pref2_vocab_size, embedding_size], -1.0, 1.0), name="W_pref2")
-            self.embedded_chars_pref2 = tf.nn.embedding_lookup(W_pref2, self.input_pref2)
-            self.embedded_chars_expanded_pref2 = tf.expand_dims(self.embedded_chars_pref2, -1)
-            print "embedded_chars_expanded_pref2: " + str(self.embedded_chars_expanded_pref2.get_shape())
-
-            W_pref3 = tf.Variable(tf.random_uniform([pref3_vocab_size, embedding_size], -1.0, 1.0), name="W_pref3")
-            self.embedded_chars_pref3 = tf.nn.embedding_lookup(W_pref3, self.input_pref3)
-            self.embedded_chars_expanded_pref3 = tf.expand_dims(self.embedded_chars_pref3, -1)
-            print "embedded_chars_expanded_pref3: " + str(self.embedded_chars_expanded_pref3.get_shape())
-
-            W_suff2 = tf.Variable(tf.random_uniform([suff2_vocab_size, embedding_size], -1.0, 1.0), name="W_suff2")
-            self.embedded_chars_suff2 = tf.nn.embedding_lookup(W_suff2, self.input_suff2)
-            self.embedded_chars_expanded_suff2 = tf.expand_dims(self.embedded_chars_suff2, -1)
-            print "embedded_chars_expanded_suff2: " + str(self.embedded_chars_expanded_suff2.get_shape())
-
-            W_suff3 = tf.Variable(tf.random_uniform([suff3_vocab_size, embedding_size], -1.0, 1.0), name="W_suff3")
-            self.embedded_chars_suff3 = tf.nn.embedding_lookup(W_suff3, self.input_suff3)
-            self.embedded_chars_expanded_suff3 = tf.expand_dims(self.embedded_chars_suff3, -1)
-            print "embedded_chars_expanded_suff3: " + str(self.embedded_chars_expanded_suff3.get_shape())
-
-            W_pos = tf.Variable(tf.random_uniform([pos_vocab_size, embedding_size], -1.0, 1.0), name="W_pos")
-            self.embedded_chars_pos = tf.nn.embedding_lookup(W_pos, self.input_pos)
-            self.embedded_chars_expanded_pos = tf.expand_dims(self.embedded_chars_pos, -1)
-            print "embedded_chars_expanded_pos: " + str(self.embedded_chars_expanded_pos.get_shape())
-
-            self.whole_emb = tf.concat(concat_dim=3, values=[self.embedded_chars_expanded,
-                                                             self.embedded_chars_expanded_pref2,
-                                                             self.embedded_chars_expanded_pref3,
-                                                             self.embedded_chars_expanded_suff2,
-                                                             self.embedded_chars_expanded_suff3,
-                                                             self.embedded_chars_expanded_pos])
-
         # Create a convolution + maxpool layer for each filter size
         first_pooled_outputs = []
         for i, filter_size in enumerate(filter_sizes):
             with tf.name_scope("conv-1-%s" % filter_size):
                 # Convolution Layer
-                filter_shape = [filter_size, embedding_size, 6, num_filters]
+                filter_shape = [filter_size, embedding_size, 1, num_filters]
                 W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
                 b = tf.Variable(tf.constant(0.1, shape=[num_filters]), name="b")
                 conv = tf.nn.conv2d(
-                    self.whole_emb,
+                    self.embedded_chars_expanded,
                     W,
                     strides=[1, 1, 1, 1],
                     padding="VALID",
-                    name="conv_word")
-                # conv ==> [?, sequence_length - filter_size + 1, 1, 100]
-                top_pad = int((filter_size - 1) / 2.0)
-                bottom_pad = filter_size - 1 - top_pad
-                conv = tf.pad(conv, [[0, 0], [top_pad, bottom_pad], [0, 0], [0, 0]], mode='CONSTANT', name="conv_word_pad")
+                    name="conv")
+                # conv ==> [1, sequence_length - filter_size + 1, 1, 1]
                 conv = tf.reshape(conv, [-1, sequence_length, num_filters])
                 # Apply nonlinearity
                 h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
@@ -146,17 +102,18 @@ class TextCNN(object):
             self.scores = tf.nn.xw_plus_b(self.h_drop, W, b, name="scores")
             self.predictions = tf.sigmoid(self.scores, name="predictions")
             print "Prediction shape: " + str(self.predictions.get_shape())
+            # self.predictions = tf.argmax(self.scores, 1, name="predictions")  #3333333333333333333333333
 
         # self.rate_percentage = [0.0] * num_classes
         # with tf.name_scope("prediction-ratio"):
         #     for i in range(num_classes):
-        #         rate_allrow_logistic = tf.equal(self.predictions, i)
-        #         rate_logistic = tf.reduce_all(rate_allrow_logistic, axis=1)
-        #         self.rate_percentage[i] = tf.reduce_mean(tf.cast(rate_logistic, "float"),
+        #         rate1_logistic = tf.equal(self.predictions, i)
+        #         self.rate_percentage[i] = tf.reduce_mean(tf.cast(rate1_logistic, "float"),
         #                                                  name="rate-" + str(i) + "/percentage")
 
         # CalculateMean cross-entropy loss
         with tf.name_scope("loss-lbd" + str(l2_reg_lambda)):
+            # losses = tf.nn.softmax_cross_entropy_with_logits(self.scores, self.input_y)  # TODO
             losses = tf.nn.sigmoid_cross_entropy_with_logits(self.scores, self.input_y)
             self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
 
@@ -166,3 +123,6 @@ class TextCNN(object):
             correct_predictions = tf.equal(tf.greater_equal(self.predictions, 0.5), tf.equal(self.input_y, 1))
             correct_predictions = tf.reduce_all(correct_predictions, axis=1)
             self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy")
+
+            # maxright = self.input_y[np.arange(len(self.input_y)), self.predictions]
+            # self.accuracy_max = tf.reduce_mean(maxright, name="maxright_accuracy")
