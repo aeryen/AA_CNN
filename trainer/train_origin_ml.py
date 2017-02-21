@@ -73,7 +73,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
             cnn = TextCNN(
                 sequence_length=x_train.shape[1],
                 num_classes=FLAGS.num_classes,  # Number of classification classes
-                vocab_size=len(vocabulary),
+                word_vocab_size=len(vocabulary),
                 embedding_size=FLAGS.embedding_dim,
                 filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
                 num_filters=num_filters,

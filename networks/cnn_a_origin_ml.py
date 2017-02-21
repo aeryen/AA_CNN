@@ -9,7 +9,7 @@ class TextCNN(object):
     """
 
     def __init__(
-            self, sequence_length, num_classes, vocab_size,
+            self, sequence_length, num_classes, word_vocab_size,
             embedding_size, filter_sizes, num_filters, l2_reg_lambda=0.0,
             init_embedding=None):
         # Placeholders for input, output and dropout, First None is batch size.
@@ -24,7 +24,7 @@ class TextCNN(object):
         with tf.device('/cpu:0'), tf.name_scope("embedding"):
             if init_embedding is None:
                 W = tf.Variable(
-                    tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0),
+                    tf.random_uniform([word_vocab_size, embedding_size], -1.0, 1.0),
                     name="W")
             else:
                 W = tf.Variable(init_embedding, name="W", dtype="float32")
@@ -77,14 +77,16 @@ class TextCNN(object):
             l2_loss += tf.nn.l2_loss(W)
             # l2_loss += tf.nn.l2_loss(b)
             self.scores = tf.nn.xw_plus_b(self.h_drop, W, b, name="scores")
-            self.predictions = tf.argmax(self.scores, 1, name="predictions")  #3333333333333333333333333
+            self.predictions = tf.sigmoid(self.scores, name="predictions")
+            print "Prediction shape: " + str(self.predictions.get_shape())
+            # self.predictions = tf.argmax(self.scores, 1, name="predictions")  #3333333333333333333333333
 
-        self.rate_percentage = [0.0] * num_classes
-        with tf.name_scope("prediction-ratio"):
-            for i in range(num_classes):
-                rate1_logistic = tf.equal(self.predictions, i)
-                self.rate_percentage[i] = tf.reduce_mean(tf.cast(rate1_logistic, "float"),
-                                                         name="rate-" + str(i) + "/percentage")
+        # self.rate_percentage = [0.0] * num_classes
+        # with tf.name_scope("prediction-ratio"):
+        #     for i in range(num_classes):
+        #         rate1_logistic = tf.equal(self.predictions, i)
+        #         self.rate_percentage[i] = tf.reduce_mean(tf.cast(rate1_logistic, "float"),
+        #                                                  name="rate-" + str(i) + "/percentage")
 
         # CalculateMean cross-entropy loss
         with tf.name_scope("loss-lbd" + str(l2_reg_lambda)):
@@ -94,12 +96,10 @@ class TextCNN(object):
 
         # Accuracy
         with tf.name_scope("accuracy"):
-            # all right
-            self.multi_pred = tf.greater_equal(self.scores, 0.0)
-            compare_result = tf.equal(self.multi_pred, tf.equal(self.input_y, 1))
-            allright = tf.equal( tf.reduce_sum(tf.cast(compare_result, "float"), reduction_indices=1), 20 )
-            # correct_predictions = tf.equal(self.predictions, tf.argmax(self.input_y, 1))
-            self.accuracy = tf.reduce_mean(tf.cast(allright, "float"), name="allright_accuracy")
+            # all correct
+            correct_predictions = tf.equal(tf.greater_equal(self.predictions, 0.5), tf.equal(self.input_y, 1))
+            correct_predictions = tf.reduce_all(correct_predictions, axis=1)
+            self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy")
 
             # maxright = self.input_y[np.arange(len(self.input_y)), self.predictions]
             # self.accuracy_max = tf.reduce_mean(maxright, name="maxright_accuracy")
