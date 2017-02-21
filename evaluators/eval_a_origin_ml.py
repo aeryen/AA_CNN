@@ -1,15 +1,13 @@
 #! /usr/bin/env python
 
-import data_helper_ml as dh
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-from datahelpers import data_helpers
+from datahelpers import data_helper_ml_normal as data_helpers
 
 
 # THIS CLASS IS THE EVALUATOR FOR NORMAL CNN
-# SET documentAcc=FALSE WHEN WORKING WITH DAAS DATA LOADER SUCH THAT ONLY PRINT SENTENCE-LEVEL ACCURACY (ACTUALLY DOC LEVEL ACC)
 
 class evaler:
     dater = None
@@ -18,7 +16,7 @@ class evaler:
     y_test_scalar = None
     vocabulary = None
     vocabulary_inv = None
-    file_sizes = None
+    doc_size_test = None
 
     def plot_confusion_matrix(self, cm, dater, title='Confusion matrix', cmap=plt.cm.Blues):
         plt.imshow(cm, interpolation='nearest', cmap=cmap)
@@ -35,9 +33,9 @@ class evaler:
         self.dater = dater
 
         print("Loading data...")
-        self.x_test, self.y_test, self.vocabulary, self.vocabulary_inv, self.file_sizes = self.dater.load_test_data()
+        self.x_test, self.y_test, self.vocab, self.vocab_inv, self.doc_size_test = self.dater.load_test_data()
         self.y_test_scalar = np.argmax(self.y_test, axis=1)
-        print("Vocabulary size: {:d}".format(len(self.vocabulary)))
+        print("Vocabulary size: {:d}".format(len(self.vocab)))
         print("Test set size {:d}".format(len(self.y_test)))
 
         return self.x_test, self.y_test, self.y_test_scalar
@@ -71,13 +69,13 @@ class evaler:
                 predictions = graph.get_operation_by_name("output/predictions").outputs[0]
 
                 # Generate batches for one epoch
-                x_batches = data_helpers.batch_iter(self.x_test, 64, 1, shuffle=False)
-                y_batches = data_helpers.batch_iter(self.y_test, 64, 1, shuffle=False)
+                x_batches = data_helpers.DataHelper.batch_iter(self.x_test, 64, 1, shuffle=False)
+                y_batches = data_helpers.DataHelper.batch_iter(self.y_test, 64, 1, shuffle=False)
 
                 # Collect the predictions here
                 all_score = None
-                all_predictions = []
-                for x_test_batch, y_test_batch in zip(x_batches, y_batches):
+                all_predictions = np.zeros([0, 20])
+                for [x_test_batch, y_test_batch] in zip(x_batches, y_batches):
                     batch_scores, batch_predictions = sess.run([scores, predictions],
                                                                {input_x: x_test_batch, dropout_keep_prob: 1.0})
                     # print batch_predictions
@@ -87,19 +85,20 @@ class evaler:
                         all_score = np.concatenate([all_score, batch_scores], axis=0)
                     all_predictions = np.concatenate([all_predictions, batch_predictions], axis=0)
 
-                multi_pred = all_score >= 0
-                compare_result = multi_pred == (self.y_test == 1)
-                allright = tf.equal(tf.reduce_sum(tf.cast(compare_result, "float"), reduction_indices=1), 20)
-                allright_accuracy = tf.reduce_mean(tf.cast(allright, "float"), name="allright_accuracy").eval()
-
         # Print accuracy
-        # np.savetxt('temp.out', all_predictions, fmt='%1.0f')
+        np.savetxt('temp.out', all_predictions, fmt='%1.0f')
+        all_predictions = all_predictions >= 0.5
+        self.y_test = np.array(self.y_test)
+        sentence_result_label_matrix = all_predictions == (self.y_test == 1)
+        sentence_result = np.logical_and.reduce(sentence_result_label_matrix, axis=1)
+        correct_predictions = float(np.sum(sentence_result))
+        average_accuracy = correct_predictions / float(all_predictions.shape[0])
 
         output_file.write("Test for prob: " + self.dater.problem_name + "\n")
-        print("Total number of test examples: {}".format(len(self.y_test_scalar)))
-        output_file.write("Total number of test examples: {}\n".format(len(self.y_test_scalar)))
-        print "Sent ACC\t" + str(allright_accuracy)  # + "\t\t(cor: " + str(correct_predictions) + ")"
-        output_file.write("ACC\t" + str(allright_accuracy) + "\n")
+        print("Total number of test examples: {}".format(len(self.y_test)))
+        output_file.write("Total number of test examples: {}\n".format(len(self.y_test)))
+        print "Sent ACC\t" + str(average_accuracy)  # + "\t\t(cor: " + str(correct_predictions) + ")"
+        output_file.write("ACC\t" + str(average_accuracy) + "\n")
 
         # mse = np.mean((all_predictions - self.y_test_scalar) ** 2)
         # print "Sent MSE\t" + str(mse)
@@ -128,10 +127,10 @@ class evaler:
         if documentAcc == True:
             doc_prediction = []
             sum_to = 0
-            for i in range(len(self.file_sizes)):
-                f_size = self.file_sizes[i]
-                p = multi_pred[sum_to:sum_to + f_size - 1].astype(int)
-                sum_to = sum_to + f_size
+            for i in range(len(self.doc_size_test)):
+                f_size = self.doc_size_test[i]
+                p = all_predictions[sum_to:sum_to + f_size - 1].astype(int)
+                sum_to = sum_to + f_size  # increment to next file
                 p = np.sum(p, axis=0).astype(float)
                 p = p / f_size
                 pred_class = p > 0.5
@@ -176,15 +175,15 @@ class evaler:
         output_file.write("\n")
 
 if __name__ == "__main__":
-    bold_step2 = [3500]
+    step1 = [250, 500, 750, 1000]
+    step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
 
-    dater = dh.DataHelper()
+    dater = data_helpers.DataHelper(doc_level="sent")
     dater.load_data()
-
     e = evaler()
     e.load(dater)
     output_file = open("ml_test.txt", mode="aw")
-    for step in bold_step2:
-        e.test("./runs/ml_100d_origin/1476646858/checkpoints/", step, output_file, documentAcc=True)
+    for step in [97000]:
+        e.test("../runs/ML_normal/1487661764/checkpoints/", step, output_file, documentAcc=True)
     output_file.close()
 

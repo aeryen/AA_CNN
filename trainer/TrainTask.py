@@ -8,7 +8,7 @@ import tensorflow as tf
 
 # from datahelpers.Data_Helper import Data_Helper
 from datahelpers import data_helper_ml_normal as dh
-# from evaluators import eval_ml_mulmol_d as evaler
+from evaluators import eval_ml_mulmol_d as evaler
 from networks.cnn_a_origin_ml import TextCNN
 
 

@@ -44,7 +44,7 @@ class evaler:
         self.x_test, self.pos_test, self.wl_test, self.p2_test, self.p3_test, self.s2_test, self.s3_test, \
             self.y_test, self.vocab, self.vocab_inv, self.doc_size_test = \
             self.dater.load_test_data()
-        # self.y_test_scalar = np.argmax(self.y_test, axis=1)
+        self.y_test_scalar = np.argmax(self.y_test, axis=1)
         print("Vocabulary size: {:d}".format(len(self.vocab)))
         print("Test set size {:d}".format(len(self.y_test)))
 
@@ -98,6 +98,7 @@ class evaler:
 
 
                 # Collect the predictions here
+                all_score = None
                 all_predictions = np.zeros([0, 20])
                 for [x_test_batch, y_test_batch,
                      pref2_batch, pref3_batch, suff2_batch, suff3_batch,
@@ -110,8 +111,11 @@ class evaler:
                                                                 input_suff2: suff2_batch, input_suff3: suff3_batch,
                                                                 input_pos: pos_batch})
                     # print batch_predictions
+                    if all_score is None:
+                        all_score = batch_scores
+                    else:
+                        all_score = np.concatenate([all_score, batch_scores], axis=0)
                     all_predictions = np.concatenate([all_predictions, batch_predictions], axis=0)
-
 
         # Print accuracy
         np.savetxt('temp.out', all_predictions, fmt='%1.0f')
@@ -189,7 +193,6 @@ if __name__ == "__main__":
     step1 = [250, 500, 750, 1000]
     step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
 
-    # dater = dh.DataHelper(1)
     dater = dh.DataHelper(doc_level="sent")
     dater.load_data()
     e = evaler()
