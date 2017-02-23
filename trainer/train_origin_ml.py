@@ -7,8 +7,8 @@ import time
 import tensorflow as tf
 
 from datahelpers import data_helper_ml as dh
-from evaluators import eval_a_origin_ml as evaler
-from networks.cnn_a_origin_ml import TextCNN
+from evaluators import eval_ml_origin as evaler
+from networks.cnn_ml_origin import TextCNN
 
 
 def init_data(embed_dimension, do_dev_split=False):

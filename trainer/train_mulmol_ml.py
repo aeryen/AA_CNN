@@ -8,7 +8,7 @@ import tensorflow as tf
 
 from datahelpers import data_helper_ml_mulmol6file as dh
 from evaluators import eval_ml_mulmol_d as evaler
-from networks.cnn_a_mulmol_2layer import TextCNN
+from networks.cnn_ml_mulmol_2layer import TextCNN
 
 
 # Training

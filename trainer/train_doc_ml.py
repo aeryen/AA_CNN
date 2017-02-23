@@ -7,8 +7,8 @@ import time
 import tensorflow as tf
 
 from datahelpers import data_helper_ml as dh
-from evaluators import eval_archy as evaler
-from networks.cnn_archy_ml import TextCNN
+from evaluators import eval_pan_archy as evaler
+from networks.cnn_ml_archy import TextCNN
 
 
 def init_data(embed_dimension, do_dev_split=False):

@@ -8,8 +8,8 @@ import numpy as np
 import tensorflow as tf
 
 from datahelpers import data_helper_pan12 as dh
-from evaluators import eval_a_origin as evaler
-from networks.cnn_a_origin import TextCNN
+from evaluators import eval_pan_origin as evaler
+from networks.cnn_pan_origin import TextCNN
 
 
 def init_data(prob_code, embed_dimension, do_dev_split=False):
