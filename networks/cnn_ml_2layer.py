@@ -46,7 +46,7 @@ class TextCNN(object):
                     padding="VALID",
                     name="conv")
                 # conv ==> [1, sequence_length - filter_size + 1, 1, 1]
-                conv = tf.reshape(conv, [-1, sequence_length, num_filters])
+                conv = tf.reshape(conv, [-1, sequence_length - filter_size + 1, num_filters])
                 # Apply nonlinearity
                 h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
                 first_pooled_outputs.append(h)
