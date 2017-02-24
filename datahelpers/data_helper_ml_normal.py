@@ -22,9 +22,12 @@ class DataHelper:
 
     training_data_dir = "../data/ml_mulmol/"
     truth_file_path = "../data/ml_dataset/labels.csv"
+    glove_path = None
+    glove_dir = "../glove/"
 
     vocabulary_size = 20000
     embedding_dim = 100
+
 
     num_of_classes = 20
 
@@ -55,6 +58,7 @@ class DataHelper:
         self.embedding_dim = embed_dim
         self.target_sent_len = target_sent_len
         self.target_doc_len = target_doc_len
+        self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
 
     @staticmethod
     def clean_str(string):
@@ -206,7 +210,7 @@ class DataHelper:
         return [vocabulary, vocabulary_inv]
 
     def load_glove_vector(self):
-        glove_lines = list(open("../glove.6B." + str(self.embedding_dim) + "d.txt", "r").readlines())
+        glove_lines = list(open(self.glove_path, "r").readlines())
         glove_lines = [s.split(" ", 1) for s in glove_lines if (len(s) > 0 and s != "\n")]
         glove_words = [s[0] for s in glove_lines]
         vector_list = [s[1] for s in glove_lines]

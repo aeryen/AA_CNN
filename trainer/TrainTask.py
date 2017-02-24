@@ -9,7 +9,7 @@ import tensorflow as tf
 # from datahelpers.Data_Helper import Data_Helper
 from datahelpers import data_helper_ml_normal as dh
 from evaluators import eval_ml_mulmol_d as evaler
-from networks.cnn_ml_2layer import TextCNN
+from networks.cnn_ml_origin import TextCNN
 
 
 class TrainTask:
@@ -189,5 +189,5 @@ class TrainTask:
 
 if __name__ == "__main__":
     dater = dh.DataHelper(doc_level="sent")
-    tt = TrainTask(data_helper=dater, exp_name="2c_cnn")
+    tt = TrainTask(data_helper=dater, exp_name="1c_cnn", batch_size=8)
     tt.training(num_filters=100, dropout_prob=0.75, l2_lambda=0.1)
