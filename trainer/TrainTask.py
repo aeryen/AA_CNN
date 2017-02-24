@@ -9,7 +9,7 @@ import tensorflow as tf
 # from datahelpers.Data_Helper import Data_Helper
 from datahelpers import data_helper_ml_normal as dh
 from evaluators import eval_ml_mulmol_d as evaler
-from networks.cnn_ml_2layer import TextCNN
+from networks.cnn_origin import TextCNN
 
 
 class TrainTask:
@@ -22,10 +22,10 @@ class TrainTask:
     """
 
     def __init__(self, data_helper, exp_name, do_dev_split=False, filter_sizes='3,4,5', batch_size=64,
-                 evaluate_every=200, checkpoint_every=500):
-        # two components of the tag name
+                 dataset="ML", evaluate_every=200, checkpoint_every=500):
         self.data_hlp = data_helper
         self.exp_name = exp_name
+        self.dataset = dataset
         # the problem tag identifies the experiment setting, currently data name + experiment name
         self.tag = self.data_hlp.problem_name+"_"+self.exp_name
         self.exp_dir = "../runs/" + self.tag + "/"
@@ -64,7 +64,6 @@ class TrainTask:
         x_shuffled, y_shuffled, _, _, self.embed_matrix = self.data_hlp.load_data()
         logging.debug("Vocabulary Size: {:d}".format(len(self.data_hlp.vocab)))
 
-        # take a small portion out of training for validation if desired
         self.do_dev_split = do_dev_split
         if self.do_dev_split:
             self.x_train, self.x_dev = x_shuffled[:-500], x_shuffled[-500:]
@@ -89,6 +88,7 @@ class TrainTask:
                     embedding_size=self.data_hlp.embedding_dim,
                     filter_sizes=self.filter_sizes,
                     num_filters=num_filters,
+                    dataset=self.dataset,
                     l2_reg_lambda=l2_lambda,
                     init_embedding=self.embed_matrix)
 
@@ -201,5 +201,5 @@ class TrainTask:
 
 if __name__ == "__main__":
     dater = dh.DataHelper(doc_level="sent")
-    tt = TrainTask(data_helper=dater, exp_name="2c_cnn")
+    tt = TrainTask(data_helper=dater, exp_name="1c_cnn", batch_size=8, dataset="ML")
     tt.training(num_filters=100, dropout_prob=0.75, l2_lambda=0.1)
