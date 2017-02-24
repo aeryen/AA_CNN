@@ -13,18 +13,27 @@ from networks.cnn import TextCNN
 
 
 class TrainTask:
+    """
+    This is the MAIN.
+    The class set corresponding parameters, log the setting in runs folder.
+    the class then create a NN and initialize it.
+    lastly the class data batches and feed them into NN for training.
+    Currently it only- works with ML data, i'll expand this to be more flexible in the near future.
+    """
 
     def __init__(self, data_helper, exp_name, do_dev_split=False, filter_sizes='3,4,5', batch_size=64,
                  dataset="ML", evaluate_every=200, checkpoint_every=500):
         self.data_hlp = data_helper
         self.exp_name = exp_name
         self.dataset = dataset
+        # the problem tag identifies the experiment setting, currently data name + experiment name
         self.tag = self.data_hlp.problem_name+"_"+self.exp_name
         self.exp_dir = "../runs/" + self.tag + "/"
         if not os.path.exists(self.exp_dir):
             os.makedirs(self.exp_dir)
         self.log_name = self.exp_dir + "log.txt"
 
+        # logging facility, log both into file and console
         logging.basicConfig(level=logging.DEBUG,
                             format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
                             datefmt='%m-%d %H:%M',
@@ -39,6 +48,7 @@ class TrainTask:
         logging.info("current data is: " + self.data_hlp.problem_name)
         logging.info("current experiment is: " + self.exp_name)
 
+        # network parameters
         self.filter_sizes = map(int, filter_sizes.split(","))
         self.batch_size = batch_size
         self.evaluate_every = evaluate_every
