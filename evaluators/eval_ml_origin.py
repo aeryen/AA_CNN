@@ -184,6 +184,6 @@ if __name__ == "__main__":
     e.load(dater)
     output_file = open("ml_test.txt", mode="aw")
     for step in [97000]:
-        e.test("../runs/ML_normal/1487661764/checkpoints/", step, output_file, documentAcc=True)
+        e.test("../runs/ML_2c_cnn/1487894877/checkpoints/", step, output_file, documentAcc=True)
     output_file.close()
 

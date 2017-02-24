@@ -13,17 +13,27 @@ from networks.cnn_ml_2layer import TextCNN
 
 
 class TrainTask:
+    """
+    This is the MAIN.
+    The class set corresponding parameters, log the setting in runs folder.
+    the class then create a NN and initialize it.
+    lastly the class data batches and feed them into NN for training.
+    Currently it only- works with ML data, i'll expand this to be more flexible in the near future.
+    """
 
     def __init__(self, data_helper, exp_name, do_dev_split=False, filter_sizes='3,4,5', batch_size=64,
                  evaluate_every=200, checkpoint_every=500):
+        # two components of the tag name
         self.data_hlp = data_helper
         self.exp_name = exp_name
+        # the problem tag identifies the experiment setting, currently data name + experiment name
         self.tag = self.data_hlp.problem_name+"_"+self.exp_name
         self.exp_dir = "../runs/" + self.tag + "/"
         if not os.path.exists(self.exp_dir):
             os.makedirs(self.exp_dir)
         self.log_name = self.exp_dir + "log.txt"
 
+        # logging facility, log both into file and console
         logging.basicConfig(level=logging.DEBUG,
                             format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
                             datefmt='%m-%d %H:%M',
@@ -38,6 +48,7 @@ class TrainTask:
         logging.info("current data is: " + self.data_hlp.problem_name)
         logging.info("current experiment is: " + self.exp_name)
 
+        # network parameters
         self.filter_sizes = map(int, filter_sizes.split(","))
         self.batch_size = batch_size
         self.evaluate_every = evaluate_every
@@ -53,6 +64,7 @@ class TrainTask:
         x_shuffled, y_shuffled, _, _, self.embed_matrix = self.data_hlp.load_data()
         logging.debug("Vocabulary Size: {:d}".format(len(self.data_hlp.vocab)))
 
+        # take a small portion out of training for validation if desired
         self.do_dev_split = do_dev_split
         if self.do_dev_split:
             self.x_train, self.x_dev = x_shuffled[:-500], x_shuffled[-500:]

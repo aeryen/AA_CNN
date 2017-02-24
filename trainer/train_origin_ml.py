@@ -11,6 +11,7 @@ from evaluators import eval_ml_origin as evaler
 from networks.cnn_ml_origin import TextCNN
 
 
+
 def init_data(embed_dimension, do_dev_split=False):
     dater = dh.DataHelper(doc_level=False, embed_dim=embed_dimension)
 
