@@ -1,11 +1,10 @@
 import tensorflow as tf
-import numpy as np
 
-
-class TextCNN(object):
+class BaseTextCNN(object):
     """
-    A CNN for text classification.
-    Uses an embedding layer, followed by a convolutional, max-pooling and softmax layer.
+    CNN for text classification.
+    Uses an embedding layer, followed by a convolutional, max-pooling layers.
+    Lacks an output layer.
     """
 
     def __init__(
@@ -16,9 +15,6 @@ class TextCNN(object):
         self.input_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_x")
         self.input_y = tf.placeholder(tf.float32, [None, num_classes], name="input_y")
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
-
-        # Keeping track of l2 regularization loss (optional)
-        l2_loss = tf.constant(0.0)
 
         # Embedding layer
         with tf.device('/cpu:0'), tf.name_scope("embedding"):
@@ -58,48 +54,14 @@ class TextCNN(object):
                 pooled_outputs.append(pooled)
 
         # Combine all the pooled features
-        num_filters_total = num_filters * len(filter_sizes)
+        self.num_filters_total = num_filters * len(filter_sizes)
         self.h_pool = tf.concat(3, pooled_outputs)
-        self.h_pool_flat = tf.reshape(self.h_pool, [-1, num_filters_total])
+        self.h_pool_flat = tf.reshape(self.h_pool, [-1, self.num_filters_total])
 
         # Add dropout
         with tf.name_scope("dropout-keep" + str(0.5)):
             self.h_drop = tf.nn.dropout(self.h_pool_flat, self.dropout_keep_prob)
 
-        # Final (unnormalized) scores and predictions
-        with tf.name_scope("output"):
-            # W = tf.Variable(tf.truncated_normal([num_filters_total, num_classes], stddev=0.1), name="W")
-            W = tf.get_variable(
-                "W",
-                shape=[num_filters_total, num_classes],
-                initializer=tf.contrib.layers.xavier_initializer())
-            b = tf.Variable(tf.constant(0.1, shape=[num_classes]), name="b")
-            l2_loss += tf.nn.l2_loss(W)
-            # l2_loss += tf.nn.l2_loss(b)
-            self.scores = tf.nn.xw_plus_b(self.h_drop, W, b, name="scores")
-            self.predictions = tf.sigmoid(self.scores, name="predictions")
-            print "Prediction shape: " + str(self.predictions.get_shape())
-            # self.predictions = tf.argmax(self.scores, 1, name="predictions")  #3333333333333333333333333
 
-        # self.rate_percentage = [0.0] * num_classes
-        # with tf.name_scope("prediction-ratio"):
-        #     for i in range(num_classes):
-        #         rate1_logistic = tf.equal(self.predictions, i)
-        #         self.rate_percentage[i] = tf.reduce_mean(tf.cast(rate1_logistic, "float"),
-        #                                                  name="rate-" + str(i) + "/percentage")
-
-        # CalculateMean cross-entropy loss
-        with tf.name_scope("loss-lbd" + str(l2_reg_lambda)):
-            # losses = tf.nn.softmax_cross_entropy_with_logits(self.scores, self.input_y)  # TODO
-            losses = tf.nn.sigmoid_cross_entropy_with_logits(self.scores, self.input_y)
-            self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
-
-        # Accuracy
-        with tf.name_scope("accuracy"):
-            # all correct
-            correct_predictions = tf.equal(tf.greater_equal(self.predictions, 0.5), tf.equal(self.input_y, 1))
-            correct_predictions = tf.reduce_all(correct_predictions, axis=1)
-            self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy")
-
-            # maxright = self.input_y[np.arange(len(self.input_y)), self.predictions]
-            # self.accuracy_max = tf.reduce_mean(maxright, name="maxright_accuracy")
+    def get_last_layer_info(self):
+        return self.h_drop, self.num_filters_total
