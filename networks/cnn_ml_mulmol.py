@@ -4,8 +4,8 @@ import tensorflow as tf
 
 class TextCNN(object):
     """
-    A CNN for text classification.
-    Uses an embedding layer, followed by a convolutional, max-pooling and softmax layer.
+    Multi-modality implementation
+    6 channel atm, using a 2d filter, generates 300 sized feature map per sentence
     """
     batch_size = None
 

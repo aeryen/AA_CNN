@@ -5,6 +5,7 @@ import numpy as np
 class TextCNN(object):
     """
     Hierarchical attempt
+    ideally have a sentence then document hierarchy, but i forgot how well this goes
     """
 
     def __init__(

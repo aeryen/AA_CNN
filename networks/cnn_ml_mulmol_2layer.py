@@ -4,8 +4,10 @@ import numpy as np
 
 class TextCNN(object):
     """
-    A CNN for text classification.
-    Uses an embedding layer, followed by a convolutional, max-pooling and softmax layer.
+    two-layer-convolution that works with multi-modality
+    2d slider on first convolution, then padded to same length for another convolution.
+    the first c currently have relu but not pooled, generating 220 * 300 features per sentence
+    the second c have relu then pooled to generates 300 feature for fully connected output
     """
     batch_size = None
 
