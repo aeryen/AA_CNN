@@ -201,5 +201,5 @@ class TrainTask:
 
 if __name__ == "__main__":
     dater = dh.DataHelper(doc_level="sent")
-    tt = TrainTask(data_helper=dater, exp_name="1c_cnn", batch_size=8, dataset="ML")
+    tt = TrainTask(data_helper=dater, exp_name="1c_cnn", batch_size=64, dataset="ML")
     tt.training(num_filters=100, dropout_prob=0.75, l2_lambda=0.1)

@@ -6,7 +6,7 @@ class TextCNN(object):
     """
     This CNN works with ML data.
     The network takes in only the raw text, does not accept extra channels.
-    The network have two levels of convolution. each uses the filter_sizes and num_filters.
+    The network have two levels of convolution. each uses the same parameter filter_sizes and num_filters.
     the first level output is padded and relu -ed then take into the second layer.
     the output of the first level has width len(filter_sizes) * num_filters.
     """
