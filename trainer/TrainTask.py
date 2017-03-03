@@ -76,7 +76,7 @@ class TrainTask:
             self.y_dev = None
             logging.info("No Train/Dev split")
 
-    def training(self, num_filters, dropout_prob, l2_lambda):
+    def training(self, num_filters, dropout_keep_prob, n_steps, l2_lambda=0.0, droupout=False, batch_normalize=False):
         with tf.Graph().as_default():
             session_conf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
             sess = tf.Session(config=session_conf)
@@ -90,13 +90,24 @@ class TrainTask:
                     num_filters=num_filters,
                     dataset=self.dataset,
                     l2_reg_lambda=l2_lambda,
-                    init_embedding=self.embed_matrix)
+                    init_embedding=self.embed_matrix,
+                    dropout=droupout,
+                    batch_normalize=batch_normalize)
 
                 # Define Training procedure
+
                 global_step = tf.Variable(0, name="global_step", trainable=False)
-                optimizer = tf.train.AdamOptimizer(1e-3)
-                grads_and_vars = optimizer.compute_gradients(cnn.loss)
-                train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+
+                if batch_normalize == True:
+                    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+                    with tf.control_dependencies(update_ops):
+                        optimizer = tf.train.AdamOptimizer(1e-3)
+                        grads_and_vars = optimizer.compute_gradients(cnn.loss)
+                        train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+                else:
+                    optimizer = tf.train.AdamOptimizer(1e-3)
+                    grads_and_vars = optimizer.compute_gradients(cnn.loss)
+                    train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
                 # Keep track of gradient values and sparsity (optional)
                 with tf.name_scope('grad_summary'):
@@ -149,8 +160,8 @@ class TrainTask:
                 feed_dict = {
                     cnn.input_x: x_batch,
                     cnn.input_y: y_batch,
-
-                    cnn.dropout_keep_prob: dropout_prob
+                    cnn.dropout_keep_prob: dropout_keep_prob,
+                    cnn.is_training: 1
                 }
                 _, step, summaries, loss, accuracy = sess.run(
                     [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
@@ -166,7 +177,8 @@ class TrainTask:
                 feed_dict = {
                     cnn.input_x: x_batch,
                     cnn.input_y: y_batch,
-                    cnn.dropout_keep_prob: 1
+                    cnn.dropout_keep_prob: 1,
+                    cnn.is_training: 0
                 }
                 step, summaries, loss, accuracy = sess.run(
                     [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
@@ -195,11 +207,11 @@ class TrainTask:
                 if current_step % self.checkpoint_every == 0:
                     path = saver.save(sess, checkpoint_prefix, global_step=current_step)
                     print("Saved model checkpoint to {}\n".format(path))
-                if current_step == 100000:  # TODO: change here to stop training early...
+                if current_step == n_steps:
                     break
         return timestamp
 
 if __name__ == "__main__":
     dater = dh.DataHelper(doc_level="sent")
     tt = TrainTask(data_helper=dater, exp_name="1c_cnn", batch_size=64, dataset="ML")
-    tt.training(num_filters=100, dropout_prob=0.75, l2_lambda=0.1)
+    tt.training(num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.0, droupout=False, batch_normalize=True)

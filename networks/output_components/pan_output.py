@@ -11,7 +11,9 @@ class PANOutput(object):
                 shape=[num_nodes_prev_layer, num_classes],
                 initializer=tf.contrib.layers.xavier_initializer())
             b = tf.Variable(tf.constant(0.1, shape=[num_classes]), name="b")
-            l2_loss += tf.nn.l2_loss(W)
+
+            if l2_reg_lambda > 0:
+                l2_loss += tf.nn.l2_loss(W)
             # l2_loss += tf.nn.l2_loss(b)
             self.scores = tf.nn.xw_plus_b(prev_layer, W, b, name="scores")
             self.predictions = tf.argmax(self.scores, 1, name="predictions")
@@ -26,9 +28,7 @@ class PANOutput(object):
         # CalculateMean cross-entropy loss
         with tf.name_scope("loss-lbd" + str(l2_reg_lambda)):
             losses = tf.nn.softmax_cross_entropy_with_logits(self.scores, self.input_y)  # TODO
-            # losses = tf.nn.sigmoid_cross_entropy_with_logits(self.scores, self.input_y)
             self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
-
         # Accuracy
         with tf.name_scope("accuracy"):
             correct_predictions = tf.equal(self.predictions, tf.argmax(self.input_y, 1))
