@@ -9,7 +9,7 @@ class OneCMiddle(object):
 
     def __init__(
             self, sequence_length, embedding_size, filter_sizes, num_filters, previous_component, batch_normalize=False,
-            dropout = False):
+            dropout = False, elu=False):
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
@@ -36,7 +36,10 @@ class OneCMiddle(object):
                 else:
                     # Apply nonlinearity
                     b = tf.Variable(tf.constant(0.1, shape=[num_filters]), name="b")
-                    h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
+                    if elu == False:
+                        h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
+                    else:
+                        h = tf.nn.elu(tf.nn.bias_add(conv, b), name="elu")
                 # Maxpooling over the outputs
                 pooled = tf.nn.max_pool(
                     h,

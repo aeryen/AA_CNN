@@ -16,7 +16,7 @@ class TextCNN:
     def __init__(
             self, sequence_length, num_classes, word_vocab_size,
             embedding_size, filter_sizes, num_filters, middle_component = 'OneCMiddle', dataset="ML", l2_reg_lambda=0.0,
-            init_embedding=None, dropout=False, batch_normalize = False):
+            init_embedding=None, dropout=False, batch_normalize = False, elu = False):
 
         # input component
         self.input_comp = OneChannel(sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
@@ -27,11 +27,12 @@ class TextCNN:
         # middle component
         if middle_component == 'OneCMiddle':
             self.middle_comp = OneCMiddle(sequence_length, embedding_size, filter_sizes, num_filters,
-                                           previous_component=self.input_comp, dropout=dropout, batch_normalize=batch_normalize)
+                                          previous_component=self.input_comp, dropout=dropout,
+                                          batch_normalize=batch_normalize, elu=elu)
         elif middle_component == 'OneCOneFCMiddle':
             self.middle_comp = OneCOneFCMiddle(sequence_length, embedding_size, filter_sizes, num_filters,
                                           previous_component=self.input_comp, dropout=dropout,
-                                          batch_normalize=batch_normalize)
+                                          batch_normalize=batch_normalize, elu=elu)
         else:
             raise NotImplementedError
 
