@@ -75,7 +75,7 @@ class TrainTask:
             logging.info("No Train/Dev split")
 
     def training(self, num_filters, dropout_keep_prob, n_steps, l2_lambda=0.0, dropout=False, batch_normalize=False,
-                 elu=False):
+                 elu=False, n_fc=1):
         with tf.Graph().as_default():
             session_conf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
             sess = tf.Session(config=session_conf)
@@ -93,7 +93,8 @@ class TrainTask:
                     init_embedding=self.embed_matrix,
                     dropout=dropout,
                     batch_normalize=batch_normalize,
-                    elu=elu)
+                    elu=elu,
+                    n_fc=n_fc)
 
                 # Define Training procedure
 
@@ -215,12 +216,13 @@ class TrainTask:
 if __name__ == "__main__":
     dater = dh.DataHelper(doc_level="sent", train_holdout=0.80)
     #exp_names you can choose from at this point:
+    #n_fc variable only matters if the experiment has FC in it, meaning it has FC layer(s) at the end
     #
     ## OneCMiddle
-    ## OneCOneFCMiddle
-    tt = TrainTask(data_helper=dater, exp_name="OneCMiddle", batch_size=8, dataset="ML")
+    ## OneCFCMiddle
+    tt = TrainTask(data_helper=dater, exp_name="OneCFCMiddle", batch_size=8, dataset="ML")
     start = timer()
     tt.training(num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.0, dropout=False,
-                batch_normalize=False, elu=True)
+                batch_normalize=False, elu=True, n_fc=2)
     end = timer()
     print(end - start)

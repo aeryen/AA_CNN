@@ -1,6 +1,6 @@
 import tensorflow as tf
 from middle_components.one_c import OneCMiddle
-from middle_components.one_c_one_fc import OneCOneFCMiddle
+from middle_components.one_c_fc import OneCFCMiddle
 from output_components.ml_output import MLOutput
 from output_components.pan_output import PANOutput
 from input_components.OneChannel import OneChannel
@@ -16,7 +16,7 @@ class TextCNN:
     def __init__(
             self, sequence_length, num_classes, word_vocab_size,
             embedding_size, filter_sizes, num_filters, middle_component = 'OneCMiddle', dataset="ML", l2_reg_lambda=0.0,
-            init_embedding=None, dropout=False, batch_normalize = False, elu = False):
+            init_embedding=None, dropout=False, batch_normalize = False, elu = False, n_fc=1):
 
         # input component
         self.input_comp = OneChannel(sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
@@ -29,10 +29,10 @@ class TextCNN:
             self.middle_comp = OneCMiddle(sequence_length, embedding_size, filter_sizes, num_filters,
                                           previous_component=self.input_comp, dropout=dropout,
                                           batch_normalize=batch_normalize, elu=elu)
-        elif middle_component == 'OneCOneFCMiddle':
-            self.middle_comp = OneCOneFCMiddle(sequence_length, embedding_size, filter_sizes, num_filters,
-                                          previous_component=self.input_comp, dropout=dropout,
-                                          batch_normalize=batch_normalize, elu=elu)
+        elif middle_component == 'OneCFCMiddle':
+            self.middle_comp = OneCFCMiddle(sequence_length, embedding_size, filter_sizes, num_filters,
+                                            previous_component=self.input_comp, dropout=dropout,
+                                            batch_normalize=batch_normalize, elu=elu, n_fc=n_fc)
         else:
             raise NotImplementedError
 

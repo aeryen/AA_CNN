@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-class OneCOneFCMiddle(object):
+class OneCFCMiddle(object):
     """
     CNN for text classification.
     Uses an embedding layer, followed by a convolutional, max-pooling layers.
@@ -9,9 +9,11 @@ class OneCOneFCMiddle(object):
 
     def __init__(
             self, sequence_length, embedding_size, filter_sizes, num_filters, previous_component, batch_normalize=False,
-            dropout = False, elu = False):
+            dropout = False, elu = False, n_fc=1):
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
+        self.batch_normalize = batch_normalize
+        self.elu = elu
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
         pooled_outputs = []
         for filter_size in filter_sizes:
@@ -54,31 +56,37 @@ class OneCOneFCMiddle(object):
         self.h_pool = tf.concat(3, pooled_outputs)
         self.h_pool_flat = tf.reshape(self.h_pool, [-1, self.num_filters_total])
         self.last_layer = self.h_pool_flat
+        self.n_nodes_last_layer = self.num_filters_total
         # Add dropout
         if self.dropout == True:
             with tf.variable_scope("dropout-keep"):
                 h_drop = tf.nn.dropout(self.last_layer, previous_component.dropout_keep_prob)
                 self.last_layer = h_drop
 
-        with tf.variable_scope('fc1'):
-            n_nodes = 384
+        for i in range(n_fc):
+            self._fc_layer(i + 1, 384)
+
+
+    def _fc_layer(self, tag, n_nodes):
+        with tf.variable_scope('fc-%s' % str(tag)):
+            n_nodes = n_nodes
             W = tf.get_variable(
                 "W",
-                shape=[self.num_filters_total, n_nodes],
+                shape=[self.n_nodes_last_layer, n_nodes],
                 initializer=tf.contrib.layers.xavier_initializer())
             b = tf.Variable(tf.constant(0.1, shape=[n_nodes]), name="b")
             x = tf.matmul(self.last_layer, W) + b
 
-            if batch_normalize == True and self.dropout == False:
+            if self.batch_normalize == True and self.dropout == False:
                 bn = tf.contrib.layers.batch_norm(x, center=True, scale=True, fused=False,
                                                   is_training=self.is_training)
                 self.last_layer = tf.nn.relu(bn, name='relu')
-            elif batch_normalize == True and self.dropout == True:
+            elif self.batch_normalize == True and self.dropout == True:
                 relu = tf.nn.relu(x, name='relu')
                 self.last_layer = tf.contrib.layers.batch_norm(relu, center=True, scale=True, fused=False,
                                              is_training=self.is_training)
             else:
-                if elu == False:
+                if self.elu == False:
                     h = tf.nn.relu(x, name='relu')
                 else:
                     h = tf.nn.elu(x, name='elu')
