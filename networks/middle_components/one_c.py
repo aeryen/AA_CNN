@@ -50,14 +50,13 @@ class OneCMiddle(object):
         num_filters_total = num_filters * len(filter_sizes)
         self.h_pool = tf.concat(3, pooled_outputs)
         self.h_pool_flat = tf.reshape(self.h_pool, [-1, num_filters_total])
+        self.last_layer = self.h_pool_flat
 
         # Add dropout
         if self.dropout == True:
             with tf.variable_scope("dropout-keep"):
-                self.h_drop = tf.nn.dropout(self.h_pool_flat, previous_component.dropout_keep_prob)
-            self.last_layer = self.h_drop
-        else:
-            self.last_layer = self.h_pool_flat
+                h_drop = tf.nn.dropout(self.h_pool_flat, previous_component.dropout_keep_prob)
+            self.last_layer = h_drop
 
         self.n_nodes_last_layer = num_filters_total
 

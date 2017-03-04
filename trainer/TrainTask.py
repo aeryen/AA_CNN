@@ -22,8 +22,8 @@ class TrainTask:
     Currently it only- works with ML data, i'll expand this to be more flexible in the near future.
     """
 
-    def __init__(self, data_helper, exp_name, do_dev_split=False, filter_sizes='3,4,5', batch_size=64,
-                 dataset="ML", evaluate_every=200, checkpoint_every=5000):
+    def __init__(self, data_helper, exp_name, do_dev_split=True, filter_sizes='3,4,5', batch_size=64,
+                 dataset="ML", evaluate_every=1000, checkpoint_every=5000):
         self.data_hlp = data_helper
         self.exp_name = exp_name
         self.dataset = dataset
@@ -62,22 +62,19 @@ class TrainTask:
 
         # Load data
         logging.debug("Loading data...")
-        x_shuffled, y_shuffled, _, _, self.embed_matrix = self.data_hlp.load_data()
+        self.x_train, self.y_train, _, _, self.embed_matrix = self.data_hlp.load_data()
         logging.debug("Vocabulary Size: {:d}".format(len(self.data_hlp.vocab)))
 
         self.do_dev_split = do_dev_split
         if self.do_dev_split:
-            self.x_train, self.x_dev = x_shuffled[:-500], x_shuffled[-500:]
-            self.y_train, self.y_dev = y_shuffled[:-500], y_shuffled[-500:]
+            self.x_dev, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
             logging.info("Train/Dev split: {:d}/{:d}".format(len(self.y_train), len(self.y_dev)))
         else:
-            self.x_train = x_shuffled
             self.x_dev = None
-            self.y_train = y_shuffled
             self.y_dev = None
             logging.info("No Train/Dev split")
 
-    def training(self, num_filters, dropout_keep_prob, n_steps, l2_lambda=0.0, droupout=False, batch_normalize=False):
+    def training(self, num_filters, dropout_keep_prob, n_steps, l2_lambda=0.0, dropout=False, batch_normalize=False):
         with tf.Graph().as_default():
             session_conf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
             sess = tf.Session(config=session_conf)
@@ -93,7 +90,7 @@ class TrainTask:
                     dataset=self.dataset,
                     l2_reg_lambda=l2_lambda,
                     init_embedding=self.embed_matrix,
-                    dropout=droupout,
+                    dropout=dropout,
                     batch_normalize=batch_normalize)
 
                 # Define Training procedure
@@ -155,7 +152,7 @@ class TrainTask:
                 # Initialize all variables
                 sess.run(tf.initialize_all_variables())
 
-            def train_step(x_batch, y_batch):
+            def train_step(x_batch, y_batch, i):
                 """
                 A single training step
                 """
@@ -194,9 +191,9 @@ class TrainTask:
             batches = dh.DataHelper.batch_iter(list(zip(self.x_train, self.y_train)), self.batch_size, num_epochs=200)
 
             # Training loop. For each batch...
-            for batch in batches:
+            for i, batch in enumerate(batches):
                 x_batch, y_batch = zip(*batch)
-                train_step(x_batch, y_batch)
+                train_step(x_batch, y_batch, i)
                 current_step = tf.train.global_step(sess, global_step)
                 if self.do_dev_split and current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")
@@ -214,9 +211,13 @@ class TrainTask:
         return timestamp
 
 if __name__ == "__main__":
-    dater = dh.DataHelper(doc_level="sent")
-    tt = TrainTask(data_helper=dater, exp_name="OneCMiddle", batch_size=64, dataset="ML")
+    dater = dh.DataHelper(doc_level="sent", train_holdout=0.80)
+    #exp_names you can choose from at this point:
+    #
+    ## OneCMiddle
+    ## OneCOneFCMiddle
+    tt = TrainTask(data_helper=dater, exp_name="OneCMiddle", batch_size=8, dataset="ML")
     start = timer()
-    tt.training(num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.0, droupout=False, batch_normalize=True)
+    tt.training(num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.0, dropout=True, batch_normalize=False)
     end = timer()
     print(end - start)

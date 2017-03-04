@@ -53,12 +53,13 @@ class DataHelper:
     target_sent_len = None
     target_doc_len = None
 
-    def __init__(self, doc_level="comb", embed_dim=100, target_sent_len=220, target_doc_len=100):
+    def __init__(self, doc_level="comb", embed_dim=100, target_sent_len=220, target_doc_len=100, train_holdout=0.80):
         self.doc_level_data = doc_level
         self.embedding_dim = embed_dim
         self.target_sent_len = target_sent_len
         self.target_doc_len = target_doc_len
         self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
+        self.train_holdout = train_holdout
 
     @staticmethod
     def clean_str(string):
@@ -315,7 +316,7 @@ class DataHelper:
             if print_content:
                 print s
 
-    def train_test_shuf_split(self, file_id, labels, doc_size, origin):
+    def train_test_shuf_split(self, file_id, labels, doc_size, origin, train_holdout = 0.80):
         np.random.seed(10)
         shuffle_i = np.random.permutation(np.arange(len(labels)))
 
@@ -324,7 +325,7 @@ class DataHelper:
         doc_size_shuffled = doc_size[shuffle_i]
         origin_shuffled = [origin[i] for i in shuffle_i]
 
-        self.train_size = int(math.floor(len(labels) * 0.80))
+        self.train_size = int(math.floor(len(labels) * train_holdout))
         self.test_size = len(file_id) - self.train_size
         file_id_train, file_id_test = file_id_shuffled[:self.train_size], file_id_shuffled[self.train_size:]
         labels_train, labels_test = labels_shuffled[:self.train_size], labels_shuffled[self.train_size:]
@@ -383,7 +384,8 @@ class DataHelper:
 
         [self.file_id_train, self.file_id_test, self.labels_train, self.labels_test,
          self.doc_size_train, self.doc_size_test, self.x_train, self.x_test] = \
-            self.train_test_shuf_split(file_id=file_name_ordered, labels=label_matrix_ordered, doc_size=doc_size, origin=origin_list)
+            self.train_test_shuf_split(file_id=file_name_ordered, labels=label_matrix_ordered, doc_size=doc_size,
+                                       origin=origin_list, train_holdout=self.train_holdout)
 
         self.doc_labels_test = self.labels_test
 
@@ -455,12 +457,3 @@ class DataHelper:
                 end_index = min((batch_num + 1) * batch_size, data_size)
                 yield shuffled_data[start_index:end_index]
 
-
-if __name__ == "__main__":
-    o = DataHelper(doc_level="comb", target_doc_len=10)
-    [x_train, pos_train, wl_train, p2_train, p3_train, s2_train, s3_train, labels_train, vocab, vocab_inv, embed_matrix] = o.load_data()
-    print(x_train.shape)
-    print(pos_train.shape)
-    print(embed_matrix.shape)
-    # o.load_test_data()
-    print "o"

@@ -15,7 +15,7 @@ class OneCOneFCMiddle(object):
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
         pooled_outputs = []
         for filter_size in filter_sizes:
-            with tf.name_scope("conv-maxpool-%s" % filter_size):
+            with tf.variable_scope("conv-maxpool-%s" % filter_size):
                 filter_shape = [filter_size, embedding_size, 1, num_filters]
                 # Convolution Layer
                 W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
@@ -47,27 +47,37 @@ class OneCOneFCMiddle(object):
                 pooled_outputs.append(pooled)
 
         # Combine all the pooled features
-        num_filters_total = num_filters * len(filter_sizes)
+        self.num_filters_total = num_filters * len(filter_sizes)
         self.h_pool = tf.concat(3, pooled_outputs)
-        self.h_pool_flat = tf.reshape(self.h_pool, [-1, num_filters_total])
-
+        self.h_pool_flat = tf.reshape(self.h_pool, [-1, self.num_filters_total])
+        self.last_layer = self.h_pool_flat
         # Add dropout
         if self.dropout == True:
-            with tf.name_scope("dropout-keep"):
-                h_drop = tf.nn.dropout(self.h_pool_flat, previous_component.dropout_keep_prob)
-                self.last_layer = self.h_drop
-        else:
-            self.last_layer = self.h_pool_flat
+            with tf.variable_scope("dropout-keep"):
+                h_drop = tf.nn.dropout(self.last_layer, previous_component.dropout_keep_prob)
+                self.last_layer = h_drop
 
         with tf.variable_scope('fc1'):
             n_nodes = 384
             W = tf.get_variable(
                 "W",
-                shape=[num_filters_total, n_nodes],
+                shape=[self.num_filters_total, n_nodes],
                 initializer=tf.contrib.layers.xavier_initializer())
             b = tf.Variable(tf.constant(0.1, shape=[n_nodes]), name="b")
-            relu = tf.nn.relu(tf.matmul(self.last_layer, W) + b, name='relu')
-            self.last_layer = relu
+            x = tf.matmul(self.last_layer, W) + b
+
+            if batch_normalize == True and self.dropout == False:
+                bn = tf.contrib.layers.batch_norm(x, center=True, scale=True, fused=False,
+                                                  is_training=self.is_training)
+                self.last_layer = tf.nn.relu(bn, name='relu')
+            elif batch_normalize == True and self.dropout == True:
+                relu = tf.nn.relu(x, name='relu')
+                self.last_layer = tf.contrib.layers.batch_norm(relu, center=True, scale=True, fused=False,
+                                             is_training=self.is_training)
+            else:
+                relu = tf.nn.relu(x, name='relu')
+                self.last_layer = relu
+
             self.n_nodes_last_layer = n_nodes
 
     def get_last_layer_info(self):
