@@ -86,6 +86,7 @@ class TrainTask:
                     num_classes=self.data_hlp.num_of_classes,  # Number of classification classes
                     word_vocab_size=len(self.data_hlp.vocab),
                     embedding_size=self.data_hlp.embedding_dim,
+                    middle_component=self.exp_name,
                     filter_sizes=self.filter_sizes,
                     num_filters=num_filters,
                     dataset=self.dataset,
@@ -213,5 +214,5 @@ class TrainTask:
 
 if __name__ == "__main__":
     dater = dh.DataHelper(doc_level="sent")
-    tt = TrainTask(data_helper=dater, exp_name="1c_cnn", batch_size=64, dataset="ML")
+    tt = TrainTask(data_helper=dater, exp_name="OneCMiddle", batch_size=64, dataset="ML")
     tt.training(num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.0, droupout=False, batch_normalize=True)

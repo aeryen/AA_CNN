@@ -15,7 +15,7 @@ class OneCMiddle(object):
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
         pooled_outputs = []
         for filter_size in filter_sizes:
-            with tf.name_scope("conv-maxpool-%s" % filter_size):
+            with tf.variable_scope("conv-maxpool-%s" % filter_size):
                 filter_shape = [filter_size, embedding_size, 1, num_filters]
                 # Convolution Layer
                 W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
@@ -47,16 +47,19 @@ class OneCMiddle(object):
                 pooled_outputs.append(pooled)
 
         # Combine all the pooled features
-        self.num_filters_total = num_filters * len(filter_sizes)
+        num_filters_total = num_filters * len(filter_sizes)
         self.h_pool = tf.concat(3, pooled_outputs)
-        self.h_pool_flat = tf.reshape(self.h_pool, [-1, self.num_filters_total])
+        self.h_pool_flat = tf.reshape(self.h_pool, [-1, num_filters_total])
 
         # Add dropout
         if self.dropout == True:
-            with tf.name_scope("dropout-keep"):
+            with tf.variable_scope("dropout-keep"):
                 self.h_drop = tf.nn.dropout(self.h_pool_flat, previous_component.dropout_keep_prob)
+            self.last_layer = self.h_drop
+        else:
+            self.last_layer = self.h_pool_flat
+
+        self.n_nodes_last_layer = num_filters_total
 
     def get_last_layer_info(self):
-        if self.dropout == True:
-            return self.h_drop, self.num_filters_total
-        return self.h_pool_flat, self.num_filters_total
+        return self.last_layer, self.n_nodes_last_layer

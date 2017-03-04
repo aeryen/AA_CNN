@@ -4,7 +4,7 @@ class MLOutput(object):
     def __init__(self, input_y, prev_layer, num_nodes_prev_layer, num_classes, l2_reg_lambda):
         l2_loss = tf.constant(0.0)
         # Final (unnormalized) scores and predictions
-        with tf.name_scope("output"):
+        with tf.variable_scope("output"):
             W = tf.get_variable(
                 "W",
                 shape=[num_nodes_prev_layer, num_classes],
@@ -17,13 +17,13 @@ class MLOutput(object):
             self.predictions = tf.sigmoid(self.scores, name="predictions")
             #print "Prediction shape: " + str(self.predictions.get_shape())
 
-        with tf.name_scope("loss-lbd" + str(l2_reg_lambda)):
+        with tf.variable_scope("loss-lbd" + str(l2_reg_lambda)):
             # losses = tf.nn.softmax_cross_entropy_with_logits(self.scores, self.input_y)  # TODO
             losses = tf.nn.sigmoid_cross_entropy_with_logits(self.scores, input_y)
             self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
 
         # Accuracy
-        with tf.name_scope("accuracy"):
+        with tf.variable_scope("accuracy"):
             # all correct
             correct_predictions = tf.equal(tf.greater_equal(self.predictions, 0.5), tf.equal(input_y, 1))
             correct_predictions = tf.reduce_all(correct_predictions, axis=1)
