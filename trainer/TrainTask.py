@@ -5,6 +5,7 @@ import os
 import datetime
 import time
 import tensorflow as tf
+from timeit import default_timer as timer
 
 # from datahelpers.Data_Helper import Data_Helper
 from datahelpers import data_helper_ml_normal as dh
@@ -22,7 +23,7 @@ class TrainTask:
     """
 
     def __init__(self, data_helper, exp_name, do_dev_split=False, filter_sizes='3,4,5', batch_size=64,
-                 dataset="ML", evaluate_every=200, checkpoint_every=500):
+                 dataset="ML", evaluate_every=200, checkpoint_every=5000):
         self.data_hlp = data_helper
         self.exp_name = exp_name
         self.dataset = dataset
@@ -215,4 +216,7 @@ class TrainTask:
 if __name__ == "__main__":
     dater = dh.DataHelper(doc_level="sent")
     tt = TrainTask(data_helper=dater, exp_name="OneCMiddle", batch_size=64, dataset="ML")
+    start = timer()
     tt.training(num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.0, droupout=False, batch_normalize=True)
+    end = timer()
+    print(end - start)
