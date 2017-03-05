@@ -2,15 +2,16 @@ import tensorflow as tf
 
 class OneCMiddle(object):
     """
-    CNN for text classification.
-    Uses an embedding layer, followed by a convolutional, max-pooling layers.
-    Lacks an output layer.
+    DEPRECATED.
     """
 
     def __init__(
             self, sequence_length, embedding_size, filter_sizes, num_filters, previous_component, batch_normalize=False,
             dropout = False, elu=False):
         self.is_training = tf.placeholder(tf.bool, name='is_training')
+
+        raise DeprecationWarning
+
         self.dropout = dropout
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
         pooled_outputs = []

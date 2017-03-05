@@ -75,7 +75,7 @@ class TrainTask:
             logging.info("No Train/Dev split")
 
     def training(self, num_filters, dropout_keep_prob, n_steps, l2_lambda=0.0, dropout=False, batch_normalize=False,
-                 elu=False, n_fc=1):
+                 elu=False, n_conv = 1, n_fc=0):
         with tf.Graph().as_default():
             session_conf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
             sess = tf.Session(config=session_conf)
@@ -94,6 +94,7 @@ class TrainTask:
                     dropout=dropout,
                     batch_normalize=batch_normalize,
                     elu=elu,
+                    n_conv = n_conv,
                     n_fc=n_fc)
 
                 # Define Training procedure
@@ -216,13 +217,12 @@ class TrainTask:
 if __name__ == "__main__":
     dater = dh.DataHelper(doc_level="sent", train_holdout=0.80)
     #exp_names you can choose from at this point:
-    #n_fc variable only matters if the experiment has FC in it, meaning it has FC layer(s) at the end
+    #n_fc variable controls how many fc layers you got at the end
     #
-    ## OneCMiddle
-    ## OneCFCMiddle
-    tt = TrainTask(data_helper=dater, exp_name="OneCFCMiddle", batch_size=8, dataset="ML")
+    ## NParallelConvOnePoolNFC
+    tt = TrainTask(data_helper=dater, exp_name="NParallelConvOnePoolNFC", batch_size=8, dataset="ML")
     start = timer()
     tt.training(num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.0, dropout=False,
-                batch_normalize=False, elu=True, n_fc=2)
+                batch_normalize=False, elu=True, n_conv = 2, n_fc=0)
     end = timer()
     print(end - start)
