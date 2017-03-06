@@ -1,9 +1,9 @@
-import tensorflow as tf
 from middle_components.yifan_conv import YifanConv
 from middle_components.parallel_conv import NParallelConvOnePoolNFC
 from output_components.ml_output import MLOutput
 from output_components.pan_output import PANOutput
 from input_components.OneChannel import OneChannel
+from input_components.SixChannel import SixChannel
 
 
 class TextCNN:
@@ -15,13 +15,29 @@ class TextCNN:
 
     def __init__(
             self, sequence_length, num_classes, word_vocab_size,
-            embedding_size, filter_sizes, num_filters, middle_component = 'OneCMiddle', dataset="ML", l2_reg_lambda=0.0,
-            init_embedding=None, dropout=False, batch_normalize = False, elu = False, n_conv=1, n_fc=0):
+            embedding_size, filter_sizes, num_filters, input_component="OneChannel", middle_component = 'OneCMiddle',
+            dataset="ML", l2_reg_lambda=0.0, pref2_vocab_size=None, pref3_vocab_size=None, suff2_vocab_size=None,
+            suff3_vocab_size=None, pos_vocab_size=None,init_embedding=None, dropout=False, batch_normalize = False,
+            elu = False, n_conv=1, n_fc=0):
 
         # input component
-        self.input_comp = OneChannel(sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
+        if input_component == "OneChannel":
+            self.input_comp = OneChannel(sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
+        elif input_component == "SixChannel":
+            self.input_comp = SixChannel(sequence_length, num_classes, word_vocab_size, embedding_size,
+                  pref2_vocab_size, pref3_vocab_size, suff2_vocab_size, suff3_vocab_size, pos_vocab_size,
+                  init_embedding)
+            self.input_pref2 = self.input_comp.input_pref2
+            self.input_pref3 = self.input_comp.input_pref3
+            self.input_suff2 = self.input_comp.input_suff2
+            self.input_suff3 = self.input_comp.input_suff3
+            self.input_pos = self.input_comp.input_pos
+        else:
+            raise NotImplementedError
+
         self.input_x = self.input_comp.input_x
         self.input_y = self.input_comp.input_y
+
         self.dropout_keep_prob = self.input_comp.dropout_keep_prob
 
         # middle component

@@ -6,10 +6,8 @@ import datetime
 import time
 import tensorflow as tf
 from timeit import default_timer as timer
-
-# from datahelpers.Data_Helper import Data_Helper
+from datahelpers import data_helper_ml_mulmol6file as dh6
 from datahelpers import data_helper_ml_normal as dh
-from evaluators import eval_ml_mulmol_d as evaler
 from networks.cnn import TextCNN
 
 
@@ -22,10 +20,11 @@ class TrainTask:
     Currently it only- works with ML data, i'll expand this to be more flexible in the near future.
     """
 
-    def __init__(self, data_helper, exp_name, do_dev_split=True, filter_sizes='3,4,5', batch_size=64,
-                 dataset="ML", evaluate_every=1000, checkpoint_every=5000):
+    def __init__(self, data_helper, input_component, exp_name, do_dev_split=True, filter_sizes='3,4,5', batch_size=64,
+                 dataset="ML", evaluate_every=5000, checkpoint_every=5000):
         self.data_hlp = data_helper
         self.exp_name = exp_name
+        self.input_component = input_component
         self.dataset = dataset
         # the problem tag identifies the experiment setting, currently data name + experiment name
         self.tag = self.data_hlp.problem_name+"_"+self.exp_name
@@ -62,12 +61,37 @@ class TrainTask:
 
         # Load data
         logging.debug("Loading data...")
-        self.x_train, self.y_train, _, _, self.embed_matrix = self.data_hlp.load_data()
+        if input_component=="SixChannel":
+            self.x_train, self.pos_train, _, self.p2_train, self.p3_train, self.s2_train, self.s3_train, self.y_train, \
+            _, _,self.embed_matrix = self.data_hlp.load_data()
+            self.pref2_vocab_size = len(self.data_hlp.p2_vocab)
+            self.pref3_vocab_size = len(self.data_hlp.p3_vocab)
+            self.suff2_vocab_size = len(self.data_hlp.s2_vocab)
+            self.suff3_vocab_size = len(self.data_hlp.s3_vocab)
+            self.pos_vocab_size = len(self.data_hlp.pos_vocab)
+        elif input_component=="OneChannel":
+            self.pref2_vocab_size = None
+            self.pref3_vocab_size = None
+            self.suff2_vocab_size = None
+            self.suff3_vocab_size = None
+            self.pos_vocab_size = None
+            self.x_train, self.y_train, _, _, self.embed_matrix = self.data_hlp.load_data()
+        else:
+            raise NotImplementedError
+
         logging.debug("Vocabulary Size: {:d}".format(len(self.data_hlp.vocab)))
 
         self.do_dev_split = do_dev_split
+
         if self.do_dev_split:
-            self.x_dev, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
+            if input_component == "SixChannel":
+                self.x_dev, self.pos_test, _, self.p2_test, self.p3_test, \
+                self.s2_test, self.s3_test, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
+            elif input_component=="OneChannel":
+                self.x_dev, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
+            else:
+                raise NotImplementedError
+
             logging.info("Train/Dev split: {:d}/{:d}".format(len(self.y_train), len(self.y_dev)))
         else:
             self.x_dev = None
@@ -85,9 +109,15 @@ class TrainTask:
                     num_classes=self.data_hlp.num_of_classes,  # Number of classification classes
                     word_vocab_size=len(self.data_hlp.vocab),
                     embedding_size=self.data_hlp.embedding_dim,
+                    input_component=self.input_component,
                     middle_component=self.exp_name,
                     filter_sizes=self.filter_sizes,
                     num_filters=num_filters,
+                    pref2_vocab_size=self.pref2_vocab_size,
+                    pref3_vocab_size=self.pref3_vocab_size,
+                    suff2_vocab_size=self.suff2_vocab_size,
+                    suff3_vocab_size=self.suff3_vocab_size,
+                    pos_vocab_size=self.pos_vocab_size,
                     dataset=self.dataset,
                     l2_reg_lambda=l2_lambda,
                     init_embedding=self.embed_matrix,
@@ -156,57 +186,135 @@ class TrainTask:
                 # Initialize all variables
                 sess.run(tf.initialize_all_variables())
 
-            def train_step(x_batch, y_batch, i):
-                """
-                A single training step
-                """
-                feed_dict = {
-                    cnn.input_x: x_batch,
-                    cnn.input_y: y_batch,
-                    cnn.dropout_keep_prob: dropout_keep_prob,
-                    cnn.is_training: 1
-                }
-                _, step, summaries, loss, accuracy = sess.run(
-                    [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
-                    feed_dict)
-                time_str = datetime.datetime.now().isoformat()
-                print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
-                train_summary_writer.add_summary(summaries, step)
+            if self.input_component=="OneChannel":
+                def train_step(x_batch, y_batch):
+                    """
+                    A single training step
+                    """
+                    feed_dict = {
+                        cnn.input_x: x_batch,
+                        cnn.input_y: y_batch,
+                        cnn.dropout_keep_prob: dropout_keep_prob,
+                        cnn.is_training: 1
+                    }
+                    _, step, summaries, loss, accuracy = sess.run(
+                        [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
+                        feed_dict)
+                    time_str = datetime.datetime.now().isoformat()
+                    print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+                    train_summary_writer.add_summary(summaries, step)
 
-            def dev_step(x_batch, y_batch, writer=None):
-                """
-                Evaluates model on a dev set
-                """
-                feed_dict = {
-                    cnn.input_x: x_batch,
-                    cnn.input_y: y_batch,
-                    cnn.dropout_keep_prob: 1,
-                    cnn.is_training: 0
-                }
-                step, summaries, loss, accuracy = sess.run(
-                    [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
-                    feed_dict)
-                time_str = datetime.datetime.now().isoformat()
-                print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
-                if writer:
-                    writer.add_summary(summaries, step)
+                def dev_step(x_batch, y_batch, writer=None):
+                    """
+                    Evaluates model on a dev set
+                    """
+                    feed_dict = {
+                        cnn.input_x: x_batch,
+                        cnn.input_y: y_batch,
+                        cnn.dropout_keep_prob: 1,
+                        cnn.is_training: 0
+                    }
+                    step, summaries, loss, accuracy = sess.run(
+                        [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
+                        feed_dict)
+                    time_str = datetime.datetime.now().isoformat()
+                    print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+                    if writer:
+                        writer.add_summary(summaries, step)
+
+            elif self.input_component=="SixChannel":
+                def train_step(x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch):
+                    """
+                    A single training step
+                    """
+                    feed_dict = {
+                        cnn.input_x: x_batch,
+                        cnn.input_y: y_batch,
+
+                        cnn.input_pref2: pref2_batch,
+                        cnn.input_pref3: pref3_batch,
+                        cnn.input_suff2: suff2_batch,
+                        cnn.input_suff3: suff3_batch,
+                        cnn.input_pos: pos_batch,
+
+                        cnn.dropout_keep_prob: dropout_keep_prob
+                    }
+                    _, step, summaries, loss, accuracy = sess.run(
+                        [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
+                        feed_dict)
+                    time_str = datetime.datetime.now().isoformat()
+                    print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+                    train_summary_writer.add_summary(summaries, step)
+
+                def dev_step(x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch, writer=None):
+                    """
+                    Evaluates model on a dev set
+                    """
+                    feed_dict = {
+                        cnn.input_x: x_batch,
+                        cnn.input_y: y_batch,
+                        cnn.input_pref2: pref2_batch,
+                        cnn.input_pref3: pref3_batch,
+                        cnn.input_suff2: suff2_batch,
+                        cnn.input_suff3: suff3_batch,
+                        cnn.input_pos: pos_batch,
+                        cnn.dropout_keep_prob: 1
+                    }
+                    step, summaries, loss, accuracy = sess.run(
+                        [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
+                        feed_dict)
+                    time_str = datetime.datetime.now().isoformat()
+                    print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+                    if writer:
+                        writer.add_summary(summaries, step)
+            else:
+                raise NotImplementedError
 
             # Generate batches
-            batches = dh.DataHelper.batch_iter(list(zip(self.x_train, self.y_train)), self.batch_size, num_epochs=200)
-
+            if self.input_component == "OneChannel":
+                batches = dh.DataHelper.batch_iter(list(zip(self.x_train, self.y_train)), self.batch_size,
+                                                   num_epochs=200)
+            elif self.input_component == "SixChannel":
+                batches = dh.DataHelper.batch_iter(list(zip(self.x_train, self.y_train, self.p2_train, self.p3_train,
+                                                            self.s2_train, self.s3_train, self.pos_train)),
+                                                   self.batch_size, num_epochs=200)
+            else:
+                raise NotImplementedError
             # Training loop. For each batch...
-            for i, batch in enumerate(batches):
-                x_batch, y_batch = zip(*batch)
-                train_step(x_batch, y_batch, i)
+            for batch in batches:
+                if self.input_component=="OneChannel":
+                    x_batch, y_batch = zip(*batch)
+                    train_step(x_batch, y_batch)
+                elif self.input_component=="SixChannel":
+                    x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch = zip(*batch)
+                    train_step(x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch)
+                else:
+                    raise NotImplementedError
+
                 current_step = tf.train.global_step(sess, global_step)
                 if self.do_dev_split and current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")
-                    dev_batches = dh.DataHelper.batch_iter(list(zip(self.x_dev, self.y_dev)), 100, 1)
-                    for dev_batch in dev_batches:
-                        if len(dev_batch) > 0:
-                            small_dev_x, small_dev_y = zip(*dev_batch)
-                            dev_step(small_dev_x, small_dev_y, writer=dev_summary_writer)
-                            print("")
+                    if self.input_component=="OneChannel":
+                        dev_batches = dh.DataHelper.batch_iter(list(zip(self.x_dev, self.y_dev)), 10, 1)
+                        for dev_batch in dev_batches:
+                            if len(dev_batch) > 0:
+                                small_dev_x, small_dev_y = zip(*dev_batch)
+                                dev_step(small_dev_x, small_dev_y, writer=dev_summary_writer)
+                                print("")
+                    elif self.input_component=="SixChannel":
+                        dev_batches = dh6.DataHelperMulMol6.batch_iter(list(zip(self.x_dev, self.y_dev, self.p2_test,
+                                                                               self.p3_test,self.s2_test,
+                                                                               self.s3_test, self.pos_test)), 10, 1)
+                        for dev_batch in dev_batches:
+                            if len(dev_batch) > 0:
+                                small_dev_x, small_dev_y, small_p2_test, small_p3_test, small_s2_test, small_s3_test,\
+                                    small_post_test = zip(*dev_batch)
+                                dev_step(small_dev_x, small_dev_y, small_p2_test, small_p3_test, small_s2_test,
+                                         small_s3_test, small_post_test, writer=dev_summary_writer)
+                                print("")
+                    else:
+                        raise NotImplementedError
+
                 if current_step % self.checkpoint_every == 0:
                     path = saver.save(sess, checkpoint_prefix, global_step=current_step)
                     print("Saved model checkpoint to {}\n".format(path))
@@ -215,14 +323,33 @@ class TrainTask:
         return timestamp
 
 if __name__ == "__main__":
-    dater = dh.DataHelper(doc_level="sent", train_holdout=0.80)
+
+    input_component = "SixChannel"
+
+    if input_component=="OneChannel":
+        dater = dh.DataHelper(doc_level="sent", train_holdout=0.80)
+    elif input_component=="SixChannel":
+        dater = dh6.DataHelperMulMol6(doc_level="sent", train_holdout=0.80)
+    else:
+        raise NotImplementedError
+
+    ###############################################
     #exp_names you can choose from at this point:
-    #n_fc variable controls how many fc layers you got at the end
+    #
+    #Input Components:
+    #
+    ##OneChannel
+    ##SixChannel
+    #
+    #Middle Components:
     #
     ## NParallelConvOnePoolNFC
     ## YifanConv
-    tt = TrainTask(data_helper=dater, exp_name="YifanConv", batch_size=8, dataset="ML")
+    ################################################
+    tt = TrainTask(data_helper=dater, input_component=input_component, exp_name="NParallelConvOnePoolNFC", batch_size=8,
+                   dataset="ML")
     start = timer()
+    # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
     tt.training(num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.0, dropout=False,
                 batch_normalize=False, elu=True, n_conv = 2, n_fc=0)
     end = timer()

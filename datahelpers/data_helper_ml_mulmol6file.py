@@ -9,19 +9,16 @@ import pickle
 import os
 import math
 from collections import Counter
-#import featuremaker
 
 
-# THIS FILE LOADS PAN11 DATA
-# CODE 0 IS SMALL TRAINING AND TESTING, CODE 1 IS LARGE TRAINING AND TESTING
-
-
-class DataHelper:
+class DataHelperMulMol6:
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
     problem_name = "ML_Data"
 
-    training_data_dir = "../AA_CNN/data/mulmol/"
-    truth_file_path = "../AA_CNN/data/ml_dataset/labels.csv"
+    training_data_dir = "../data/ml_mulmol/"
+    truth_file_path = "../data/ml_dataset/labels.csv"
+    glove_path = None
+    glove_dir = "../glove/"
 
     vocabulary_size = 20000
     embedding_dim = 100
@@ -63,11 +60,13 @@ class DataHelper:
     target_sent_len = None
     target_doc_len = None
 
-    def __init__(self, doc_level="comb", embed_dim=100, target_sent_len=220, target_doc_len=100):
+    def __init__(self, doc_level="comb", embed_dim=100, target_sent_len=220, target_doc_len=100, train_holdout=0.80):
         self.doc_level_data = doc_level
         self.embedding_dim = embed_dim
         self.target_sent_len = target_sent_len
         self.target_doc_len = target_doc_len
+        self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
+        self.train_holdout=train_holdout
 
     @staticmethod
     def clean_str(string):
@@ -100,7 +99,7 @@ class DataHelper:
         paragraph = [e + ". " for e in paragraph if len(e) > 5]
         if paragraph:
             paragraph[-1] = paragraph[-1][:-2]
-            paragraph = [DataHelper.clean_str(e) for e in paragraph]
+            paragraph = [DataHelperMulMol6.clean_str(e) for e in paragraph]
         return paragraph
 
     @staticmethod
@@ -115,7 +114,7 @@ class DataHelper:
             line = line.strip()
             if len(line) == 0 and len(paragraph) > 0:
                 paragraph = " ".join(paragraph)
-                content.extend(DataHelper.split_sentence(paragraph))
+                content.extend(DataHelperMulMol6.split_sentence(paragraph))
                 paragraph = []
             elif len(line.split()) <= 2:
                 pass
@@ -227,7 +226,7 @@ class DataHelper:
         global_index = 0
         for record in data_list:
             doc = " <LB> ".join(record.content)
-            doc = DataHelper.clean_str(doc)
+            doc = DataHelperMulMol6.clean_str(doc)
             doc = doc.split()
             x.append(doc)
             y[global_index, author_code[record.author]] = 1
@@ -251,7 +250,7 @@ class DataHelper:
         return [vocabulary, vocabulary_inv]
 
     def load_glove_vector(self):
-        glove_lines = list(open("../AA_CNN/glove.6B." + str(self.embedding_dim) + "d.txt", "r").readlines())
+        glove_lines = list(open(self.glove_path, "r").readlines())
         glove_lines = [s.split(" ", 1) for s in glove_lines if (len(s) > 0 and s != "\n")]
         glove_words = [s[0] for s in glove_lines]
         vector_list = [s[1] for s in glove_lines]
@@ -372,7 +371,7 @@ class DataHelper:
         s2_shuffled = [s2[i] for i in shuffle_i]
         s3_shuffled = [s3[i] for i in shuffle_i]
 
-        self.train_size = int(math.floor(len(labels) * 0.75))
+        self.train_size = int(math.floor(len(labels) * self.train_holdout))
         self.test_size = len(file_id) - self.train_size
         file_id_train, file_id_test = file_id_shuffled[:self.train_size], file_id_shuffled[self.train_size:]
         labels_train, labels_test = labels_shuffled[:self.train_size], labels_shuffled[self.train_size:]
@@ -521,14 +520,14 @@ class DataHelper:
                 self.comb_all_doc(self.x_test, self.pos_test, self.wl_test, self.p2_test,
                                   self.p3_test, self.s2_test, self.s3_test, self.labels_test)
 
-        self.x_train = DataHelper.build_input_data(self.x_train, self.vocab, self.doc_level_data)
+        self.x_train = DataHelperMulMol6.build_input_data(self.x_train, self.vocab, self.doc_level_data)
         self.x_train = self.pad_sentences(self.x_train, target_length=self.target_sent_len)
-        self.x_test = DataHelper.build_input_data(self.x_test, self.vocab, self.doc_level_data)
+        self.x_test = DataHelperMulMol6.build_input_data(self.x_test, self.vocab, self.doc_level_data)
         self.x_test = self.pad_sentences(self.x_test, target_length=self.target_sent_len)
 
-        self.pos_train = DataHelper.build_input_data(self.pos_train, self.pos_vocab, self.doc_level_data)
+        self.pos_train = DataHelperMulMol6.build_input_data(self.pos_train, self.pos_vocab, self.doc_level_data)
         self.pos_train = self.pad_sentences(self.pos_train, target_length=self.target_sent_len)
-        self.pos_test = DataHelper.build_input_data(self.pos_test, self.pos_vocab, self.doc_level_data)
+        self.pos_test = DataHelperMulMol6.build_input_data(self.pos_test, self.pos_vocab, self.doc_level_data)
         self.pos_test = self.pad_sentences(self.pos_test, target_length=self.target_sent_len)
 
         # self.wl_train = DataHelper.build_input_data(self.wl_train, self.wl_vocab, self.doc_level_data)
@@ -536,24 +535,24 @@ class DataHelper:
         # self.wl_test = DataHelper.build_input_data(self.wl_test, self.wl_vocab, self.doc_level_data)
         self.wl_test = self.pad_sentences(self.wl_test, target_length=self.target_sent_len)
 
-        self.p2_train = DataHelper.build_input_data(self.p2_train, self.p2_vocab, self.doc_level_data)
+        self.p2_train = DataHelperMulMol6.build_input_data(self.p2_train, self.p2_vocab, self.doc_level_data)
         self.p2_train = self.pad_sentences(self.p2_train, target_length=self.target_sent_len)
-        self.p2_test = DataHelper.build_input_data(self.p2_test, self.p2_vocab, self.doc_level_data)
+        self.p2_test = DataHelperMulMol6.build_input_data(self.p2_test, self.p2_vocab, self.doc_level_data)
         self.p2_test = self.pad_sentences(self.p2_test, target_length=self.target_sent_len)
 
-        self.p3_train = DataHelper.build_input_data(self.p3_train, self.p3_vocab, self.doc_level_data)
+        self.p3_train = DataHelperMulMol6.build_input_data(self.p3_train, self.p3_vocab, self.doc_level_data)
         self.p3_train = self.pad_sentences(self.p3_train, target_length=self.target_sent_len)
-        self.p3_test = DataHelper.build_input_data(self.p3_test, self.p3_vocab, self.doc_level_data)
+        self.p3_test = DataHelperMulMol6.build_input_data(self.p3_test, self.p3_vocab, self.doc_level_data)
         self.p3_test = self.pad_sentences(self.p3_test, target_length=self.target_sent_len)
 
-        self.s2_train = DataHelper.build_input_data(self.s2_train, self.s2_vocab, self.doc_level_data)
+        self.s2_train = DataHelperMulMol6.build_input_data(self.s2_train, self.s2_vocab, self.doc_level_data)
         self.s2_train = self.pad_sentences(self.s2_train, target_length=self.target_sent_len)
-        self.s2_test = DataHelper.build_input_data(self.s2_test, self.s2_vocab, self.doc_level_data)
+        self.s2_test = DataHelperMulMol6.build_input_data(self.s2_test, self.s2_vocab, self.doc_level_data)
         self.s2_test = self.pad_sentences(self.s2_test, target_length=self.target_sent_len)
 
-        self.s3_train = DataHelper.build_input_data(self.s3_train, self.s3_vocab, self.doc_level_data)
+        self.s3_train = DataHelperMulMol6.build_input_data(self.s3_train, self.s3_vocab, self.doc_level_data)
         self.s3_train = self.pad_sentences(self.s3_train, target_length=self.target_sent_len)
-        self.s3_test = DataHelper.build_input_data(self.s3_test, self.s3_vocab, self.doc_level_data)
+        self.s3_test = DataHelperMulMol6.build_input_data(self.s3_test, self.s3_vocab, self.doc_level_data)
         self.s3_test = self.pad_sentences(self.s3_test, target_length=self.target_sent_len)
 
         if self.doc_level_data == "doc" or self.doc_level_data == "comb":
@@ -611,12 +610,5 @@ class DataHelper:
                 end_index = min((batch_num + 1) * batch_size, data_size)
                 yield shuffled_data[start_index:end_index]
 
+# [x_train, pos_train, wl_train, p2_train, p3_train, s2_train, s3_train, labels_train, vocab, vocab_inv, embed_matrix] = o.load
 
-if __name__ == "__main__":
-    o = DataHelper(doc_level="comb", target_doc_len=10)
-    [x_train, pos_train, wl_train, p2_train, p3_train, s2_train, s3_train, labels_train, vocab, vocab_inv, embed_matrix] = o.load_data()
-    print(x_train.shape)
-    print(pos_train.shape)
-    print(embed_matrix.shape)
-    # o.load_test_data()
-    print "o"
