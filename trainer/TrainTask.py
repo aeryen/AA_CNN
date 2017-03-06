@@ -220,7 +220,8 @@ if __name__ == "__main__":
     #n_fc variable controls how many fc layers you got at the end
     #
     ## NParallelConvOnePoolNFC
-    tt = TrainTask(data_helper=dater, exp_name="NParallelConvOnePoolNFC", batch_size=8, dataset="ML")
+    ## YifanConv
+    tt = TrainTask(data_helper=dater, exp_name="YifanConv", batch_size=8, dataset="ML")
     start = timer()
     tt.training(num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.0, dropout=False,
                 batch_normalize=False, elu=True, n_conv = 2, n_fc=0)

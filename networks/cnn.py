@@ -1,5 +1,5 @@
 import tensorflow as tf
-from middle_components.one_c import OneCMiddle
+from middle_components.yifan_conv import YifanConv
 from middle_components.parallel_conv import NParallelConvOnePoolNFC
 from output_components.ml_output import MLOutput
 from output_components.pan_output import PANOutput
@@ -29,6 +29,11 @@ class TextCNN:
             self.middle_comp = NParallelConvOnePoolNFC(sequence_length, embedding_size, filter_sizes, num_filters,
                                                        previous_component=self.input_comp, dropout=dropout,
                                                        batch_normalize=batch_normalize, elu=elu, n_conv = n_conv, n_fc=n_fc)
+        elif middle_component == 'YifanConv':
+            self.middle_comp = YifanConv(sequence_length, embedding_size, filter_sizes, num_filters,
+                                                       previous_component=self.input_comp, dropout=dropout,
+                                                       batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
+                                                       n_fc=n_fc)
         else:
             raise NotImplementedError
 

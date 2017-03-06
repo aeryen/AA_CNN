@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-class NParallelConvOnePoolNFC(object):
+class YifanConv(object):
     """
     CNN for text classification.
     Uses an embedding layer, followed by a convolutional, max-pooling layers.
@@ -17,19 +17,21 @@ class NParallelConvOnePoolNFC(object):
         self.n_conv = n_conv
         self.last_layer = None
         self.num_filters_total = num_filters * len(filter_sizes)
+
+        n_input_channels = previous_component.embedded_expanded.get_shape()[3].value
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
-        pooled_outputs = []
-        for filter_size in filter_sizes:
-            for n in range(n_conv):
+
+        for n in range(n_conv):
+            pooled_outputs = []
+            for filter_size in filter_sizes:
                 with tf.variable_scope("conv-%s-%s" % (str(n+1), filter_size)):
                     if n == 0:
                         self.last_layer = previous_component.embedded_expanded
-                        n_input_channels = previous_component.embedded_expanded.get_shape()[3].value
+                        cols = embedding_size
                     else:
-                        n_input_channels = num_filters
-                        embedding_size = self.last_layer.get_shape()[2].value
+                        cols = self.num_filters_total
 
-                    filter_shape = [filter_size, embedding_size, n_input_channels, num_filters]
+                    filter_shape = [filter_size, cols, n_input_channels, num_filters]
 
                     # Convolution Layer
                     W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
@@ -39,10 +41,13 @@ class NParallelConvOnePoolNFC(object):
                         strides=[1, 1, 1, 1],
                         padding="VALID",
                         name="conv")
-                    top_pad = int((filter_size - 1) / 2.0)
-                    bottom_pad = filter_size - 1 - top_pad
-                    conv = tf.pad(conv, [[0, 0], [top_pad, bottom_pad], [0, 0], [0, 0]], mode='CONSTANT',
-                                  name="conv_word_pad")
+
+                    if n < n_conv - 1:
+                        top_pad = int((filter_size - 1) / 2.0)
+                        bottom_pad = filter_size - 1 - top_pad
+                        conv = tf.pad(conv, [[0, 0], [top_pad, bottom_pad], [0, 0], [0, 0]], mode='CONSTANT',
+                                      name="conv_word_pad")
+                        conv = tf.reshape(conv, [-1, sequence_length, num_filters])
                     # conv ==> [1, sequence_length - filter_size + 1, 1, 1]
                     if batch_normalize == True:
                         bn = tf.contrib.layers.batch_norm(conv,
@@ -59,17 +64,22 @@ class NParallelConvOnePoolNFC(object):
                         else:
                             h = tf.nn.elu(tf.nn.bias_add(conv, b), name="elu")
 
-                    self.last_layer = h
+                    if n == n_conv - 1:
+                        with tf.variable_scope("maxpool-%s" % filter_size):
+                            # Maxpooling over the outputs
+                            pooled = tf.nn.max_pool(
+                                h,
+                                ksize=[1, sequence_length - filter_size + 1, 1, 1],
+                                strides=[1, 1, 1, 1],
+                                padding='VALID',
+                                name="pool")
+                            pooled_outputs.append(pooled)
+                    else:
+                        pooled_outputs.append(h)
 
-            with tf.variable_scope("maxpool-%s" % filter_size):
-                # Maxpooling over the outputs
-                pooled = tf.nn.max_pool(
-                    self.last_layer,
-                    ksize=[1, sequence_length, 1, 1],
-                    strides=[1, 1, 1, 1],
-                    padding='VALID',
-                    name="pool")
-                pooled_outputs.append(pooled)
+            if n < n_conv - 1:
+                pooled_outputs = tf.concat(concat_dim=2, values=pooled_outputs)
+                self.last_layer = tf.expand_dims(pooled_outputs, -1)
 
         # Combine all the pooled features
         self.h_pool = tf.concat(3, pooled_outputs)
