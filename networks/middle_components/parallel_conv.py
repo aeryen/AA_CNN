@@ -27,6 +27,7 @@ class NParallelConvOnePoolNFC(object):
                         n_input_channels = shape[3].value
                     else:
                         n_input_channels = num_filters
+                        embedding_size = self.last_layer.get_shape()[2].value
 
                     filter_shape = [filter_size, embedding_size, n_input_channels, num_filters]
 
@@ -38,7 +39,6 @@ class NParallelConvOnePoolNFC(object):
                         strides=[1, 1, 1, 1],
                         padding="VALID",
                         name="conv")
-
                     top_pad = int((filter_size - 1) / 2.0)
                     bottom_pad = filter_size - 1 - top_pad
                     conv = tf.pad(conv, [[0, 0], [top_pad, bottom_pad], [0, 0], [0, 0]], mode='CONSTANT',
@@ -65,7 +65,7 @@ class NParallelConvOnePoolNFC(object):
                 # Maxpooling over the outputs
                 pooled = tf.nn.max_pool(
                     self.last_layer,
-                    ksize=[1, sequence_length - filter_size + 1, 1, 1],
+                    ksize=[1, sequence_length, 1, 1],
                     strides=[1, 1, 1, 1],
                     padding='VALID',
                     name="pool")
