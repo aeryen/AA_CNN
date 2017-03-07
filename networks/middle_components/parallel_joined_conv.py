@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-class NParallelConvOnePoolNFC(object):
+class ParallelJoinedConv(object):
     """
     CNN for text classification.
     Uses an embedding layer, followed by a convolutional, max-pooling layers.
@@ -10,26 +10,34 @@ class NParallelConvOnePoolNFC(object):
     def __init__(
             self, sequence_length, embedding_size, filter_sizes, num_filters, previous_component, batch_normalize=False,
             dropout = False, elu = False, n_conv=1, fc=[]):
+
+
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
         self.batch_normalize = batch_normalize
         self.elu = elu
         self.n_conv = n_conv
         self.last_layer = None
-        self.num_filters_total = num_filters * len(filter_sizes)
+        self.num_filters_total = None
+
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
-        pooled_outputs = []
-        for filter_size in filter_sizes:
-            for n in range(n_conv):
+
+        for n in range(n_conv):
+            if not isinstance(filter_sizes[n], list):
+                raise ValueError("filter_sizes must be list of lists, for ex.[[3,4,5]] or [[3,4,5],[3,4,5],[5]]")
+            self.num_filters_total = num_filters * len(filter_sizes[n])
+            pooled_outputs = []
+            for filter_size in filter_sizes[n]:
                 with tf.variable_scope("conv-%s-%s" % (str(n+1), filter_size)):
                     if n == 0:
                         self.last_layer = previous_component.embedded_expanded
                         n_input_channels = previous_component.embedded_expanded.get_shape()[3].value
+                        cols = embedding_size
                     else:
                         n_input_channels = num_filters
-                        embedding_size = self.last_layer.get_shape()[2].value
+                        cols = 1
 
-                    filter_shape = [filter_size, embedding_size, n_input_channels, num_filters]
+                    filter_shape = [filter_size, cols, n_input_channels, num_filters]
 
                     # Convolution Layer
                     W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
@@ -39,10 +47,12 @@ class NParallelConvOnePoolNFC(object):
                         strides=[1, 1, 1, 1],
                         padding="VALID",
                         name="conv")
+
                     top_pad = int((filter_size - 1) / 2.0)
                     bottom_pad = filter_size - 1 - top_pad
                     conv = tf.pad(conv, [[0, 0], [top_pad, bottom_pad], [0, 0], [0, 0]], mode='CONSTANT',
                                   name="conv_word_pad")
+
                     # conv ==> [1, sequence_length - filter_size + 1, 1, 1]
                     if batch_normalize == True:
                         bn = tf.contrib.layers.batch_norm(conv,
@@ -59,21 +69,22 @@ class NParallelConvOnePoolNFC(object):
                         else:
                             h = tf.nn.elu(tf.nn.bias_add(conv, b), name="elu")
 
-                    self.last_layer = h
+                        pooled_outputs.append(h)
 
-            with tf.variable_scope("maxpool-%s" % filter_size):
+            self.last_layer = tf.concat(concat_dim=2, values=pooled_outputs)
+
+            with tf.variable_scope("maxpool-%s" % str(n+1)):
                 # Maxpooling over the outputs
-                pooled = tf.nn.max_pool(
+                self.last_layer = tf.nn.max_pool(
                     self.last_layer,
-                    ksize=[1, sequence_length, 1, 1],
+                    ksize=[1, 1, len(filter_sizes[n]), 1],
                     strides=[1, 1, 1, 1],
                     padding='VALID',
                     name="pool")
-                pooled_outputs.append(pooled)
 
         # Combine all the pooled features
-        self.h_pool = tf.concat(3, pooled_outputs)
-        self.h_pool_flat = tf.reshape(self.h_pool, [-1, self.num_filters_total])
+        self.num_filters_total = num_filters * sequence_length
+        self.h_pool_flat = tf.reshape(self.last_layer, [-1, self.num_filters_total])
         self.last_layer = self.h_pool_flat
         self.n_nodes_last_layer = self.num_filters_total
         # Add dropout

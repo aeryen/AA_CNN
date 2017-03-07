@@ -9,7 +9,7 @@ class YifanConv(object):
 
     def __init__(
             self, sequence_length, embedding_size, filter_sizes, num_filters, previous_component, batch_normalize=False,
-            dropout = False, elu = False, n_conv=1, n_fc=1):
+            dropout = False, elu = False, n_conv=1, fc=[]):
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
         self.batch_normalize = batch_normalize
@@ -92,8 +92,8 @@ class YifanConv(object):
                 h_drop = tf.nn.dropout(self.last_layer, previous_component.dropout_keep_prob)
                 self.last_layer = h_drop
 
-        for i in range(n_fc):
-            self._fc_layer(i + 1, 384)
+        for i, n_nodes in enumerate(fc):
+            self._fc_layer(i + 1, n_nodes)
 
 
     def _fc_layer(self, tag, n_nodes):

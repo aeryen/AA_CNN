@@ -20,7 +20,7 @@ class TrainTask:
     Currently it only- works with ML data, i'll expand this to be more flexible in the near future.
     """
 
-    def __init__(self, data_helper, input_component, exp_name, do_dev_split=True, filter_sizes='3,4,5', batch_size=64,
+    def __init__(self, data_helper, input_component, exp_name, do_dev_split=True, filter_sizes=[3,4,5], batch_size=64,
                  dataset="ML", evaluate_every=5000, checkpoint_every=5000):
         self.data_hlp = data_helper
         self.exp_name = exp_name
@@ -49,7 +49,7 @@ class TrainTask:
         logging.info("current experiment is: " + self.exp_name)
 
         # network parameters
-        self.filter_sizes = map(int, filter_sizes.split(","))
+        self.filter_sizes = filter_sizes
         self.batch_size = batch_size
         self.evaluate_every = evaluate_every
         self.checkpoint_every = checkpoint_every
@@ -99,7 +99,7 @@ class TrainTask:
             logging.info("No Train/Dev split")
 
     def training(self, num_filters, dropout_keep_prob, n_steps, l2_lambda=0.0, dropout=False, batch_normalize=False,
-                 elu=False, n_conv = 1, n_fc=0):
+                 elu=False, n_conv = 1, fc=[]):
         with tf.Graph().as_default():
             session_conf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
             sess = tf.Session(config=session_conf)
@@ -125,7 +125,7 @@ class TrainTask:
                     batch_normalize=batch_normalize,
                     elu=elu,
                     n_conv = n_conv,
-                    n_fc=n_fc)
+                    fc=fc)
 
                 # Define Training procedure
 
@@ -324,7 +324,7 @@ class TrainTask:
 
 if __name__ == "__main__":
 
-    input_component = "SixChannel"
+    input_component = "OneChannel"
 
     if input_component=="OneChannel":
         dater = dh.DataHelper(doc_level="sent", train_holdout=0.80)
@@ -345,12 +345,13 @@ if __name__ == "__main__":
     #
     ## NParallelConvOnePoolNFC
     ## YifanConv
+    ## ParallelJoinedConv
     ################################################
-    tt = TrainTask(data_helper=dater, input_component=input_component, exp_name="NParallelConvOnePoolNFC", batch_size=8,
-                   dataset="ML")
+    tt = TrainTask(data_helper=dater, input_component=input_component, exp_name="ParallelJoinedConv",
+                   filter_sizes=[[3,4,5],[3,4,5]], batch_size=8, dataset="ML")
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
     tt.training(num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.0, dropout=False,
-                batch_normalize=False, elu=True, n_conv = 2, n_fc=0)
+                batch_normalize=False, elu=True, n_conv = 2, fc=[4096])
     end = timer()
     print(end - start)

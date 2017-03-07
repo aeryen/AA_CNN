@@ -4,6 +4,7 @@ from output_components.ml_output import MLOutput
 from output_components.pan_output import PANOutput
 from input_components.OneChannel import OneChannel
 from input_components.SixChannel import SixChannel
+from middle_components.parallel_joined_conv import ParallelJoinedConv
 
 
 class TextCNN:
@@ -18,7 +19,7 @@ class TextCNN:
             embedding_size, filter_sizes, num_filters, input_component="OneChannel", middle_component = 'OneCMiddle',
             dataset="ML", l2_reg_lambda=0.0, pref2_vocab_size=None, pref3_vocab_size=None, suff2_vocab_size=None,
             suff3_vocab_size=None, pos_vocab_size=None,init_embedding=None, dropout=False, batch_normalize = False,
-            elu = False, n_conv=1, n_fc=0):
+            elu = False, n_conv=1, fc=[]):
 
         # input component
         if input_component == "OneChannel":
@@ -44,12 +45,17 @@ class TextCNN:
         if middle_component == 'NParallelConvOnePoolNFC':
             self.middle_comp = NParallelConvOnePoolNFC(sequence_length, embedding_size, filter_sizes, num_filters,
                                                        previous_component=self.input_comp, dropout=dropout,
-                                                       batch_normalize=batch_normalize, elu=elu, n_conv = n_conv, n_fc=n_fc)
+                                                       batch_normalize=batch_normalize, elu=elu, n_conv = n_conv, fc=fc)
         elif middle_component == 'YifanConv':
             self.middle_comp = YifanConv(sequence_length, embedding_size, filter_sizes, num_filters,
-                                                       previous_component=self.input_comp, dropout=dropout,
-                                                       batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
-                                                       n_fc=n_fc)
+                                        previous_component=self.input_comp, dropout=dropout,
+                                        batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
+                                        fc=fc)
+        elif middle_component == 'ParallelJoinedConv':
+            self.middle_comp = ParallelJoinedConv(sequence_length, embedding_size, filter_sizes, num_filters,
+                                                  previous_component=self.input_comp, dropout=dropout,
+                                                  batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
+                                                  fc=fc)
         else:
             raise NotImplementedError
 
