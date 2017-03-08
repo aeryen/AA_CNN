@@ -1,24 +1,16 @@
-import xml.etree.ElementTree as ET
 import collections
 import re
-
-import errno
 import numpy as np
 import itertools
-import pickle
 import os
 import math
+import pkg_resources
 from collections import Counter
 
 
 class DataHelperMulMol6:
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
     problem_name = "ML_Data"
-
-    training_data_dir = "../data/ml_mulmol/"
-    truth_file_path = "../data/ml_dataset/labels.csv"
-    glove_path = None
-    glove_dir = "../glove/"
 
     vocabulary_size = 20000
     embedding_dim = 100
@@ -65,6 +57,9 @@ class DataHelperMulMol6:
         self.embedding_dim = embed_dim
         self.target_sent_len = target_sent_len
         self.target_doc_len = target_doc_len
+        self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
+        self.truth_file_path = self.training_data_dir + "labels.csv"
+        self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
         self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
         self.train_holdout=train_holdout
 

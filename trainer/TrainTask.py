@@ -1,15 +1,11 @@
-# import sys
-# sys.path.append('..')
 import logging
 import os
 import datetime
 import time
 import tensorflow as tf
-from timeit import default_timer as timer
+from networks.cnn import TextCNN
 from datahelpers import data_helper_ml_mulmol6file as dh6
 from datahelpers import data_helper_ml_normal as dh
-from networks.cnn import TextCNN
-
 
 class TrainTask:
     """
@@ -295,7 +291,7 @@ class TrainTask:
                 if self.do_dev_split and current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")
                     if self.input_component=="OneChannel":
-                        dev_batches = dh.DataHelper.batch_iter(list(zip(self.x_dev, self.y_dev)), 10, 1)
+                        dev_batches = dh.DataHelper.batch_iter(list(zip(self.x_dev, self.y_dev)), 100, 1)
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:
                                 small_dev_x, small_dev_y = zip(*dev_batch)
@@ -304,7 +300,7 @@ class TrainTask:
                     elif self.input_component=="SixChannel":
                         dev_batches = dh6.DataHelperMulMol6.batch_iter(list(zip(self.x_dev, self.y_dev, self.p2_test,
                                                                                self.p3_test,self.s2_test,
-                                                                               self.s3_test, self.pos_test)), 10, 1)
+                                                                               self.s3_test, self.pos_test)), 100, 1)
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:
                                 small_dev_x, small_dev_y, small_p2_test, small_p3_test, small_s2_test, small_s3_test,\
@@ -322,36 +318,3 @@ class TrainTask:
                     break
         return timestamp
 
-if __name__ == "__main__":
-
-    input_component = "OneChannel"
-
-    if input_component=="OneChannel":
-        dater = dh.DataHelper(doc_level="sent", train_holdout=0.80)
-    elif input_component=="SixChannel":
-        dater = dh6.DataHelperMulMol6(doc_level="sent", train_holdout=0.80)
-    else:
-        raise NotImplementedError
-
-    ###############################################
-    #exp_names you can choose from at this point:
-    #
-    #Input Components:
-    #
-    ##OneChannel
-    ##SixChannel
-    #
-    #Middle Components:
-    #
-    ## NParallelConvOnePoolNFC
-    ## YifanConv
-    ## ParallelJoinedConv
-    ################################################
-    tt = TrainTask(data_helper=dater, input_component=input_component, exp_name="ParallelJoinedConv",
-                   filter_sizes=[[3,4,5],[3,4,5]], batch_size=8, dataset="ML")
-    start = timer()
-    # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
-    tt.training(num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.0, dropout=False,
-                batch_normalize=False, elu=True, n_conv = 2, fc=[4096])
-    end = timer()
-    print(end - start)
