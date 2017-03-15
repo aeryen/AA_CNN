@@ -94,6 +94,8 @@ class TrainTask:
             self.y_dev = None
             logging.info("No Train/Dev split")
 
+
+
     def training(self, num_filters, dropout_keep_prob, n_steps, l2_lambda=0.0, dropout=False, batch_normalize=False,
                  elu=False, n_conv = 1, fc=[]):
         with tf.Graph().as_default():
@@ -182,6 +184,8 @@ class TrainTask:
                 # Initialize all variables
                 sess.run(tf.initialize_all_variables())
 
+            last_checkpoint = 0
+
             if self.input_component=="OneChannel":
                 def train_step(x_batch, y_batch):
                     """
@@ -269,11 +273,11 @@ class TrainTask:
             # Generate batches
             if self.input_component == "OneChannel":
                 batches = dh.DataHelper.batch_iter(list(zip(self.x_train, self.y_train)), self.batch_size,
-                                                   num_epochs=200)
+                                                   num_epochs=300)
             elif self.input_component == "SixChannel":
                 batches = dh.DataHelper.batch_iter(list(zip(self.x_train, self.y_train, self.p2_train, self.p3_train,
                                                             self.s2_train, self.s3_train, self.pos_train)),
-                                                   self.batch_size, num_epochs=200)
+                                                   self.batch_size, num_epochs=300)
             else:
                 raise NotImplementedError
             # Training loop. For each batch...
@@ -313,8 +317,9 @@ class TrainTask:
 
                 if current_step % self.checkpoint_every == 0:
                     path = saver.save(sess, checkpoint_prefix, global_step=current_step)
+                    last_checkpoint=current_step
                     print("Saved model checkpoint to {}\n".format(path))
                 if current_step == n_steps:
                     break
-        return timestamp
+        return timestamp, last_checkpoint
 

@@ -69,7 +69,7 @@ class ParallelJoinedConv(object):
                         else:
                             h = tf.nn.elu(tf.nn.bias_add(conv, b), name="elu")
 
-                        pooled_outputs.append(h)
+                    pooled_outputs.append(h)
 
             self.last_layer = tf.concat(concat_dim=2, values=pooled_outputs)
 

@@ -32,22 +32,18 @@ if __name__ == "__main__":
     ## YifanConv
     ## ParallelJoinedConv
     ################################################
-    N_STEPS = 1
-
     tt = tr.TrainTask(data_helper=dater, input_component=input_component, exp_name="NParallelConvOnePoolNFC",
-                   filter_sizes=[3,4,5], batch_size=8, dataset="ML")
+                   filter_sizes=[3,4,5], batch_size=8, dataset="ML", evaluate_every=10, checkpoint_every=10)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    ts = tt.training(num_filters=100, dropout_keep_prob=0.7, n_steps=N_STEPS, l2_lambda=0.1, dropout=True,
+    ts, last_checkpoint = tt.training(num_filters=100, dropout_keep_prob=0.7, n_steps=10, l2_lambda=0.1, dropout=True,
                 batch_normalize=False, elu=False, n_conv = 1, fc=[])
     end = timer()
     print(end - start)
-
-
     ev.load(dater)
 
     with open(tt.exp_name + ".txt", mode="aw") as of:
         checkpoint_dir = tt.exp_dir + str(ts) + "/checkpoints/"
-        ev.test(checkpoint_dir, N_STEPS, of, documentAcc=True)
+        ev.test(checkpoint_dir, last_checkpoint, of, documentAcc=True)
 
