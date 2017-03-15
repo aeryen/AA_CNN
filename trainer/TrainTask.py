@@ -17,7 +17,7 @@ class TrainTask:
     """
 
     def __init__(self, data_helper, input_component, exp_name, do_dev_split=True, filter_sizes=[3,4,5], batch_size=64,
-                 dataset="ML", evaluate_every=5000, checkpoint_every=5000):
+                 dataset="ML", evaluate_every=1000, checkpoint_every=5000):
         self.data_hlp = data_helper
         self.exp_name = exp_name
         self.input_component = input_component
@@ -291,7 +291,7 @@ class TrainTask:
                 if self.do_dev_split and current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")
                     if self.input_component=="OneChannel":
-                        dev_batches = dh.DataHelper.batch_iter(list(zip(self.x_dev, self.y_dev)), 100, 1)
+                        dev_batches = dh.DataHelper.batch_iter(list(zip(self.x_dev, self.y_dev)), self.batch_size, 1)
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:
                                 small_dev_x, small_dev_y = zip(*dev_batch)
@@ -300,7 +300,7 @@ class TrainTask:
                     elif self.input_component=="SixChannel":
                         dev_batches = dh6.DataHelperMulMol6.batch_iter(list(zip(self.x_dev, self.y_dev, self.p2_test,
                                                                                self.p3_test,self.s2_test,
-                                                                               self.s3_test, self.pos_test)), 100, 1)
+                                                                               self.s3_test, self.pos_test)), self.batch_size, 1)
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:
                                 small_dev_x, small_dev_y, small_p2_test, small_p3_test, small_s2_test, small_s3_test,\
