@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+
 class ParallelJoinedConv(object):
     """
     CNN for text classification.
@@ -8,9 +9,8 @@ class ParallelJoinedConv(object):
     """
 
     def __init__(
-            self, sequence_length, embedding_size, filter_sizes, num_filters, previous_component, batch_normalize=False,
+            self, sequence_length, embedding_size, filter_size_lists, num_filters, previous_component, batch_normalize=False,
             dropout = False, elu = False, n_conv=1, fc=[]):
-
 
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
@@ -21,13 +21,12 @@ class ParallelJoinedConv(object):
         self.num_filters_total = None
 
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
-
         for n in range(n_conv):
-            if not isinstance(filter_sizes[n], list):
+            if not isinstance(filter_size_lists[n], list):
                 raise ValueError("filter_sizes must be list of lists, for ex.[[3,4,5]] or [[3,4,5],[3,4,5],[5]]")
-            self.num_filters_total = num_filters * len(filter_sizes[n])
             pooled_outputs = []
-            for filter_size in filter_sizes[n]:
+            self.num_filters_total = num_filters * len(filter_size_lists[n])
+            for filter_size in filter_size_lists[n]:
                 with tf.variable_scope("conv-%s-%s" % (str(n+1), filter_size)):
                     if n == 0:
                         self.last_layer = previous_component.embedded_expanded
@@ -53,23 +52,19 @@ class ParallelJoinedConv(object):
                     conv = tf.pad(conv, [[0, 0], [top_pad, bottom_pad], [0, 0], [0, 0]], mode='CONSTANT',
                                   name="conv_word_pad")
 
-                    # conv ==> [1, sequence_length - filter_size + 1, 1, 1]
+                    # conv ==> [batch_size, sequence_length, 1, num_filters]
                     if batch_normalize == True:
-                        bn = tf.contrib.layers.batch_norm(conv,
-                                                     center=True, scale=True, fused=True,
-                                                     is_training=self.is_training)
-                        # Apply nonlinearity
-                        b = tf.Variable(tf.constant(0.1, shape=[num_filters]), name="b")
-                        h = tf.nn.relu(tf.nn.bias_add(bn, b), name="relu")
+                        conv = tf.contrib.layers.batch_norm(conv,
+                                                            center=True, scale=True, fused=True,
+                                                            is_training=self.is_training)
+                    # Add bias; Apply non-linearity
+                    b = tf.Variable(tf.constant(0.1, shape=[num_filters]), name="b")
+                    if elu == False:
+                        h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
                     else:
-                        # Apply nonlinearity
-                        b = tf.Variable(tf.constant(0.1, shape=[num_filters]), name="b")
-                        if elu == False:
-                            h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
-                        else:
-                            h = tf.nn.elu(tf.nn.bias_add(conv, b), name="elu")
+                        h = tf.nn.elu(tf.nn.bias_add(conv, b), name="elu")
 
-                        pooled_outputs.append(h)
+                    pooled_outputs.append(h)
 
             self.last_layer = tf.concat(concat_dim=2, values=pooled_outputs)
 
@@ -77,7 +72,7 @@ class ParallelJoinedConv(object):
                 # Maxpooling over the outputs
                 self.last_layer = tf.nn.max_pool(
                     self.last_layer,
-                    ksize=[1, 1, len(filter_sizes[n]), 1],
+                    ksize=[1, 1, len(filter_size_lists[n]), 1],
                     strides=[1, 1, 1, 1],
                     padding='VALID',
                     name="pool")
