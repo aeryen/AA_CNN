@@ -3,7 +3,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-
+import os.path, sys
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from datahelpers import data_helper_ml_normal as data_helpers
 
 
@@ -43,7 +44,10 @@ class evaler:
     def test(self, checkpoint_dir, checkpoint_step, output_file, documentAcc=True):
         print("\nEvaluating...\n")
 
-        checkpoint_file = checkpoint_dir + "model-" + str(checkpoint_step)
+        if checkpoint_step is not None:
+            checkpoint_file = checkpoint_dir + "model-" + str(checkpoint_step)
+        else:
+            checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir, latest_filename=None)
 
         graph = tf.Graph()
         with graph.as_default():
@@ -63,6 +67,7 @@ class evaler:
                 input_x = graph.get_operation_by_name("input_x").outputs[0]
                 input_y = graph.get_operation_by_name("input_y").outputs[0]
                 dropout_keep_prob = graph.get_operation_by_name("dropout_keep_prob").outputs[0]
+                is_training = graph.get_operation_by_name("is_training").outputs[0]
 
                 # Tensors we want to evaluate
                 scores = graph.get_operation_by_name("output/scores").outputs[0]
@@ -77,7 +82,8 @@ class evaler:
                 all_predictions = np.zeros([0, 20])
                 for [x_test_batch, y_test_batch] in zip(x_batches, y_batches):
                     batch_scores, batch_predictions = sess.run([scores, predictions],
-                                                               {input_x: x_test_batch, dropout_keep_prob: 1.0})
+                                                               {input_x: x_test_batch, dropout_keep_prob: 1.0,
+                                                                is_training: 0})
                     # print batch_predictions
                     if all_score is None:
                         all_score = batch_scores

@@ -318,9 +318,8 @@ class TrainTask:
 
                 if current_step % self.checkpoint_every == 0:
                     path = saver.save(sess, checkpoint_prefix, global_step=current_step)
-                    last_checkpoint=current_step
                     print("Saved model checkpoint to {}\n".format(path))
                 if current_step == n_steps:
                     break
-        return timestamp, last_checkpoint
+        return timestamp
 
