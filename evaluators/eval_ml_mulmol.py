@@ -1,14 +1,12 @@
 #! /usr/bin/env python
 
-import data_helper_mulmol as dh
+import datahelpers.data_helper_mulmol as dh
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import precision_recall_fscore_support
-
-from datahelpers import data_helpers
 
 
 # EVALUATOR FOR MULTI-MODALITY CNN
@@ -87,13 +85,13 @@ class evaler:
                 predictions = graph.get_operation_by_name("output/predictions").outputs[0]
 
                 # Generate batches for one epoch
-                x_batches = data_helpers.batch_iter(self.x_test, 64, 1, shuffle=False)
-                y_batches = data_helpers.batch_iter(self.y_test_scalar, 64, 1, shuffle=False)
-                pref2_batches = data_helpers.batch_iter(self.pref2, 64, 1, shuffle=False)
-                pref3_batches = data_helpers.batch_iter(self.pref3, 64, 1, shuffle=False)
-                suff2_batches = data_helpers.batch_iter(self.suff2, 64, 1, shuffle=False)
-                suff3_batches = data_helpers.batch_iter(self.suff3, 64, 1, shuffle=False)
-                pos_batches = data_helpers.batch_iter(self.pos, 64, 1, shuffle=False)
+                x_batches = dh.batch_iter(self.x_test, 64, 1, shuffle=False)
+                y_batches = dh.batch_iter(self.y_test_scalar, 64, 1, shuffle=False)
+                pref2_batches = dh.batch_iter(self.pref2, 64, 1, shuffle=False)
+                pref3_batches = dh.batch_iter(self.pref3, 64, 1, shuffle=False)
+                suff2_batches = dh.batch_iter(self.suff2, 64, 1, shuffle=False)
+                suff3_batches = dh.batch_iter(self.suff3, 64, 1, shuffle=False)
+                pos_batches = dh.batch_iter(self.pos, 64, 1, shuffle=False)
 
 
                 # Collect the predictions here

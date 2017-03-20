@@ -6,7 +6,7 @@ import time
 
 import tensorflow as tf
 
-from datahelpers import data_helper_ml_mulmol6file as dh
+from datahelpers import data_helper_ml_mulmol6_Read as dh
 from evaluators import eval_ml_mulmol_d as evaler
 from networks.cnn_ml_mulmol_2layer import TextCNN
 

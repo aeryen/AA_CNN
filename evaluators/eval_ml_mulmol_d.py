@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-from datahelpers import data_helper_ml_mulmol6file as dh
+from datahelpers import data_helper_ml_mulmol6_Read as dh
 
 
 # EVALUATOR FOR MULTI-MODALITY CNN

@@ -1,11 +1,9 @@
 #! /usr/bin/env python
 
-import data_helper_ml as dh
+import datahelpers.data_helper_ml_normal as dh
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-
-from datahelpers import data_helpers
 
 
 class evaler:
@@ -68,8 +66,8 @@ class evaler:
                 predictions = graph.get_operation_by_name("output/predictions").outputs[0]
 
                 # Generate batches for one epoch
-                x_batches = data_helpers.batch_iter(self.x_test, 12, 1, shuffle=False)
-                y_batches = data_helpers.batch_iter(self.y_test, 12, 1, shuffle=False)
+                x_batches = dh.batch_iter(self.x_test, 12, 1, shuffle=False)
+                y_batches = dh.batch_iter(self.y_test, 12, 1, shuffle=False)
 
                 # Collect the predictions here
                 all_score = None

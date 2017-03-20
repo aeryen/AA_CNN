@@ -6,7 +6,7 @@ import time
 
 import tensorflow as tf
 
-from datahelpers import data_helper_ml as dh
+from datahelpers import data_helper_ml_mulmol6_OnTheFly as dh
 from evaluators import eval_ml_origin as evaler
 from networks.cnn import TextCNN
 

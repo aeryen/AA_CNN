@@ -1,5 +1,5 @@
 from timeit import default_timer as timer
-from datahelpers import data_helper_ml_mulmol6file as dh6
+from datahelpers import data_helper_ml_mulmol6_Read as dh6
 from datahelpers import data_helper_ml_normal as dh
 from trainer import TrainTask as tr
 from evaluators import eval_ml_mulmol_d as evaler

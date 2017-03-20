@@ -4,7 +4,7 @@ import datetime
 import time
 import tensorflow as tf
 from networks.cnn import TextCNN
-from datahelpers import data_helper_ml_mulmol6file as dh6
+from datahelpers import data_helper_ml_mulmol6_Read as dh6
 from datahelpers import data_helper_ml_normal as dh
 
 

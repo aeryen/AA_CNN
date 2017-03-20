@@ -1,14 +1,12 @@
 #! /usr/bin/env python
 
-import data_helper_pan11 as dh
+import datahelpers.data_helper_pan11 as dh
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import precision_recall_fscore_support
-
-from datahelpers import data_helpers
 
 
 # THIS CLASS IS THE EVALUATOR FOR NORMAL CNN
@@ -76,8 +74,8 @@ class evaler:
                 predictions = graph.get_operation_by_name("output/predictions").outputs[0]
 
                 # Generate batches for one epoch
-                x_batches = data_helpers.batch_iter(self.x_test, 64, 1, shuffle=False)
-                y_batches = data_helpers.batch_iter(self.y_test_scalar, 64, 1, shuffle=False)
+                x_batches = dh.batch_iter(self.x_test, 64, 1, shuffle=False)
+                y_batches = dh.batch_iter(self.y_test_scalar, 64, 1, shuffle=False)
 
                 # Collect the predictions here
                 all_predictions = []
