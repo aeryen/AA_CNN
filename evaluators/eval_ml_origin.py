@@ -3,10 +3,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-import os.path, sys
+import sys
+import os.path
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from datahelpers import data_helper_ml_normal as data_helpers
-
 
 # THIS CLASS IS THE EVALUATOR FOR NORMAL CNN
 
@@ -105,30 +105,6 @@ class evaler:
         output_file.write("Total number of test examples: {}\n".format(len(self.y_test)))
         print "Sent ACC\t" + str(average_accuracy)  # + "\t\t(cor: " + str(correct_predictions) + ")"
         output_file.write("ACC\t" + str(average_accuracy) + "\n")
-
-        # mse = np.mean((all_predictions - self.y_test_scalar) ** 2)
-        # print "Sent MSE\t" + str(mse)
-        # output_file.write("MSE\t" + str(mse) + "\n")
-        #
-        # cm = confusion_matrix(self.y_test_scalar, all_predictions)
-        # np.set_printoptions(precision=2)
-        # print('Confusion matrix')
-        # print(cm)
-        # output_file.write('Confusion matrix \n')
-        # output_file.write(str(cm) + "\n")
-        # plt.figure()
-        # self.plot_confusion_matrix(cm, self.dater)
-        #
-        # # Normalize the confusion matrix by row (i.e by the number of samples
-        # # in each class)
-        # cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        # print('Normalized confusion matrix')
-        # output_file.write('Normalized confusion matrix' + "\n")
-        # print(cm_normalized)
-        # output_file.write(str(cm_normalized) + "\n")
-        # plt.figure()
-        # self.plot_confusion_matrix(cm_normalized, dater=self.dater, title='Normalized confusion matrix')
-        # plt.show()
 
         if documentAcc == True:
             doc_prediction = []

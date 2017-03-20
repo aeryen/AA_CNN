@@ -3,7 +3,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-
+import sys
+import os.path
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from datahelpers import data_helper_ml_mulmol6_Read as dh
 
 
@@ -22,8 +24,7 @@ class evaler:
     p3_test = None
     s2_test = None
     s3_test = None
-    vocab = None
-    vocab_inv = None
+
     doc_size_test = None
 
     def plot_confusion_matrix(self, cm, dater, title='Confusion matrix', cmap=plt.cm.Blues):
@@ -42,10 +43,10 @@ class evaler:
 
         print("Loading data...")
         self.x_test, self.pos_test, self.wl_test, self.p2_test, self.p3_test, self.s2_test, self.s3_test, \
-            self.y_test, self.vocab, self.vocab_inv, self.doc_size_test = \
+            self.y_test, self.vocabulary, self.vocabulary_inv, self.doc_size_test = \
             self.dater.load_test_data()
         self.y_test_scalar = np.argmax(self.y_test, axis=1)
-        print("Vocabulary size: {:d}".format(len(self.vocab)))
+        print("Vocabulary size: {:d}".format(len(self.vocabulary)))
         print("Test set size {:d}".format(len(self.y_test)))
 
         return self.x_test, self.y_test, self.doc_size_test, \
@@ -88,13 +89,13 @@ class evaler:
                 predictions = graph.get_operation_by_name("output/predictions").outputs[0]
 
                 # Generate batches for one epoch
-                x_batches = dh.DataHelper.batch_iter(self.x_test, 64, 1, shuffle=False)
-                y_batches = dh.DataHelper.batch_iter(self.y_test, 64, 1, shuffle=False)
-                pref2_batches = dh.DataHelper.batch_iter(self.p2_test, 64, 1, shuffle=False)
-                pref3_batches = dh.DataHelper.batch_iter(self.p3_test, 64, 1, shuffle=False)
-                suff2_batches = dh.DataHelper.batch_iter(self.s2_test, 64, 1, shuffle=False)
-                suff3_batches = dh.DataHelper.batch_iter(self.s3_test, 64, 1, shuffle=False)
-                pos_batches = dh.DataHelper.batch_iter(self.pos_test, 64, 1, shuffle=False)
+                x_batches = dh.DataHelperMulMol6.batch_iter(self.x_test, 64, 1, shuffle=False)
+                y_batches = dh.DataHelperMulMol6.batch_iter(self.y_test, 64, 1, shuffle=False)
+                pref2_batches = dh.DataHelperMulMol6.batch_iter(self.p2_test, 64, 1, shuffle=False)
+                pref3_batches = dh.DataHelperMulMol6.batch_iter(self.p3_test, 64, 1, shuffle=False)
+                suff2_batches = dh.DataHelperMulMol6.batch_iter(self.s2_test, 64, 1, shuffle=False)
+                suff3_batches = dh.DataHelperMulMol6.batch_iter(self.s3_test, 64, 1, shuffle=False)
+                pos_batches = dh.DataHelperMulMol6.batch_iter(self.pos_test, 64, 1, shuffle=False)
 
 
                 # Collect the predictions here

@@ -8,9 +8,8 @@ from sklearn.metrics import accuracy_score
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import precision_recall_fscore_support
 
-
+# DEPRECATED, THIS IS THE CLASS DESIGNED FOR WHEN ML DATA IS 1-OUT-OF-N CLASSIFICATION
 # EVALUATOR FOR MULTI-MODALITY CNN
-
 
 class evaler:
     dater = None
@@ -76,7 +75,7 @@ class evaler:
                 input_suff2 = graph.get_operation_by_name("input_suff2").outputs[0]
                 input_suff3 = graph.get_operation_by_name("input_suff3").outputs[0]
                 input_pos = graph.get_operation_by_name("input_pos").outputs[0]
-                input_y = graph.get_operation_by_name("input_y").outputs[0]
+                # input_y = graph.get_operation_by_name("input_y").outputs[0]
 
                 dropout_keep_prob = graph.get_operation_by_name("dropout_keep_prob").outputs[0]
 
