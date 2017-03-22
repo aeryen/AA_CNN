@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-class NParallelConvOnePoolNFC(object):
+class NConvDocConvNFC(object):
     """
     CNN for text classification.
     Uses an embedding layer, followed by a convolutional, max-pooling layers.
@@ -107,7 +107,7 @@ class NParallelConvOnePoolNFC(object):
                     # Maxpooling over the outputs
                     self.doc_pooled = tf.nn.max_pool(
                         h,
-                        ksize=[1, sequence_length - filter_size + 1, 1, 1],
+                        ksize=[1, document_length - filter_size + 1, 1, 1],
                         strides=[1, 1, 1, 1],
                         padding='VALID',
                         name="pool")

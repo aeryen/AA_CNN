@@ -20,11 +20,13 @@ class TextCNN:
             embedding_size, filter_sizes, num_filters, input_component="OneChannel", middle_component = 'OneCMiddle',
             dataset="ML", l2_reg_lambda=0.0, pref2_vocab_size=None, pref3_vocab_size=None, suff2_vocab_size=None,
             suff3_vocab_size=None, pos_vocab_size=None,init_embedding=None, dropout=False, batch_normalize = False,
-            elu = False, n_conv=1, fc=[]):
+            elu = False, n_conv=1, fc=[], document_length=-1):
 
         # input component
         if input_component == "OneChannel":
             self.input_comp = OneChannel(sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
+        if input_component == "OneChannelDoc":
+            self.input_comp = OneChannel(document_length, sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
         elif input_component == "SixChannel":
             self.input_comp = SixChannel(sequence_length, num_classes, word_vocab_size, embedding_size,
                   pref2_vocab_size, pref3_vocab_size, suff2_vocab_size, suff3_vocab_size, pos_vocab_size,
@@ -47,11 +49,6 @@ class TextCNN:
             self.middle_comp = NParallelConvOnePoolNFC(sequence_length, embedding_size, filter_sizes, num_filters,
                                                        previous_component=self.input_comp, dropout=dropout,
                                                        batch_normalize=batch_normalize, elu=elu, n_conv = n_conv, fc=fc)
-        elif middle_component == 'YifanConv':
-            self.middle_comp = YifanConv(sequence_length, embedding_size, filter_sizes, num_filters,
-                                        previous_component=self.input_comp, dropout=dropout,
-                                        batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
-                                        fc=fc)
         elif middle_component == 'ParallelJoinedConv':
             self.middle_comp = ParallelJoinedConv(sequence_length, embedding_size, filter_sizes, num_filters,
                                                   previous_component=self.input_comp, dropout=dropout,
@@ -59,6 +56,11 @@ class TextCNN:
                                                   fc=fc)
         elif middle_component == 'NCrossSizeParallelConvNFC':
             self.middle_comp = NCrossSizeParallelConvNFC(sequence_length, embedding_size, filter_sizes, num_filters,
+                                                         previous_component=self.input_comp, dropout=dropout,
+                                                         batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
+                                                         fc=fc)
+        elif middle_component == "NConvDocConvNFC"
+            self.middle_comp = NCrossSizeParallelConvNFC(document_length, sequence_length, embedding_size, filter_sizes, num_filters,
                                                          previous_component=self.input_comp, dropout=dropout,
                                                          batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
                                                          fc=fc)
