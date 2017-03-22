@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 
-class OneChannel:
+class OneChannel_DocLevel:
 
     def __init__( self, document_length, sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding=None):
         # Placeholders for input, output and dropout, First None is batch size.
