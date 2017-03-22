@@ -105,14 +105,14 @@ class NConvDocConvNFC(object):
 
                 with tf.variable_scope("maxpool-sentence"):
                     # Maxpooling over the outputs
-                    self.doc_pooled = tf.nn.max_pool(
+                    doc_pooled = tf.nn.max_pool(
                         h,
                         ksize=[1, document_length - filter_size + 1, 1, 1],
                         strides=[1, 1, 1, 1],
                         padding='VALID',
                         name="pool")
                 # doc_pooled: [?, 1, 1, 100]
-                all_filter_size_output.append(h)
+                all_filter_size_output.append(doc_pooled)
 
         self.doc_features = tf.concat(3, all_filter_size_output)
         # last_layer: [?, 1, 1, 300]
