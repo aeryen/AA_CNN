@@ -198,8 +198,9 @@ if __name__ == "__main__":
     dater.load_data()
     e = evaler()
     e.load(dater)
-    output_file = open("100d_test_170321.txt", mode="aw")
-    for step in [3500]:
-        e.test("./runs/ml_mulmol_res/1486376683/checkpoints/", step, output_file, documentAcc=True)
-    output_file.close()
+    with open(sys.argv[3], mode="aw") as output_file:
+        path = sys.argv[1]
+        step = int(sys.argv[2])
+        output_file = sys.argv[3]
+        e.test(path, step, output_file, documentAcc=True)
 
