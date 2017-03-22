@@ -1,5 +1,6 @@
 from input_components.OneChannel import OneChannel
 from input_components.SixChannel import SixChannel
+from input_components.OneChannel_DocLevel import OneChannel_DocLevel
 from middle_components.yifan_conv import YifanConv
 from middle_components.parallel_conv import NParallelConvOnePoolNFC
 from middle_components.parallel_size_joined_conv import NCrossSizeParallelConvNFC
@@ -27,7 +28,7 @@ class TextCNN:
         if input_component == "OneChannel":
             self.input_comp = OneChannel(sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
         if input_component == "OneChannel_DocLevel":
-            self.input_comp = OneChannel(document_length, sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
+            self.input_comp = OneChannel_DocLevel(document_length, sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
         elif input_component == "SixChannel":
             self.input_comp = SixChannel(sequence_length, num_classes, word_vocab_size, embedding_size,
                   pref2_vocab_size, pref3_vocab_size, suff2_vocab_size, suff3_vocab_size, pos_vocab_size,
