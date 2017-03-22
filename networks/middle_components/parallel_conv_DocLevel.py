@@ -8,25 +8,27 @@ class NParallelConvOnePoolNFC(object):
     """
 
     def __init__(
-            self, sequence_length, embedding_size, filter_sizes, num_filters, previous_component, batch_normalize=False,
-            dropout = False, elu = False, n_conv=1, fc=[]):
+            self, document_length, sequence_length, embedding_size, filter_size_lists, num_filters, previous_component,
+            batch_normalize=False, dropout = False, elu = False, n_conv=1, fc=[]):
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
         self.batch_normalize = batch_normalize
         self.elu = elu
         self.n_conv = n_conv
         self.last_layer = None
-        self.num_filters_total = num_filters * len(filter_sizes)
+        self.num_filters_total = None
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
-        pooled_outputs = []
-        for filter_size in filter_sizes:
-            for n in range(n_conv):
+        for n in range(n_conv):
+            all_filter_size_output = []
+            self.num_filters_total = num_filters * len(filter_size_lists[n])
+            for filter_size in filter_size_lists[n]:
                 with tf.variable_scope("conv-%s-%s" % (str(n+1), filter_size)):
                     if n == 0:
                         self.last_layer = previous_component.embedded_expanded
                         # last layer: [?, document size 128, sentence size 128, embedding size 100]
-                        embedding_size = previous_component.embedded_expanded.get_shape()[3].value
                     else:
+                        if self.dropout == True:
+                            self.last_layer = tf.nn.dropout(self.last_layer, 0.8, name="dropout-inter-conv")
                         embedding_size = self.last_layer.get_shape()[2].value
 
                     filter_shape = [1, filter_size, embedding_size, num_filters]
@@ -44,6 +46,7 @@ class NParallelConvOnePoolNFC(object):
                     conv = tf.pad(conv, [[0, 0], [0, 0], [top_pad, bottom_pad], [0, 0]], mode='CONSTANT',
                                   name="conv_word_pad")
                     # conv: [?, document size 128, sentence size 128, filter num 100]
+
                     if batch_normalize == True:
                         conv = tf.contrib.layers.batch_norm(conv,
                                                             center=True, scale=True, fused=True,
@@ -56,28 +59,68 @@ class NParallelConvOnePoolNFC(object):
                     else:
                         h = tf.nn.elu(tf.nn.bias_add(conv, b), name="elu")
 
-                    self.last_layer = h
+                    all_filter_size_output.append(h)
 
-            with tf.variable_scope("maxpool-%s" % filter_size):
-                # Maxpooling over the outputs
-                pooled = tf.nn.max_pool(
-                    self.last_layer,
-                    ksize=[1, sequence_length, 1, 1],
-                    strides=[1, 1, 1, 1],
-                    padding='VALID',
-                    name="pool")
-                pooled_outputs.append(pooled)
+            self.last_layer = tf.concat(3, all_filter_size_output)
+            # last_layer: [?, doc size 128, sentence size 128, all filters 300]
 
-        # Combine all the pooled features
-        self.h_pool = tf.concat(3, pooled_outputs)
-        self.h_pool_flat = tf.reshape(self.h_pool, [-1, self.num_filters_total])
-        self.last_layer = self.h_pool_flat
-        self.n_nodes_last_layer = self.num_filters_total
-        # Add dropout
+        with tf.variable_scope("maxpool-sentence"):
+            # Maxpooling over the outputs
+            self.sent_pooled = tf.nn.max_pool(
+                self.last_layer,
+                ksize=[1, 1, sequence_length, 1],
+                strides=[1, 1, 1, 1],
+                padding='VALID',
+                name="pool")
+            # pooled: [?, doc size 128, sent size 1, all filters 300]
+
         if self.dropout == True:
             with tf.variable_scope("dropout-keep"):
-                h_drop = tf.nn.dropout(self.last_layer, previous_component.dropout_keep_prob)
-                self.last_layer = h_drop
+                self.sent_drop = tf.nn.dropout(self.sent_pooled, previous_component.dropout_keep_prob)
+
+        document_filter_size = [2, 3, 4]
+        all_filter_size_output = []
+        self.num_filters_total = num_filters * len(document_filter_size)
+        for filter_size in document_filter_size:
+            with tf.variable_scope("doc-conv-%s" % filter_size):
+                filter_shape = [filter_size, 1, self.sent_drop.get_shape()[3].value, num_filters]
+                # Convolution Layer
+                W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
+                conv = tf.nn.conv2d(
+                    self.sent_drop,
+                    W,
+                    strides=[1, 1, 1, 1],
+                    padding="VALID",
+                    name="conv")
+                # conv: [?, 126, 1, 100]
+                if batch_normalize == True:
+                    conv = tf.contrib.layers.batch_norm(conv,
+                                                        center=True, scale=True, fused=True,
+                                                        is_training=self.is_training)
+                b = tf.Variable(tf.constant(0.1, shape=[num_filters]), name="b")
+                if elu == False:
+                    h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
+                else:
+                    h = tf.nn.elu(tf.nn.bias_add(conv, b), name="elu")
+
+                with tf.variable_scope("maxpool-sentence"):
+                    # Maxpooling over the outputs
+                    self.doc_pooled = tf.nn.max_pool(
+                        h,
+                        ksize=[1, sequence_length - filter_size + 1, 1, 1],
+                        strides=[1, 1, 1, 1],
+                        padding='VALID',
+                        name="pool")
+                # doc_pool: ?, 1, 1, 100
+                all_filter_size_output.append(h)
+
+        self.last_layer = tf.concat(3, all_filter_size_output)
+        # last_layer: [?, 1, 1, 300]
+
+        # Combine all the pooled features
+        self.last_layer = self.h_pool_flat
+        self.n_nodes_last_layer = self.num_filters_total
+
 
         for i, n_nodes in enumerate(fc):
             self._fc_layer(i + 1, n_nodes)
