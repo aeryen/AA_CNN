@@ -17,7 +17,7 @@ if __name__ == "__main__":
         dater = dh6.DataHelperMulMol6(doc_level="sent", train_holdout=0.80)
         ev = evaler.evaler()
     elif input_component == "OneChannel_DocLevel":
-        dater = dh.DataHelper(doc_level="sent", train_holdout=0.80, embed_type="glove", embed_dim=300,
+        dater = dh.DataHelper(doc_level="doc", train_holdout=0.80, embed_type="glove", embed_dim=300,
                               target_doc_len=128, target_sent_len=128)
         ev = evaler_one.evaler()
     else:
