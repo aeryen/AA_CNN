@@ -24,7 +24,7 @@ class NConvDocConvNFC(object):
             for filter_size in filter_size_lists[n]:
                 with tf.variable_scope("conv-%s-%s" % (str(n+1), filter_size)):
                     if n == 0:
-                        self.last_layer = previous_component.embedded_expanded
+                        self.last_layer = previous_component.last_layer
                         # last layer: [?, document size 128, sentence size 128, embedding size 100]
                     else:
                         if self.dropout == True:
