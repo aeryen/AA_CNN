@@ -111,16 +111,14 @@ class NParallelConvOnePoolNFC(object):
                         strides=[1, 1, 1, 1],
                         padding='VALID',
                         name="pool")
-                # doc_pool: ?, 1, 1, 100
+                # doc_pooled: [?, 1, 1, 100]
                 all_filter_size_output.append(h)
 
-        self.last_layer = tf.concat(3, all_filter_size_output)
+        self.doc_features = tf.concat(3, all_filter_size_output)
         # last_layer: [?, 1, 1, 300]
-
-        # Combine all the pooled features
+        self.h_pool_flat = tf.reshape(self.doc_features, [-1, self.num_filters_total])
         self.last_layer = self.h_pool_flat
         self.n_nodes_last_layer = self.num_filters_total
-
 
         for i, n_nodes in enumerate(fc):
             self._fc_layer(i + 1, n_nodes)
