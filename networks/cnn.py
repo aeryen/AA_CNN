@@ -4,6 +4,7 @@ from middle_components.yifan_conv import YifanConv
 from middle_components.parallel_conv import NParallelConvOnePoolNFC
 from middle_components.parallel_size_joined_conv import NCrossSizeParallelConvNFC
 from middle_components.parallel_joined_conv import ParallelJoinedConv
+from middle_components.parallel_conv_DocLevel import NConvDocConvNFC
 from output_components.pan_output import PANOutput
 from output_components.ml_output import MLOutput
 
@@ -59,11 +60,12 @@ class TextCNN:
                                                          previous_component=self.input_comp, dropout=dropout,
                                                          batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
                                                          fc=fc)
-        elif middle_component == "NConvDocConvNFC"
-            self.middle_comp = NCrossSizeParallelConvNFC(document_length, sequence_length, embedding_size, filter_sizes, num_filters,
-                                                         previous_component=self.input_comp, dropout=dropout,
-                                                         batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
-                                                         fc=fc)
+        elif middle_component == "NConvDocConvNFC":
+            self.middle_comp = NConvDocConvNFC(document_length, sequence_length, embedding_size, filter_sizes,
+                                               num_filters,
+                                               previous_component=self.input_comp, dropout=dropout,
+                                               batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
+                                               fc=fc)
         else:
             raise NotImplementedError
 
