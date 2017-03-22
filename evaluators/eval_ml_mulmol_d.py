@@ -194,11 +194,11 @@ if __name__ == "__main__":
     step1 = [250, 500, 750, 1000]
     step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
 
-    dater = dh.DataHelper(doc_level="sent")
+    dater = dh.DataHelperMulMol6(doc_level="sent")
     dater.load_data()
     e = evaler()
     e.load(dater)
-    output_file = open("100d_test_170206.txt", mode="aw")
+    output_file = open("100d_test_170321.txt", mode="aw")
     for step in [3500]:
         e.test("./runs/ml_mulmol_res/1486376683/checkpoints/", step, output_file, documentAcc=True)
     output_file.close()
