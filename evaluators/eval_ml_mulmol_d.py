@@ -57,7 +57,10 @@ class evaler:
 
         print("\nEvaluating...\n")
 
-        checkpoint_file = checkpoint_dir + "model-" + str(checkpoint_step)
+        if checkpoint_step is not None:
+            checkpoint_file = checkpoint_dir + "model-" + str(checkpoint_step)
+        else:
+            checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir, latest_filename=None)
 
         graph = tf.Graph()
         with graph.as_default():
