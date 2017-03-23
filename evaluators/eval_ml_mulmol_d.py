@@ -133,7 +133,7 @@ class evaler:
         output_file.write("Test for prob: " + self.dater.problem_name + "\n")
         print("Total number of test examples: {}".format(len(self.y_test)))
         output_file.write("Total number of test examples: {}\n".format(len(self.y_test)))
-        print "Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")"
+        print("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
         output_file.write("ACC\t" + str(average_accuracy) + "\n")
 
         # cm = confusion_matrix(self.y_test_scalar, all_predictions)
@@ -171,15 +171,15 @@ class evaler:
                     pred_class = np.zeros([20], dtype=np.int)
                     pred_class[np.argmax(p)] = 1
                 doc_prediction.append(pred_class)
-                print "pred: " + str(pred_class) + "   " + "true: " + str(self.dater.doc_labels_test[i])
+                print("pred: " + str(pred_class) + "   " + "true: " + str(self.dater.doc_labels_test[i]))
                 output_file.write("File:" + self.dater.file_id_test[i] + "\n")
                 output_file.write("pred: " + str(pred_class) + "   " +
                                   "true: " + str(self.dater.doc_labels_test[i]) + "\n")
 
-            print ""
+            print("")
             output_file.write("\n")
 
-            print "Document ACC"
+            print("Document ACC")
             output_file.write("Document ACC\n")
             total_doc = len(self.dater.file_id_test)
             correct = 0.0
@@ -187,7 +187,7 @@ class evaler:
                 if np.array_equal(doc_prediction[i], self.dater.doc_labels_test[i]):
                     correct += 1
             doc_acc = correct / total_doc
-            print "Doc ACC: " + str(doc_acc)
+            print("Doc ACC: " + str(doc_acc))
             output_file.write("Doc ACC: " + str(doc_acc) + "\n")
 
         output_file.write("\n")

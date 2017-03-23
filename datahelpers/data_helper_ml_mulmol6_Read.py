@@ -88,7 +88,7 @@ class DataHelperMulMol6(DataHelper):
 
     def load_channel_file(self, author_code, file_name):
         if not os.path.exists(os.path.dirname(self.training_data_dir + author_code + "/")):
-            print "error: " + author_code + " does not exit"
+            print("error: " + author_code + " does not exit")
             return
 
         original_txt = open(self.training_data_dir + author_code + "/" + file_name, "r").readlines()
@@ -175,7 +175,7 @@ class DataHelperMulMol6(DataHelper):
             record.content = " ".join(record.content)
             # record.content = self.clean_str()
             content_len.append(len(record.content))
-        print "longest content: " + str(max(content_len))
+        print("longest content: " + str(max(content_len)))
         return data_list
 
     @staticmethod
@@ -205,7 +205,7 @@ class DataHelperMulMol6(DataHelper):
         vocabulary_inv.insert(0, "<PAD>")
         vocabulary_inv.insert(1, "<UNK>")
 
-        print "size of vocabulary: " + str(len(vocabulary_inv))
+        print("size of vocabulary: " + str(len(vocabulary_inv)))
         # vocabulary_inv = list(sorted(vocabulary_inv))
         vocabulary_inv = list(vocabulary_inv[:self.vocabulary_size])  # limit vocab size
 
