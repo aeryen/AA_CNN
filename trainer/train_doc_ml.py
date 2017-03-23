@@ -12,7 +12,7 @@ from networks.cnn_ml_archy import TextCNN
 
 
 def init_data(embed_dimension, do_dev_split=False):
-    dater = dh.DataHelper(doc_level=True, embed_dim=embed_dimension, target_sent_len=40, target_doc_len=200)
+    dater = dh.DataHelperMulMol6(doc_level=True, embed_dim=embed_dimension, target_sent_len=40, target_doc_len=200)
 
     # Model Hyperparameters
     tf.flags.DEFINE_integer("num_classes", dater.num_of_classes, "Number of possible labels")
@@ -168,7 +168,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
                 writer.add_summary(summaries, step)
 
         # Generate batches
-        batches = dh.DataHelper.batch_iter(list(zip(x_train, y_train)), FLAGS.batch_size, FLAGS.num_epochs)
+        batches = dh.DataHelperMulMol6.batch_iter(list(zip(x_train, y_train)), FLAGS.batch_size, FLAGS.num_epochs)
 
         if test_x is not None and test_y is not None:
             test_x_1 = test_x[:100]
@@ -185,7 +185,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
             current_step = tf.train.global_step(sess, global_step)
             if DO_DEV_SPLIT and current_step % FLAGS.evaluate_every == 0:
                 print("\nEvaluation:")
-                dev_batches = dh.DataHelper.batch_iter(list(zip(x_dev, y_dev)), 100, 1)
+                dev_batches = dh.DataHelperMulMol6.batch_iter(list(zip(x_dev, y_dev)), 100, 1)
                 for dev_batch in dev_batches:
                     if len(dev_batch) > 0:
                         small_dev_x, small_dev_y = zip(*dev_batch)

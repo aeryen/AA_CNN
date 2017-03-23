@@ -276,12 +276,12 @@ class TrainTask:
 
             # Generate batches
             if "OneChannel" in self.input_component:
-                batches = dh.DataHelper.batch_iter(list(zip(self.x_train, self.y_train)), self.batch_size,
-                                                   num_epochs=300)
+                batches = dh.DataHelperML.batch_iter(list(zip(self.x_train, self.y_train)), self.batch_size,
+                                                     num_epochs=300)
             elif "SixChannel" in self.input_component:
-                batches = dh.DataHelper.batch_iter(list(zip(self.x_train, self.y_train, self.p2_train, self.p3_train,
-                                                            self.s2_train, self.s3_train, self.pos_train)),
-                                                   self.batch_size, num_epochs=300)
+                batches = dh.DataHelperML.batch_iter(list(zip(self.x_train, self.y_train, self.p2_train, self.p3_train,
+                                                              self.s2_train, self.s3_train, self.pos_train)),
+                                                     self.batch_size, num_epochs=300)
             else:
                 raise NotImplementedError
             # Training loop. For each batch...
@@ -299,7 +299,7 @@ class TrainTask:
                 if self.do_dev_split and current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")
                     if "OneChannel" in self.input_component:
-                        dev_batches = dh.DataHelper.batch_iter(list(zip(self.x_dev, self.y_dev)), self.batch_size, 1)
+                        dev_batches = dh.DataHelperML.batch_iter(list(zip(self.x_dev, self.y_dev)), self.batch_size, 1)
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:
                                 small_dev_x, small_dev_y = zip(*dev_batch)

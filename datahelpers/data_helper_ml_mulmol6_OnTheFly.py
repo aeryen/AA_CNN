@@ -10,13 +10,13 @@ from collections import Counter
 import numpy as np
 
 from utils import featuremaker
-
+from datahelpers.DataHelper import DataHelper
 
 # THIS FILE LOADS PAN11 DATA
 # CODE 0 IS SMALL TRAINING AND TESTING, CODE 1 IS LARGE TRAINING AND TESTING
 
 
-class DataHelper:
+class DataHelperMulMol6(DataHelper):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
     problem_name = "ML_Data"
 
@@ -51,44 +51,11 @@ class DataHelper:
     target_doc_len = None
 
     def __init__(self, doc_level=False, embed_dim=100, target_sent_len=220, target_doc_len=100):
+        # super(DataHelperMulMol6, self).__init__()
         self.doc_level_data = doc_level
         self.embedding_dim = embed_dim
         self.target_sent_len = target_sent_len
         self.target_doc_len = target_doc_len
-
-    @staticmethod
-    def clean_str(string):
-        string = re.sub("\'", " \' ", string)
-        string = re.sub("\"", " \" ", string)
-        string = re.sub("-", " - ", string)
-        string = re.sub("/", " / ", string)
-
-        string = re.sub("[\d]+\.?[\d]*", "123", string)
-        string = re.sub("[\d]+/[\d]+/[\d]{4}", "123", string)
-
-        string = re.sub("[-]{4,}", " <<DLINE>> ", string)
-        string = re.sub("-", " - ", string)
-        string = re.sub(r"[~]+", " ~ ", string)
-
-        string = re.sub(r",", " , ", string)
-        string = re.sub(r"!", " ! ", string)
-        string = re.sub(r":", " : ", string)
-        string = re.sub(r"\.", " . ", string)
-        string = re.sub(r"[(\[{]", " ( ", string)
-        string = re.sub(r"[)\]}]", " ) ", string)
-        string = re.sub(r"\?", " ? ", string)
-        string = re.sub(r"\s{2,}", " ", string)
-
-        return string.strip().lower().split()
-
-    @staticmethod
-    def split_sentence(paragraph):
-        paragraph = paragraph.split(". ")
-        paragraph = [e + ". " for e in paragraph if len(e) > 5]
-        if paragraph:
-            paragraph[-1] = paragraph[-1][:-2]
-            paragraph = [DataHelper.clean_str(e) for e in paragraph]
-        return paragraph
 
     @staticmethod
     def read_one_file(file_path):
@@ -102,7 +69,7 @@ class DataHelper:
             line = line.strip()
             if len(line) == 0 and len(paragraph) > 0:
                 paragraph = " ".join(paragraph)
-                content.extend(DataHelper.split_sentence(paragraph))
+                content.extend(DataHelperMulMol6.split_sentence(paragraph))
                 paragraph = []
             elif len(line.split()) <= 2:
                 pass
@@ -179,7 +146,7 @@ class DataHelper:
                 sub_file_list = os.listdir(f)
                 for file_name in sub_file_list:
                     if file_name in file_id_list:
-                        content = DataHelper.read_one_file(f + file_name)
+                        content = DataHelperMulMol6.read_one_file(f + file_name)
                         data_list.append(content)  # document level array instead of all sentence
                         # self.write_channel_file(author, file_name, content)
                         # data_list.extend(content)
@@ -218,7 +185,7 @@ class DataHelper:
         global_index = 0
         for record in data_list:
             doc = " <LB> ".join(record.content)
-            doc = DataHelper.clean_str(doc)
+            doc = DataHelperMulMol6.clean_str(doc)
             doc = doc.split()
             x.append(doc)
             y[global_index, author_code[record.author]] = 1
@@ -400,10 +367,10 @@ class DataHelper:
         [glove_words, glove_vectors] = self.load_glove_vector()
         self.embed_matrix = self.build_embedding(self.vocab_inv, glove_words, glove_vectors)
 
-        self.x_train = DataHelper.build_input_data(self.x_train, self.vocab, self.doc_level_data)
+        self.x_train = DataHelperMulMol6.build_input_data(self.x_train, self.vocab, self.doc_level_data)
         self.x_train = self.pad_sentences(self.x_train, target_length=self.target_sent_len)
 
-        self.x_test = DataHelper.build_input_data(self.x_test, self.vocab, self.doc_level_data)
+        self.x_test = DataHelperMulMol6.build_input_data(self.x_test, self.vocab, self.doc_level_data)
         self.x_test = self.pad_sentences(self.x_test, target_length=self.target_sent_len)
 
         if self.doc_level_data:
@@ -428,29 +395,10 @@ class DataHelper:
     def get_doc_label(self):
         return self.labels_test
 
-    @staticmethod
-    def batch_iter(data, batch_size, num_epochs, shuffle=True):
-        """
-        Generates a batch iterator for a dataset.
-        """
-        data = np.array(data)
-        data_size = len(data)
-        num_batches_per_epoch = int(len(data) / batch_size) + 1
-        for epoch in range(num_epochs):
-            # Shuffle the data at each epoch
-            if shuffle:
-                shuffle_indices = np.random.permutation(np.arange(data_size))
-                shuffled_data = data[shuffle_indices]
-            else:
-                shuffled_data = data
-            for batch_num in range(num_batches_per_epoch):
-                start_index = batch_num * batch_size
-                end_index = min((batch_num + 1) * batch_size, data_size)
-                yield shuffled_data[start_index:end_index]
 
 
 if __name__ == "__main__":
-    o = DataHelper(doc_level=True)
+    o = DataHelperMulMol6(doc_level=True)
     o.load_data()
     # o.load_test_data()
     print "o"
