@@ -163,8 +163,8 @@ class TrainTask:
                 logging.info("Model in {}\n".format(out_dir))
 
                 # Summaries for loss and accuracy
-                loss_summary = tf.tf.summary.scalar("loss", cnn.loss)
-                acc_summary = tf.tf.summary.scalar("accuracy", cnn.accuracy)
+                loss_summary = tf.summary.scalar("loss", cnn.loss)
+                acc_summary = tf.summary.scalar("accuracy", cnn.accuracy)
 
                 # Train Summaries
                 with tf.name_scope('train_summary'):

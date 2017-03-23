@@ -7,7 +7,7 @@ from evaluators import eval_ml_origin as evaler_one
 
 if __name__ == "__main__":
 
-    input_component = "OneChannel_DocLevel"
+    input_component = "SixChannel"
 
     if input_component == "OneChannel":
         dater = DataHelperML(doc_level="sent", train_holdout=0.80, embed_type="glove", embed_dim=300)
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     # *ParallelJoinedConv
     # *NCrossSizeParallelConvNFC
     ################################################
-    tt = tr.TrainTask(data_helper=dater, input_component=input_component, exp_name="NConvDocConvNFC",
+    tt = tr.TrainTask(data_helper=dater, input_component=input_component, exp_name="ParallelJoinedConv",
                       batch_size=32, dataset="ML", evaluate_every=1000, checkpoint_every=1000)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers

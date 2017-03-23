@@ -72,6 +72,8 @@ class DataHelperMulMol6(DataHelper):
         #     print "huh"
 
         file_content = open(file_path, "r").readlines()
+
+
         content = []
         paragraph = []
         for line in file_content:
