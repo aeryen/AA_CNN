@@ -150,8 +150,8 @@ class TrainTask:
                     grad_summaries = []
                     for g, v in grads_and_vars:
                         if g is not None:
-                            grad_hist_summary = tf.summary.histogram("{}/grad/hist".format(v.name), g)
-                            sparsity_summary = tf.summary.scalar("{}/grad/sparsity".format(v.name),
+                            grad_hist_summary = tf.summary.histogram("{}/grad/hist".format(v.name.replace(":", "_")), g)
+                            sparsity_summary = tf.summary.scalar("{}/grad/sparsity".format(v.name.replace(":", "_")),
                                                                  tf.nn.zero_fraction(g))
                             grad_summaries.append(grad_hist_summary)
                             grad_summaries.append(sparsity_summary)
