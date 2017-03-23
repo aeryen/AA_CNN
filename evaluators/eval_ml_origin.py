@@ -74,8 +74,8 @@ class evaler:
                 predictions = graph.get_operation_by_name("output/predictions").outputs[0]
 
                 # Generate batches for one epoch
-                x_batches = data_helpers.DataHelper.batch_iter(self.x_test, 64, 1, shuffle=False)
-                y_batches = data_helpers.DataHelper.batch_iter(self.y_test, 64, 1, shuffle=False)
+                x_batches = data_helpers.DataHelperML.batch_iter(self.x_test, 64, 1, shuffle=False)
+                y_batches = data_helpers.DataHelperML.batch_iter(self.y_test, 64, 1, shuffle=False)
 
                 # Collect the predictions here
                 all_score = None
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     step1 = [250, 500, 750, 1000]
     step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
 
-    dater = data_helpers.DataHelper(doc_level="sent", embed_dim=300, embed_type="w2v")
+    dater = data_helpers.DataHelperML(doc_level="sent", embed_dim=300, embed_type="w2v")
     dater.load_data()
     e = evaler()
     e.load(dater)

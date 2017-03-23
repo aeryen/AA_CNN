@@ -7,8 +7,10 @@ import math
 import pkg_resources
 from collections import Counter
 
+from datahelpers.DataHelper import DataHelper
 
-class DataHelperMulMol6:
+
+class DataHelperMulMol6(DataHelper):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
     problem_name = "ML_Data"
 
@@ -53,6 +55,7 @@ class DataHelperMulMol6:
     target_doc_len = None
 
     def __init__(self, doc_level="comb", embed_dim=100, target_sent_len=220, target_doc_len=100, train_holdout=0.80):
+        # super(DataHelperMulMol6, self).__init__()
         self.doc_level_data = doc_level
         self.embedding_dim = embed_dim
         self.target_sent_len = target_sent_len
@@ -61,41 +64,7 @@ class DataHelperMulMol6:
         self.truth_file_path = self.training_data_dir + "labels.csv"
         self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
         self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
-        self.train_holdout=train_holdout
-
-    @staticmethod
-    def clean_str(string):
-        string = re.sub("\'", " \' ", string)
-        string = re.sub("\"", " \" ", string)
-        string = re.sub("-", " - ", string)
-        string = re.sub("/", " / ", string)
-
-        string = re.sub("[\d]+\.?[\d]*", "123", string)
-        string = re.sub("[\d]+/[\d]+/[\d]{4}", "123", string)
-
-        string = re.sub("[-]{4,}", " <<DLINE>> ", string)
-        string = re.sub("-", " - ", string)
-        string = re.sub(r"[~]+", " ~ ", string)
-
-        string = re.sub(r",", " , ", string)
-        string = re.sub(r"!", " ! ", string)
-        string = re.sub(r":", " : ", string)
-        string = re.sub(r"\.", " . ", string)
-        string = re.sub(r"[(\[{]", " ( ", string)
-        string = re.sub(r"[)\]}]", " ) ", string)
-        string = re.sub(r"\?", " ? ", string)
-        string = re.sub(r"\s{2,}", " ", string)
-
-        return string.strip().lower().split()
-
-    @staticmethod
-    def split_sentence(paragraph):
-        paragraph = paragraph.split(". ")
-        paragraph = [e + ". " for e in paragraph if len(e) > 5]
-        if paragraph:
-            paragraph[-1] = paragraph[-1][:-2]
-            paragraph = [DataHelperMulMol6.clean_str(e) for e in paragraph]
-        return paragraph
+        self.train_holdout = train_holdout
 
     @staticmethod
     def read_one_file(file_path):
@@ -410,7 +379,7 @@ class DataHelperMulMol6:
         n = self.get_comb_count(x)
         comb_list = []
         for i in range(n):
-            comb_list.append(x[i*50:(i+1)*50])
+            comb_list.append(x[i * 50:(i + 1) * 50])
         return comb_list
 
     def comb_all_doc(self, x, pos, wl, p2, p3, s2, s3, label):
@@ -434,15 +403,15 @@ class DataHelperMulMol6:
         [s3_comb.extend(self.multi_sent_combine(doc)) for doc in s3]
 
         for comb_index in range(len(x)):
-            label_comb.extend( np.tile(label[comb_index], [comb_size[comb_index], 1] ) )
+            label_comb.extend(np.tile(label[comb_index], [comb_size[comb_index], 1]))
             print "number of comb in document: " + str(comb_size[comb_index])
-    
+
         return x_comb, pos_comb, wl_comb, p2_comb, p3_comb, s2_comb, s3_comb, label_comb, comb_size
 
     def load_data(self):
         # o = DataHelper(file_to_load)
         file_name_ordered, label_matrix_ordered, doc_size, \
-            origin_list, pos_list, wl_list, p2_list, p3_list, s2_list, s3_list = self.__load_data()
+        origin_list, pos_list, wl_list, p2_list, p3_list, s2_list, s3_list = self.__load_data()
 
         [self.file_id_train, self.file_id_test, self.labels_train, self.labels_test,
          self.doc_size_train, self.doc_size_test,
@@ -584,26 +553,3 @@ class DataHelperMulMol6:
 
     def get_doc_label(self):
         return self.labels_test
-
-    @staticmethod
-    def batch_iter(data, batch_size, num_epochs, shuffle=True):
-        """
-        Generates a batch iterator for a dataset.
-        """
-        data = np.array(data)
-        data_size = len(data)
-        num_batches_per_epoch = int(len(data) / batch_size) + 1
-        for epoch in range(num_epochs):
-            # Shuffle the data at each epoch
-            if shuffle:
-                shuffle_indices = np.random.permutation(np.arange(data_size))
-                shuffled_data = data[shuffle_indices]
-            else:
-                shuffled_data = data
-            for batch_num in range(num_batches_per_epoch):
-                start_index = batch_num * batch_size
-                end_index = min((batch_num + 1) * batch_size, data_size)
-                yield shuffled_data[start_index:end_index]
-
-# [x_train, pos_train, wl_train, p2_train, p3_train, s2_train, s3_train, labels_train, vocab, vocab_inv, embed_matrix] = o.load
-

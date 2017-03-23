@@ -167,7 +167,7 @@ class evaler:
 if __name__ == "__main__":
     bold_step2 = [15000]
 
-    dater = dh.DataHelper(doc_level=True, embed_dim=100, target_sent_len=40, target_doc_len=200)
+    dater = dh.DataHelperML(doc_level=True, embed_dim=100, target_sent_len=40, target_doc_len=200)
     dater.load_data()
 
     e = evaler()

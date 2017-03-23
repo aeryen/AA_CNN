@@ -1,5 +1,4 @@
 import collections
-import re
 import numpy as np
 import gensim
 import itertools
@@ -9,12 +8,13 @@ import math
 import pkg_resources
 from collections import Counter
 
+from datahelpers.DataHelper import DataHelper
 
 # THIS FILE LOADS PAN11 DATA
 # CODE 0 IS SMALL TRAINING AND TESTING, CODE 1 IS LARGE TRAINING AND TESTING
 
 
-class DataHelper:
+class DataHelperML(DataHelper):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
     problem_name = "ML"
 
@@ -47,6 +47,7 @@ class DataHelper:
 
     def __init__(self, doc_level="comb", embed_dim=100, target_sent_len=220, target_doc_len=100, train_holdout=0.80,
                  embed_type="glove"):
+        # super(DataHelperML, self).__init__()
         self.doc_level_data = doc_level
         self.embedding_dim = embed_dim
         self.target_sent_len = target_sent_len
@@ -58,40 +59,6 @@ class DataHelper:
         self.train_holdout = train_holdout
         self.embed_type = embed_type
         self.word2vec_model = None
-
-    @staticmethod
-    def clean_str(string):
-        string = re.sub("\'", " \' ", string)
-        string = re.sub("\"", " \" ", string)
-        string = re.sub("-", " - ", string)
-        string = re.sub("/", " / ", string)
-
-        string = re.sub("[\d]+\.?[\d]*", "123", string)
-        string = re.sub("[\d]+/[\d]+/[\d]{4}", "123", string)
-
-        string = re.sub("[-]{4,}", " <<DLINE>> ", string)
-        string = re.sub("-", " - ", string)
-        string = re.sub(r"[~]+", " ~ ", string)
-
-        string = re.sub(r",", " , ", string)
-        string = re.sub(r"!", " ! ", string)
-        string = re.sub(r":", " : ", string)
-        string = re.sub(r"\.", " . ", string)
-        string = re.sub(r"[(\[{]", " ( ", string)
-        string = re.sub(r"[)\]}]", " ) ", string)
-        string = re.sub(r"\?", " ? ", string)
-        string = re.sub(r"\s{2,}", " ", string)
-
-        return string.strip().lower().split()
-
-    @staticmethod
-    def split_sentence(paragraph):
-        paragraph = paragraph.split(". ")
-        paragraph = [e + ". " for e in paragraph if len(e) > 5]
-        if paragraph:
-            paragraph[-1] = paragraph[-1][:-2]
-            paragraph = [DataHelper.clean_str(e) for e in paragraph]
-        return paragraph
 
     @staticmethod
     def read_one_file(file_path):
@@ -433,9 +400,9 @@ class DataHelper:
             [self.x_test, self.labels_test, self.doc_size_test] = \
                 self.comb_all_doc(self.x_test, self.labels_test)
 
-        self.x_train = DataHelper.build_input_data(self.x_train, self.vocab, self.doc_level_data)
+        self.x_train = DataHelperML.build_input_data(self.x_train, self.vocab, self.doc_level_data)
         self.x_train = self.pad_sentences(self.x_train, target_length=self.target_sent_len)
-        self.x_test = DataHelper.build_input_data(self.x_test, self.vocab, self.doc_level_data)
+        self.x_test = DataHelperML.build_input_data(self.x_test, self.vocab, self.doc_level_data)
         self.x_test = self.pad_sentences(self.x_test, target_length=self.target_sent_len)
 
         if self.doc_level_data == "doc" or self.doc_level_data == "comb":
@@ -456,24 +423,4 @@ class DataHelper:
 
     def get_doc_label(self):
         return self.labels_test
-
-    @staticmethod
-    def batch_iter(data, batch_size, num_epochs, shuffle=True):
-        """
-        Generates a batch iterator for a dataset.
-        """
-        data = np.array(data)
-        data_size = len(data)
-        num_batches_per_epoch = int(len(data) / batch_size) + 1
-        for epoch in range(num_epochs):
-            # Shuffle the data at each epoch
-            if shuffle:
-                shuffle_indices = np.random.permutation(np.arange(data_size))
-                shuffled_data = data[shuffle_indices]
-            else:
-                shuffled_data = data
-            for batch_num in range(num_batches_per_epoch):
-                start_index = batch_num * batch_size
-                end_index = min((batch_num + 1) * batch_size, data_size)
-                yield shuffled_data[start_index:end_index]
 
