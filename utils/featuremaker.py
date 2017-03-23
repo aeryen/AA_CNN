@@ -54,7 +54,7 @@ class FeatureMaker:
             temp = self._stf_pos_tagger.tag_sents(self._split_data[index:index+1000])
             tag_result.extend(temp)
             index += 1000
-            print ("pos:" + str(index)),
+            print("pos:" + str(index)),
         # tag_result = self._stf_pos_tagger.tag_sents(self._split_data)
         tag_result = [[unidecode(p[1]) for p in line] for line in tag_result]
 
@@ -68,7 +68,7 @@ class FeatureMaker:
         result = self._stf_parser.parse_sents(self._split_data)
         result = sum([[parse for parse in dep_graphs] for dep_graphs in result], [])
         for i in result:
-            print i
+            print(i)
 
     def per_word_length(self):
         wl_result = [[len(w) for w in line] for line in self._split_data]
@@ -141,9 +141,9 @@ if __name__ == "__main__":
 
     FM.pos_tag()
     FM.parser()
-    print FM.per_word_length()
-    print FM.sentence_avg_word_length()
-    print FM.sentence_length()
+    print(FM.per_word_length())
+    print(FM.sentence_avg_word_length())
+    print(FM.sentence_length())
     FM.load_sentiment_list()
     FM.sentiment_sequence()
 

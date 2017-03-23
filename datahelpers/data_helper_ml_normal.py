@@ -115,7 +115,7 @@ class DataHelper:
 
     def load_original_file(self, author_code, file_name):
         if not os.path.exists(os.path.dirname(self.training_data_dir + author_code + "/")):
-            print "error: " + author_code + " does not exit"
+            print("error: " + author_code + " does not exit")
             return
 
         original_txt = open(self.training_data_dir + author_code + "/" + file_name, "r").readlines()
@@ -170,7 +170,7 @@ class DataHelper:
             record.content = " ".join(record.content)
             # record.content = self.clean_str()
             content_len.append(len(record.content))
-        print "longest content: " + str(max(content_len))
+        print("longest content: " + str(max(content_len)))
         return data_list
 
     @staticmethod

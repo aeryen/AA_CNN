@@ -39,7 +39,7 @@ if __name__ == "__main__":
     # *NCrossSizeParallelConvNFC
     ################################################
     tt = tr.TrainTask(data_helper=dater, input_component=input_component, exp_name="NConvDocConvNFC",
-                      batch_size=32, dataset="ML", evaluate_every=5000, checkpoint_every=5000)
+                      batch_size=2, dataset="ML", evaluate_every=5000, checkpoint_every=5000)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
