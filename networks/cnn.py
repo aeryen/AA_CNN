@@ -27,7 +27,7 @@ class TextCNN:
         # input component
         if input_component == "OneChannel":
             self.input_comp = OneChannel(sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
-        if input_component == "OneChannel_DocLevel":
+        elif input_component == "OneChannel_DocLevel":
             self.input_comp = OneChannel_DocLevel(document_length, sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
         elif input_component == "SixChannel":
             self.input_comp = SixChannel(sequence_length, num_classes, word_vocab_size, embedding_size,
