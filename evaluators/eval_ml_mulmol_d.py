@@ -83,6 +83,7 @@ class evaler:
                 input_suff2 = graph.get_operation_by_name("input_suff2").outputs[0]
                 input_suff3 = graph.get_operation_by_name("input_suff3").outputs[0]
                 input_pos = graph.get_operation_by_name("input_pos").outputs[0]
+                is_training = graph.get_operation_by_name("is_training").outputs[0]
                 # input_y = graph.get_operation_by_name("input_y").outputs[0]
 
                 dropout_keep_prob = graph.get_operation_by_name("dropout_keep_prob").outputs[0]
@@ -110,10 +111,11 @@ class evaler:
                                        pref2_batches, pref3_batches, suff2_batches, suff3_batches,
                                        pos_batches):
                     batch_scores, batch_predictions = sess.run([scores, predictions],
-                                                               {input_x: x_test_batch, dropout_keep_prob: 1.0,
+                                                               {input_x: x_test_batch,
                                                                 input_pref2: pref2_batch, input_pref3: pref3_batch,
                                                                 input_suff2: suff2_batch, input_suff3: suff3_batch,
-                                                                input_pos: pos_batch})
+                                                                input_pos: pos_batch, dropout_keep_prob: 1.0,
+                                                                is_training: 0})
                     # print batch_predictions
                     if all_score is None:
                         all_score = batch_scores

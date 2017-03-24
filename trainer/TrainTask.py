@@ -240,7 +240,8 @@ class TrainTask:
                         cnn.input_suff3: suff3_batch,
                         cnn.input_pos: pos_batch,
 
-                        cnn.dropout_keep_prob: dropout_keep_prob
+                        cnn.dropout_keep_prob: dropout_keep_prob,
+                        cnn.is_training: 1
                     }
                     _, step, summaries, loss, accuracy = sess.run(
                         [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
@@ -262,7 +263,8 @@ class TrainTask:
                         cnn.input_suff2: suff2_batch,
                         cnn.input_suff3: suff3_batch,
                         cnn.input_pos: pos_batch,
-                        cnn.dropout_keep_prob: 1
+                        cnn.dropout_keep_prob: 1,
+                        cnn.is_training: 0
                     }
                     step, summaries, loss, accuracy = sess.run(
                         [global_step, dev_summary_op, cnn.loss, cnn.accuracy],

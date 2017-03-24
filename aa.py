@@ -13,7 +13,7 @@ if __name__ == "__main__":
         dater = DataHelperML(doc_level="sent", train_holdout=0.80, embed_type="glove", embed_dim=300)
         ev = evaler_one.evaler()
     elif input_component == "SixChannel":
-        dater = DataHelperMulMol6(doc_level="sent", train_holdout=0.80)
+        dater = DataHelperMulMol6(doc_level="sent", train_holdout=0.80, target_sent_len=50)
         ev = evaler.evaler()
     elif input_component == "OneChannel_DocLevel":
         dater = DataHelperML(doc_level="doc", train_holdout=0.80, embed_type="glove", embed_dim=300,
@@ -36,15 +36,16 @@ if __name__ == "__main__":
     # *NConvDocConvNFC
     # *ParallelJoinedConv
     # *NCrossSizeParallelConvNFC
+    # *InceptionLike
     ################################################
-    tt = tr.TrainTask(data_helper=dater, input_component=input_component, exp_name="ParallelJoinedConv",
-                      batch_size=32, dataset="ML", evaluate_every=1000, checkpoint_every=1000)
+    tt = tr.TrainTask(data_helper=dater, input_component=input_component, exp_name="InceptionLike",
+                      batch_size=8, dataset="ML", evaluate_every=5, checkpoint_every=5)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    ts = tt.training(filter_sizes=[[3, 4, 5]], num_filters=100, dropout_keep_prob=0.7, n_steps=10000, l2_lambda=0.1,
-                     dropout=True,
-                     batch_normalize=False, elu=False, n_conv=1, fc=[])
+    ts = tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=64, dropout_keep_prob=1.0, n_steps=30000, l2_lambda=0.1,
+                     dropout=False,
+                     batch_normalize=False, elu=True, n_conv=2, fc=[1024])
     end = timer()
     print(end - start)
 

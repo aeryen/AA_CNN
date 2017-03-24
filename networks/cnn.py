@@ -6,6 +6,7 @@ from middle_components.parallel_conv import NParallelConvOnePoolNFC
 from middle_components.parallel_size_joined_conv import NCrossSizeParallelConvNFC
 from middle_components.parallel_joined_conv import ParallelJoinedConv
 from middle_components.parallel_conv_DocLevel import NConvDocConvNFC
+from middle_components.inception_like import InceptionLike
 from output_components.pan_output import PANOutput
 from output_components.ml_output import MLOutput
 
@@ -67,6 +68,11 @@ class TextCNN:
                                                previous_component=self.input_comp, dropout=dropout,
                                                batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
                                                fc=fc)
+        elif middle_component == 'InceptionLike':
+            self.middle_comp = InceptionLike(sequence_length, embedding_size, filter_sizes, num_filters,
+                                                         previous_component=self.input_comp, dropout=dropout,
+                                                         batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
+                                                         fc=fc)
         else:
             raise NotImplementedError
 
