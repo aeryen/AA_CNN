@@ -27,16 +27,17 @@ if __name__ == "__main__":
     #
     # Input Components:
     #
-    # *OneChannel
-    # *SixChannel
+    # * OneChannel
+    # * SixChannel
+    # * OneChannel_DocLevel
     #
     # Middle Components:
     #
-    # *NParallelConvOnePoolNFC
-    # *NConvDocConvNFC
-    # *ParallelJoinedConv
-    # *NCrossSizeParallelConvNFC
-    # *InceptionLike
+    # * NParallelConvOnePoolNFC
+    # * NConvDocConvNFC
+    # * ParallelJoinedConv
+    # * NCrossSizeParallelConvNFC
+    # * InceptionLike
     ################################################
     tt = tr.TrainTask(data_helper=dater, input_component=input_component, exp_name="InceptionLike",
                       batch_size=8, dataset="ML", evaluate_every=5, checkpoint_every=5)

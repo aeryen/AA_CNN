@@ -6,6 +6,7 @@ import tensorflow as tf
 from networks.cnn import TextCNN
 from datahelpers import data_helper_ml_mulmol6_Read as dh6
 from datahelpers import data_helper_ml_normal as dh
+from utils.ArchiveManager import ArchiveManager
 
 
 class TrainTask:
@@ -24,23 +25,11 @@ class TrainTask:
         self.input_component = input_component
         self.dataset = dataset
         # the problem tag identifies the experiment setting, currently data name + experiment name
-        self.tag = self.data_hlp.problem_name + "_" + self.exp_name
-        self.exp_dir = "../runs/" + self.tag + "/"
-        if not os.path.exists(self.exp_dir):
-            os.makedirs(self.exp_dir)
-        self.log_name = self.exp_dir + "log.txt"
+        self.am = ArchiveManager(self.data_hlp.problem_name, self.exp_name)
+        self.am.get_exp_logger()
 
-        # logging facility, log both into file and console
-        logging.basicConfig(level=logging.DEBUG,
-                            format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-                            datefmt='%m-%d %H:%M',
-                            filename=self.log_name,
-                            filemode='aw')
-        console_logger = logging.StreamHandler()
-        logging.getLogger('').addHandler(console_logger)
-
-        logging.warning('TrainTask instance initiated')
-        logging.info("Logging to: " + self.log_name)
+        logging.warning('TrainTask instance initiated: ' + self.am.get_date())
+        logging.info("Logging to: " + self.am.get_exp_log_path())
 
         logging.info("current data is: " + self.data_hlp.problem_name)
         logging.info("current experiment is: " + self.exp_name)
@@ -50,7 +39,6 @@ class TrainTask:
         self.evaluate_every = evaluate_every
         self.checkpoint_every = checkpoint_every
 
-        # logging.info("setting: %s is %s", "filter_sizes", self.filter_sizes)
         logging.info("setting: %s is %s", "batch_size", self.batch_size)
         logging.info("setting: %s is %s", "evaluate_every", self.evaluate_every)
         logging.info("setting: %s is %s", "checkpoint_every", self.checkpoint_every)
