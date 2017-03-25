@@ -168,37 +168,6 @@ class DataHelperMulMol6(DataHelper):
         return [file_name_ordered, label_matrix_ordered, doc_size, origin_list, pos_list, wl_list, p2_list, p3_list,
                 s2_list, s3_list]
 
-    @staticmethod
-    def line_concat(data_list):
-        content_len = []
-        for record in data_list:
-            for l in record.content:
-                l += " <LB>"
-            record.content = " ".join(record.content)
-            # record.content = self.clean_str()
-            content_len.append(len(record.content))
-        print("longest content: " + str(max(content_len)))
-        return data_list
-
-    @staticmethod
-    def xy_formatter(data_list, author_list):
-        author_code = {}
-        code = 0
-        for key in author_list:
-            author_code[key] = code
-            code += 1
-        x = []
-        y = np.zeros((len(data_list), len(author_list)))
-        global_index = 0
-        for record in data_list:
-            doc = " <LB> ".join(record.content)
-            doc = DataHelperMulMol6.clean_str(doc)
-            doc = doc.split()
-            x.append(doc)
-            y[global_index, author_code[record.author]] = 1
-            global_index += 1
-        return x, y
-
     def build_vocab(self, reviews):
         # Build vocabulary
         word_counts = Counter(itertools.chain(*reviews))

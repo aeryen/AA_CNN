@@ -18,7 +18,7 @@ class TrainTask:
     Currently it only- works with ML data, i'll expand this to be more flexible in the near future.
     """
 
-    def __init__(self, data_helper, input_component, exp_name, do_dev_split=True, batch_size=64,
+    def __init__(self, data_helper, input_component, exp_name, batch_size=64,
                  dataset="ML", evaluate_every=1000, checkpoint_every=5000):
         self.data_hlp = data_helper
         self.exp_name = exp_name
@@ -28,6 +28,7 @@ class TrainTask:
         self.am = ArchiveManager(self.data_hlp.problem_name, self.exp_name)
         self.am.get_exp_logger()
 
+        logging.warning('===================================================')
         logging.warning('TrainTask instance initiated: ' + self.am.get_date())
         logging.info("Logging to: " + self.am.get_exp_log_path())
 
@@ -65,26 +66,29 @@ class TrainTask:
 
         logging.debug("Vocabulary Size: {:d}".format(len(self.data_hlp.vocab)))
 
-        self.do_dev_split = do_dev_split
-
-        if self.do_dev_split:
-            if "SixChannel" in input_component:
-                self.x_dev, self.pos_test, _, self.p2_test, self.p3_test, \
+        if "SixChannel" in input_component:
+            self.x_dev, self.pos_test, _, self.p2_test, self.p3_test, \
                 self.s2_test, self.s3_test, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
-            elif "OneChannel" in input_component:
-                self.x_dev, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
-            else:
-                raise NotImplementedError
-
-            logging.info("Train/Dev split: {:d}/{:d}".format(len(self.y_train), len(self.y_dev)))
+        elif "OneChannel" in input_component:
+            self.x_dev, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
         else:
-            self.x_dev = None
-            self.y_dev = None
-            logging.info("No Train/Dev split")
+            raise NotImplementedError
+
+        logging.info("Train/Dev split: {:d}/{:d}".format(len(self.y_train), len(self.y_dev)))
 
     def training(self, filter_sizes=[[3, 4, 5]], num_filters=100, dropout_keep_prob=1.0, n_steps=None, l2_lambda=0.0,
-                 dropout=False, batch_normalize=False,
-                 elu=False, n_conv=1, fc=[]):
+                 dropout=False, batch_normalize=False, elu=False, n_conv=1, fc=[]):
+        logging.info("setting: %s is %s", "filter_sizes", filter_sizes)
+        logging.info("setting: %s is %s", "num_filters", num_filters)
+        logging.info("setting: %s is %s", "dropout_keep_prob", dropout_keep_prob)
+        logging.info("setting: %s is %s", "n_steps", n_steps)
+        logging.info("setting: %s is %s", "l2_lambda", l2_lambda)
+        logging.info("setting: %s is %s", "dropout", dropout)
+        logging.info("setting: %s is %s", "batch_normalize", batch_normalize)
+        logging.info("setting: %s is %s", "elu", elu)
+        logging.info("setting: %s is %s", "n_conv", n_conv)
+        logging.info("setting: %s is %s", "fc", fc)
+
         if "DocLevel" in self.input_component:
             doc_length = self.x_train.shape[2]
         else:
@@ -93,30 +97,30 @@ class TrainTask:
         with tf.Graph().as_default():
             session_conf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
             sess = tf.Session(config=session_conf)
+            cnn = TextCNN(
+                document_length=doc_length,
+                sequence_length=self.x_train.shape[1],
+                num_classes=self.data_hlp.num_of_classes,  # Number of classification classes
+                word_vocab_size=len(self.data_hlp.vocab),
+                embedding_size=self.data_hlp.embedding_dim,
+                input_component=self.input_component,
+                middle_component=self.exp_name,
+                filter_sizes=filter_sizes,
+                num_filters=num_filters,
+                pref2_vocab_size=self.pref2_vocab_size,
+                pref3_vocab_size=self.pref3_vocab_size,
+                suff2_vocab_size=self.suff2_vocab_size,
+                suff3_vocab_size=self.suff3_vocab_size,
+                pos_vocab_size=self.pos_vocab_size,
+                dataset=self.dataset,
+                l2_reg_lambda=l2_lambda,
+                init_embedding=self.embed_matrix,
+                dropout=dropout,
+                batch_normalize=batch_normalize,
+                elu=elu,
+                n_conv=n_conv,
+                fc=fc)
             with sess.as_default():
-                cnn = TextCNN(
-                    sequence_length=self.x_train.shape[1],
-                    document_length=doc_length,
-                    num_classes=self.data_hlp.num_of_classes,  # Number of classification classes
-                    word_vocab_size=len(self.data_hlp.vocab),
-                    embedding_size=self.data_hlp.embedding_dim,
-                    input_component=self.input_component,
-                    middle_component=self.exp_name,
-                    filter_sizes=filter_sizes,
-                    num_filters=num_filters,
-                    pref2_vocab_size=self.pref2_vocab_size,
-                    pref3_vocab_size=self.pref3_vocab_size,
-                    suff2_vocab_size=self.suff2_vocab_size,
-                    suff3_vocab_size=self.suff3_vocab_size,
-                    pos_vocab_size=self.pos_vocab_size,
-                    dataset=self.dataset,
-                    l2_reg_lambda=l2_lambda,
-                    init_embedding=self.embed_matrix,
-                    dropout=dropout,
-                    batch_normalize=batch_normalize,
-                    elu=elu,
-                    n_conv=n_conv,
-                    fc=fc)
 
                 # Define Training procedure
 

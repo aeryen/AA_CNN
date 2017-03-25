@@ -1,12 +1,11 @@
 import collections
 import numpy as np
 import gensim
-import itertools
 import pickle
 import os
 import math
 import pkg_resources
-from collections import Counter
+import logging
 
 from datahelpers.DataHelper import DataHelper
 
@@ -47,47 +46,32 @@ class DataHelperML(DataHelper):
 
     def __init__(self, doc_level="comb", embed_dim=100, target_sent_len=220, target_doc_len=100, train_holdout=0.80,
                  embed_type="glove"):
-        # super(DataHelperML, self).__init__()
+        logging.info("Data Helper: " + __file__ + " initiated.")
+        logging.info("setting: %s is %s", "doc_level", doc_level)
+        logging.info("setting: %s is %s", "embed_type", embed_type)
+        logging.info("setting: %s is %s", "embed_dim", embed_dim)
+        logging.info("setting: %s is %s", "target_sent_len", target_sent_len)
+        logging.info("setting: %s is %s", "target_doc_len", target_doc_len)
+        logging.info("setting: %s is %s", "train_holdout", train_holdout)
+
         self.doc_level_data = doc_level
         self.embedding_dim = embed_dim
         self.target_sent_len = target_sent_len
         self.target_doc_len = target_doc_len
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
         self.truth_file_path = self.training_data_dir + "labels.csv"
-        self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
-        self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
         self.train_holdout = train_holdout
         self.embed_type = embed_type
+        self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
+        self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
         self.word2vec_model = None
-
-    @staticmethod
-    def read_one_file(file_path):
-        # if "tom_mitchell_3.txt" in file_path:
-        #     print "huh"
-
-        file_content = open(file_path, "r").readlines()
-        content = []
-        paragraph = []
-        for line in file_content:
-            line = line.strip()
-            if len(line) == 0 and len(paragraph) > 0:
-                paragraph = " ".join(paragraph)
-                content.extend(DataHelper.split_sentence(paragraph))
-                paragraph = []
-            elif len(line.split()) <= 2:
-                pass
-            else:
-                paragraph.append(line)
-        return content
 
     def load_original_file(self, author_code, file_name):
         if not os.path.exists(os.path.dirname(self.training_data_dir + author_code + "/")):
             print("error: " + author_code + " does not exit")
             return
-
         original_txt = open(self.training_data_dir + author_code + "/" + file_name, "r").readlines()
         original_txt = [line.split() for line in original_txt]
-
         return original_txt
 
     def __load_data(self):
@@ -128,52 +112,7 @@ class DataHelperML(DataHelper):
 
         return [file_name_ordered, label_matrix_ordered, doc_size, origin_list]
 
-    @staticmethod
-    def line_concat(data_list):
-        content_len = []
-        for record in data_list:
-            for l in record.content:
-                l += " <LB>"
-            record.content = " ".join(record.content)
-            # record.content = self.clean_str()
-            content_len.append(len(record.content))
-        print("longest content: " + str(max(content_len)))
-        return data_list
 
-    @staticmethod
-    def xy_formatter(data_list, author_list):
-        author_code = {}
-        code = 0
-        for key in author_list:
-            author_code[key] = code
-            code += 1
-        x = []
-        y = np.zeros((len(data_list), len(author_list)))
-        global_index = 0
-        for record in data_list:
-            doc = " <LB> ".join(record.content)
-            doc = DataHelper.clean_str(doc)
-            doc = doc.split()
-            x.append(doc)
-            y[global_index, author_code[record.author]] = 1
-            global_index += 1
-        return x, y
-
-    def build_vocab(self, reviews):
-        # Build vocabulary
-        word_counts = Counter(itertools.chain(*reviews))
-        # Mapping from index to word
-        vocabulary_inv = [x[0] for x in word_counts.most_common()]
-        vocabulary_inv.insert(0, "<PAD>")
-        vocabulary_inv.insert(1, "<UNK>")
-
-        print "size of vocabulary: " + str(len(vocabulary_inv))
-        # vocabulary_inv = list(sorted(vocabulary_inv))
-        vocabulary_inv = list(vocabulary_inv[:self.vocabulary_size])  # limit vocab size
-
-        # Mapping from word to index
-        vocabulary = {x: i for i, x in enumerate(vocabulary_inv)}
-        return [vocabulary, vocabulary_inv]
 
     def load_glove_vector(self):
         glove_lines = list(open(self.glove_path, "r").readlines())

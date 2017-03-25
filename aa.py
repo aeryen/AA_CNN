@@ -4,10 +4,14 @@ from datahelpers.data_helper_ml_normal import DataHelperML
 from trainer import TrainTask as tr
 from evaluators import eval_ml_mulmol_d as evaler
 from evaluators import eval_ml_origin as evaler_one
+from utils.ArchiveManager import ArchiveManager
 
 if __name__ == "__main__":
-
+    problem_name = "ML"
     input_component = "SixChannel"
+    experiment_name = "InceptionLike"
+
+    am = ArchiveManager(problem_name, experiment_name)
 
     if input_component == "OneChannel":
         dater = DataHelperML(doc_level="sent", train_holdout=0.80, embed_type="glove", embed_dim=300)

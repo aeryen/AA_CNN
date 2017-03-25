@@ -265,17 +265,6 @@ class DataHelper:
         #     print thing
         return data_list
 
-    def line_concat(self, data_list):
-        content_len = []
-        for record in data_list:
-            for l in record.content:
-                l += " <LB>"
-            record.content = " ".join(record.content)
-            # record.content = self.clean_str()
-            content_len.append(len(record.content))
-        print "longest content: " + str(max(content_len))
-        return data_list
-
     def author_label(self, data_list):
         author_list = self.author_order
         author_count = {}
