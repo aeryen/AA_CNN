@@ -3,6 +3,7 @@ import re
 import pickle
 import io
 from unidecode import unidecode
+import logging
 from datahelpers.DataHelper import DataHelper
 
 # THIS FILE LOADS PAN12 DATA PROBLEM A C I AND CONVERT THEM INTO MATRIX FOR CNN

@@ -3,12 +3,31 @@ import re
 from collections import Counter
 import itertools
 import gensim
+import logging
+import pkg_resources
 
 
 class DataHelper(object):
 
-    def __init__(self):
-        pass
+    def __init__(self, doc_level="comb", embed_type="glove", embed_dim=100, target_doc_len=100, target_sent_len=220,
+                 train_holdout=0.80):
+        logging.info("setting: %s is %s", "doc_level", doc_level)
+        logging.info("setting: %s is %s", "embed_type", embed_type)
+        logging.info("setting: %s is %s", "embed_dim", embed_dim)
+        logging.info("setting: %s is %s", "target_doc_len", target_doc_len)
+        logging.info("setting: %s is %s", "target_sent_len", target_sent_len)
+        logging.info("setting: %s is %s", "train_holdout", train_holdout)
+
+        self.doc_level_data = doc_level
+        self.embed_type = embed_type
+        self.embedding_dim = embed_dim
+        self.target_doc_len = target_doc_len
+        self.target_sent_len = target_sent_len
+        self.train_holdout = train_holdout
+
+        self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
+        self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
+        self.word2vec_model = None
 
     @staticmethod
     def clean_str(string):
@@ -81,6 +100,43 @@ class DataHelper(object):
         return word2vec_model
 
     @staticmethod
+    def build_glove_embedding(vocabulary_inv, glove_words, glove_vectors, embedding_dim):
+        np.random.seed(10)
+        embed_matrix = []
+        std = np.std(glove_vectors[0, :])
+        for word in vocabulary_inv:
+            if word in glove_words:
+                word_index = glove_words.index(word)
+                embed_matrix.append(glove_vectors[word_index, :])
+            else:
+                embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=embedding_dim))
+        embed_matrix = np.array(embed_matrix)
+        return embed_matrix
+
+    @staticmethod
+    def build_w2v_embedding(vocabulary_inv, model, embedding_dim):
+        np.random.seed(10)
+        embed_matrix = []
+        std = np.std(model["the"])
+        for word in vocabulary_inv:
+            if word in model:
+                embed_matrix.append(model[word])
+            else:
+                embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=embedding_dim))
+        embed_matrix = np.array(embed_matrix)
+        return embed_matrix
+
+    @staticmethod
+    def longest_sentence(input_list, print_content):
+        sent_lengths = [len(x) for x in input_list]
+        result_index = sorted(range(len(sent_lengths)), key=lambda i: sent_lengths[i])[-30:]
+        for i in result_index:
+            s = input_list[i]
+            print len(s)
+            if print_content:
+                print s
+
+    @staticmethod
     def line_concat(data_list):
         """connect sentences in a record into a single string"""
         content_len = []
@@ -90,7 +146,7 @@ class DataHelper(object):
             record.content = " ".join(record.content)
             # record.content = self.clean_str()
             content_len.append(len(record.content))
-        print("longest content: " + str(max(content_len)))
+        logging.info("longest content: " + str(max(content_len)))
         return data_list
 
     @staticmethod
@@ -128,7 +184,7 @@ class DataHelper(object):
         vocabulary_inv.insert(0, "<PAD>")
         vocabulary_inv.insert(1, "<UNK>")
 
-        print "size of vocabulary: " + str(len(vocabulary_inv))
+        logging.info("size of vocabulary: " + str(len(vocabulary_inv)))
         # vocabulary_inv = list(sorted(vocabulary_inv))
         vocabulary_inv = list(vocabulary_inv[:vocabulary_size])  # limit vocab size
 
@@ -146,6 +202,7 @@ class DataHelper(object):
         num_batches_per_epoch = int(len(data) / batch_size)
         if len(data) % batch_size > 0:
             num_batches_per_epoch += 1
+        logging.info("number of batches per epoch: " + str(num_batches_per_epoch))
         for epoch in range(num_epochs):
             # Shuffle the data at each epoch
             if shuffle:

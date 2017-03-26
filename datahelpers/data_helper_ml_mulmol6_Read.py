@@ -4,6 +4,7 @@ import numpy as np
 import os
 import math
 import pkg_resources
+import logging
 
 from datahelpers.DataHelper import DataHelper
 
@@ -52,17 +53,16 @@ class DataHelperMulMol6(DataHelper):
     target_sent_len = None
     target_doc_len = None
 
-    def __init__(self, doc_level="comb", embed_dim=100, target_sent_len=220, target_doc_len=100, train_holdout=0.80):
-        super(DataHelperMulMol6, self).__init__()
-        self.doc_level_data = doc_level
-        self.embedding_dim = embed_dim
-        self.target_sent_len = target_sent_len
-        self.target_doc_len = target_doc_len
+    def __init__(self, doc_level="comb", embed_type="glove", embed_dim=100, target_doc_len=100, target_sent_len=220,
+                 train_holdout=0.80):
+        logging.info("Data Helper: " + __file__ + " initiated.")
+
+        super(DataHelperMulMol6, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
+                                                target_doc_len=target_doc_len, target_sent_len=target_sent_len,
+                                                train_holdout=train_holdout)
+
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
         self.truth_file_path = self.training_data_dir + "labels.csv"
-        self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
-        self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
-        self.train_holdout = train_holdout
 
     def load_channel_file(self, author_code, file_name):
         if not os.path.exists(os.path.dirname(self.training_data_dir + author_code + "/")):
@@ -176,7 +176,7 @@ class DataHelperMulMol6(DataHelper):
         else:
             sent_lengths = [len(x) for x in docs]
             max_length = max(sent_lengths)
-            print "longest doc: " + str(max_length)
+            logging.info("longest sentence: " + str(max_length))
 
         if self.doc_level_data == "sent":
             padded_doc = []
@@ -214,7 +214,7 @@ class DataHelperMulMol6(DataHelper):
         else:
             doc_lengths = [len(d) for d in docs]
             tar_length = max(doc_lengths)
-            print "longest doc: " + str(tar_length)
+            logging.info("longest doc: " + str(tar_length))
 
         padded_doc = []
         sent_length = len(docs[0][0])
@@ -230,17 +230,6 @@ class DataHelperMulMol6(DataHelper):
                 new_doc = d[:tar_length]
             padded_doc.append(new_doc)
         return np.array(padded_doc)
-
-    @staticmethod
-    def longest_sentence(input_list, print_content):
-        sent_lengths = [len(x) for x in input_list]
-        result_index = sorted(range(len(sent_lengths)), key=lambda i: sent_lengths[i])[-30:]
-
-        for i in result_index:
-            s = input_list[i]
-            print len(s)
-            if print_content:
-                print s
 
     def train_test_shuf_split(self, file_id, labels, doc_size, origin, pos, wl, p2, p3, s2, s3):
         np.random.seed(10)

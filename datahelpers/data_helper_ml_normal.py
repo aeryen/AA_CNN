@@ -3,8 +3,8 @@ import numpy as np
 import pickle
 import os
 import math
-import pkg_resources
 import logging
+import pkg_resources
 
 from datahelpers.DataHelper import DataHelper
 
@@ -45,31 +45,18 @@ class DataHelperML(DataHelper):
 
     def __init__(self, doc_level="comb", embed_dim=100, target_sent_len=220, target_doc_len=100, train_holdout=0.80,
                  embed_type="glove"):
-        super(DataHelperML, self).__init__()
-
         logging.info("Data Helper: " + __file__ + " initiated.")
-        logging.info("setting: %s is %s", "doc_level", doc_level)
-        logging.info("setting: %s is %s", "embed_type", embed_type)
-        logging.info("setting: %s is %s", "embed_dim", embed_dim)
-        logging.info("setting: %s is %s", "target_sent_len", target_sent_len)
-        logging.info("setting: %s is %s", "target_doc_len", target_doc_len)
-        logging.info("setting: %s is %s", "train_holdout", train_holdout)
 
-        self.doc_level_data = doc_level
-        self.embedding_dim = embed_dim
-        self.target_sent_len = target_sent_len
-        self.target_doc_len = target_doc_len
+        super(DataHelperML, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
+                                           target_doc_len=target_doc_len, target_sent_len=target_sent_len,
+                                           train_holdout=train_holdout)
+
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
         self.truth_file_path = self.training_data_dir + "labels.csv"
-        self.train_holdout = train_holdout
-        self.embed_type = embed_type
-        self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
-        self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
-        self.word2vec_model = None
 
     def load_original_file(self, author_code, file_name):
         if not os.path.exists(os.path.dirname(self.training_data_dir + author_code + "/")):
-            print("error: " + author_code + " does not exit")
+            logging.error("error: " + author_code + " does not exit")
             return
         original_txt = open(self.training_data_dir + author_code + "/" + file_name, "r").readlines()
         original_txt = [line.split() for line in original_txt]
@@ -113,31 +100,6 @@ class DataHelperML(DataHelper):
 
         return [file_name_ordered, label_matrix_ordered, doc_size, origin_list]
 
-    def build_glove_embedding(self, vocabulary_inv, glove_words, glove_vectors):
-        np.random.seed(10)
-        embed_matrix = []
-        std = np.std(glove_vectors[0, :])
-        for word in vocabulary_inv:
-            if word in glove_words:
-                word_index = glove_words.index(word)
-                embed_matrix.append(glove_vectors[word_index, :])
-            else:
-                embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=self.embedding_dim))
-        embed_matrix = np.array(embed_matrix)
-        return embed_matrix
-
-    def build_w2v_embedding(self, vocabulary_inv, model):
-        np.random.seed(10)
-        embed_matrix = []
-        std = np.std(model["the"])
-        for word in vocabulary_inv:
-            if word in model:
-                embed_matrix.append(model[word])
-            else:
-                embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=self.embedding_dim))
-        embed_matrix = np.array(embed_matrix)
-        return embed_matrix
-
     @staticmethod
     def build_input_data(docs, vocabulary, doc_level):
         unk = vocabulary["<UNK>"]
@@ -157,7 +119,7 @@ class DataHelperML(DataHelper):
         else:
             sent_lengths = [len(x) for x in docs]
             max_length = max(sent_lengths)
-            print "longest doc: " + str(max_length)
+            logging.info("longest sentence: " + str(max_length))
 
         if self.doc_level_data == "sent":
             padded_doc = []
@@ -195,7 +157,7 @@ class DataHelperML(DataHelper):
         else:
             doc_lengths = [len(d) for d in docs]
             tar_length = max(doc_lengths)
-            print "longest doc: " + str(tar_length)
+            logging.info("longest doc: " + str(tar_length))
 
         padded_doc = []
         sent_length = len(docs[0][0])
@@ -212,18 +174,7 @@ class DataHelperML(DataHelper):
             padded_doc.append(new_doc)
         return np.array(padded_doc)
 
-    @staticmethod
-    def longest_sentence(input_list, print_content):
-        sent_lengths = [len(x) for x in input_list]
-        result_index = sorted(range(len(sent_lengths)), key=lambda i: sent_lengths[i])[-30:]
-
-        for i in result_index:
-            s = input_list[i]
-            print len(s)
-            if print_content:
-                print s
-
-    def train_test_shuf_split(self, file_id, labels, doc_size, origin, train_holdout = 0.80):
+    def train_test_shuf_split(self, file_id, labels, doc_size, origin, train_holdout=0.80):
         np.random.seed(10)
         shuffle_i = np.random.permutation(np.arange(len(labels)))
 
@@ -251,12 +202,6 @@ class DataHelperML(DataHelper):
             expand_y.extend(np.tile(y[i], [len(x[i]), 1]))
         return [expand_x, expand_y]
 
-    def expand_features_to_sentence(self, x):
-        expand_x = []
-        for x_doc in x:
-            expand_x.extend(x_doc)
-        return expand_x
-
     def get_comb_count(self, x):
         n = int(len(x) / 50)
         print "n = " + str(n)
@@ -280,7 +225,7 @@ class DataHelperML(DataHelper):
         [x_comb.extend(self.multi_sent_combine(doc)) for doc in x]
 
         for comb_index in range(len(x)):
-            label_comb.extend( np.tile(label[comb_index], [comb_size[comb_index], 1] ) )
+            label_comb.extend(np.tile(label[comb_index], [comb_size[comb_index], 1]))
             print "number of comb in document: " + str(comb_size[comb_index])
     
         return x_comb, label_comb, comb_size
@@ -312,10 +257,10 @@ class DataHelperML(DataHelper):
 
         if self.embed_type == "glove":
             [glove_words, glove_vectors] = self.load_glove_vector(self.glove_path)
-            self.embed_matrix = self.build_glove_embedding(self.vocab_inv, glove_words, glove_vectors)
+            self.embed_matrix = self.build_glove_embedding(self.vocab_inv, glove_words, glove_vectors, self.embedding_dim)
         else:
             self.word2vec_model = self.load_w2v_vector()
-            self.embed_matrix = self.build_w2v_embedding(self.vocab_inv, self.word2vec_model)
+            self.embed_matrix = self.build_w2v_embedding(self.vocab_inv, self.word2vec_model, self.embedding_dim)
 
         if self.doc_level_data == "comb":
             [self.x_train, self.labels_train, self.doc_size_train] = \

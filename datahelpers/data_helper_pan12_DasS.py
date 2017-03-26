@@ -4,7 +4,8 @@ import itertools
 import pickle
 import io
 from unidecode import unidecode
-from collections import Counter
+import logging
+
 from datahelpers.DataHelper import DataHelper
 
 # THIS FILE LOADS PAN12 DATA AND CONVERT EACH TRAINING DOCUMENT INTO A LONG VECTOR

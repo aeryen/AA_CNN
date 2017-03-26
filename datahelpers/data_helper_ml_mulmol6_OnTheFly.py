@@ -5,6 +5,7 @@ import math
 import os
 import pickle
 import pkg_resources
+import logging
 
 import numpy as np
 
@@ -48,13 +49,14 @@ class DataHelperMulMol6(DataHelper):
     target_doc_len = None
 
     def __init__(self, doc_level=False, embed_dim=100, target_sent_len=220, target_doc_len=100):
-        super(DataHelperMulMol6, self).__init__()
-        self.doc_level_data = doc_level
-        self.embedding_dim = embed_dim
-        self.target_sent_len = target_sent_len
-        self.target_doc_len = target_doc_len
-        self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
-        self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
+        logging.info("Data Helper: " + __file__ + " initiated.")
+
+        super(DataHelperMulMol6, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
+                                                target_doc_len=target_doc_len, target_sent_len=target_sent_len,
+                                                train_holdout=train_holdout)
+
+        self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
+        self.truth_file_path = self.training_data_dir + "labels.csv"
 
     def temp_write_channel_file(self, author_code, file_name, file_text_content):
         fm = featuremaker.FeatureMaker(file_text_content)
@@ -226,17 +228,6 @@ class DataHelperMulMol6(DataHelper):
                 new_doc = d[:tar_length]
             padded_doc.append(new_doc)
         return np.array(padded_doc)
-
-    @staticmethod
-    def longest_sentence(input_list, print_content):
-        sent_lengths = [len(x) for x in input_list]
-        result_index = sorted(range(len(sent_lengths)), key=lambda i: sent_lengths[i])[-30:]
-
-        for i in result_index:
-            s = input_list[i]
-            print len(s)
-            if print_content:
-                print s
 
     def train_test_split(self, file_id, labels, x, doc_size):
         np.random.seed(10)

@@ -4,6 +4,7 @@ import numpy as np
 import pickle
 from datahelpers.DataHelper import DataHelper
 import pkg_resources
+import logging
 
 # THIS FILE LOADS PAN11 DATA
 # CODE 0 IS SMALL TRAINING AND TESTING, CODE 1 IS LARGE TRAINING AND TESTING
@@ -54,6 +55,8 @@ class DataHelperPan11(DataHelper):
     truth_f = None
 
     def __init__(self, code):
+        logging.info("Data Helper: " + __file__ + " initiated.")
+
         super(DataHelperPan11, self).__init__()
 
         self.prob_code = code
@@ -336,15 +339,6 @@ class DataHelperPan11(DataHelper):
                 new_sentence = rev[:max_length]
             padded_sentences.append(new_sentence)
         return np.array(padded_sentences)
-
-    def longest_sentence(self, sentences):
-        sent_lengths = [len(x) for x in sentences]
-        result_index = sorted(range(len(sent_lengths)), key=lambda i: sent_lengths[i])[-10:]
-
-        for i in result_index:
-            s = sentences[i]
-            print len(s)
-            print s
 
     def load_data(self):
         # o = DataHelper(file_to_load)

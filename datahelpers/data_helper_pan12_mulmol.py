@@ -7,6 +7,7 @@ import numpy as np
 from unidecode import unidecode
 
 from utils import featuremaker
+import logging
 from datahelpers.DataHelper import DataHelper
 
 # THIS CLASS IS SIMILAR TO PAN12 BUT LOAD DATA AND TRY TO LABEL 5 OTHER "CHANNEL"
