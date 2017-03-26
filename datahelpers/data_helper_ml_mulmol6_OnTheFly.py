@@ -18,7 +18,7 @@ from datahelpers.DataHelper import DataHelper
 
 class DataHelperMulMol6(DataHelper):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
-    problem_name = "ML_Data"
+    problem_name = "ML"
 
     training_data_dir = "./data/ml_dataset/"
     truth_file_path = "./data/ml_dataset/labels.csv"

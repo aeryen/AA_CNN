@@ -8,9 +8,6 @@ import pkg_resources
 
 from datahelpers.DataHelper import DataHelper
 
-# THIS FILE LOADS PAN11 DATA
-# CODE 0 IS SMALL TRAINING AND TESTING, CODE 1 IS LARGE TRAINING AND TESTING
-
 
 class DataHelperML(DataHelper):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])

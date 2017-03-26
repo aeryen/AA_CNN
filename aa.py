@@ -5,21 +5,23 @@ from trainer import TrainTask as tr
 from evaluators import eval_ml_mulmol_d as evaler
 from evaluators import eval_ml_origin as evaler_one
 from utils.ArchiveManager import ArchiveManager
+import logging
+
 
 if __name__ == "__main__":
-    problem_name = "ML"
-    input_component = "SixChannel"
-    experiment_name = "InceptionLike"
+    input_component = "ML_Six"
+    middle_component = "InceptionLike"
 
-    am = ArchiveManager(problem_name, experiment_name)
+    am = ArchiveManager(input_component, middle_component)
+    logging.warning('===================================================')
 
-    if input_component == "OneChannel":
+    if input_component == "ML_One":
         dater = DataHelperML(doc_level="sent", train_holdout=0.80, embed_type="glove", embed_dim=300)
         ev = evaler_one.evaler()
-    elif input_component == "SixChannel":
+    elif input_component == "ML_Six":
         dater = DataHelperMulMol6(doc_level="sent", train_holdout=0.80, target_sent_len=50)
         ev = evaler.evaler()
-    elif input_component == "OneChannel_DocLevel":
+    elif input_component == "ML_One_DocLevel":
         dater = DataHelperML(doc_level="doc", train_holdout=0.80, embed_type="glove", embed_dim=300,
                              target_doc_len=128, target_sent_len=128)
         ev = evaler_one.evaler()
@@ -43,8 +45,8 @@ if __name__ == "__main__":
     # * NCrossSizeParallelConvNFC
     # * InceptionLike
     ################################################
-    tt = tr.TrainTask(data_helper=dater, input_component=input_component, exp_name="InceptionLike",
-                      batch_size=8, dataset="ML", evaluate_every=5, checkpoint_every=5)
+    tt = tr.TrainTask(data_helper=dater, input_component=input_component, exp_name=middle_component,
+                      batch_size=8, evaluate_every=5, checkpoint_every=5)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 

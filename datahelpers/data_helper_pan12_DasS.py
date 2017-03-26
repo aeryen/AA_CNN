@@ -65,6 +65,8 @@ class DataHelperPan12(DataHelper):
     problem_name = None
 
     def set_problem(self, target_ac, embedding_dim):
+        logging.info("Data Helper: " + __file__ + " initiated.")
+
         if target_ac == self.author_codes_A or target_ac == self.author_codes_C or target_ac == self.author_codes_I:
             self.author_codes = target_ac
         else:
@@ -76,7 +78,7 @@ class DataHelperPan12(DataHelper):
             self.test_author_index = self.test_author_index_A
             self.test_file_name = self.test_file_name_A
             self.sentence_cut = self.test_sentence_cut[0]
-            self.problem_name = "A"
+            self.problem_name = "PAN12A"
             self.encode = self.encodings[0]
             self.doc_cut = self.test_doc_cut[0]
         elif self.author_codes == self.author_codes_C:
@@ -85,7 +87,7 @@ class DataHelperPan12(DataHelper):
             self.test_author_index = self.test_author_index_C
             self.test_file_name = self.test_file_name_C
             self.sentence_cut = self.test_sentence_cut[1]
-            self.problem_name = "C"
+            self.problem_name = "PAN12C"
             self.encode = self.encodings[1]
             self.doc_cut = self.test_doc_cut[1]
         elif self.author_codes == self.author_codes_I:
@@ -94,7 +96,7 @@ class DataHelperPan12(DataHelper):
             self.test_author_index = self.test_author_index_I
             self.test_file_name = self.test_file_name_I
             self.sentence_cut = self.test_sentence_cut[2]
-            self.problem_name = "I"
+            self.problem_name = "PAN12I"
             self.encode = self.encodings[2]
             self.doc_cut = self.test_doc_cut[2]
         self.embedding_dim = embedding_dim

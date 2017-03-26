@@ -11,7 +11,7 @@ from datahelpers.DataHelper import DataHelper
 
 class DataHelperMulMol6(DataHelper):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
-    problem_name = "ML_Data"
+    problem_name = "ML"
 
     vocabulary_size = 20000
     embedding_dim = 100

@@ -80,9 +80,9 @@ class TextCNN:
 
         prev_layer, num_nodes = self.middle_comp.get_last_layer_info()
         # output component
-        if dataset == "ML":
+        if "ML" in dataset:
             output = MLOutput(self.input_comp.input_y, prev_layer, num_nodes, num_classes, l2_reg_lambda)
-        elif dataset == "PAN":
+        elif "PAN" in dataset:
             output = PANOutput(self.input_comp.input_y, prev_layer, num_nodes, num_classes, l2_reg_lambda)
             self.rate_percentage = output.rate_percentage
         else:

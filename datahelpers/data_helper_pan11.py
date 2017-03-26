@@ -44,7 +44,7 @@ class DataHelperPan11(DataHelper):
     vocabulary_size = 30000
     embedding_dim = 300
 
-    problem_name_options = ["small", "large"]
+    problem_name_options = ["PAN11small", "PAN11large"]
     problem_name = None
 
     prob_code = None

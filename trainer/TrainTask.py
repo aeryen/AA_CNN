@@ -19,16 +19,14 @@ class TrainTask:
     """
 
     def __init__(self, data_helper, input_component, exp_name, batch_size=64,
-                 dataset="ML", evaluate_every=1000, checkpoint_every=5000):
+                 evaluate_every=1000, checkpoint_every=5000):
         self.data_hlp = data_helper
         self.exp_name = exp_name
         self.input_component = input_component
-        self.dataset = dataset
         # the problem tag identifies the experiment setting, currently data name + experiment name
         self.am = ArchiveManager(self.data_hlp.problem_name, self.exp_name)
         self.am.get_exp_logger()
 
-        logging.warning('===================================================')
         logging.warning('TrainTask instance initiated: ' + self.am.get_date())
         logging.info("Logging to: " + self.am.get_exp_log_path())
 
@@ -112,7 +110,7 @@ class TrainTask:
                 suff2_vocab_size=self.suff2_vocab_size,
                 suff3_vocab_size=self.suff3_vocab_size,
                 pos_vocab_size=self.pos_vocab_size,
-                dataset=self.dataset,
+                dataset=self.data_hlp.problem_name,
                 l2_reg_lambda=l2_lambda,
                 init_embedding=self.embed_matrix,
                 dropout=dropout,
