@@ -99,9 +99,9 @@ class DataHelper:
         return x, y
 
     @staticmethod
-    def build_vocab(reviews):
+    def build_vocab(data, vocabulary_size):
         # Build vocabulary
-        word_counts = Counter(itertools.chain(*reviews))
+        word_counts = Counter(itertools.chain(*data))
         # Mapping from index to word
         vocabulary_inv = [x[0] for x in word_counts.most_common()]
         vocabulary_inv.insert(0, "<PAD>")
@@ -109,7 +109,7 @@ class DataHelper:
 
         print "size of vocabulary: " + str(len(vocabulary_inv))
         # vocabulary_inv = list(sorted(vocabulary_inv))
-        vocabulary_inv = list(vocabulary_inv[:self.vocabulary_size])  # limit vocab size
+        vocabulary_inv = list(vocabulary_inv[:vocabulary_size])  # limit vocab size
 
         # Mapping from word to index
         vocabulary = {x: i for i, x in enumerate(vocabulary_inv)}

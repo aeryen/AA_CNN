@@ -168,9 +168,9 @@ class DataHelperMulMol6(DataHelper):
         return [file_name_ordered, label_matrix_ordered, doc_size, origin_list, pos_list, wl_list, p2_list, p3_list,
                 s2_list, s3_list]
 
-    def build_vocab(self, reviews):
+    def build_vocab(self, data):
         # Build vocabulary
-        word_counts = Counter(itertools.chain(*reviews))
+        word_counts = Counter(itertools.chain(*data))
         # Mapping from index to word
         vocabulary_inv = [x[0] for x in word_counts.most_common()]
         vocabulary_inv.insert(0, "<PAD>")
