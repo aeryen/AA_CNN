@@ -1,16 +1,15 @@
-import xml.etree.ElementTree as ET
 import collections
 import re
 import numpy as np
-import itertools
 import pickle
-from collections import Counter
+from datahelpers.DataHelper import DataHelper
+import pkg_resources
 
 # THIS FILE LOADS PAN11 DATA
 # CODE 0 IS SMALL TRAINING AND TESTING, CODE 1 IS LARGE TRAINING AND TESTING
 
 
-class DataHelper:
+class DataHelperPan11(DataHelper):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
     Small_Author_Order = ['965226', '543719', 'x16198468117121', '997109', '464635',
                           '940826', '698837', 'x41117151611103260461997140', '636010',
@@ -55,6 +54,8 @@ class DataHelper:
     truth_f = None
 
     def __init__(self, code):
+        super(DataHelperPan11, self).__init__()
+
         self.prob_code = code
         if code == 0:
             self.author_order = self.Small_Author_Order
@@ -66,8 +67,11 @@ class DataHelper:
         self.test_f = self.testing_options[self.prob_code]
         self.truth_f = self.truth_options[self.prob_code]
         self.problem_name = self.problem_name_options[self.prob_code]
+        self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
+        self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
 
-    def clean_str(self, string):
+    @staticmethod
+    def clean_str(string):
         # TODO: need more thought
         string = re.sub("\"([\w])", "\" \\1", string)
         string = re.sub("([\w])\"", "\\1 \"", string)
@@ -284,40 +288,6 @@ class DataHelper:
 
         return author_list, author_count
 
-    def xy_formatter(self, data_list, author_list):
-        author_code = {}
-        code = 0
-        for key in author_list:
-            author_code[key] = code
-            code += 1
-        x = []
-        y = np.zeros((len(data_list), len(author_list)))
-        global_index = 0
-        for record in data_list:
-            doc = " <LB> ".join(record.content)
-            doc = self.clean_str(doc)
-            doc = doc.split()
-            x.append(doc)
-            y[global_index, author_code[record.author]] = 1
-            global_index += 1
-        return x, y
-
-    def build_vocab(self, reviews):
-        # Build vocabulary
-        word_counts = Counter(itertools.chain(*reviews))
-        # Mapping from index to word
-        vocabulary_inv = [x[0] for x in word_counts.most_common()]
-        vocabulary_inv.insert(0, "<PAD>")
-        vocabulary_inv.insert(1, "<UNK>")
-
-        print "size of vocabulary: " + str(len(vocabulary_inv))
-        # vocabulary_inv = list(sorted(vocabulary_inv))
-        vocabulary_inv = list(vocabulary_inv[:self.vocabulary_size])  # limit vocab size
-
-        # Mapping from word to index
-        vocabulary = {x: i for i, x in enumerate(vocabulary_inv)}
-        return [vocabulary, vocabulary_inv]
-
     def load_glove_vector(self):
         glove_lines = list(open("./glove.6B."+str(self.embedding_dim)+"d.txt", "r").readlines())
         glove_lines = [s.split(" ", 1) for s in glove_lines if (len(s) > 0 and s != "\n")]
@@ -384,7 +354,7 @@ class DataHelper:
         x, y = self.xy_formatter(data_list, author_list)
         # self.longest_sentence(x)
 
-        vocab, vocab_inv = self.build_vocab(x)
+        vocab, vocab_inv = self.build_vocab(x, self.vocabulary_size)
         pickle.dump([vocab, vocab_inv], open("pan11_vocabulary_"+str(self.prob_code)+".pickle", "wb"))
 
         [glove_words, glove_vectors] = self.load_glove_vector()
@@ -410,7 +380,7 @@ class DataHelper:
 
 
 if __name__ == "__main__":
-    o = DataHelper(1)
+    o = DataHelperPan11(1)
     o.load_data()
     # o.load_test_data()
     print "o"

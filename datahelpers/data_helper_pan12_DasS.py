@@ -5,12 +5,14 @@ import pickle
 import io
 from unidecode import unidecode
 from collections import Counter
+from datahelpers.DataHelper import DataHelper
 
 # THIS FILE LOADS PAN12 DATA AND CONVERT EACH TRAINING DOCUMENT INTO A LONG VECTOR
 # PRETENDING EACH DOCUMENT TO BE AN SENTENCE (DOCUMENT AS SENTENCE)
 # IMPORT AND USE load_data() AND load_test_data()
 
-class DataHelper:
+
+class DataHelperPan12(DataHelper):
     author_codes_A = ["A", "B", "C"]
     #                  0    1    2
     author_codes_C = ["A", "B", "C", "D", "E", "F", "G", "H"]
@@ -96,7 +98,8 @@ class DataHelper:
             self.doc_cut = self.test_doc_cut[2]
         self.embedding_dim = embedding_dim
 
-    def clean_str(self, string):
+    @staticmethod
+    def clean_str(string):
         # TODO: need more thought
         """
         Tokenization/string cleaning for all datasets except for SST.
@@ -247,26 +250,6 @@ class DataHelper:
             padded_sentences.append(new_sentence)
         return np.array(padded_sentences)
 
-    def build_vocab(self, reviews):
-        """
-        Builds a vocabulary mapping from word to index based on the sentences.
-        Returns vocabulary mapping and inverse vocabulary mapping.
-        """
-        # Build vocabulary
-        word_counts = Counter(itertools.chain(*reviews))
-        # Mapping from index to word
-        vocabulary_inv = [x[0] for x in word_counts.most_common()]
-        vocabulary_inv.insert(0, "<PAD>")
-        vocabulary_inv.insert(1, "<UNK>")
-
-        print "size of vocabulary: " + str(len(vocabulary_inv))
-        # vocabulary_inv = list(sorted(vocabulary_inv))
-        vocabulary_inv = list(vocabulary_inv[:self.vocabulary_size])  # limit vocab size
-
-        # Mapping from word to index
-        vocabulary = {x: i for i, x in enumerate(vocabulary_inv)}
-        return [vocabulary, vocabulary_inv]
-
     def build_input_data(self, reviews, labels, vocabulary):
         """
         Maps sentencs and labels to vectors based on a vocabulary.
@@ -345,7 +328,7 @@ class DataHelper:
         """
         # Load and preprocess data
         sentences, labels, doc_sentence, author_sentence = self.load_data_and_labels()
-        vocabulary, vocabulary_inv = self.build_vocab(sentences)
+        vocabulary, vocabulary_inv = self.build_vocab(sentences, self.vocabulary_size)
         pickle.dump([vocabulary, vocabulary_inv], open(self.file_name[0] + "_vocabulary.pickle", "wb"))
 
         [glove_words, glove_vectors] = self.load_glove_vector()
@@ -385,30 +368,9 @@ class DataHelper:
         x = self.pad_sentences(x)
         return [x, y, vocabulary, vocabulary_inv, chunk_per_doc]
 
-    @staticmethod
-    def batch_iter(data, batch_size, num_epochs, shuffle=True):
-        """
-        Generates a batch iterator for a dataset.
-        """
-        data = np.array(data)
-        data_size = len(data)
-        num_batches_per_epoch = int(len(data) / batch_size) + 1
-        for epoch in range(num_epochs):
-            # Shuffle the data at each epoch
-            if shuffle:
-                shuffle_indices = np.random.permutation(np.arange(data_size))
-                shuffled_data = data[shuffle_indices]
-            else:
-                shuffled_data = data
-            for batch_num in range(num_batches_per_epoch):
-                start_index = batch_num * batch_size
-                end_index = min((batch_num + 1) * batch_size, data_size)
-                yield shuffled_data[start_index:end_index]
-
-
 if __name__ == "__main__":
-    dh = DataHelper()
-    dh.set_problem(DataHelper.author_codes_C, 100)
+    dh = DataHelperPan12()
+    dh.set_problem(DataHelperPan12.author_codes_C, 100)
     x, y, vocabulary, vocabulary_inv, embed_matrix = dh.load_data()
     x, y, vocabulary, vocabulary_inv, file_sizes = dh.load_test_data()
     print "a"

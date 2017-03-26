@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 
-import datahelpers.data_helper_mulmol as dh
+import datahelpers.data_helper_pan12_mulmol as dh
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
@@ -194,8 +194,8 @@ if __name__ == "__main__":
     step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
 
     # dater = dh.DataHelper(1)
-    dater = dh.DataHelper()
-    dater.set_problem(dh.DataHelper.author_codes_I, 100)
+    dater = dh.DataHelperMulMol6()
+    dater.set_problem(dh.DataHelperMulMol6.author_codes_I, 100)
 
     e = evaler()
     e.load(dater)

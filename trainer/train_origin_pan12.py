@@ -13,7 +13,7 @@ from networks.cnn_pan_origin import TextCNN
 
 
 def init_data(prob_code, embed_dimension, do_dev_split=False):
-    dater = dh.DataHelper()
+    dater = dh.DataHelperPan12()
     dater.set_problem(prob_code, embed_dimension)
 
     # Model Hyperparameters
@@ -175,7 +175,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
                 writer.add_summary(summaries, step)
 
         # Generate batches
-        batches = dh.DataHelper.batch_iter(list(zip(x_train, y_train)), FLAGS.batch_size, FLAGS.num_epochs)
+        batches = dh.DataHelperPan12.batch_iter(list(zip(x_train, y_train)), FLAGS.batch_size, FLAGS.num_epochs)
 
         if test_x is not None and test_y is not None:
             test_x_1 = test_x[:100]
@@ -190,7 +190,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
             current_step = tf.train.global_step(sess, global_step)
             if DO_DEV_SPLIT and current_step % FLAGS.evaluate_every == 0:
                 print("\nEvaluation:")
-                dev_batches = dh.DataHelper.batch_iter(list(zip(x_dev, y_dev)), 100, 1)
+                dev_batches = dh.DataHelperPan12.batch_iter(list(zip(x_dev, y_dev)), 100, 1)
                 for dev_batch in dev_batches:
                     if len(dev_batch) > 0:
                         small_dev_x, small_dev_y = zip(*dev_batch)
@@ -210,7 +210,7 @@ DO_DEV_SPLIT = False
 bold_step = [2500, 3000, 3500, 4000, 4500]
 bold_step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
 
-problem = dh.DataHelper.author_codes_I
+problem = dh.DataHelperPan12.author_codes_I
 embed_dim = 300
 
 output_file = open("probI_longTrain_300d_ba_trueS.txt", mode="aw")

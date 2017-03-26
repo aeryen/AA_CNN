@@ -1,6 +1,5 @@
 import collections
 import numpy as np
-import gensim
 import pickle
 import os
 import math
@@ -46,6 +45,8 @@ class DataHelperML(DataHelper):
 
     def __init__(self, doc_level="comb", embed_dim=100, target_sent_len=220, target_doc_len=100, train_holdout=0.80,
                  embed_type="glove"):
+        super(DataHelperML, self).__init__()
+
         logging.info("Data Helper: " + __file__ + " initiated.")
         logging.info("setting: %s is %s", "doc_level", doc_level)
         logging.info("setting: %s is %s", "embed_type", embed_type)
@@ -111,22 +112,6 @@ class DataHelperML(DataHelper):
         doc_size = np.array(doc_size)
 
         return [file_name_ordered, label_matrix_ordered, doc_size, origin_list]
-
-
-
-    def load_glove_vector(self):
-        glove_lines = list(open(self.glove_path, "r").readlines())
-        glove_lines = [s.split(" ", 1) for s in glove_lines if (len(s) > 0 and s != "\n")]
-        glove_words = [s[0] for s in glove_lines]
-        vector_list = [s[1] for s in glove_lines]
-        glove_vectors = np.array([np.fromstring(line, dtype=float, sep=' ') for line in vector_list])
-        return [glove_words, glove_vectors]
-
-    def load_w2v_vector(self):
-        self.word2vec_model = gensim.models.KeyedVectors.load_word2vec_format(
-            '../datahelpers/w2v/GoogleNews-vectors-negative300.bin',
-            binary=True)
-        return self.word2vec_model
 
     def build_glove_embedding(self, vocabulary_inv, glove_words, glove_vectors):
         np.random.seed(10)
@@ -316,7 +301,7 @@ class DataHelperML(DataHelper):
 
         x_concat_exp = np.concatenate([x_training_exp, x_test_exp], axis=0)
         # self.longest_sentence(x_concat_exp, True)
-        self.vocab, self.vocab_inv = self.build_vocab(x_concat_exp)
+        self.vocab, self.vocab_inv = self.build_vocab(x_concat_exp, self.vocabulary_size)
         pickle.dump([self.vocab, self.vocab_inv], open("ml_vocabulary.pickle", "wb"))
 
         if self.doc_level_data == "sent":
@@ -326,11 +311,11 @@ class DataHelperML(DataHelper):
             self.labels_test = labels_test_exp
 
         if self.embed_type == "glove":
-            [glove_words, glove_vectors] = self.load_glove_vector()
+            [glove_words, glove_vectors] = self.load_glove_vector(self.glove_path)
             self.embed_matrix = self.build_glove_embedding(self.vocab_inv, glove_words, glove_vectors)
         else:
-            model = self.load_w2v_vector()
-            self.embed_matrix = self.build_w2v_embedding(self.vocab_inv,model)
+            self.word2vec_model = self.load_w2v_vector()
+            self.embed_matrix = self.build_w2v_embedding(self.vocab_inv, self.word2vec_model)
 
         if self.doc_level_data == "comb":
             [self.x_train, self.labels_train, self.doc_size_train] = \

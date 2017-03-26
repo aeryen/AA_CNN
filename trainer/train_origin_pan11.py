@@ -175,7 +175,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
                 writer.add_summary(summaries, step)
 
         # Generate batches
-        batches = dh_old.DataHelper.batch_iter(list(zip(x_train, y_train)), FLAGS.batch_size, FLAGS.num_epochs)
+        batches = dh_old.DataHelperPan12.batch_iter(list(zip(x_train, y_train)), FLAGS.batch_size, FLAGS.num_epochs)
 
         if test_x is not None and test_y is not None:
             test_x_1 = test_x[:100]
@@ -190,7 +190,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
             current_step = tf.train.global_step(sess, global_step)
             if DO_DEV_SPLIT and current_step % FLAGS.evaluate_every == 0:
                 print("\nEvaluation:")
-                dev_batches = dh_old.DataHelper.batch_iter(list(zip(x_dev, y_dev)), 100, 1)
+                dev_batches = dh_old.DataHelperPan12.batch_iter(list(zip(x_dev, y_dev)), 100, 1)
                 for dev_batch in dev_batches:
                     if len(dev_batch) > 0:
                         small_dev_x, small_dev_y = zip(*dev_batch)

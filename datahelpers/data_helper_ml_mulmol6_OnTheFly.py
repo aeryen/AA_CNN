@@ -4,8 +4,7 @@ import itertools
 import math
 import os
 import pickle
-import re
-from collections import Counter
+import pkg_resources
 
 import numpy as np
 
@@ -40,8 +39,6 @@ class DataHelperMulMol6(DataHelper):
     doc_size_train = None
     doc_size_test = None
 
-    labels_test = None
-
     vocab = None
     vocab_inv = None
     embed_matrix = None
@@ -51,31 +48,13 @@ class DataHelperMulMol6(DataHelper):
     target_doc_len = None
 
     def __init__(self, doc_level=False, embed_dim=100, target_sent_len=220, target_doc_len=100):
-        # super(DataHelperMulMol6, self).__init__()
+        super(DataHelperMulMol6, self).__init__()
         self.doc_level_data = doc_level
         self.embedding_dim = embed_dim
         self.target_sent_len = target_sent_len
         self.target_doc_len = target_doc_len
-
-    @staticmethod
-    def read_one_file(file_path):
-        # if "tom_mitchell_3.txt" in file_path:
-        #     print "huh"
-
-        file_content = open(file_path, "r").readlines()
-        content = []
-        paragraph = []
-        for line in file_content:
-            line = line.strip()
-            if len(line) == 0 and len(paragraph) > 0:
-                paragraph = " ".join(paragraph)
-                content.extend(DataHelperMulMol6.split_sentence(paragraph))
-                paragraph = []
-            elif len(line.split()) <= 2:
-                pass
-            else:
-                paragraph.append(line)
-        return content
+        self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
+        self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
 
     def temp_write_channel_file(self, author_code, file_name, file_text_content):
         fm = featuremaker.FeatureMaker(file_text_content)
@@ -160,30 +139,6 @@ class DataHelperMulMol6(DataHelper):
         doc_size = np.array(doc_size)
 
         return [file_id_ordered, label_matrix_ordered, data_list, doc_size]
-
-    def build_vocab(self, data):
-        # Build vocabulary
-        word_counts = Counter(itertools.chain(*data))
-        # Mapping from index to word
-        vocabulary_inv = [x[0] for x in word_counts.most_common()]
-        vocabulary_inv.insert(0, "<PAD>")
-        vocabulary_inv.insert(1, "<UNK>")
-
-        print "size of vocabulary: " + str(len(vocabulary_inv))
-        # vocabulary_inv = list(sorted(vocabulary_inv))
-        vocabulary_inv = list(vocabulary_inv[:self.vocabulary_size])  # limit vocab size
-
-        # Mapping from word to index
-        vocabulary = {x: i for i, x in enumerate(vocabulary_inv)}
-        return [vocabulary, vocabulary_inv]
-
-    def load_glove_vector(self):
-        glove_lines = list(open("./glove.6B." + str(self.embedding_dim) + "d.txt", "r").readlines())
-        glove_lines = [s.split(" ", 1) for s in glove_lines if (len(s) > 0 and s != "\n")]
-        glove_words = [s[0] for s in glove_lines]
-        vector_list = [s[1] for s in glove_lines]
-        glove_vectors = np.array([np.fromstring(line, dtype=float, sep=' ') for line in vector_list])
-        return [glove_words, glove_vectors]
 
     def build_embedding(self, vocabulary_inv, glove_words, glove_vectors):
         np.random.seed(10)
@@ -324,7 +279,7 @@ class DataHelperMulMol6(DataHelper):
 
         x_concat_exp = np.concatenate([x_training_exp, x_test_exp], axis=0)
         self.longest_sentence(x_concat_exp, True)
-        self.vocab, self.vocab_inv = self.build_vocab(x_concat_exp)
+        self.vocab, self.vocab_inv = self.build_vocab(x_concat_exp, self.vocabulary_size)
         pickle.dump([self.vocab, self.vocab_inv], open("ml_vocabulary.pickle", "wb"))
 
         if not self.doc_level_data:
@@ -333,7 +288,7 @@ class DataHelperMulMol6(DataHelper):
             self.x_test = x_test_exp
             self.labels_test = labels_test_exp
 
-        [glove_words, glove_vectors] = self.load_glove_vector()
+        [glove_words, glove_vectors] = self.load_glove_vector(self.glove)
         self.embed_matrix = self.build_embedding(self.vocab_inv, glove_words, glove_vectors)
 
         self.x_train = DataHelperMulMol6.build_input_data(self.x_train, self.vocab, self.doc_level_data)
@@ -363,7 +318,6 @@ class DataHelperMulMol6(DataHelper):
 
     def get_doc_label(self):
         return self.labels_test
-
 
 
 if __name__ == "__main__":

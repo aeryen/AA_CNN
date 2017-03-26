@@ -169,7 +169,7 @@ class evaler:
 if __name__ == "__main__":
     bold_step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
 
-    dater = dh.DataHelper(1)
+    dater = dh.DataHelperPan11(1)
     e = evaler()
     e.load(dater)
     output_file = open("pan12_large.txt", mode="aw")

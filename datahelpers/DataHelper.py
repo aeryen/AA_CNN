@@ -2,9 +2,10 @@ import numpy as np
 import re
 from collections import Counter
 import itertools
+import gensim
 
 
-class DataHelper:
+class DataHelper(object):
 
     def __init__(self):
         pass
@@ -64,6 +65,22 @@ class DataHelper:
         return content
 
     @staticmethod
+    def load_glove_vector(glove_path):
+        glove_lines = list(open(glove_path, "r").readlines())
+        glove_lines = [s.split(" ", 1) for s in glove_lines if (len(s) > 0 and s != "\n")]
+        glove_words = [s[0] for s in glove_lines]
+        vector_list = [s[1] for s in glove_lines]
+        glove_vectors = np.array([np.fromstring(line, dtype=float, sep=' ') for line in vector_list])
+        return [glove_words, glove_vectors]
+
+    @staticmethod
+    def load_w2v_vector():
+        word2vec_model = gensim.models.KeyedVectors.load_word2vec_format(
+            '../datahelpers/w2v/GoogleNews-vectors-negative300.bin',
+            binary=True)
+        return word2vec_model
+
+    @staticmethod
     def line_concat(data_list):
         """connect sentences in a record into a single string"""
         content_len = []
@@ -100,6 +117,10 @@ class DataHelper:
 
     @staticmethod
     def build_vocab(data, vocabulary_size):
+        """
+        Builds a vocabulary mapping from word to index based on the sentences.
+        Returns vocabulary mapping and inverse vocabulary mapping.
+        """
         # Build vocabulary
         word_counts = Counter(itertools.chain(*data))
         # Mapping from index to word
