@@ -147,9 +147,8 @@ class TrainTask:
                     grad_summaries_merged = tf.summary.merge(grad_summaries)
 
                 # Output directory for models and summaries
-                timestamp = str(int(time.time()))
-                out_dir = os.path.abspath(os.path.join(self.am.get_exp_dir(), timestamp))
-                logging.info("Model in {}\n".format(out_dir))
+                out_dir = self.am.get_exp_dir()
+                logging.info("Model in {}\n".format(self.am.get_exp_dir()))
 
                 # Summaries for loss and accuracy
                 loss_summary = tf.summary.scalar("loss", cnn.loss)
