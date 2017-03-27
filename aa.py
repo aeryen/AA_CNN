@@ -8,11 +8,43 @@ from utils.ArchiveManager import ArchiveManager
 import logging
 
 
+def get_exp_logger(am):
+    log_path = am.get_exp_log_path()
+    # logging facility, log both into file and console
+    logging.basicConfig(level=logging.DEBUG,
+                        format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+                        datefmt='%m-%d %H:%M',
+                        filename=log_path,
+                        filemode='aw')
+    console_logger = logging.StreamHandler()
+    logging.getLogger('').addHandler(console_logger)
+    logging.info("log created: " + log_path)
+
 if __name__ == "__main__":
+
+    ###############################################
+    # exp_names you can choose from at this point:
+    #
+    # Input Components:
+    #
+    # * ML_One
+    # * ML_Six
+    # * ML_One_DocLevel
+    #
+    # Middle Components:
+    #
+    # * NParallelConvOnePoolNFC
+    # * NConvDocConvNFC
+    # * ParallelJoinedConv
+    # * NCrossSizeParallelConvNFC
+    # * InceptionLike
+    ################################################
+
     input_component = "ML_Six"
-    middle_component = "InceptionLike"
+    middle_component = "NCrossSizeParallelConvNFC"
 
     am = ArchiveManager(input_component, middle_component)
+    get_exp_logger(am)
     logging.warning('===================================================')
 
     if input_component == "ML_One":
@@ -28,35 +60,17 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
 
-    ###############################################
-    # exp_names you can choose from at this point:
-    #
-    # Input Components:
-    #
-    # * OneChannel
-    # * SixChannel
-    # * OneChannel_DocLevel
-    #
-    # Middle Components:
-    #
-    # * NParallelConvOnePoolNFC
-    # * NConvDocConvNFC
-    # * ParallelJoinedConv
-    # * NCrossSizeParallelConvNFC
-    # * InceptionLike
-    ################################################
-    tt = tr.TrainTask(data_helper=dater, input_component=input_component, exp_name=middle_component,
-                      batch_size=8, evaluate_every=5, checkpoint_every=5)
+    tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
+                      batch_size=16, evaluate_every=1000, checkpoint_every=5000)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    ts = tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=64, dropout_keep_prob=1.0, n_steps=30000, l2_lambda=0.1,
-                     dropout=False,
-                     batch_normalize=False, elu=True, n_conv=2, fc=[1024])
+    ts = tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=1.0, n_steps=30000, l2_lambda=0.1,
+                     dropout=False, batch_normalize=False, elu=True, n_conv=2, fc=[])
     end = timer()
     print(end - start)
 
     ev.load(dater)
     with open(tt.exp_name + ".txt", mode="aw") as of:
-        checkpoint_dir = tt.exp_dir + str(ts) + "/checkpoints/"
+        checkpoint_dir = am.get_exp_dir() + "/checkpoints/"
         ev.test(checkpoint_dir, None, of, documentAcc=True)

@@ -9,6 +9,7 @@ class ArchiveManager:
     def __init__(self, problem_name, exp_name):
         self.problem_name = problem_name
         self.exp_name = exp_name
+        self.time_stamp = str(int(time.time()))
 
     def get_tag(self):
         tag = self.problem_name + "_" + self.exp_name
@@ -25,27 +26,16 @@ class ArchiveManager:
         return date_today
 
     def get_exp_dir(self):
-        time_stamp = str(int(time.time()))
         date_today = self.get_date()
-        path = os.path.join(self.get_tag_dir(), date_today + "_" + time_stamp, "")
+        path = os.path.join(self.get_tag_dir(), date_today + "_" + self.time_stamp, "")
         if not os.path.exists(path):
             os.makedirs(path)
         return path
 
     def get_exp_log_path(self):
-        return os.path.join(self.get_exp_dir(), "log.dir")
+        return os.path.join(self.get_exp_dir(), "log.txt")
 
-    def get_exp_logger(self):
-        log_path = self.get_exp_log_path()
-        # logging facility, log both into file and console
-        logging.basicConfig(level=logging.DEBUG,
-                            format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-                            datefmt='%m-%d %H:%M',
-                            filename=log_path,
-                            filemode='aw')
-        console_logger = logging.StreamHandler()
-        logging.getLogger('').addHandler(console_logger)
-        return
+
 
 
 if __name__ == '__main__':

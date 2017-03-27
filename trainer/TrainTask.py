@@ -18,14 +18,13 @@ class TrainTask:
     Currently it only- works with ML data, i'll expand this to be more flexible in the near future.
     """
 
-    def __init__(self, data_helper, input_component, exp_name, batch_size=64,
+    def __init__(self, data_helper, am, input_component, exp_name, batch_size=64,
                  evaluate_every=1000, checkpoint_every=5000):
         self.data_hlp = data_helper
         self.exp_name = exp_name
         self.input_component = input_component
         # the problem tag identifies the experiment setting, currently data name + experiment name
-        self.am = ArchiveManager(self.data_hlp.problem_name, self.exp_name)
-        self.am.get_exp_logger()
+        self.am = am
 
         logging.warning('TrainTask instance initiated: ' + self.am.get_date())
         logging.info("Logging to: " + self.am.get_exp_log_path())
@@ -44,7 +43,7 @@ class TrainTask:
 
         # Load data
         logging.debug("Loading data...")
-        if "SixChannel" in input_component:
+        if "Six" in input_component:
             self.x_train, self.pos_train, _, self.p2_train, self.p3_train, self.s2_train, self.s3_train, self.y_train, \
             _, _, self.embed_matrix = self.data_hlp.load_data()
             self.pref2_vocab_size = len(self.data_hlp.p2_vocab)
@@ -52,7 +51,7 @@ class TrainTask:
             self.suff2_vocab_size = len(self.data_hlp.s2_vocab)
             self.suff3_vocab_size = len(self.data_hlp.s3_vocab)
             self.pos_vocab_size = len(self.data_hlp.pos_vocab)
-        elif "OneChannel" in input_component:
+        elif "One" in input_component:
             self.pref2_vocab_size = None
             self.pref3_vocab_size = None
             self.suff2_vocab_size = None
@@ -64,10 +63,10 @@ class TrainTask:
 
         logging.debug("Vocabulary Size: {:d}".format(len(self.data_hlp.vocab)))
 
-        if "SixChannel" in input_component:
+        if "Six" in input_component:
             self.x_dev, self.pos_test, _, self.p2_test, self.p3_test, \
                 self.s2_test, self.s3_test, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
-        elif "OneChannel" in input_component:
+        elif "One" in input_component:
             self.x_dev, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
         else:
             raise NotImplementedError
@@ -149,7 +148,7 @@ class TrainTask:
 
                 # Output directory for models and summaries
                 timestamp = str(int(time.time()))
-                out_dir = os.path.abspath(os.path.join(self.exp_dir, timestamp))
+                out_dir = os.path.abspath(os.path.join(self.am.get_exp_dir(), timestamp))
                 logging.info("Model in {}\n".format(out_dir))
 
                 # Summaries for loss and accuracy
@@ -179,7 +178,7 @@ class TrainTask:
                 # Initialize all variables
                 sess.run(tf.global_variables_initializer())
 
-            if "OneChannel" in self.input_component:
+            if "One" in self.input_component:
                 def train_step(x_batch, y_batch):
                     """
                     A single training step
@@ -215,7 +214,7 @@ class TrainTask:
                     if writer:
                         writer.add_summary(summaries, step)
 
-            elif "SixChannel" in self.input_component:
+            elif "Six" in self.input_component:
                 def train_step(x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch):
                     """
                     A single training step
@@ -267,10 +266,10 @@ class TrainTask:
                 raise NotImplementedError
 
             # Generate batches
-            if "OneChannel" in self.input_component:
+            if "One" in self.input_component:
                 batches = dh.DataHelperML.batch_iter(list(zip(self.x_train, self.y_train)), self.batch_size,
                                                      num_epochs=300)
-            elif "SixChannel" in self.input_component:
+            elif "Six" in self.input_component:
                 batches = dh.DataHelperML.batch_iter(list(zip(self.x_train, self.y_train, self.p2_train, self.p3_train,
                                                               self.s2_train, self.s3_train, self.pos_train)),
                                                      self.batch_size, num_epochs=300)
@@ -278,26 +277,26 @@ class TrainTask:
                 raise NotImplementedError
             # Training loop. For each batch...
             for batch in batches:
-                if "OneChannel" in self.input_component:
+                if "One" in self.input_component:
                     x_batch, y_batch = zip(*batch)
                     train_step(x_batch, y_batch)
-                elif "SixChannel" in self.input_component:
+                elif "Six" in self.input_component:
                     x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch = zip(*batch)
                     train_step(x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch)
                 else:
                     raise NotImplementedError
 
                 current_step = tf.train.global_step(sess, global_step)
-                if self.do_dev_split and current_step % self.evaluate_every == 0:
+                if current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")
-                    if "OneChannel" in self.input_component:
+                    if "One" in self.input_component:
                         dev_batches = dh.DataHelperML.batch_iter(list(zip(self.x_dev, self.y_dev)), self.batch_size, 1)
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:
                                 small_dev_x, small_dev_y = zip(*dev_batch)
                                 dev_step(small_dev_x, small_dev_y, writer=dev_summary_writer)
                                 print("")
-                    elif "SixChannel" in self.input_component:
+                    elif "Six" in self.input_component:
                         dev_batches = dh6.DataHelperMulMol6.batch_iter(list(zip(self.x_dev, self.y_dev, self.p2_test,
                                                                                 self.p3_test, self.s2_test,
                                                                                 self.s3_test, self.pos_test)),

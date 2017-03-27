@@ -26,11 +26,11 @@ class TextCNN:
             elu = False, n_conv=1, fc=[], document_length=-1):
 
         # input component
-        if input_component == "OneChannel":
+        if input_component.endswith("One"):
             self.input_comp = OneChannel(sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
-        elif input_component == "OneChannel_DocLevel":
+        elif input_component.endswith("One_DocLevel"):
             self.input_comp = OneChannel_DocLevel(document_length, sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
-        elif input_component == "SixChannel":
+        elif input_component.endswith("Six"):
             self.input_comp = SixChannel(sequence_length, num_classes, word_vocab_size, embedding_size,
                   pref2_vocab_size, pref3_vocab_size, suff2_vocab_size, suff3_vocab_size, pos_vocab_size,
                   init_embedding)

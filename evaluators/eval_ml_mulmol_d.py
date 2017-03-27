@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import sys
+import logging
 import os.path
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from datahelpers import data_helper_ml_mulmol6_Read as dh
@@ -55,7 +56,7 @@ class evaler:
     def test(self, checkpoint_dir, checkpoint_step, output_file, documentAcc=True):
         training_norm_I = np.array([3243, 11507, 9710, 4456, 8666, 2336, 4812, 5235, 2848, 6124, 3309, 2251, 2384, 3331])
 
-        print("\nEvaluating...\n")
+        logging.info("\nEvaluating...\n")
 
         if checkpoint_step is not None:
             checkpoint_file = checkpoint_dir + "model-" + str(checkpoint_step)
