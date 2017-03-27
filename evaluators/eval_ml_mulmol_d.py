@@ -200,13 +200,13 @@ if __name__ == "__main__":
     step1 = [250, 500, 750, 1000]
     step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
 
-    dater = dh.DataHelperMulMol6(doc_level="sent")
+    dater = dh.DataHelperMulMol6(doc_level="sent", train_holdout=0.80, target_sent_len=50)
     dater.load_data()
     e = evaler()
     e.load(dater)
     with open(sys.argv[3], mode="aw") as output_file:
         path = sys.argv[1]
         step = int(sys.argv[2])
-        output_file = sys.argv[3]
+        output_file = open(sys.argv[3], mode="w")
         e.test(path, step, output_file, documentAcc=True)
 
