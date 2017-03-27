@@ -71,6 +71,4 @@ if __name__ == "__main__":
     print(end - start)
 
     ev.load(dater)
-    with open(tt.exp_name + ".txt", mode="aw") as of:
-        checkpoint_dir = am.get_exp_dir() + "/checkpoints/"
-        ev.test(checkpoint_dir, None, of, documentAcc=True)
+    ev.test(am.get_exp_dir(), None, documentAcc=True)

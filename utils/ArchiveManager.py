@@ -25,6 +25,10 @@ class ArchiveManager:
         date_today = datetime.datetime.now().strftime("%y%m%d")
         return date_today
 
+    def get_time(self):
+        date_today = datetime.datetime.now().strftime("%Y-%b-%d %H:%M:%S")
+        return date_today
+
     def get_exp_dir(self):
         date_today = self.get_date()
         path = os.path.join(self.get_tag_dir(), date_today + "_" + self.time_stamp, "")

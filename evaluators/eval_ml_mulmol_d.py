@@ -13,20 +13,22 @@ from datahelpers import data_helper_ml_mulmol6_Read as dh
 # EVALUATOR FOR MULTI-MODALITY CNN
 
 class evaler:
-    dater = None
-    x_test = None
-    y_test = None
-    vocabulary = None
-    vocabulary_inv = None
 
-    pos_test = None
-    wl_test = None
-    p2_test = None
-    p3_test = None
-    s2_test = None
-    s3_test = None
+    def __init__(self):
+        self.dater = None
+        self.x_test = None
+        self.y_test = None
+        self.vocabulary = None
+        self.vocabulary_inv = None
 
-    doc_size_test = None
+        self.pos_test = None
+        self.wl_test = None
+        self.p2_test = None
+        self.p3_test = None
+        self.s2_test = None
+        self.s3_test = None
+
+        self.doc_size_test = None
 
     def plot_confusion_matrix(self, cm, dater, title='Confusion matrix', cmap=plt.cm.Blues):
         plt.imshow(cm, interpolation='nearest', cmap=cmap)
@@ -38,30 +40,28 @@ class evaler:
         plt.xlabel('Predicted label')
 
     def load(self, dater):
-        # self.dater = dh.DataHelper()
-        # self.dater.set_problem(problem, embedding_dim=embed_dim)
         self.dater = dater
 
-        print("Loading data...")
+        print("Loading test data...")
         self.x_test, self.pos_test, self.wl_test, self.p2_test, self.p3_test, self.s2_test, self.s3_test, \
             self.y_test, self.vocabulary, self.vocabulary_inv, self.doc_size_test = \
             self.dater.load_test_data()
-        self.y_test_scalar = np.argmax(self.y_test, axis=1)
         print("Vocabulary size: {:d}".format(len(self.vocabulary)))
         print("Test set size {:d}".format(len(self.y_test)))
 
         return self.x_test, self.y_test, self.doc_size_test, \
             self.p2_test, self.p3_test, self.s2_test, self.s3_test, self.pos_test
 
-    def test(self, checkpoint_dir, checkpoint_step, output_file, documentAcc=True):
-        training_norm_I = np.array([3243, 11507, 9710, 4456, 8666, 2336, 4812, 5235, 2848, 6124, 3309, 2251, 2384, 3331])
-
+    def test(self, experiment_dir, checkpoint_step, documentAcc=True):
         logging.info("\nEvaluating...\n")
-
         if checkpoint_step is not None:
-            checkpoint_file = checkpoint_dir + "model-" + str(checkpoint_step)
+            checkpoint_file = experiment_dir + "/checkpoints/" + "model-" + str(checkpoint_step)
         else:
-            checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir, latest_filename=None)
+            checkpoint_file = tf.train.latest_checkpoint(experiment_dir, latest_filename=None)
+        eval_log = open(os.path.join(experiment_dir, "eval.log"), mode="aw")
+
+        logging.info(checkpoint_file)
+        eval_log.write(checkpoint_file + "\n")
 
         graph = tf.Graph()
         with graph.as_default():
@@ -71,11 +71,8 @@ class evaler:
             sess = tf.Session(config=session_conf)
             with sess.as_default():
                 # Load the saved meta graph and restore variables
-                saver = tf.train.import_meta_graph("{}.meta".format(checkpoint_file))
+                saver = tf.train.import_meta_graph(checkpoint_file + ".meta")
                 saver.restore(sess, checkpoint_file)
-
-                print checkpoint_file
-                output_file.write(checkpoint_file + "\n")
 
                 # Get the placeholders from the graph by name
                 input_x = graph.get_operation_by_name("input_x").outputs[0]
@@ -104,7 +101,7 @@ class evaler:
 
 
                 # Collect the predictions here
-                all_score = None
+                allw_score = None
                 all_predictions = np.zeros([0, 20])
                 for [x_test_batch, y_test_batch,
                      pref2_batch, pref3_batch, suff2_batch, suff3_batch,
@@ -133,11 +130,11 @@ class evaler:
         correct_predictions = float(np.sum(sentence_result))
         average_accuracy = correct_predictions / float(all_predictions.shape[0])
 
-        output_file.write("Test for prob: " + self.dater.problem_name + "\n")
-        print("Total number of test examples: {}".format(len(self.y_test)))
-        output_file.write("Total number of test examples: {}\n".format(len(self.y_test)))
-        print("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
-        output_file.write("ACC\t" + str(average_accuracy) + "\n")
+        eval_log.write("Test for prob: " + self.dater.problem_name + "\n")
+        logging.info("Total number of test examples: {}".format(len(self.y_test)))
+        eval_log.write("Total number of test examples: {}\n".format(len(self.y_test)))
+        logging.info("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
+        eval_log.write("ACC\t" + str(average_accuracy) + "\n")
 
         # cm = confusion_matrix(self.y_test_scalar, all_predictions)
         # np.set_printoptions(precision=2)
@@ -174,39 +171,38 @@ class evaler:
                     pred_class = np.zeros([20], dtype=np.int)
                     pred_class[np.argmax(p)] = 1
                 doc_prediction.append(pred_class)
-                print("pred: " + str(pred_class) + "   " + "true: " + str(self.dater.doc_labels_test[i]))
-                output_file.write("File:" + self.dater.file_id_test[i] + "\n")
-                output_file.write("pred: " + str(pred_class) + "   " +
+                logging.info("pred: " + str(pred_class) + "   " + "true: " + str(self.dater.doc_labels_test[i]))
+                eval_log.write("File:" + self.dater.file_id_test[i] + "\n")
+                eval_log.write("pred: " + str(pred_class) + "   " +
                                   "true: " + str(self.dater.doc_labels_test[i]) + "\n")
 
-            print("")
-            output_file.write("\n")
+            logging.info("")
+            eval_log.write("\n")
 
-            print("Document ACC")
-            output_file.write("Document ACC\n")
+            logging.info("Document ACC")
+            eval_log.write("Document ACC\n")
             total_doc = len(self.dater.file_id_test)
             correct = 0.0
             for i in range(len(doc_prediction)):
                 if np.array_equal(doc_prediction[i], self.dater.doc_labels_test[i]):
                     correct += 1
             doc_acc = correct / total_doc
-            print("Doc ACC: " + str(doc_acc))
-            output_file.write("Doc ACC: " + str(doc_acc) + "\n")
+            logging.info("Doc ACC: " + str(doc_acc))
+            eval_log.write("Doc ACC: " + str(doc_acc) + "\n")
 
-        output_file.write("\n")
-        output_file.write("\n")
+        eval_log.write("\n")
+        eval_log.write("\n")
 
 if __name__ == "__main__":
     step1 = [250, 500, 750, 1000]
     step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
 
-    dater = dh.DataHelperMulMol6(doc_level="sent", train_holdout=0.80, target_sent_len=50)
-    dater.load_data()
+    d = dh.DataHelperMulMol6(doc_level="sent", train_holdout=0.80, target_sent_len=50)
+    d.load_data()
     e = evaler()
-    e.load(dater)
+    e.load(d)
     with open(sys.argv[3], mode="aw") as output_file:
         path = sys.argv[1]
         step = int(sys.argv[2])
-        output_file = open(sys.argv[3], mode="w")
-        e.test(path, step, output_file, documentAcc=True)
+        e.test(path, step, documentAcc=True)
 
