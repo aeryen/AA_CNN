@@ -8,6 +8,7 @@ import logging
 import os.path
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from datahelpers import data_helper_ml_mulmol6_Read as dh
+import utils.ArchiveManager as AM
 
 
 # EVALUATOR FOR MULTI-MODALITY CNN
@@ -53,15 +54,22 @@ class evaler:
             self.p2_test, self.p3_test, self.s2_test, self.s3_test, self.pos_test
 
     def test(self, experiment_dir, checkpoint_step, documentAcc=True):
-        logging.info("\nEvaluating...\n")
         if checkpoint_step is not None:
             checkpoint_file = experiment_dir + "/checkpoints/" + "model-" + str(checkpoint_step)
         else:
             checkpoint_file = tf.train.latest_checkpoint(experiment_dir, latest_filename=None)
         eval_log = open(os.path.join(experiment_dir, "eval.log"), mode="aw")
 
+        logging.info("Evaluating: " + __file__)
+        eval_log.write("Evaluating: " + __file__ + "\n")
+        logging.info("Test for prob: " + self.dater.problem_name)
+        eval_log.write("Test for prob: " + self.dater.problem_name + "\n")
         logging.info(checkpoint_file)
         eval_log.write(checkpoint_file + "\n")
+        logging.info(AM.get_time())
+        eval_log.write(AM.get_time() + "\n")
+        logging.info("Total number of test examples: {}".format(len(self.y_test)))
+        eval_log.write("Total number of test examples: {}\n".format(len(self.y_test)) + "n")
 
         graph = tf.Graph()
         with graph.as_default():
@@ -130,31 +138,8 @@ class evaler:
         correct_predictions = float(np.sum(sentence_result))
         average_accuracy = correct_predictions / float(all_predictions.shape[0])
 
-        eval_log.write("Test for prob: " + self.dater.problem_name + "\n")
-        logging.info("Total number of test examples: {}".format(len(self.y_test)))
-        eval_log.write("Total number of test examples: {}\n".format(len(self.y_test)))
         logging.info("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
-        eval_log.write("ACC\t" + str(average_accuracy) + "\n")
-
-        # cm = confusion_matrix(self.y_test_scalar, all_predictions)
-        # np.set_printoptions(precision=2)
-        # print('Confusion matrix')
-        # print(cm)
-        # output_file.write('Confusion matrix \n')
-        # output_file.write(str(cm) + "\n")
-        # plt.figure()
-        # self.plot_confusion_matrix(cm, self.dater)
-
-        # Normalize the confusion matrix by row (i.e by the number of samples
-        # in each class)
-        # cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        # print('Normalized confusion matrix')
-        # output_file.write('Normalized confusion matrix' + "\n")
-        # print(cm_normalized)
-        # output_file.write(str(cm_normalized) + "\n")
-        # plt.figure()
-        # self.plot_confusion_matrix(cm_normalized, dater=self.dater, title='Normalized confusion matrix')
-        # plt.show()
+        eval_log.write("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
 
         if documentAcc == True:
             doc_prediction = []
@@ -196,13 +181,14 @@ class evaler:
 if __name__ == "__main__":
     step1 = [250, 500, 750, 1000]
     step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
+    step = None
 
     d = dh.DataHelperMulMol6(doc_level="sent", train_holdout=0.80, target_sent_len=50)
     d.load_data()
     e = evaler()
     e.load(d)
-    with open(sys.argv[3], mode="aw") as output_file:
-        path = sys.argv[1]
+    path = sys.argv[1]
+    if len(sys.argv) > 2:
         step = int(sys.argv[2])
-        e.test(path, step, documentAcc=True)
+    e.test(path, step)
 

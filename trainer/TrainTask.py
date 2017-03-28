@@ -19,7 +19,7 @@ class TrainTask:
     """
 
     def __init__(self, data_helper, am, input_component, exp_name, batch_size=64,
-                 evaluate_every=1000, checkpoint_every=5000):
+                 evaluate_every=1000, checkpoint_every=5000, max_to_keep=7):
         self.data_hlp = data_helper
         self.exp_name = exp_name
         self.input_component = input_component
@@ -36,6 +36,7 @@ class TrainTask:
         self.batch_size = batch_size
         self.evaluate_every = evaluate_every
         self.checkpoint_every = checkpoint_every
+        self.max_to_keep = max_to_keep
 
         logging.info("setting: %s is %s", "batch_size", self.batch_size)
         logging.info("setting: %s is %s", "evaluate_every", self.evaluate_every)
@@ -172,7 +173,7 @@ class TrainTask:
                 checkpoint_prefix = os.path.join(checkpoint_dir, "model")
                 if not os.path.exists(checkpoint_dir):
                     os.makedirs(checkpoint_dir)
-                saver = tf.train.Saver(var_list=tf.global_variables(), max_to_keep=7)
+                saver = tf.train.Saver(var_list=tf.global_variables(), max_to_keep=self.max_to_keep)
 
                 # Initialize all variables
                 sess.run(tf.global_variables_initializer())

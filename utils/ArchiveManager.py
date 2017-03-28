@@ -4,6 +4,16 @@ import os
 import logging
 
 
+def get_date():
+    date_today = datetime.datetime.now().strftime("%y%m%d")
+    return date_today
+
+
+def get_time():
+    date_today = datetime.datetime.now().strftime("%Y-%b-%d %H:%M:%S")
+    return date_today
+
+
 class ArchiveManager:
 
     def __init__(self, problem_name, exp_name):
@@ -21,16 +31,8 @@ class ArchiveManager:
             os.makedirs(path)
         return path
 
-    def get_date(self):
-        date_today = datetime.datetime.now().strftime("%y%m%d")
-        return date_today
-
-    def get_time(self):
-        date_today = datetime.datetime.now().strftime("%Y-%b-%d %H:%M:%S")
-        return date_today
-
     def get_exp_dir(self):
-        date_today = self.get_date()
+        date_today = get_date()
         path = os.path.join(self.get_tag_dir(), date_today + "_" + self.time_stamp, "")
         if not os.path.exists(path):
             os.makedirs(path)
@@ -38,8 +40,6 @@ class ArchiveManager:
 
     def get_exp_log_path(self):
         return os.path.join(self.get_exp_dir(), "log.txt")
-
-
 
 
 if __name__ == '__main__':
