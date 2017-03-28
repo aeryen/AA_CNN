@@ -159,13 +159,17 @@ class evaler:
 if __name__ == "__main__":
     step1 = [250, 500, 750, 1000]
     step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
+    step = None
 
-    dater = data_helpers.DataHelperML(doc_level="sent", embed_dim=300, embed_type="w2v")
+    dater = data_helpers.DataHelperML(doc_level="sent", embed_dim=300, target_sent_len=50)
     dater.load_data()
     e = evaler()
     e.load(dater)
+    path = sys.argv[1]
+
     output_file = open("ml_test.txt", mode="aw")
-    for step in [100000]:
-        e.test("/home/aeryen/Documents/paper 03/runs/ML_NCrossSizeParallelConvNFC/1489906077/checkpoints/", step, output_file, documentAcc=True)
+    if len(sys.argv) > 2:
+        step = int(sys.argv[2])
+    e.test(path, step, output_file, documentAcc=True)
     output_file.close()
 
