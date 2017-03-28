@@ -6,7 +6,7 @@ import tensorflow as tf
 from networks.cnn import TextCNN
 from datahelpers import data_helper_ml_mulmol6_Read as dh6
 from datahelpers import data_helper_ml_normal as dh
-from utils.ArchiveManager import ArchiveManager
+import utils.ArchiveManager as AM
 
 
 class TrainTask:
@@ -26,7 +26,7 @@ class TrainTask:
         # the problem tag identifies the experiment setting, currently data name + experiment name
         self.am = am
 
-        logging.warning('TrainTask instance initiated: ' + ArchiveManager.get_date())
+        logging.warning('TrainTask instance initiated: ' + AM.get_date())
         logging.info("Logging to: " + self.am.get_exp_log_path())
 
         logging.info("current data is: " + self.data_hlp.problem_name)
