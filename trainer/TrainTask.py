@@ -26,7 +26,7 @@ class TrainTask:
         # the problem tag identifies the experiment setting, currently data name + experiment name
         self.am = am
 
-        logging.warning('TrainTask instance initiated: ' + self.am.get_date())
+        logging.warning('TrainTask instance initiated: ' + ArchiveManager.get_date())
         logging.info("Logging to: " + self.am.get_exp_log_path())
 
         logging.info("current data is: " + self.data_hlp.problem_name)
