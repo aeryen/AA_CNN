@@ -61,12 +61,12 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                      batch_size=16, evaluate_every=1000, checkpoint_every=5000)
+                      batch_size=64, evaluate_every=1000, checkpoint_every=5000)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    ts = tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=1.0, n_steps=30000, l2_lambda=0.1,
-                     dropout=False, batch_normalize=False, elu=True, n_conv=2, fc=[])
+    ts = tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=1.0, n_steps=1000000, l2_lambda=0.1,
+                     dropout=False, batch_normalize=True, elu=True, n_conv=2, fc=[])
     end = timer()
     print(end - start)
 
