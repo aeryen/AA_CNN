@@ -38,7 +38,7 @@ class NCrossSizeParallelConvNFC(object):
                         if self.dropout == True:
                             self.last_layer = tf.nn.dropout(self.last_layer, 0.8, name="dropout-inter-conv")
                         cols = 1
-                        n_input_channels = embedding_size * len(filter_size_lists[n])
+                        n_input_channels = num_filters * len(filter_size_lists[n-1])
 
                     filter_shape = [filter_size, cols, n_input_channels, num_filters]
 
