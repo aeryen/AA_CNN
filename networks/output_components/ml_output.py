@@ -2,9 +2,9 @@ import tensorflow as tf
 import logging
 
 class MLOutput(object):
-    def __init__(self, input_y, prev_layer, num_nodes_prev_layer, num_classes, l2_reg_lambda):
-        if prev_layer.l2_sum is not None:
-            self.l2_sum = prev_layer.l2_sum
+    def __init__(self, input_y, prev_layer, num_nodes_prev_layer, num_classes, l2_sum, l2_reg_lambda):
+        if l2_sum is not None:
+            self.l2_sum = l2_sum
             logging.warning("OPTIMIZING PROPER L2")
         else:
             self.l2_sum = tf.constant(0.0)

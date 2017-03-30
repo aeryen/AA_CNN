@@ -79,11 +79,12 @@ class TextCNN:
         self.is_training = self.middle_comp.is_training
 
         prev_layer, num_nodes = self.middle_comp.get_last_layer_info()
+        l2_sum = self.middle_comp.l2_sum
         # output component
         if "ML" in dataset:
-            output = MLOutput(self.input_comp.input_y, prev_layer, num_nodes, num_classes, l2_reg_lambda)
+            output = MLOutput(self.input_comp.input_y, prev_layer, num_nodes, num_classes, l2_sum, l2_reg_lambda)
         elif "PAN" in dataset:
-            output = PANOutput(self.input_comp.input_y, prev_layer, num_nodes, num_classes, l2_reg_lambda)
+            output = PANOutput(self.input_comp.input_y, prev_layer, num_nodes, num_classes, l2_sum, l2_reg_lambda)
             self.rate_percentage = output.rate_percentage
         else:
             raise NotImplementedError
