@@ -40,7 +40,7 @@ if __name__ == "__main__":
     # * InceptionLike
     ################################################
 
-    input_component = "ML_Six"
+    input_component = "ML_One"
     middle_component = "NCrossSizeParallelConvNFC"
 
     am = ArchiveManager(input_component, middle_component)
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     logging.warning('===================================================')
 
     if input_component == "ML_One":
-        dater = DataHelperML(doc_level="sent", train_holdout=0.80, embed_type="glove", embed_dim=300)
+        dater = DataHelperML(doc_level="sent", train_holdout=0.80, embed_type="glove", embed_dim=300, target_sent_len=50)
         ev = evaler_one.evaler()
     elif input_component == "ML_Six":
         dater = DataHelperMulMol6(doc_level="sent", train_holdout=0.80, target_sent_len=50)
@@ -65,8 +65,8 @@ if __name__ == "__main__":
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    ts = tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=1.0, n_steps=1000000, l2_lambda=0.1,
-                     dropout=False, batch_normalize=True, elu=True, n_conv=2, fc=[])
+    tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.1,
+                     dropout=False, batch_normalize=True, elu=True, n_conv=2, fc=[256])
     end = timer()
     print(end - start)
 

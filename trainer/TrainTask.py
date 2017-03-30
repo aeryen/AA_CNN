@@ -316,4 +316,3 @@ class TrainTask:
                     print("Saved model checkpoint to {}\n".format(path))
                 if n_steps is not None and current_step >= n_steps:
                     break
-        return timestamp

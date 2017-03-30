@@ -1,8 +1,13 @@
 import tensorflow as tf
+import logging
 
 class MLOutput(object):
     def __init__(self, input_y, prev_layer, num_nodes_prev_layer, num_classes, l2_reg_lambda):
-        l2_loss = tf.constant(0.0)
+        if prev_layer.l2_sum is not None:
+            self.l2_sum = prev_layer.l2_sum
+            logging.warning("OPTIMIZING PROPER L2")
+        else:
+            self.l2_sum = tf.constant(0.0)
         # Final (unnormalized) scores and predictions
         with tf.variable_scope("output"):
             W = tf.get_variable(
@@ -11,7 +16,7 @@ class MLOutput(object):
                 initializer=tf.contrib.layers.xavier_initializer())
             b = tf.Variable(tf.constant(0.1, shape=[num_classes]), name="b")
             if l2_reg_lambda > 0:
-                l2_loss += tf.nn.l2_loss(W)
+                self.l2_sum += tf.nn.l2_loss(W)
             # l2_loss += tf.nn.l2_loss(b)
             self.scores = tf.nn.xw_plus_b(prev_layer, W, b, name="scores")
             self.predictions = tf.sigmoid(self.scores, name="predictions")
@@ -20,7 +25,7 @@ class MLOutput(object):
         with tf.variable_scope("loss-lbd" + str(l2_reg_lambda)):
             # losses = tf.nn.softmax_cross_entropy_with_logits(self.scores, self.input_y)  # TODO
             losses = tf.nn.sigmoid_cross_entropy_with_logits(self.scores, input_y)
-            self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
+            self.loss = tf.reduce_mean(losses) + l2_reg_lambda * self.l2_sum
 
         # Accuracy
         with tf.variable_scope("accuracy"):
