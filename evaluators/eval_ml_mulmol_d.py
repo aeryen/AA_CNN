@@ -47,8 +47,8 @@ class evaler:
         self.x_test, self.pos_test, self.wl_test, self.p2_test, self.p3_test, self.s2_test, self.s3_test, \
             self.y_test, self.vocabulary, self.vocabulary_inv, self.doc_size_test = \
             self.dater.load_test_data()
-        print("Vocabulary size: {:d}".format(len(self.vocabulary)))
-        print("Test set size {:d}".format(len(self.y_test)))
+        print(("Vocabulary size: {:d}".format(len(self.vocabulary))))
+        print(("Test set size {:d}".format(len(self.y_test))))
 
         return self.x_test, self.y_test, self.doc_size_test, \
             self.p2_test, self.p3_test, self.s2_test, self.s3_test, self.pos_test

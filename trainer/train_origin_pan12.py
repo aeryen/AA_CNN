@@ -39,13 +39,13 @@ def init_data(prob_code, embed_dimension, do_dev_split=False):
     FLAGS._parse_flags()
     print("\nParameters:")
     for attr, value in sorted(FLAGS.__flags.items()):
-        print("{}={}".format(attr.upper(), value))
+        print(("{}={}".format(attr.upper(), value)))
     print("")
 
     # Load data
     print("Loading data...")
     x, y, vocabulary, vocabulary_inv, embed_matrix = dater.load_data()
-    print("Vocabulary Size: {:d}".format(len(vocabulary)))
+    print(("Vocabulary Size: {:d}".format(len(vocabulary))))
 
     # Randomly shuffle data
     np.random.seed(10)
@@ -58,7 +58,7 @@ def init_data(prob_code, embed_dimension, do_dev_split=False):
     if do_dev_split:
         x_train, x_dev = x_shuffled[:-500], x_shuffled[-500:]
         y_train, y_dev = y_shuffled[:-500], y_shuffled[-500:]
-        print("Train/Dev split: {:d}/{:d}".format(len(y_train), len(y_dev)))
+        print(("Train/Dev split: {:d}/{:d}".format(len(y_train), len(y_dev))))
     else:
         x_train = x_shuffled
         x_dev = None
@@ -108,7 +108,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
             # Output directory for models and summaries
             timestamp = str(int(time.time()))
             out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs", scheme_name, timestamp))
-            print("Writing to {}\n".format(out_dir))
+            print(("Writing to {}\n".format(out_dir)))
 
             # Summaries for loss and accuracy
             loss_summary = tf.scalar_summary("loss", cnn.loss)
@@ -154,7 +154,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
                 [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
-            print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
             train_summary_writer.add_summary(summaries, step)
 
         def dev_step(x_batch, y_batch, writer=None):
@@ -170,7 +170,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
                 [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
-            print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
             if writer:
                 writer.add_summary(summaries, step)
 
@@ -185,7 +185,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
 
         # Training loop. For each batch...
         for batch in batches:
-            x_batch, y_batch = zip(*batch)
+            x_batch, y_batch = list(zip(*batch))
             train_step(x_batch, y_batch)
             current_step = tf.train.global_step(sess, global_step)
             if DO_DEV_SPLIT and current_step % FLAGS.evaluate_every == 0:
@@ -193,7 +193,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
                 dev_batches = dh.DataHelperPan12.batch_iter(list(zip(x_dev, y_dev)), 100, 1)
                 for dev_batch in dev_batches:
                     if len(dev_batch) > 0:
-                        small_dev_x, small_dev_y = zip(*dev_batch)
+                        small_dev_x, small_dev_y = list(zip(*dev_batch))
                         dev_step(small_dev_x, small_dev_y, writer=dev_summary_writer)
                         print("")
             elif test_x is not None and test_y is not None and current_step % 200 == 0:
@@ -201,7 +201,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
                 dev_step(test_x_2, test_y_2, writer=dev_summary_writer)
             if current_step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)
-                print("Saved model checkpoint to {}\n".format(path))
+                print(("Saved model checkpoint to {}\n".format(path)))
             if current_step == 3500:
                 break
     return timestamp

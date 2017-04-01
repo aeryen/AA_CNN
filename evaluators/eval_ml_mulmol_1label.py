@@ -40,8 +40,8 @@ class evaler:
         self.pref_2_vocab, self.pref_3_vocab, self.suff_2_vocab, self.suff_3_vocab, self.pos_vocab = \
             self.dater.load_test_data()
         self.y_test_scalar = np.argmax(self.y_test, axis=1)
-        print("Vocabulary size: {:d}".format(len(self.vocabulary)))
-        print("Test set size {:d}".format(len(self.y_test)))
+        print(("Vocabulary size: {:d}".format(len(self.vocabulary))))
+        print(("Test set size {:d}".format(len(self.y_test))))
 
         return self.x_test, self.y_test, self.y_test_scalar, \
                self.pref2, self.pref3, self.suff2, self.suff3, self.pos, \
@@ -65,7 +65,7 @@ class evaler:
                 saver = tf.train.import_meta_graph("{}.meta".format(checkpoint_file))
                 saver.restore(sess, checkpoint_file)
 
-                print checkpoint_file
+                print(checkpoint_file)
                 output_file.write(checkpoint_file + "\n")
 
                 # Get the placeholders from the graph by name
@@ -116,13 +116,13 @@ class evaler:
         # average_accuracy = all_predictions.sum(axis=0) / float(all_predictions.shape[0])
         average_accuracy = correct_predictions / float(all_predictions.shape[0])
         output_file.write("Test for prob: " + self.dater.problem_name + "\n")
-        print("Total number of test examples: {}".format(len(self.y_test_scalar)))
+        print(("Total number of test examples: {}".format(len(self.y_test_scalar))))
         output_file.write("Total number of test examples: {}\n".format(len(self.y_test_scalar)))
-        print "Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")"
+        print("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
         output_file.write("ACC\t" + str(average_accuracy) + "\n")
 
         mse = np.mean((all_predictions - self.y_test_scalar) ** 2)
-        print "Sent MSE\t" + str(mse)
+        print("Sent MSE\t" + str(mse))
         output_file.write("MSE\t" + str(mse) + "\n")
 
         cm = confusion_matrix(self.y_test_scalar, all_predictions)
@@ -154,36 +154,36 @@ class evaler:
                 counts = np.bincount(p.astype(int))
                 pred_class = np.argmax(counts)
                 file_prediction.append(pred_class)
-                print counts
-                print "pred: " + str(pred_class) + "   " + "true: " + str(self.dater.test_author_index[i])
+                print(counts)
+                print("pred: " + str(pred_class) + "   " + "true: " + str(self.dater.test_author_index[i]))
                 output_file.write("File:" + str(i) + "\n")
                 output_file.write(str(counts) + "   " +
                                   "pred: " + str(pred_class) + "   " +
                                   "true: " + str(self.dater.test_author_index[i]) + "\n")
 
-            print ""
+            print("")
             output_file.write("\n")
 
-            print "Document ACC"
+            print("Document ACC")
             output_file.write("Document ACC\n")
             doc_acc = accuracy_score(y_true=self.dater.test_author_index, y_pred=file_prediction, normalize=False)
-            print "Doc ACC: " + str(doc_acc)
+            print("Doc ACC: " + str(doc_acc))
             output_file.write("Doc ACC: " + str(doc_acc) + "\n")
             doc_acc = accuracy_score(y_true=self.dater.test_author_index, y_pred=file_prediction, normalize=True)
-            print "Doc ACC: " + str(doc_acc) + " (norm)"
+            print("Doc ACC: " + str(doc_acc) + " (norm)")
             output_file.write("Doc ACC: " + str(doc_acc) + " (norm)\n")
 
-            print "precision recall fscore support"
+            print("precision recall fscore support")
             output_file.write("precision recall fscore support\n")
             for i in range(self.dater.num_of_classes):
                 prfs = precision_recall_fscore_support(y_true=self.dater.test_author_index, y_pred=file_prediction,
                                                        average="binary", pos_label=i)
-                print "class " + str(i) + ": " + str(prfs)
+                print("class " + str(i) + ": " + str(prfs))
                 output_file.write("class " + str(i) + ": " + str(prfs) + "\n")
 
             prfs = precision_recall_fscore_support(y_true=self.dater.test_author_index,
                                                    y_pred=file_prediction, average="macro")
-            print "avg : " + str(prfs)
+            print("avg : " + str(prfs))
             output_file.write("avg : " + str(prfs) + "\n")
 
         output_file.write("\n")

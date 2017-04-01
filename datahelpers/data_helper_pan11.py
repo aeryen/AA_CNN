@@ -65,7 +65,7 @@ class DataHelperPan11(DataHelper):
         elif code == 1:
             self.author_order = self.Large_Author_Order
         else:
-            print "code ERROR"
+            print("code ERROR")
         self.train_f = self.training_options[self.prob_code]
         self.test_f = self.testing_options[self.prob_code]
         self.truth_f = self.truth_options[self.prob_code]
@@ -127,7 +127,7 @@ class DataHelperPan11(DataHelper):
             if l == "" or l == "<training>":
                 pass
             elif l == "</training>":
-                print "File Loading Ended: @ " + str(line_count)
+                print("File Loading Ended: @ " + str(line_count))
                 break
             elif expect_stage == "text":
                 m = re_text_open.match(l)
@@ -135,20 +135,20 @@ class DataHelperPan11(DataHelper):
                     file_name = m.group(1)
                     expect_stage = "author"
                 else:
-                    print "ERROR"
+                    print("ERROR")
             elif expect_stage == "author":
                 m = re_auth.match(l)
                 if m:
                     author_name = m.group(1)
                     expect_stage = "body"
                 else:
-                    print "ERROR"
+                    print("ERROR")
             elif expect_stage == "body":
                 m = re_body_open.match(l)
                 if m:
                     expect_stage = "content"
                 else:
-                    print "ERROR"
+                    print("ERROR")
             elif expect_stage == "content":
                 m = re_body_clos.match(l)
                 if m:
@@ -166,7 +166,7 @@ class DataHelperPan11(DataHelper):
                 if m:
                     expect_stage = "text"
                 else:
-                    print "ERROR"
+                    print("ERROR")
 
         # for thing in data_list:
         #     print thing
@@ -202,7 +202,7 @@ class DataHelperPan11(DataHelper):
             if l == "" or l == "<testing>":
                 pass
             elif l == "</testing>":
-                print "File Loading Ended: @ " + str(content_line_index)
+                print("File Loading Ended: @ " + str(content_line_index))
                 break
             elif expect_stage_content == "text":
                 m = re_text_open.match(l)
@@ -210,7 +210,7 @@ class DataHelperPan11(DataHelper):
                     file_name = m.group(1)
                     expect_stage_content = "author"
                 else:
-                    print "ERROR"
+                    print("ERROR")
             elif expect_stage_content == "author":
                 content_line_index -= 1  # hold current line
                 truth_loaded = False
@@ -224,7 +224,7 @@ class DataHelperPan11(DataHelper):
                         if m and m.group(1) == file_name:
                             expect_stage_truth = "author"
                         else:
-                            print "ERROR: truth file mismatch"
+                            print("ERROR: truth file mismatch")
                     elif expect_stage_truth == "author":
                         m = re_auth.match(truth_l)
                         if m:
@@ -232,7 +232,7 @@ class DataHelperPan11(DataHelper):
                             expect_stage_truth = "text_clos"
                             truth_loaded = True
                         else:
-                            print "ERROR"
+                            print("ERROR")
                     elif expect_stage_truth == "text_clos":
                         m = re_text_clos.match(truth_l)
                         if m:
@@ -240,15 +240,15 @@ class DataHelperPan11(DataHelper):
                             expect_stage_content = "body"
                             break
                         else:
-                            print "ERROR"
+                            print("ERROR")
                 if not truth_loaded:
-                    print "ERROR"
+                    print("ERROR")
             elif expect_stage_content == "body":
                 m = re_body_open.match(l)
                 if m:
                     expect_stage_content = "content"
                 else:
-                    print "ERROR"
+                    print("ERROR")
             elif expect_stage_content == "content":
                 m = re_body_clos.match(l)
                 if m:
@@ -266,7 +266,7 @@ class DataHelperPan11(DataHelper):
                 if m:
                     expect_stage_content = "text"
                 else:
-                    print "ERROR"
+                    print("ERROR")
 
         # for thing in data_list:
         #     print thing
@@ -278,7 +278,7 @@ class DataHelperPan11(DataHelper):
         for r in data_list:
             author_str = r.author
             if author_str not in author_list:
-                print "WTF"
+                print("WTF")
                 author_list.append(author_str)  # ???
                 author_count[author_str] = 1
             else:
@@ -327,7 +327,7 @@ class DataHelperPan11(DataHelper):
         else:
             sent_lengths = [len(x) for x in sentences]
             max_length = max(sent_lengths)
-            print "longest doc: " + str(max_length)
+            print("longest doc: " + str(max_length))
 
         padded_sentences = []
         for i in range(len(sentences)):
@@ -344,7 +344,7 @@ class DataHelperPan11(DataHelper):
         # o = DataHelper(file_to_load)
         data_list = self.__load_train_data()
         author_list, author_count = self.author_label(data_list)
-        print author_count
+        print(author_count)
         x, y = self.xy_formatter(data_list, author_list)
         # self.longest_sentence(x)
 
@@ -362,7 +362,7 @@ class DataHelperPan11(DataHelper):
         # o = DataHelper(file_to_load)
         data_list = self.__load_test_data()
         author_list, author_count = self.author_label(data_list)
-        print author_list
+        print(author_list)
         x, y = self.xy_formatter(data_list, author_list)
         self.longest_sentence(x)
 
@@ -377,4 +377,4 @@ if __name__ == "__main__":
     o = DataHelperPan11(1)
     o.load_data()
     # o.load_test_data()
-    print "o"
+    print("o")

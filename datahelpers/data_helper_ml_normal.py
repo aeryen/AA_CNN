@@ -68,7 +68,7 @@ class DataHelperML(DataHelper):
         for line in truth_file_content[1:]:
             line = line.split(",")
             file_id_list.append(line[0])
-            label_vector = map(int, line[1:])
+            label_vector = list(map(int, line[1:]))
             label_matrix.append(np.array(label_vector))
         # label_matrix = np.matrix(label_matrix)
 
@@ -201,7 +201,7 @@ class DataHelperML(DataHelper):
 
     def get_comb_count(self, x):
         n = int(len(x) / 50)
-        print "n = " + str(n)
+        print("n = " + str(n))
         if len(x) - (n * 50) > 0:
             n += 1
         return n
@@ -223,7 +223,7 @@ class DataHelperML(DataHelper):
 
         for comb_index in range(len(x)):
             label_comb.extend(np.tile(label[comb_index], [comb_size[comb_index], 1]))
-            print "number of comb in document: " + str(comb_size[comb_index])
+            print("number of comb in document: " + str(comb_size[comb_index]))
     
         return x_comb, label_comb, comb_size
 
@@ -282,7 +282,7 @@ class DataHelperML(DataHelper):
         if self.x_test is not None:
             return [self.x_test, self.labels_test, self.vocab, self.vocab_inv, self.doc_size_test]
         else:
-            print "nope"
+            print("nope")
 
     def get_file_id_test(self):
         return self.file_id_test

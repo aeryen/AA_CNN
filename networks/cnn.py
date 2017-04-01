@@ -1,14 +1,14 @@
-from input_components.OneChannel import OneChannel
-from input_components.SixChannel import SixChannel
-from input_components.OneChannel_DocLevel import OneChannel_DocLevel
-from middle_components.yifan_conv import YifanConv
-from middle_components.parallel_conv import NParallelConvOnePoolNFC
-from middle_components.parallel_size_joined_conv import NCrossSizeParallelConvNFC
-from middle_components.parallel_joined_conv import ParallelJoinedConv
-from middle_components.parallel_conv_DocLevel import NConvDocConvNFC
-from middle_components.inception_like import InceptionLike
-from output_components.pan_output import PANOutput
-from output_components.ml_output import MLOutput
+from .input_components.OneChannel import OneChannel
+from .input_components.SixChannel import SixChannel
+from .input_components.OneChannel_DocLevel import OneChannel_DocLevel
+from .middle_components.yifan_conv import YifanConv
+from .middle_components.parallel_conv import NParallelConvOnePoolNFC
+from .middle_components.parallel_size_joined_conv import NCrossSizeParallelConvNFC
+from .middle_components.parallel_joined_conv import ParallelJoinedConv
+from .middle_components.parallel_conv_DocLevel import NConvDocConvNFC
+from .middle_components.inception_like import InceptionLike
+from .output_components.pan_output import PANOutput
+from .output_components.ml_output import MLOutput
 
 
 class TextCNN:

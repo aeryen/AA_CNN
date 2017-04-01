@@ -5,7 +5,7 @@ import datetime
 
 
 def get_import_modules():
-    for name, val in globals().items():
+    for name, val in list(globals().items()):
         if isinstance(val, types.ModuleType):
             yield val.__name__
 

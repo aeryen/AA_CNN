@@ -59,7 +59,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
             # Output directory for models and summaries
             timestamp = str(int(time.time()))
             out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs", scheme_name, timestamp))
-            print("Writing to {}\n".format(out_dir))
+            print(("Writing to {}\n".format(out_dir)))
 
             # Summaries for loss and accuracy
             loss_summary = tf.scalar_summary("loss", cnn.loss)
@@ -112,7 +112,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
                 [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
-            print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
             train_summary_writer.add_summary(summaries, step)
 
         def dev_step(x_batch, y_batch, writer=None):
@@ -128,7 +128,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
                 [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
-            print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
             if writer:
                 writer.add_summary(summaries, step)
 
@@ -136,7 +136,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
         batches = dh.DataHelper.batch_iter(list(zip(x_train, y_train, pref2, pref3, suff2, suff3, pos)), FLAGS.batch_size, FLAGS.num_epochs)
         # Training loop. For each batch...
         for batch in batches:
-            x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch = zip(*batch)
+            x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch = list(zip(*batch))
             train_step(x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch)
             current_step = tf.train.global_step(sess, global_step)
             if DO_DEV_SPLIT and current_step % FLAGS.evaluate_every == 0:
@@ -144,12 +144,12 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
                 dev_batches = dh.DataHelper.batch_iter(list(zip(x_dev, y_dev)), 100, 1)
                 for dev_batch in dev_batches:
                     if len(dev_batch) > 0:
-                        small_dev_x, small_dev_y = zip(*dev_batch)
+                        small_dev_x, small_dev_y = list(zip(*dev_batch))
                         dev_step(small_dev_x, small_dev_y, writer=dev_summary_writer)
                         print("")
             if current_step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)
-                print("Saved model checkpoint to {}\n".format(path))
+                print(("Saved model checkpoint to {}\n".format(path)))
             if current_step == 30000:  # TODO: change here to stop training early... too short for prob I, need change
                 break
     return timestamp
@@ -189,7 +189,7 @@ FLAGS = tf.flags.FLAGS
 FLAGS._parse_flags()
 print("\nParameters:")
 for attr, value in sorted(FLAGS.__flags.items()):
-    print("{}={}".format(attr.upper(), value))
+    print(("{}={}".format(attr.upper(), value)))
 print("")
 
 
@@ -204,9 +204,9 @@ for f_size in [100]:  # TODO: add number here for multiple filter count test, wh
     for l2 in [0.1]:  # TODO: L2 regularization here
         for drop in [0.75]:  # TODO: drop out keep rate here
 
-            print("===== Filter Size: "+str(f_size)+"\n")
-            print("===== L2 Norm: "+str(l2)+"\n")
-            print("===== Drop Out: "+str(drop)+"\n\n\n")
+            print(("===== Filter Size: "+str(f_size)+"\n"))
+            print(("===== L2 Norm: "+str(l2)+"\n"))
+            print(("===== Drop Out: "+str(drop)+"\n\n\n"))
 
             ts = training(DO_DEV_SPLIT, FLAGS, dir_name, vocab, embed_matrix, x_train, x_test, labels_train, labels_test,
                           f_size, drop, l2,

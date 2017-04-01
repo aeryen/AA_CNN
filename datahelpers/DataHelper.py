@@ -129,12 +129,12 @@ class DataHelper(object):
     @staticmethod
     def longest_sentence(input_list, print_content):
         sent_lengths = [len(x) for x in input_list]
-        result_index = sorted(range(len(sent_lengths)), key=lambda i: sent_lengths[i])[-30:]
+        result_index = sorted(list(range(len(sent_lengths))), key=lambda i: sent_lengths[i])[-30:]
         for i in result_index:
             s = input_list[i]
-            print len(s)
+            print(len(s))
             if print_content:
-                print s
+                print(s)
 
     @staticmethod
     def line_concat(data_list):

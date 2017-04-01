@@ -36,8 +36,8 @@ class evaler:
         print("Loading data...")
         self.x_test, self.y_test, self.vocab, self.vocab_inv, self.doc_size_test = self.dater.load_test_data()
         self.y_test_scalar = np.argmax(self.y_test, axis=1)
-        print("Vocabulary size: {:d}".format(len(self.vocab)))
-        print("Test set size {:d}".format(len(self.y_test)))
+        print(("Vocabulary size: {:d}".format(len(self.vocab))))
+        print(("Test set size {:d}".format(len(self.y_test))))
 
         return self.x_test, self.y_test, self.y_test_scalar
 
@@ -60,7 +60,7 @@ class evaler:
                 saver = tf.train.import_meta_graph("{}.meta".format(checkpoint_file))
                 saver.restore(sess, checkpoint_file)
 
-                print checkpoint_file
+                print(checkpoint_file)
                 output_file.write(checkpoint_file + "\n")
 
                 # Get the placeholders from the graph by name
@@ -101,9 +101,9 @@ class evaler:
         average_accuracy = correct_predictions / float(all_predictions.shape[0])
 
         output_file.write("Test for prob: " + self.dater.problem_name + "\n")
-        print("Total number of test examples: {}".format(len(self.y_test)))
+        print(("Total number of test examples: {}".format(len(self.y_test))))
         output_file.write("Total number of test examples: {}\n".format(len(self.y_test)))
-        print "Sent ACC\t" + str(average_accuracy)  # + "\t\t(cor: " + str(correct_predictions) + ")"
+        print("Sent ACC\t" + str(average_accuracy))  # + "\t\t(cor: " + str(correct_predictions) + ")"
         output_file.write("ACC\t" + str(average_accuracy) + "\n")
 
         if documentAcc == True:
@@ -121,15 +121,15 @@ class evaler:
                     pred_class = np.zeros([20], dtype=np.int)
                     pred_class[np.argmax(p)] = 1
                 doc_prediction.append(pred_class)
-                print "pred: " + str(pred_class) + "   " + "true: " + str(self.dater.doc_labels_test[i])
+                print("pred: " + str(pred_class) + "   " + "true: " + str(self.dater.doc_labels_test[i]))
                 output_file.write("File:" + self.dater.file_id_test[i] + "\n")
                 output_file.write("pred: " + str(pred_class) + "   " +
                                   "true: " + str(self.dater.doc_labels_test[i]) + "\n")
 
-            print ""
+            print("")
             output_file.write("\n")
 
-            print "Document ACC"
+            print("Document ACC")
             output_file.write("Document ACC\n")
             total_doc = len(self.dater.file_id_test)
             correct = 0.0
@@ -137,7 +137,7 @@ class evaler:
                 if np.array_equal(doc_prediction[i], self.dater.doc_labels_test[i]):
                     correct += 1
             doc_acc = correct / total_doc
-            print "Doc ACC: " + str(doc_acc)
+            print("Doc ACC: " + str(doc_acc))
             output_file.write("Doc ACC: " + str(doc_acc) + "\n")
 
             # print "precision recall fscore support"

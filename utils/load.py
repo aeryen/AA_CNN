@@ -26,7 +26,7 @@ def get_fnames(dataset_dir, csv):
                         currentAuthor = author
                         break
                 corpus.append(dataset_dir + '/' + currentAuthor + '/txt/txt-preprocessed/' + tokens[0])
-                labels = map(int, tokens[1:])
+                labels = list(map(int, tokens[1:]))
                 y.append(labels)
 
     return corpus, np.array(y)

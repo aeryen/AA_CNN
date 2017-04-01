@@ -54,7 +54,7 @@ class FeatureMaker:
             temp = self._stf_pos_tagger.tag_sents(self._split_data[index:index+1000])
             tag_result.extend(temp)
             index += 1000
-            print("pos:" + str(index)),
+            print(("pos:" + str(index)), end=' ')
         # tag_result = self._stf_pos_tagger.tag_sents(self._split_data)
         tag_result = [[unidecode(p[1]) for p in line] for line in tag_result]
 
@@ -119,10 +119,10 @@ class FeatureMaker:
 
     def get_read_measure(self):
         value_list = []
-        for cat, data in readability.getmeasures(self._sentence_data, lang='en').items():
-            print('%s:' % cat)
-            for key, val in data.items():
-                print(('    %-20s %12.2f' % (key + ':', val)).rstrip('0 ').rstrip('.'))
+        for cat, data in list(readability.getmeasures(self._sentence_data, lang='en').items()):
+            print(('%s:' % cat))
+            for key, val in list(data.items()):
+                print((('    %-20s %12.2f' % (key + ':', val)).rstrip('0 ').rstrip('.')))
 
             value_list.append(val)
         return val
@@ -141,9 +141,9 @@ if __name__ == "__main__":
 
     FM.pos_tag()
     FM.parser()
-    print(FM.per_word_length())
-    print(FM.sentence_avg_word_length())
-    print(FM.sentence_length())
+    print((FM.per_word_length()))
+    print((FM.sentence_avg_word_length()))
+    print((FM.sentence_length()))
     FM.load_sentiment_list()
     FM.sentiment_sequence()
 
