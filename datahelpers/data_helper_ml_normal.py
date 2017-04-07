@@ -70,12 +70,11 @@ class DataHelperML(DataHelper):
             file_id_list.append(line[0])
             label_vector = list(map(int, line[1:]))
             label_matrix.append(np.array(label_vector))
-        # label_matrix = np.matrix(label_matrix)
+        label_matrix = np.array(label_matrix)
 
-        file_name_ordered = []
-        label_matrix_ordered = []
-        doc_size = []
-        origin_list = []
+        doc_count = len(file_id_list)
+        doc_size = [None] * doc_count
+        origin_list = [None] * doc_count
 
         folder_list = os.listdir(self.training_data_dir)
         for author in folder_list:
@@ -84,18 +83,14 @@ class DataHelperML(DataHelper):
                 sub_file_list = os.listdir(f)
                 for file_name in sub_file_list:
                     if file_name in file_id_list:
+                        index = file_id_list.index(file_name)
                         original_txt = self.load_original_file(author, file_name)
-                        origin_list.append(original_txt)  # document level array instead of all sentence list
+                        origin_list[index] = original_txt  # document level array instead of all sentence list
+                        doc_size[index] = len(original_txt)
 
-                        file_name_ordered.append(file_name)
-                        file_index = file_id_list.index(file_name)
-                        label_matrix_ordered.append(label_matrix[file_index])  # document level array
-                        doc_size.append(len(original_txt))
-
-        label_matrix_ordered = np.array(label_matrix_ordered)
         doc_size = np.array(doc_size)
 
-        return [file_name_ordered, label_matrix_ordered, doc_size, origin_list]
+        return [file_id_list, label_matrix, doc_size, origin_list]
 
     @staticmethod
     def build_input_data(docs, vocabulary, doc_level):
@@ -172,8 +167,8 @@ class DataHelperML(DataHelper):
         return np.array(padded_doc)
 
     def train_test_shuf_split(self, file_id, labels, doc_size, origin, train_holdout=0.80):
-        np.random.seed(10)
-        shuffle_i = np.random.permutation(np.arange(len(labels)))
+        rs = np.random.RandomState(10)
+        shuffle_i = rs.permutation(np.arange(len(labels)))
 
         file_id_shuffled = [file_id[i] for i in shuffle_i]
         labels_shuffled = labels[shuffle_i]
