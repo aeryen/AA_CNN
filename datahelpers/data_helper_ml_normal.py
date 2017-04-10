@@ -236,10 +236,11 @@ class DataHelperML(DataHelper):
         x_training_exp, labels_training_exp = self.expand_origin_and_label_to_sentence(self.x_train, self.labels_train)
         x_test_exp, labels_test_exp = self.expand_origin_and_label_to_sentence(self.x_test, self.labels_test)
 
+        vocab_file = DataHelper.get_vocab_path(file_name=__file__, embed_type=self.embed_type, embed_dim=self.embedding_dim)
         x_concat_exp = np.concatenate([x_training_exp, x_test_exp], axis=0)
         # self.longest_sentence(x_concat_exp, True)
         self.vocab, self.vocab_inv = self.build_vocab(x_concat_exp, self.vocabulary_size)
-        pickle.dump([self.vocab, self.vocab_inv], open("ml_vocabulary.pickle", "wb"))
+        # pickle.dump([self.vocab, self.vocab_inv], open(vocab_file, "wb"))
 
         if self.doc_level_data == "sent":
             self.x_train = x_training_exp

@@ -69,7 +69,7 @@ class NParallelConvOnePoolNFC(object):
                 pooled_outputs.append(pooled)
 
         # Combine all the pooled features
-        self.h_pool = tf.concat(3, pooled_outputs)
+        self.h_pool = tf.concat(pooled_outputs, 3)
         self.h_pool_flat = tf.reshape(self.h_pool, [-1, self.num_filters_total])
         self.last_layer = self.h_pool_flat
         self.n_nodes_last_layer = self.num_filters_total

@@ -48,9 +48,10 @@ class SixChannel:
             self.embedded_chars_pos = tf.nn.embedding_lookup(W_pos, self.input_pos)
             self.embedded_chars_expanded_pos = tf.expand_dims(self.embedded_chars_pos, -1)
 
-            self.embedded_expanded = tf.concat(concat_dim=3, values=[self.embedded_expanded,
-                                                             self.embedded_chars_expanded_pref2,
-                                                             self.embedded_chars_expanded_pref3,
-                                                             self.embedded_chars_expanded_suff2,
-                                                             self.embedded_chars_expanded_suff3,
-                                                             self.embedded_chars_expanded_pos])
+            self.embedded_expanded = tf.concat(values=[self.embedded_expanded,
+                                                       self.embedded_chars_expanded_pref2,
+                                                       self.embedded_chars_expanded_pref3,
+                                                       self.embedded_chars_expanded_suff2,
+                                                       self.embedded_chars_expanded_suff3,
+                                                       self.embedded_chars_expanded_pos],
+                                               axis=3)

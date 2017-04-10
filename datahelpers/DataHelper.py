@@ -2,9 +2,10 @@ import numpy as np
 import re
 from collections import Counter
 import itertools
-import gensim
+# import gensim
 import logging
 import pkg_resources
+import os
 
 
 class DataHelper(object):
@@ -85,7 +86,7 @@ class DataHelper(object):
 
     @staticmethod
     def load_glove_vector(glove_path):
-        glove_lines = list(open(glove_path, "r").readlines())
+        glove_lines = list(open(glove_path, "r", encoding="utf-8").readlines())
         glove_lines = [s.split(" ", 1) for s in glove_lines if (len(s) > 0 and s != "\n")]
         glove_words = [s[0] for s in glove_lines]
         vector_list = [s[1] for s in glove_lines]
@@ -180,7 +181,9 @@ class DataHelper(object):
         # Build vocabulary
         word_counts = Counter(itertools.chain(*data))
         # Mapping from index to word
-        vocabulary_inv = [x[0] for x in word_counts.most_common()]
+        # vocabulary_inv = [x[0] for x in word_counts.most_common()]
+        word_counts = sorted(word_counts.items(), key=lambda t: t[::-1], reverse=True)
+        vocabulary_inv = [item[0] for item in word_counts]
         vocabulary_inv.insert(0, "<PAD>")
         vocabulary_inv.insert(1, "<UNK>")
 
@@ -214,3 +217,8 @@ class DataHelper(object):
                 start_index = batch_num * batch_size
                 end_index = min((batch_num + 1) * batch_size, data_size)
                 yield shuffled_data[start_index:end_index]
+
+    @staticmethod
+    def get_vocab_path(file_name, embed_type, embed_dim):
+        current_path = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(current_path, file_name + "_" + embed_type + "_" + str(embed_dim) + ".pickle")

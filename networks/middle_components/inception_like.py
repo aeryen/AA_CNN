@@ -140,9 +140,9 @@ class InceptionLike(object):
 
 
                     pooled_outputs.append(h)
-                    self.last_layer = tf.concat(concat_dim=3, values=pooled_outputs)
+                    self.last_layer = tf.concat(values=pooled_outputs, axis=3)
             else:
-                h = tf.concat(concat_dim=3, values=pooled_outputs)
+                h = tf.concat(values=pooled_outputs, axis=3)
                 top_pad = int((3 - 2) / 2.0)
                 bottom_pad = 3 - 2 - top_pad
                 h = tf.pad(h, [[0, 0], [top_pad, bottom_pad], [0, 0], [0, 0]], mode='CONSTANT',

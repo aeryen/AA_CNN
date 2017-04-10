@@ -66,7 +66,7 @@ class ParallelJoinedConv(object):
 
                     pooled_outputs.append(h)
 
-            self.last_layer = tf.concat(concat_dim=2, values=pooled_outputs)
+            self.last_layer = tf.concat(values=pooled_outputs, axis=2)
 
             with tf.variable_scope("maxpool-%s" % str(n+1)):
                 # Maxpooling over the outputs

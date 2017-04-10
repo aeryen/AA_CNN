@@ -73,7 +73,7 @@ class NCrossSizeParallelConvNFC(object):
                         self.l2_sum += tf.nn.l2_loss(W)
                     all_filter_size_output.append(h)
 
-            self.last_layer = tf.concat(3, all_filter_size_output)
+            self.last_layer = tf.concat(all_filter_size_output, 3)
 
         with tf.variable_scope("maxpool-all"):
             # Maxpooling over the outputs

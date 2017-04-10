@@ -61,7 +61,7 @@ class TextCNN:
             self.middle_comp = NCrossSizeParallelConvNFC(sequence_length, embedding_size, filter_sizes, num_filters,
                                                          previous_component=self.input_comp, dropout=dropout,
                                                          batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
-                                                         fc=fc)
+                                                         fc=fc, l2_reg_lambda=l2_reg_lambda)
         elif middle_component == "NConvDocConvNFC":
             self.middle_comp = NConvDocConvNFC(document_length, sequence_length, embedding_size, filter_sizes,
                                                num_filters,

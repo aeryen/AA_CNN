@@ -61,7 +61,7 @@ class NConvDocConvNFC(object):
 
                     all_filter_size_output.append(h)
 
-            self.last_layer = tf.concat(3, all_filter_size_output)
+            self.last_layer = tf.concat(all_filter_size_output, 3)
             # last_layer: [?, doc size 128, sentence size 128, all filters 300]
 
         with tf.variable_scope("maxpool-sentence"):
@@ -114,7 +114,7 @@ class NConvDocConvNFC(object):
                 # doc_pooled: [?, 1, 1, 100]
                 all_filter_size_output.append(doc_pooled)
 
-        self.doc_features = tf.concat(3, all_filter_size_output)
+        self.doc_features = tf.concat(all_filter_size_output, 3)
         # last_layer: [?, 1, 1, 300]
         self.h_pool_flat = tf.reshape(self.doc_features, [-1, self.num_filters_total])
         self.last_layer = self.h_pool_flat

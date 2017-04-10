@@ -1,7 +1,7 @@
 from timeit import default_timer as timer
 from datahelpers.data_helper_ml_mulmol6_Read import DataHelperMulMol6
 from datahelpers.data_helper_ml_normal import DataHelperML
-from trainer import TrainTask as tr
+from trainer import TrainTaskLite as tr
 from evaluators import eval_ml_mulmol_d as evaler
 from evaluators import eval_ml_origin as evaler_one
 from utils.ArchiveManager import ArchiveManager
@@ -15,7 +15,7 @@ def get_exp_logger(am):
                         format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
                         datefmt='%m-%d %H:%M',
                         filename=log_path,
-                        filemode='aw')
+                        filemode='w+')
     console_logger = logging.StreamHandler()
     logging.getLogger('').addHandler(console_logger)
     logging.info("log created: " + log_path)
@@ -48,25 +48,27 @@ if __name__ == "__main__":
     logging.warning('===================================================')
 
     if input_component == "ML_One":
-        dater = DataHelperML(doc_level="sent", train_holdout=0.80, embed_type="glove", embed_dim=300, target_sent_len=50)
+        dater = DataHelperML(doc_level="sent", train_holdout=0.80, embed_type="glove",
+                             embed_dim=100, target_sent_len=50, target_doc_len=400)
         ev = evaler_one.evaler()
     elif input_component == "ML_Six":
-        dater = DataHelperMulMol6(doc_level="sent", train_holdout=0.80, target_sent_len=50)
+        dater = DataHelperMulMol6(doc_level="sent", train_holdout=0.80,
+                                  target_sent_len=50)
         ev = evaler.evaler()
     elif input_component == "ML_One_DocLevel":
-        dater = DataHelperML(doc_level="doc", train_holdout=0.80, embed_type="glove", embed_dim=300,
-                             target_doc_len=128, target_sent_len=128)
+        dater = DataHelperML(doc_level="doc", train_holdout=0.80, embed_type="glove",
+                             embed_dim=300, target_doc_len=128, target_sent_len=128)
         ev = evaler_one.evaler()
     else:
         raise NotImplementedError
 
     tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                      batch_size=64, evaluate_every=1000, checkpoint_every=5000)
+                      batch_size=32, evaluate_every=1000, checkpoint_every=5000)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.1,
-                     dropout=False, batch_normalize=True, elu=True, n_conv=2, fc=[256])
+    tt.training(filter_sizes=[3, 4, 5], num_filters=100, dropout_keep_prob=0.8, n_steps=100000, l2_lambda=0.1,
+                     dropout=True, batch_normalize=False, elu=False, n_conv=1, fc=[])
     end = timer()
     print((end - start))
 

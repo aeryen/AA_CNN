@@ -6,14 +6,14 @@ import time
 
 import tensorflow as tf
 
-from datahelpers import data_helper_ml_mulmol6_OnTheFly as dh
+from datahelpers import data_helper_ml_normal as dh
 from evaluators import eval_ml_origin as evaler
 from networks.cnn import TextCNN
 
 
 
-def init_data(embed_dimension, do_dev_split=False):
-    dater = dh.DataHelperMulMol6(doc_level=False, embed_dim=embed_dimension)
+def init_data(embed_dimension, target_sent_len, target_doc_len=100, do_dev_split=False):
+    dater = dh.DataHelperML(doc_level="sent", embed_dim=embed_dimension, )
 
     # Model Hyperparameters
     tf.flags.DEFINE_integer("num_classes", dater.num_of_classes, "Number of possible labels")
@@ -129,10 +129,10 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
             checkpoint_prefix = os.path.join(checkpoint_dir, "model")
             if not os.path.exists(checkpoint_dir):
                 os.makedirs(checkpoint_dir)
-            saver = tf.train.Saver(var_list=tf.all_variables(), max_to_keep=7)
+            saver = tf.train.Saver(var_list=tf.global_variables(), max_to_keep=7)
 
             # Initialize all variables
-            sess.run(tf.initialize_all_variables())
+            sess.run(tf.global_variables_initializer())
 
         def train_step(x_batch, y_batch):
             """

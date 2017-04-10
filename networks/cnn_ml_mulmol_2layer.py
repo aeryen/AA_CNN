@@ -67,12 +67,13 @@ class TextCNN(object):
             self.embedded_chars_expanded_pos = tf.expand_dims(self.embedded_chars_pos, -1)
             print(("embedded_chars_expanded_pos: " + str(self.embedded_chars_expanded_pos.get_shape())))
 
-            self.whole_emb = tf.concat(concat_dim=3, values=[self.embedded_chars_expanded,
-                                                             self.embedded_chars_expanded_pref2,
-                                                             self.embedded_chars_expanded_pref3,
-                                                             self.embedded_chars_expanded_suff2,
-                                                             self.embedded_chars_expanded_suff3,
-                                                             self.embedded_chars_expanded_pos])
+            self.whole_emb = tf.concat(values=[self.embedded_chars_expanded,
+                                               self.embedded_chars_expanded_pref2,
+                                               self.embedded_chars_expanded_pref3,
+                                               self.embedded_chars_expanded_suff2,
+                                               self.embedded_chars_expanded_suff3,
+                                               self.embedded_chars_expanded_pos],
+                                       axis=3)
 
         # Create a convolution + maxpool layer for each filter size
         first_pooled_outputs = []
@@ -98,7 +99,7 @@ class TextCNN(object):
                 first_pooled_outputs.append(h)
 
         num_filters_total = num_filters * len(filter_sizes)
-        first_pooled_outputs = tf.concat(concat_dim=2, values=first_pooled_outputs)
+        first_pooled_outputs = tf.concat(values=first_pooled_outputs, axis=2)
         first_pooled_outputs = tf.expand_dims(first_pooled_outputs, -1)
         print(("first_pooled_outputs: " + str(first_pooled_outputs.get_shape())))
 
@@ -128,7 +129,7 @@ class TextCNN(object):
                 conv_2_pooled_outputs.append(pooled)
 
         # Combine all the pooled features
-        self.h_pool = tf.concat(3, conv_2_pooled_outputs)
+        self.h_pool = tf.concat(conv_2_pooled_outputs, 3)
         self.h_pool_flat = tf.reshape(self.h_pool, [-1, num_filters_total])
 
         # Add dropout

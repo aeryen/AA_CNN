@@ -65,12 +65,13 @@ class TextCNN(object):
             self.embedded_chars_expanded_pos = tf.expand_dims(self.embedded_chars_pos, -1)
             print(("embedded_chars_expanded_pos: " + str(self.embedded_chars_expanded_pos.get_shape())))
 
-            self.whole_emb = tf.concat(concat_dim=3, values=[self.embedded_chars_expanded,
-                                                             self.embedded_chars_expanded_pref2,
-                                                             self.embedded_chars_expanded_pref3,
-                                                             self.embedded_chars_expanded_suff2,
-                                                             self.embedded_chars_expanded_suff3,
-                                                             self.embedded_chars_expanded_pos])
+            self.whole_emb = tf.concat(values=[self.embedded_chars_expanded,
+                                               self.embedded_chars_expanded_pref2,
+                                               self.embedded_chars_expanded_pref3,
+                                               self.embedded_chars_expanded_suff2,
+                                               self.embedded_chars_expanded_suff3,
+                                               self.embedded_chars_expanded_pos],
+                                       axis=3)
 
         # Create a convolution + maxpool layer for each filter size
         pooled_outputs = []
@@ -100,7 +101,7 @@ class TextCNN(object):
 
         # Combine all the pooled features
         num_filters_total = num_filters * len(filter_sizes)
-        self.h_pool = tf.concat(3, pooled_outputs)
+        self.h_pool = tf.concat(pooled_outputs, 3)
         self.h_pool_flat = tf.reshape(self.h_pool, [-1, num_filters_total])
 
         # Add dropout

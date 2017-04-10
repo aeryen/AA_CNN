@@ -4,9 +4,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import sys
+import logging
+
 import os.path
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from datahelpers import data_helper_ml_normal as data_helpers
+import utils.ArchiveManager as AM
 
 # THIS CLASS IS THE EVALUATOR FOR NORMAL CNN
 
@@ -41,13 +44,24 @@ class evaler:
 
         return self.x_test, self.y_test, self.y_test_scalar
 
-    def test(self, checkpoint_dir, checkpoint_step, output_file, documentAcc=True):
-        print("\nEvaluating...\n")
-
+    def test(self, experiment_dir, checkpoint_step, documentAcc=True, do_is_training=True):
         if checkpoint_step is not None:
-            checkpoint_file = checkpoint_dir + "model-" + str(checkpoint_step)
+            checkpoint_file = experiment_dir + "/checkpoints/" + "model-" + str(checkpoint_step)
         else:
-            checkpoint_file = tf.train.latest_checkpoint(checkpoint_dir, latest_filename=None)
+            checkpoint_file = tf.train.latest_checkpoint(experiment_dir + "/checkpoints/", latest_filename=None)
+        eval_log = open(os.path.join(experiment_dir, "eval.log"), mode="w+")
+
+        logging.info("Evaluating: " + __file__)
+        eval_log.write("Evaluating: " + __file__ + "\n")
+        logging.info("Test for prob: " + self.dater.problem_name)
+        eval_log.write("Test for prob: " + self.dater.problem_name + "\n")
+        logging.info(checkpoint_file)
+        eval_log.write(checkpoint_file + "\n")
+        logging.info(AM.get_time())
+        eval_log.write(AM.get_time() + "\n")
+        logging.info("Total number of test examples: {}".format(len(self.y_test)))
+        eval_log.write("Total number of test examples: {}\n".format(len(self.y_test)) + "n")
+
 
         graph = tf.Graph()
         with graph.as_default():
@@ -60,14 +74,12 @@ class evaler:
                 saver = tf.train.import_meta_graph("{}.meta".format(checkpoint_file))
                 saver.restore(sess, checkpoint_file)
 
-                print(checkpoint_file)
-                output_file.write(checkpoint_file + "\n")
-
                 # Get the placeholders from the graph by name
                 input_x = graph.get_operation_by_name("input_x").outputs[0]
                 input_y = graph.get_operation_by_name("input_y").outputs[0]
                 dropout_keep_prob = graph.get_operation_by_name("dropout_keep_prob").outputs[0]
-                is_training = graph.get_operation_by_name("is_training").outputs[0]
+                if do_is_training:
+                    is_training = graph.get_operation_by_name("is_training").outputs[0]
 
                 # Tensors we want to evaluate
                 scores = graph.get_operation_by_name("output/scores").outputs[0]
@@ -81,9 +93,13 @@ class evaler:
                 all_score = None
                 all_predictions = np.zeros([0, 20])
                 for [x_test_batch, y_test_batch] in zip(x_batches, y_batches):
-                    batch_scores, batch_predictions = sess.run([scores, predictions],
-                                                               {input_x: x_test_batch, dropout_keep_prob: 1.0,
-                                                                is_training: 0})
+                    if do_is_training:
+                        batch_scores, batch_predictions = sess.run([scores, predictions],
+                                                                   {input_x: x_test_batch, dropout_keep_prob: 1.0,
+                                                                    is_training: 0})
+                    else:
+                        batch_scores, batch_predictions = sess.run([scores, predictions],
+                                                                   {input_x: x_test_batch, dropout_keep_prob: 1.0})
                     # print batch_predictions
                     if all_score is None:
                         all_score = batch_scores
@@ -100,11 +116,8 @@ class evaler:
         correct_predictions = float(np.sum(sentence_result))
         average_accuracy = correct_predictions / float(all_predictions.shape[0])
 
-        output_file.write("Test for prob: " + self.dater.problem_name + "\n")
-        print(("Total number of test examples: {}".format(len(self.y_test))))
-        output_file.write("Total number of test examples: {}\n".format(len(self.y_test)))
-        print("Sent ACC\t" + str(average_accuracy))  # + "\t\t(cor: " + str(correct_predictions) + ")"
-        output_file.write("ACC\t" + str(average_accuracy) + "\n")
+        logging.info("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
+        eval_log.write("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
 
         if documentAcc == True:
             doc_prediction = []
@@ -122,15 +135,15 @@ class evaler:
                     pred_class[np.argmax(p)] = 1
                 doc_prediction.append(pred_class)
                 print("pred: " + str(pred_class) + "   " + "true: " + str(self.dater.doc_labels_test[i]))
-                output_file.write("File:" + self.dater.file_id_test[i] + "\n")
-                output_file.write("pred: " + str(pred_class) + "   " +
+                eval_log.write("File:" + self.dater.file_id_test[i] + "\n")
+                eval_log.write("pred: " + str(pred_class) + "   " +
                                   "true: " + str(self.dater.doc_labels_test[i]) + "\n")
 
-            print("")
-            output_file.write("\n")
+            logging.info("")
+            eval_log.write("\n")
 
-            print("Document ACC")
-            output_file.write("Document ACC\n")
+            logging.info("Document ACC")
+            eval_log.write("Document ACC\n")
             total_doc = len(self.dater.file_id_test)
             correct = 0.0
             for i in range(len(doc_prediction)):
@@ -138,7 +151,7 @@ class evaler:
                     correct += 1
             doc_acc = correct / total_doc
             print("Doc ACC: " + str(doc_acc))
-            output_file.write("Doc ACC: " + str(doc_acc) + "\n")
+            eval_log.write("Doc ACC: " + str(doc_acc) + "\n")
 
             # print "precision recall fscore support"
             # output_file.write("precision recall fscore support\n")
@@ -153,23 +166,20 @@ class evaler:
             # print "avg : " + str(prfs)
             # output_file.write("avg : " + str(prfs) + "\n")
 
-        output_file.write("\n")
-        output_file.write("\n")
+        eval_log.write("\n")
+        eval_log.write("\n")
 
 if __name__ == "__main__":
     step1 = [250, 500, 750, 1000]
     step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
     step = None
 
-    dater = data_helpers.DataHelperML(doc_level="sent", embed_dim=300, target_sent_len=50)
+    dater = data_helpers.DataHelperML(doc_level="sent", embed_dim=100, target_sent_len=50)
     dater.load_data()
     e = evaler()
     e.load(dater)
     path = sys.argv[1]
-
-    output_file = open("ml_test.txt", mode="aw")
     if len(sys.argv) > 2:
         step = int(sys.argv[2])
-    e.test(path, step, output_file, documentAcc=True)
-    output_file.close()
+    e.test(path, step, documentAcc=True, do_is_training=False)
 

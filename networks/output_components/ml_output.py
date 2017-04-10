@@ -24,8 +24,9 @@ class MLOutput(object):
 
         with tf.variable_scope("loss-lbd" + str(l2_reg_lambda)):
             # losses = tf.nn.softmax_cross_entropy_with_logits(self.scores, self.input_y)  # TODO
-            losses = tf.nn.sigmoid_cross_entropy_with_logits(self.scores, input_y)
-            self.loss = tf.reduce_mean(losses) + l2_reg_lambda * self.l2_sum
+            # losses = tf.nn.sigmoid_cross_entropy_with_logits(labels=input_y, logits=self.scores)
+            losses = tf.losses.sigmoid_cross_entropy(multi_class_labels=input_y, logits=self.scores)
+            self.loss = losses + l2_reg_lambda * self.l2_sum
 
         # Accuracy
         with tf.variable_scope("accuracy"):

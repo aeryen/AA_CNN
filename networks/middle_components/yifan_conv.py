@@ -78,11 +78,11 @@ class YifanConv(object):
                         pooled_outputs.append(h)
 
             if n < n_conv - 1:
-                pooled_outputs = tf.concat(concat_dim=2, values=pooled_outputs)
+                pooled_outputs = tf.concat(values=pooled_outputs, axis=2)
                 self.last_layer = tf.expand_dims(pooled_outputs, -1)
 
         # Combine all the pooled features
-        self.h_pool = tf.concat(3, pooled_outputs)
+        self.h_pool = tf.concat(pooled_outputs, 3)
         self.h_pool_flat = tf.reshape(self.h_pool, [-1, self.num_filters_total])
         self.last_layer = self.h_pool_flat
         self.n_nodes_last_layer = self.num_filters_total

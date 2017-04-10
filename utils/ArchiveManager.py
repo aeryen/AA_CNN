@@ -26,7 +26,7 @@ class ArchiveManager:
         return tag
 
     def get_tag_dir(self):
-        path = os.path.join("..", "runs", self.get_tag(), "")
+        path = os.path.join(".", "runs", self.get_tag(), "")
         if not os.path.exists(path):
             os.makedirs(path)
         return path

@@ -68,12 +68,12 @@ class TextCNN(object):
                     pooled_outputs.append(pooled)
 
             # Combine all the pooled features
-            sent_h_pool = tf.concat(3, pooled_outputs)
+            sent_h_pool = tf.concat(pooled_outputs, 3)
             sent_h_pool_flat = tf.reshape(sent_h_pool, [-1, 1, num_filters_per_sent])
             doc_pool_flat_list.append(sent_h_pool_flat)
 
         # doc_pool_flat_list is 100 (doc_sent_len) of 64 * 1 * 300
-        self.doc_pool_flat = tf.concat(1, doc_pool_flat_list)  # batch * doc_sent * sent_feat
+        self.doc_pool_flat = tf.concat(doc_pool_flat_list, 1)  # batch * doc_sent * sent_feat
         self.doc_pool_flat = tf.expand_dims(self.doc_pool_flat, -1) # 64 * 300 * 300 * 1
         doc_pool_output_list = []
         for i, filter_size in enumerate(filter_sizes):
@@ -101,7 +101,7 @@ class TextCNN(object):
                 doc_pool_output_list.append(pooled)
 
         # Combine all the pooled features
-        self.doc_h_pool = tf.concat(3, doc_pool_output_list)  # (20, 1, 1, 300)
+        self.doc_h_pool = tf.concat(doc_pool_output_list, 3)  # (20, 1, 1, 300)
         self.doc_h_pool_flat = tf.reshape(self.doc_h_pool, [-1, num_filters_per_sent])
 
         # Add dropout
