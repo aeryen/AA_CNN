@@ -20,6 +20,7 @@ class InceptionLike(object):
         self.last_layer = None
         self.num_filters_total = None
         self.conv_in = None
+        self.l2_sum = tf.constant(0.0)
         n_input_channels = 0
 
         # Create a convolution + + nonlinearity + maxpool layer for each filter size

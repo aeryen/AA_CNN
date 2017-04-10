@@ -40,8 +40,8 @@ if __name__ == "__main__":
     # * InceptionLike
     ################################################
 
-    input_component = "ML_One"
-    middle_component = "NCrossSizeParallelConvNFC"
+    input_component = "ML_Six"
+    middle_component = "InceptionLike"
 
     am = ArchiveManager(input_component, middle_component)
     get_exp_logger(am)
@@ -51,7 +51,7 @@ if __name__ == "__main__":
         dater = DataHelperML(doc_level="sent", train_holdout=0.80, embed_type="glove", embed_dim=300, target_sent_len=50)
         ev = evaler_one.evaler()
     elif input_component == "ML_Six":
-        dater = DataHelperMulMol6(doc_level="sent", train_holdout=0.80, target_sent_len=50)
+        dater = DataHelperMulMol6(doc_level="sent", train_holdout=0.80, target_sent_len=128, embed_dim=300)
         ev = evaler.evaler()
     elif input_component == "ML_One_DocLevel":
         dater = DataHelperML(doc_level="doc", train_holdout=0.80, embed_type="glove", embed_dim=300,
@@ -61,12 +61,12 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                      batch_size=64, evaluate_every=1000, checkpoint_every=5000)
+                      batch_size=16, evaluate_every=10000, checkpoint_every=10000)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=1.0, n_steps=100000, l2_lambda=0.1,
-                     dropout=False, batch_normalize=True, elu=True, n_conv=2, fc=[256])
+    tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=1.0, n_steps=300000, l2_lambda=0.1,
+                     dropout=False, batch_normalize=True, elu=False, n_conv=2, fc=[1024])
     end = timer()
     print(end - start)
 
