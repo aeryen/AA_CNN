@@ -29,11 +29,12 @@ class TextCNN:
         if input_component.endswith("One"):
             self.input_comp = OneChannel(sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
         elif input_component.endswith("One_DocLevel"):
-            self.input_comp = OneChannel_DocLevel(document_length, sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
+            self.input_comp = OneChannel_DocLevel(document_length, sequence_length, num_classes, word_vocab_size,
+                                                  embedding_size, init_embedding)
         elif input_component.endswith("Six"):
             self.input_comp = SixChannel(sequence_length, num_classes, word_vocab_size, embedding_size,
-                  pref2_vocab_size, pref3_vocab_size, suff2_vocab_size, suff3_vocab_size, pos_vocab_size,
-                  init_embedding)
+                                         pref2_vocab_size, pref3_vocab_size, suff2_vocab_size, suff3_vocab_size,
+                                         pos_vocab_size, init_embedding)
             self.input_pref2 = self.input_comp.input_pref2
             self.input_pref3 = self.input_comp.input_pref3
             self.input_suff2 = self.input_comp.input_suff2
@@ -51,28 +52,29 @@ class TextCNN:
         if middle_component == 'NParallelConvOnePoolNFC':
             self.middle_comp = NParallelConvOnePoolNFC(sequence_length, embedding_size, filter_sizes, num_filters,
                                                        previous_component=self.input_comp, dropout=dropout,
-                                                       batch_normalize=batch_normalize, elu=elu, n_conv = n_conv, fc=fc)
+                                                       batch_normalize=batch_normalize, elu=elu, n_conv = n_conv, fc=fc,
+                                                       l2_reg_lambda=l2_reg_lambda)
         elif middle_component == 'ParallelJoinedConv':
             self.middle_comp = ParallelJoinedConv(sequence_length, embedding_size, filter_sizes, num_filters,
                                                   previous_component=self.input_comp, dropout=dropout,
                                                   batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
-                                                  fc=fc)
+                                                  fc=fc, l2_reg_lambda=l2_reg_lambda)
         elif middle_component == 'NCrossSizeParallelConvNFC':
             self.middle_comp = NCrossSizeParallelConvNFC(sequence_length, embedding_size, filter_sizes, num_filters,
                                                          previous_component=self.input_comp, dropout=dropout,
                                                          batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
-                                                         fc=fc)
+                                                         fc=fc, l2_reg_lambda=l2_reg_lambda)
         elif middle_component == "NConvDocConvNFC":
             self.middle_comp = NConvDocConvNFC(document_length, sequence_length, embedding_size, filter_sizes,
                                                num_filters,
                                                previous_component=self.input_comp, dropout=dropout,
                                                batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
-                                               fc=fc)
+                                               fc=fc, l2_reg_lambda=l2_reg_lambda)
         elif middle_component == 'InceptionLike':
             self.middle_comp = InceptionLike(sequence_length, embedding_size, filter_sizes, num_filters,
-                                                         previous_component=self.input_comp, dropout=dropout,
-                                                         batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
-                                                         fc=fc)
+                                             previous_component=self.input_comp, dropout=dropout,
+                                             batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
+                                             fc=fc, l2_reg_lambda=l2_reg_lambda)
         else:
             raise NotImplementedError
 

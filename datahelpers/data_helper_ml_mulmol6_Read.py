@@ -355,7 +355,6 @@ class DataHelperMulMol6(DataHelper):
         x_concat_exp = np.concatenate([x_training_exp, x_test_exp], axis=0)
         # self.longest_sentence(x_concat_exp, True)
         self.vocab, self.vocab_inv = self.build_vocab(x_concat_exp, self.vocabulary_size)
-        # pickle.dump([self.vocab, self.vocab_inv], open("ml_vocabulary.pickle", "wb"))
 
         self.pos_vocab, self.pos_vocab_inv = self.build_vocab(np.concatenate([pos_train_exp, pos_test_exp], axis=0), self.vocabulary_size)
         # self.wl_vocab, self.wl_vocab_inv = self.build_vocab(np.concatenate([wl_train_exp, wl_test_exp], axis=0), self.vocabulary_size)
