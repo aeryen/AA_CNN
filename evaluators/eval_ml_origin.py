@@ -49,7 +49,8 @@ class evaler:
             checkpoint_file = experiment_dir + "/checkpoints/" + "model-" + str(checkpoint_step)
         else:
             checkpoint_file = tf.train.latest_checkpoint(experiment_dir + "/checkpoints/", latest_filename=None)
-        eval_log = open(os.path.join(experiment_dir, "eval.log"), mode="w+")
+        file_name = os.path.basename(checkpoint_file)
+        eval_log = open(os.path.join(experiment_dir, file_name + "_eval.log"), mode="w+")
 
         logging.info("Evaluating: " + __file__)
         eval_log.write("Evaluating: " + __file__ + "\n")
@@ -60,7 +61,7 @@ class evaler:
         logging.info(AM.get_time())
         eval_log.write(AM.get_time() + "\n")
         logging.info("Total number of test examples: {}".format(len(self.y_test)))
-        eval_log.write("Total number of test examples: {}\n".format(len(self.y_test)) + "n")
+        eval_log.write("Total number of test examples: {}\n".format(len(self.y_test)))
 
 
         graph = tf.Graph()
@@ -179,7 +180,10 @@ if __name__ == "__main__":
     e = evaler()
     e.load(dater)
     path = sys.argv[1]
-    if len(sys.argv) > 2:
-        step = int(sys.argv[2])
-    e.test(path, step, documentAcc=True, do_is_training=False)
+    if len(sys.argv) == 2:
+        e.test(path, step, documentAcc=True, do_is_training=False)
+    elif len(sys.argv) > 2:
+        steps = list(map(int, sys.argv[2].split("/")))
+        for step in steps:
+            e.test(path, step, documentAcc=True, do_is_training=False)
 

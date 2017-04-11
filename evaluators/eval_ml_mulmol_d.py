@@ -57,8 +57,8 @@ class evaler:
         if checkpoint_step is not None:
             checkpoint_file = experiment_dir + "/checkpoints/" + "model-" + str(checkpoint_step)
         else:
-            checkpoint_file = tf.train.latest_checkpoint(experiment_dir, latest_filename=None)
-        eval_log = open(os.path.join(experiment_dir, "eval.log"), mode="aw")
+            checkpoint_file = tf.train.latest_checkpoint(experiment_dir + "/checkpoints/", latest_filename=None)
+        eval_log = open(os.path.join(experiment_dir, "eval.log"), mode="w+")
 
         logging.info("Evaluating: " + __file__)
         eval_log.write("Evaluating: " + __file__ + "\n")
@@ -109,7 +109,7 @@ class evaler:
 
 
                 # Collect the predictions here
-                allw_score = None
+                all_score = None
                 all_predictions = np.zeros([0, 20])
                 for [x_test_batch, y_test_batch,
                      pref2_batch, pref3_batch, suff2_batch, suff3_batch,
