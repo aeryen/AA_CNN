@@ -9,7 +9,7 @@ class NConvDocConvNFC(object):
 
     def __init__(
             self, document_length, sequence_length, embedding_size, filter_size_lists, num_filters, previous_component,
-            batch_normalize=False, dropout = False, elu = False, n_conv=1, fc=[]):
+            batch_normalize=False, dropout = False, elu = False, n_conv=1, fc=[], l2_reg_lambda=0.0):
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
         self.batch_normalize = batch_normalize
