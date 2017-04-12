@@ -18,7 +18,7 @@ class SixChannel:
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
 
         # Embedding layer
-        with tf.device('/cpu:0'), tf.variable_scope("embedding"):
+        with tf.variable_scope("embedding"):
             if init_embedding is None:
                 W = tf.Variable(
                     tf.random_uniform([word_vocab_size, embedding_size], -1.0, 1.0),

@@ -1,4 +1,5 @@
 import tensorflow as tf
+import logging
 
 
 class NCrossSizeParallelConvNFC(object):
@@ -37,20 +38,21 @@ class NCrossSizeParallelConvNFC(object):
                     else:
                         if self.dropout == True:
                             self.last_layer = tf.nn.dropout(self.last_layer, 0.8, name="dropout-inter-conv")
-                        cols = 1
-                        n_input_channels = num_filters * len(filter_size_lists[n-1])
+                        cols = total_output
+                        n_input_channels = 1
 
                     filter_shape = [filter_size, cols, n_input_channels, num_filters]
 
                     # Convolution Layer
                     W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
 
-                    conv = tf.nn.conv2d(
+                    conv = tf.nn.depthwise_conv2d_native(
                         self.last_layer,
                         W,
                         strides=[1, 1, 1, 1],
                         padding="VALID",
                         name="conv")
+                    logging.warning("DEEP WISE CNN")
 
                     top_pad = int((filter_size - 1) / 2.0)
                     bottom_pad = filter_size - 1 - top_pad
@@ -63,7 +65,7 @@ class NCrossSizeParallelConvNFC(object):
                                                             center=True, scale=True, fused=True,
                                                             is_training=self.is_training)
                     # Add bias; Apply non-linearity
-                    b = tf.Variable(tf.constant(0.1, shape=[num_filters]), name="b")
+                    b = tf.Variable(tf.constant(0.1, shape=[num_filters * n_input_channels]), name="b")
                     if elu == False:
                         h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
                     else:
@@ -74,6 +76,8 @@ class NCrossSizeParallelConvNFC(object):
                     all_filter_size_output.append(h)
 
             self.last_layer = tf.concat(all_filter_size_output, 3)
+            total_output = num_filters * len(filter_size_lists[n]) * n_input_channels
+            self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, total_output, 1])
 
         with tf.variable_scope("maxpool-all"):
             # Maxpooling over the outputs
