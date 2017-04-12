@@ -6,12 +6,13 @@ import itertools
 import logging
 import pkg_resources
 import os
+import math
 
 
 class DataHelper(object):
 
     def __init__(self, doc_level="comb", embed_type="glove", embed_dim=100, target_doc_len=100, target_sent_len=220,
-                 train_holdout=0.80):
+                 train_holdout=-1, num_fold=5, fold_index=0):
         logging.info("setting: %s is %s", "doc_level", doc_level)
         logging.info("setting: %s is %s", "embed_type", embed_type)
         logging.info("setting: %s is %s", "embed_dim", embed_dim)
@@ -24,7 +25,10 @@ class DataHelper(object):
         self.embedding_dim = embed_dim
         self.target_doc_len = target_doc_len
         self.target_sent_len = target_sent_len
-        self.train_holdout = train_holdout
+        if train_holdout > 0:
+            raise ValueError("train_holdout is no longer supported.")
+        self.num_fold = num_fold
+        self.fold_index = fold_index
 
         self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
         self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
@@ -222,3 +226,29 @@ class DataHelper(object):
     def get_vocab_path(file_name, embed_type, embed_dim):
         current_path = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(current_path, file_name + "_" + embed_type + "_" + str(embed_dim) + ".pickle")
+
+    @staticmethod
+    def split_by_fold(num_of_fold, test_fold_index, data_size, data_to_split):
+        fold_size = int(math.floor(data_size / num_of_fold))
+        last_fold_size = data_size - (fold_size * (num_of_fold - 1))
+
+        logging.info("number of fold: " + str(num_of_fold))
+        logging.info("[testing fold index]: " + str(test_fold_index))
+        logging.info("fold size: " + str(fold_size))
+        logging.info("last fold size: " + str(last_fold_size))
+
+        training_data = []
+        testing_data = None
+        for i in range(num_of_fold):
+            if i == test_fold_index:
+                if i == num_of_fold - 1:
+                    testing_data = data_to_split[-last_fold_size:]
+                else:
+                    testing_data = data_to_split[i*fold_size:(i+1)*fold_size]
+            else:
+                if i == num_of_fold - 1:
+                    training_data.extend(data_to_split[-last_fold_size:])
+                else:
+                    training_data.extend(data_to_split[i*fold_size:(i+1)*fold_size])
+
+        return training_data, testing_data

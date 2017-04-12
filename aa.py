@@ -48,11 +48,11 @@ if __name__ == "__main__":
     logging.warning('===================================================')
 
     if input_component == "ML_One":
-        dater = DataHelperML(doc_level="sent", train_holdout=0.80, embed_type="glove",
-                             embed_dim=300, target_sent_len=50, target_doc_len=400)
+        dater = DataHelperML(doc_level="sent", num_fold=5, fold_index=4, embed_type="glove",
+                             embed_dim=100, target_sent_len=50, target_doc_len=400)
         ev = evaler_one.evaler()
     elif input_component == "ML_Six":
-        dater = DataHelperMulMol6(doc_level="sent", train_holdout=0.80, embed_type="glove",
+        dater = DataHelperMulMol6(doc_level="sent", num_fold=5, fold_index=4, embed_type="glove",
                                   embed_dim=300, target_sent_len=50, target_doc_len=400)
         ev = evaler.evaler()
     elif input_component == "ML_One_DocLevel":
@@ -63,12 +63,12 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                      batch_size=32, evaluate_every=2000, checkpoint_every=10000)
+                      batch_size=128, evaluate_every=2000, checkpoint_every=2500)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=0.8, n_steps=100000, l2_lambda=0.0,
-                     dropout=True, batch_normalize=False, elu=False, n_conv=2, fc=[])
+    tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=0.8, n_steps=20000, l2_lambda=0.0,
+                     dropout=False, batch_normalize=True, elu=True, n_conv=2, fc=[])
     end = timer()
     print((end - start))
 

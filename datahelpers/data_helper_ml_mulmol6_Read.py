@@ -2,7 +2,6 @@ import collections
 import re
 import numpy as np
 import os
-import math
 import pkg_resources
 import logging
 
@@ -54,12 +53,12 @@ class DataHelperMulMol6(DataHelper):
     target_doc_len = None
 
     def __init__(self, doc_level="comb", embed_type="glove", embed_dim=100, target_doc_len=100, target_sent_len=220,
-                 train_holdout=0.80):
+                 train_holdout=-1, num_fold=5, fold_index=0):
         logging.info("Data Helper: " + __file__ + " initiated.")
 
         super(DataHelperMulMol6, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
                                                 target_doc_len=target_doc_len, target_sent_len=target_sent_len,
-                                                train_holdout=train_holdout)
+                                                train_holdout=train_holdout, num_fold=num_fold, fold_index=fold_index)
 
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
         self.truth_file_path = self.training_data_dir + "labels.csv"
@@ -247,19 +246,18 @@ class DataHelperMulMol6(DataHelper):
         s2_shuffled = [s2[i] for i in shuffle_i]
         s3_shuffled = [s3[i] for i in shuffle_i]
 
-        self.train_size = int(math.floor(len(labels) * self.train_holdout))
-        self.test_size = len(file_id) - self.train_size
-        file_id_train, file_id_test = file_id_shuffled[:self.train_size], file_id_shuffled[self.train_size:]
-        labels_train, labels_test = labels_shuffled[:self.train_size], labels_shuffled[self.train_size:]
-        doc_size_train, doc_size_test = doc_size_shuffled[:self.train_size], doc_size_shuffled[self.train_size:]
+        data_size = len(file_id)
+        file_id_train, file_id_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, file_id_shuffled)
+        labels_train, labels_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, labels_shuffled)
+        doc_size_train, doc_size_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, doc_size_shuffled)
 
-        origin_train, origin_test = origin_shuffled[:self.train_size], origin_shuffled[self.train_size:]
-        pos_train, pos_test = pos_shuffled[:self.train_size], pos_shuffled[self.train_size:]
-        wl_train, wl_test = wl_shuffled[:self.train_size], wl_shuffled[self.train_size:]
-        p2_train, p2_test = p2_shuffled[:self.train_size], p2_shuffled[self.train_size:]
-        p3_train, p3_test = p3_shuffled[:self.train_size], p3_shuffled[self.train_size:]
-        s2_train, s2_test = s2_shuffled[:self.train_size], s2_shuffled[self.train_size:]
-        s3_train, s3_test = s3_shuffled[:self.train_size], s3_shuffled[self.train_size:]
+        origin_train, origin_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, origin_shuffled)
+        pos_train, pos_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, pos_shuffled)
+        wl_train, wl_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, wl_shuffled)
+        p2_train, p2_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, p2_shuffled)
+        p3_train, p3_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, p3_shuffled)
+        s2_train, s2_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, s2_shuffled)
+        s3_train, s3_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, s3_shuffled)
 
         return [file_id_train, file_id_test, labels_train, labels_test, doc_size_train, doc_size_test,
                 origin_train, origin_test, pos_train, pos_test, wl_train, wl_test,
