@@ -1,7 +1,7 @@
 from .input_components.OneChannel import OneChannel
+from .input_components.TwoEmbChannel import TwoEmbChannel
 from .input_components.SixChannel import SixChannel
 from .input_components.OneChannel_DocLevel import OneChannel_DocLevel
-from .middle_components.yifan_conv import YifanConv
 from .middle_components.parallel_conv import NParallelConvOnePoolNFC
 from .middle_components.parallel_size_joined_conv import NCrossSizeParallelConvNFC
 from .middle_components.parallel_joined_conv import ParallelJoinedConv
@@ -22,18 +22,21 @@ class TextCNN:
             self, sequence_length, num_classes, word_vocab_size,
             embedding_size, filter_sizes, num_filters, input_component="OneChannel", middle_component = 'OneCMiddle',
             dataset="ML", l2_reg_lambda=0.0, pref2_vocab_size=None, pref3_vocab_size=None, suff2_vocab_size=None,
-            suff3_vocab_size=None, pos_vocab_size=None,init_embedding=None, dropout=False, batch_normalize = False,
-            elu = False, n_conv=1, fc=[], document_length=-1):
+            suff3_vocab_size=None, pos_vocab_size=None, init_embedding_glv=None, init_embedding_w2v=None,
+            dropout=False, batch_normalize=False, elu=False,
+            n_conv=1, fc=[], document_length=-1):
 
         # input component
         if input_component.endswith("One"):
-            self.input_comp = OneChannel(sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
+            self.input_comp = OneChannel(sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding_glv)
         elif input_component.endswith("One_DocLevel"):
-            self.input_comp = OneChannel_DocLevel(document_length, sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding)
+            self.input_comp = OneChannel_DocLevel(document_length, sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding_glv)
+        elif input_component.endswith("2CH"):
+            self.input_comp = TwoEmbChannel(sequence_length, num_classes, word_vocab_size, embedding_size, init_embedding_glv, init_embedding_w2v)
         elif input_component.endswith("Six"):
             self.input_comp = SixChannel(sequence_length, num_classes, word_vocab_size, embedding_size,
-                  pref2_vocab_size, pref3_vocab_size, suff2_vocab_size, suff3_vocab_size, pos_vocab_size,
-                  init_embedding)
+                                         pref2_vocab_size, pref3_vocab_size, suff2_vocab_size, suff3_vocab_size, pos_vocab_size,
+                                         init_embedding_glv)
             self.input_pref2 = self.input_comp.input_pref2
             self.input_pref3 = self.input_comp.input_pref3
             self.input_suff2 = self.input_comp.input_suff2

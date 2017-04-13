@@ -79,7 +79,7 @@ def training(DO_DEV_SPLIT, FLAGS, scheme_name, vocabulary, embed_matrix, x_train
                 filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
                 num_filters=num_filters,
                 l2_reg_lambda=l2_lambda,
-                init_embedding=embed_matrix)
+                init_embedding_glv=embed_matrix)
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)

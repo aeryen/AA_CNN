@@ -118,7 +118,7 @@ class evaler:
         average_accuracy = correct_predictions / float(all_predictions.shape[0])
 
         logging.info("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
-        eval_log.write("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
+        eval_log.write("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")\n")
 
         if documentAcc == True:
             doc_prediction = []
@@ -177,7 +177,7 @@ if __name__ == "__main__":
 
     dater = data_helpers.DataHelperML(doc_level="sent", embed_dim=100,
                                       target_doc_len=400, target_sent_len=50,
-                                      num_fold=5, fold_index=4)
+                                      num_fold=5, fold_index=1)
     dater.load_data()
     e = evaler()
     e.load(dater)

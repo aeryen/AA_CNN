@@ -2,7 +2,7 @@ import numpy as np
 import re
 from collections import Counter
 import itertools
-# import gensim
+import gensim
 import logging
 import pkg_resources
 import os

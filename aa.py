@@ -1,7 +1,8 @@
 from timeit import default_timer as timer
 from datahelpers.data_helper_ml_mulmol6_Read import DataHelperMulMol6
 from datahelpers.data_helper_ml_normal import DataHelperML
-from trainer import TrainTaskLite as tr
+from datahelpers.data_helper_ml_2chan import DataHelperML_2CH
+from trainer import TrainTask as tr
 from evaluators import eval_ml_mulmol_d as evaler
 from evaluators import eval_ml_origin as evaler_one
 from utils.ArchiveManager import ArchiveManager
@@ -40,16 +41,20 @@ if __name__ == "__main__":
     # * InceptionLike
     ################################################
 
-    input_component = "ML_One"
-    middle_component = "ORIGIN"
+    input_component = "ML_2CH"
+    middle_component = "NCrossSizeParallelConvNFC"
 
     am = ArchiveManager(input_component, middle_component)
     get_exp_logger(am)
     logging.warning('===================================================')
 
     if input_component == "ML_One":
-        dater = DataHelperML(doc_level="sent", num_fold=5, fold_index=0, embed_type="glove",
+        dater = DataHelperML(doc_level="sent", num_fold=5, fold_index=1, embed_type="glove",
                              embed_dim=300, target_sent_len=50, target_doc_len=400)
+        ev = evaler_one.evaler()
+    elif input_component == "ML_2CH":
+        dater = DataHelperML_2CH(doc_level="sent", num_fold=5, fold_index=1,
+                                 embed_dim=300, target_sent_len=50, target_doc_len=400)
         ev = evaler_one.evaler()
     elif input_component == "ML_Six":
         dater = DataHelperMulMol6(doc_level="sent", num_fold=5, fold_index=4, embed_type="glove",
@@ -67,8 +72,8 @@ if __name__ == "__main__":
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    tt.training(filter_sizes=[3, 4, 5], num_filters=100, dropout_keep_prob=0.8, n_steps=20000, l2_lambda=0.0,
-                     dropout=True, batch_normalize=False, elu=False, n_conv=1, fc=[])
+    tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=0.8, n_steps=20000, l2_lambda=0.0,
+                     dropout=True, batch_normalize=True, elu=True, n_conv=2, fc=[512, 384])
     end = timer()
     print((end - start))
 

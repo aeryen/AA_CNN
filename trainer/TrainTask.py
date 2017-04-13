@@ -23,7 +23,6 @@ class TrainTask:
         self.data_hlp = data_helper
         self.exp_name = exp_name
         self.input_component = input_component
-        # the problem tag identifies the experiment setting, currently data name + experiment name
         self.am = am
 
         logging.warning('TrainTask instance initiated: ' + AM.get_date())
@@ -59,6 +58,13 @@ class TrainTask:
             self.suff3_vocab_size = None
             self.pos_vocab_size = None
             self.x_train, self.y_train, _, _, self.embed_matrix = self.data_hlp.load_data()
+        elif "2CH" in input_component:
+            self.pref2_vocab_size = None
+            self.pref3_vocab_size = None
+            self.suff2_vocab_size = None
+            self.suff3_vocab_size = None
+            self.pos_vocab_size = None
+            self.x_train, self.y_train, _, _, self.embed_matrix_glv, self.embed_matrix_w2v = self.data_hlp.load_data()
         else:
             raise NotImplementedError
 
@@ -67,7 +73,7 @@ class TrainTask:
         if "Six" in input_component:
             self.x_dev, self.pos_test, _, self.p2_test, self.p3_test, \
                 self.s2_test, self.s3_test, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
-        elif "One" in input_component:
+        elif "One" or "2CH" in input_component:
             self.x_dev, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
         else:
             raise NotImplementedError
@@ -112,7 +118,7 @@ class TrainTask:
                 pos_vocab_size=self.pos_vocab_size,
                 dataset=self.data_hlp.problem_name,
                 l2_reg_lambda=l2_lambda,
-                init_embedding=self.embed_matrix,
+                init_embedding_glv=self.embed_matrix,
                 dropout=dropout,
                 batch_normalize=batch_normalize,
                 elu=elu,
