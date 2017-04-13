@@ -129,7 +129,7 @@ class evaler:
                 sum_to = sum_to + f_size  # increment to next file
                 p = np.sum(p, axis=0).astype(float)
                 p = p / f_size
-                pred_class = p > 0.5
+                pred_class = p > 0.3
                 pred_class = pred_class.astype(int)
                 if 1 not in pred_class:
                     pred_class = np.zeros([20], dtype=np.int)
