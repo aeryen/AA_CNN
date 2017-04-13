@@ -183,7 +183,7 @@ if __name__ == "__main__":
     step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
     step = None
 
-    d = dh.DataHelperMulMol6(doc_level="sent", train_holdout=0.80, target_sent_len=50, target_doc_len=400)
+    d = dh.DataHelperMulMol6(doc_level="sent", train_holdout=0.80, embed_dim=300,  target_sent_len=50, target_doc_len=400)
     d.load_data()
     e = evaler()
     e.load(d)
