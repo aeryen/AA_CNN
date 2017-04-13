@@ -175,7 +175,9 @@ if __name__ == "__main__":
     step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
     step = None
 
-    dater = data_helpers.DataHelperML(doc_level="sent", embed_dim=100, target_sent_len=50)
+    dater = data_helpers.DataHelperML(doc_level="sent", embed_dim=100,
+                                      target_doc_len=400, target_sent_len=50,
+                                      num_fold=5, fold_index=4)
     dater.load_data()
     e = evaler()
     e.load(dater)

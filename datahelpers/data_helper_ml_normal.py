@@ -40,13 +40,13 @@ class DataHelperML(DataHelper):
     target_sent_len = None
     target_doc_len = None
 
-    def __init__(self, doc_level="comb", embed_dim=100, target_sent_len=220, target_doc_len=100, train_holdout=0.80,
-                 embed_type="glove"):
+    def __init__(self, doc_level="comb", embed_type="glove", embed_dim=100, target_doc_len=100, target_sent_len=220,
+                 train_holdout=-1, num_fold=5, fold_index=0):
         logging.info("Data Helper: " + __file__ + " initiated.")
 
         super(DataHelperML, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
                                            target_doc_len=target_doc_len, target_sent_len=target_sent_len,
-                                           train_holdout=train_holdout)
+                                           train_holdout=train_holdout, num_fold=num_fold, fold_index=fold_index)
 
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
         self.truth_file_path = self.training_data_dir + "labels.csv"
@@ -166,7 +166,7 @@ class DataHelperML(DataHelper):
             padded_doc.append(new_doc)
         return np.array(padded_doc)
 
-    def train_test_shuf_split(self, file_id, labels, doc_size, origin, train_holdout=0.80):
+    def train_test_shuf_split(self, file_id, labels, doc_size, origin):
         rs = np.random.RandomState(10)
         shuffle_i = rs.permutation(np.arange(len(labels)))
 
@@ -175,12 +175,12 @@ class DataHelperML(DataHelper):
         doc_size_shuffled = doc_size[shuffle_i]
         origin_shuffled = [origin[i] for i in shuffle_i]
 
-        self.train_size = int(math.floor(len(labels) * train_holdout))
-        self.test_size = len(file_id) - self.train_size
-        file_id_train, file_id_test = file_id_shuffled[:self.train_size], file_id_shuffled[self.train_size:]
-        labels_train, labels_test = labels_shuffled[:self.train_size], labels_shuffled[self.train_size:]
-        doc_size_train, doc_size_test = doc_size_shuffled[:self.train_size], doc_size_shuffled[self.train_size:]
-        origin_train, origin_test = origin_shuffled[:self.train_size], origin_shuffled[self.train_size:]
+        data_size = len(file_id)
+        file_id_train, file_id_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, file_id_shuffled)
+        labels_train, labels_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, labels_shuffled)
+        doc_size_train, doc_size_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, doc_size_shuffled)
+
+        origin_train, origin_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, origin_shuffled)
 
         return [file_id_train, file_id_test, labels_train, labels_test, doc_size_train, doc_size_test,
                 origin_train, origin_test]
@@ -228,8 +228,7 @@ class DataHelperML(DataHelper):
 
         [self.file_id_train, self.file_id_test, self.labels_train, self.labels_test,
          self.doc_size_train, self.doc_size_test, self.x_train, self.x_test] = \
-            self.train_test_shuf_split(file_id=file_name_ordered, labels=label_matrix_ordered, doc_size=doc_size,
-                                       origin=origin_list, train_holdout=self.train_holdout)
+            self.train_test_shuf_split(file_id=file_name_ordered, labels=label_matrix_ordered, doc_size=doc_size, origin=origin_list)
 
         self.doc_labels_test = self.labels_test
 
