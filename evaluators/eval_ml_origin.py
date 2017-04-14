@@ -99,7 +99,7 @@ class evaler:
 
                 # Collect the predictions here
                 all_score = None
-                all_predictions = np.zeros([0, 20])
+                all_predictions = np.zeros([0, self.dater.num_of_classes])
                 for [x_test_batch, y_test_batch] in zip(x_batches, y_batches):
                     if do_is_training:
                         batch_scores, batch_predictions = sess.run([scores, predictions],
@@ -139,7 +139,7 @@ class evaler:
                 pred_class = p > 0.3
                 pred_class = pred_class.astype(int)
                 if 1 not in pred_class:
-                    pred_class = np.zeros([20], dtype=np.int)
+                    pred_class = np.zeros([self.dater.num_of_classes], dtype=np.int)
                     pred_class[np.argmax(p)] = 1
                 doc_prediction.append(pred_class)
                 print("pred: " + str(pred_class) + "   " + "true: " + str(self.dater.doc_labels_test[i]))
@@ -215,7 +215,7 @@ if __name__ == "__main__":
     elif mode == "ML_2CH":
         dater = DataHelperML_2CH(doc_level="sent", embed_dim=300,
                                  target_doc_len=400, target_sent_len=50,
-                                 num_fold=5, fold_index=0)
+                                 num_fold=5, fold_index=1)
     dater.load_data()
     e = evaler()
     e.load(dater)

@@ -44,8 +44,9 @@ if __name__ == "__main__":
 
     input_component = "ML_2CH"
     middle_component = "NCrossSizeParallelConvNFC"
+    truth_file = "2_authors.csv"
 
-    am = ArchiveManager(input_component, middle_component)
+    am = ArchiveManager(input_component, middle_component, truth_file=truth_file)
     get_exp_logger(am)
     logging.warning('===================================================')
 
@@ -55,7 +56,7 @@ if __name__ == "__main__":
         ev = evaler_one.evaler()
     elif input_component == "ML_2CH":
         dater = DataHelperML_2CH(doc_level="sent", num_fold=5, fold_index=0,
-                                 embed_dim=300, target_sent_len=50, target_doc_len=400)
+                                 embed_dim=300, target_sent_len=50, target_doc_len=400, truth_file=truth_file)
         ev = evaler_one.evaler()
     elif input_component == "ML_Six":
         dater = DataHelperMulMol6(doc_level="sent", num_fold=5, fold_index=4, embed_type="glove",

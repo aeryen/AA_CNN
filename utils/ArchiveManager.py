@@ -16,9 +16,10 @@ def get_time():
 
 class ArchiveManager:
 
-    def __init__(self, problem_name, exp_name):
+    def __init__(self, problem_name, exp_name, truth_file=None):
         self.problem_name = problem_name
         self.exp_name = exp_name
+        self.truth_file = truth_file
         self.time_stamp = str(int(time.time()))
 
     def get_tag(self):
@@ -33,7 +34,10 @@ class ArchiveManager:
 
     def get_exp_dir(self):
         date_today = get_date()
-        path = os.path.join(self.get_tag_dir(), date_today + "_" + self.time_stamp, "")
+        if self.truth_file is None:
+            path = os.path.join(self.get_tag_dir(), date_today + "_" + self.time_stamp, "")
+        else:
+            path = os.path.join(self.get_tag_dir(), date_today + "_" + self.time_stamp + "_" + self.truth_file, "")
         if not os.path.exists(path):
             os.makedirs(path)
         return path

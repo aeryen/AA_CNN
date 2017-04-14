@@ -110,7 +110,7 @@ class evaler:
 
                 # Collect the predictions here
                 all_score = None
-                all_predictions = np.zeros([0, 20])
+                all_predictions = np.zeros([0, self.dater.num_of_classes])
                 for [x_test_batch, y_test_batch,
                      pref2_batch, pref3_batch, suff2_batch, suff3_batch,
                      pos_batch] in zip(x_batches, y_batches,
@@ -153,7 +153,7 @@ class evaler:
                 pred_class = p > 0.3
                 pred_class = pred_class.astype(int)
                 if 1 not in pred_class:
-                    pred_class = np.zeros([20], dtype=np.int)
+                    pred_class = np.zeros([self.dater.num_of_classes], dtype=np.int)
                     pred_class[np.argmax(p)] = 1
                 doc_prediction.append(pred_class)
                 logging.info("pred: " + str(pred_class) + "   " + "true: " + str(self.dater.doc_labels_test[i]))

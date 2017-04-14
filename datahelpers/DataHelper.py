@@ -20,6 +20,8 @@ class DataHelper(object):
         logging.info("setting: %s is %s", "target_sent_len", target_sent_len)
         logging.info("setting: %s is %s", "train_holdout", train_holdout)
 
+        self.num_of_classes = None
+
         self.doc_level_data = doc_level
         self.embed_type = embed_type
         self.embedding_dim = embed_dim

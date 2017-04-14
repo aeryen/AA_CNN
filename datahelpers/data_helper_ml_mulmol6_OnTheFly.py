@@ -26,8 +26,6 @@ class DataHelperMulMol6(DataHelper):
     vocabulary_size = 20000
     embedding_dim = 100
 
-    num_of_classes = 20
-
     train_size = None
     test_size = None
 
@@ -107,6 +105,8 @@ class DataHelperMulMol6(DataHelper):
 
         truth_file_content = open(self.truth_file_path, "r").readlines()
         self.author_list = truth_file_content[0].split(",")[1:]
+        if self.num_of_classes is None:
+            self.num_of_classes = len(truth_file_content[1].split(",")[1:])
         for line in truth_file_content[1:]:
             line = line.split(",")
             file_id_list.append(line[0])

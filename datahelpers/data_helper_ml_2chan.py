@@ -12,9 +12,6 @@ class DataHelperML_2CH(DataHelper):
     problem_name = "ML"
 
     vocabulary_size = 20000
-    embedding_dim = 100
-
-    num_of_classes = 20
 
     train_size = None
     test_size = None
@@ -40,7 +37,7 @@ class DataHelperML_2CH(DataHelper):
     target_doc_len = None
 
     def __init__(self, doc_level="comb", embed_dim=100, target_doc_len=100, target_sent_len=220,
-                 train_holdout=-1, num_fold=5, fold_index=0):
+                 train_holdout=-1, num_fold=5, fold_index=0, truth_file="labels.csv"):
         logging.info("Data Helper: " + __file__ + " initiated.")
 
         super(DataHelperML_2CH, self).__init__(doc_level=doc_level, embed_type=None, embed_dim=embed_dim,
@@ -48,7 +45,7 @@ class DataHelperML_2CH(DataHelper):
                                                train_holdout=train_holdout, num_fold=num_fold, fold_index=fold_index)
 
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
-        self.truth_file_path = self.training_data_dir + "labels.csv"
+        self.truth_file_path = self.training_data_dir + truth_file
 
     def load_original_file(self, author_code, file_name):
         if not os.path.exists(os.path.dirname(self.training_data_dir + author_code + "/")):
@@ -76,6 +73,8 @@ class DataHelperML_2CH(DataHelper):
         origin_list = [None] * doc_count
 
         folder_list = os.listdir(self.training_data_dir)
+        if self.num_of_classes is None:
+            self.num_of_classes = len(truth_file_content[1].split(",")[1:])
         for author in folder_list:
             f = self.training_data_dir + author
             if os.path.isdir(f):
