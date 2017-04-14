@@ -215,7 +215,7 @@ if __name__ == "__main__":
     elif mode == "ML_2CH":
         dater = DataHelperML_2CH(doc_level="sent", embed_dim=300,
                                  target_doc_len=400, target_sent_len=50,
-                                 num_fold=5, fold_index=1, truth_file="2_authors.csv")
+                                 num_fold=5, fold_index=0, truth_file="2_authors.csv")
     dater.load_data()
     e = evaler()
     e.load(dater)
