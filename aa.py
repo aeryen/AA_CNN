@@ -29,6 +29,7 @@ if __name__ == "__main__":
     # Input Components:
     #
     # * ML_One
+    # * ML_2CH
     # * ML_Six
     # * ML_One_DocLevel
     #
@@ -73,7 +74,7 @@ if __name__ == "__main__":
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
     tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=0.8, n_steps=20000, l2_lambda=0.0,
-                     dropout=True, batch_normalize=True, elu=True, n_conv=2, fc=[512, 384])
+                     dropout=False, batch_normalize=False, elu=True, n_conv=2, fc=[512, 384])
     end = timer()
     print((end - start))
 

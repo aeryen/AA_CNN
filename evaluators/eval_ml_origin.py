@@ -3,12 +3,19 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+from sklearn.metrics import precision_score
+from sklearn.metrics import recall_score
+from sklearn.metrics import f1_score
+from sklearn.metrics import jaccard_similarity_score
+from sklearn.metrics import hamming_loss
+from sklearn.metrics import accuracy_score
+
 import sys
 import logging
-
 import os.path
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from datahelpers import data_helper_ml_normal as data_helpers
+from datahelpers.data_helper_ml_2chan import DataHelperML_2CH
 import utils.ArchiveManager as AM
 
 # THIS CLASS IS THE EVALUATOR FOR NORMAL CNN
@@ -152,20 +159,46 @@ class evaler:
                     correct += 1
             doc_acc = correct / total_doc
             print("Doc ACC: " + str(doc_acc))
-            eval_log.write("Doc ACC: " + str(doc_acc) + "\n")
+            eval_log.write("Doc ACC: " + str(doc_acc) + "\n\n")
 
-            # print "precision recall fscore support"
-            # output_file.write("precision recall fscore support\n")
-            # for i in range(self.dater.num_of_classes):
-            #     prfs = precision_recall_fscore_support(y_true=self.dater.test_author_index, y_pred=doc_prediction,
-            #                                            average="binary", pos_label=i)
-            #     print "class " + str(i) + ": " + str(prfs)
-            #     output_file.write("class " + str(i) + ": " + str(prfs) + "\n")
-            #
-            # prfs = precision_recall_fscore_support(y_true=self.dater.test_author_index,
-            #                                        y_pred=doc_prediction, average="macro")
-            # print "avg : " + str(prfs)
-            # output_file.write("avg : " + str(prfs) + "\n")
+            y_true = self.dater.doc_labels_test.astype(bool)
+            y_pred = doc_prediction.astype(bool)
+
+            mi_prec = precision_score(y_true=y_true, y_pred=y_pred, average="micro")
+            logging.info("micro prec: " + str(mi_prec))
+            eval_log.write("micro prec: " + str(mi_prec) + "\n")
+
+            mi_recall = recall_score(y_true=y_true, y_pred=y_pred, average="micro")
+            logging.info("micro recall: " + str(mi_recall))
+            eval_log.write("micro recall: " + str(mi_recall) + "\n")
+
+            mi_f1 = f1_score(y_true=y_true, y_pred=y_pred, average="micro")
+            logging.info("micro f1: " + str(mi_f1))
+            eval_log.write("micro f1: " + str(mi_f1)+ "\n")
+
+            ma_prec = precision_score(y_true=y_true, y_pred=y_pred, average='macro')
+            logging.info("macro prec: " + str(ma_prec))
+            eval_log.write("macro prec: " + str(ma_prec) + "\n")
+
+            ma_recall = recall_score(y_true=y_true, y_pred=y_pred, average='macro')
+            logging.info("macro recall: " + str(ma_recall))
+            eval_log.write("macro recall: " + str(ma_recall) + "\n")
+
+            ma_f1 = f1_score(y_true=y_true, y_pred=y_pred, average='macro')
+            logging.info("macro f1: " + str(ma_f1))
+            eval_log.write("macro f1: " + str(ma_f1) + "\n")
+
+            jaccard = jaccard_similarity_score(y_true=y_true, y_pred=y_pred)
+            logging.info("jaccard: " + str(jaccard))
+            eval_log.write("jaccard: " + str(jaccard) + "\n")
+
+            hamming = hamming_loss(y_true=y_true, y_pred=y_pred)
+            logging.info("hamming: " + str(hamming))
+            eval_log.write("hamming: " + str(hamming) + "\n")
+
+            acc = accuracy_score(y_true=y_true, y_pred=y_pred)
+            logging.info("acc: " + str(acc))
+            eval_log.write("acc: " + str(acc) + "\n")
 
         eval_log.write("\n")
         eval_log.write("\n")
@@ -174,18 +207,23 @@ if __name__ == "__main__":
     step1 = [250, 500, 750, 1000]
     step2 = [2000, 2250, 2500, 2750, 3000, 3250, 3500]
     step = None
-
-    dater = data_helpers.DataHelperML(doc_level="sent", embed_dim=100,
-                                      target_doc_len=400, target_sent_len=50,
-                                      num_fold=5, fold_index=1)
+    mode = "ML_2CH"  # ML_One / ML_2CH
+    if mode == "ML_One":
+        dater = data_helpers.DataHelperML(doc_level="sent", embed_dim=300,
+                                          target_doc_len=400, target_sent_len=50,
+                                          num_fold=5, fold_index=4)
+    elif mode == "ML_2CH":
+        dater = DataHelperML_2CH(doc_level="sent", embed_dim=300,
+                                 target_doc_len=400, target_sent_len=50,
+                                 num_fold=5, fold_index=0)
     dater.load_data()
     e = evaler()
     e.load(dater)
     path = sys.argv[1]
     if len(sys.argv) == 2:
-        e.test(path, step, documentAcc=True, do_is_training=False)
+        e.test(path, step, documentAcc=True, do_is_training=True)
     elif len(sys.argv) > 2:
         steps = list(map(int, sys.argv[2].split("/")))
         for step in steps:
-            e.test(path, step, documentAcc=True, do_is_training=False)
+            e.test(path, step, documentAcc=True, do_is_training=True)
 
