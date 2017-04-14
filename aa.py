@@ -70,7 +70,7 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                      batch_size=128, evaluate_every=2000, checkpoint_every=2500)
+                      batch_size=128, evaluate_every=1000, checkpoint_every=200)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
