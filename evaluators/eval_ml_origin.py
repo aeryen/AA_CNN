@@ -165,40 +165,40 @@ class evaler:
             y_pred = np.array(doc_prediction).astype(bool)
 
             mi_prec = precision_score(y_true=y_true, y_pred=y_pred, average="micro")
-            logging.info("micro prec: " + str(mi_prec))
-            eval_log.write("micro prec: " + str(mi_prec) + "\n")
+            logging.info("micro prec:\t" + str(mi_prec))
+            eval_log.write("micro prec:\t" + str(mi_prec) + "\n")
 
             mi_recall = recall_score(y_true=y_true, y_pred=y_pred, average="micro")
-            logging.info("micro recall: " + str(mi_recall))
-            eval_log.write("micro recall: " + str(mi_recall) + "\n")
+            logging.info("micro recall:\t" + str(mi_recall))
+            eval_log.write("micro recall:\t" + str(mi_recall) + "\n")
 
             mi_f1 = f1_score(y_true=y_true, y_pred=y_pred, average="micro")
-            logging.info("micro f1: " + str(mi_f1))
-            eval_log.write("micro f1: " + str(mi_f1)+ "\n")
+            logging.info("micro f1:\t" + str(mi_f1))
+            eval_log.write("micro f1:\t" + str(mi_f1)+ "\n")
 
             ma_prec = precision_score(y_true=y_true, y_pred=y_pred, average='macro')
-            logging.info("macro prec: " + str(ma_prec))
-            eval_log.write("macro prec: " + str(ma_prec) + "\n")
+            logging.info("macro prec:\t" + str(ma_prec))
+            eval_log.write("macro prec:\t" + str(ma_prec) + "\n")
 
             ma_recall = recall_score(y_true=y_true, y_pred=y_pred, average='macro')
-            logging.info("macro recall: " + str(ma_recall))
-            eval_log.write("macro recall: " + str(ma_recall) + "\n")
+            logging.info("macro recall:\t" + str(ma_recall))
+            eval_log.write("macro recall:\t" + str(ma_recall) + "\n")
 
             ma_f1 = f1_score(y_true=y_true, y_pred=y_pred, average='macro')
-            logging.info("macro f1: " + str(ma_f1))
-            eval_log.write("macro f1: " + str(ma_f1) + "\n")
+            logging.info("macro f1:\t" + str(ma_f1))
+            eval_log.write("macro f1:\t" + str(ma_f1) + "\n")
 
             jaccard = jaccard_similarity_score(y_true=y_true, y_pred=y_pred)
-            logging.info("jaccard: " + str(jaccard))
-            eval_log.write("jaccard: " + str(jaccard) + "\n")
+            logging.info("jaccard:\t" + str(jaccard))
+            eval_log.write("jaccard:\t" + str(jaccard) + "\n")
 
             hamming = hamming_loss(y_true=y_true, y_pred=y_pred)
-            logging.info("hamming: " + str(hamming))
-            eval_log.write("hamming: " + str(hamming) + "\n")
+            logging.info("hamming:\t" + str(hamming))
+            eval_log.write("hamming:\t" + str(hamming) + "\n")
 
             acc = accuracy_score(y_true=y_true, y_pred=y_pred)
-            logging.info("acc: " + str(acc))
-            eval_log.write("acc: " + str(acc) + "\n")
+            logging.info("acc:\t" + str(acc))
+            eval_log.write("acc:\t" + str(acc) + "\n")
 
         eval_log.write("\n")
         eval_log.write("\n")
@@ -215,7 +215,7 @@ if __name__ == "__main__":
     elif mode == "ML_2CH":
         dater = DataHelperML_2CH(doc_level="sent", embed_dim=300,
                                  target_doc_len=400, target_sent_len=50,
-                                 num_fold=5, fold_index=1)
+                                 num_fold=5, fold_index=1, truth_file="2_authors.csv")
     dater.load_data()
     e = evaler()
     e.load(dater)
