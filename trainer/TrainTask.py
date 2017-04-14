@@ -45,7 +45,7 @@ class TrainTask:
         logging.debug("Loading data...")
         if "Six" in input_component:
             self.x_train, self.pos_train, _, self.p2_train, self.p3_train, self.s2_train, self.s3_train, self.y_train, \
-            _, _, self.embed_matrix = self.data_hlp.load_data()
+            _, _, self.embed_matrix_glv = self.data_hlp.load_data()
             self.pref2_vocab_size = len(self.data_hlp.p2_vocab)
             self.pref3_vocab_size = len(self.data_hlp.p3_vocab)
             self.suff2_vocab_size = len(self.data_hlp.s2_vocab)
@@ -57,7 +57,7 @@ class TrainTask:
             self.suff2_vocab_size = None
             self.suff3_vocab_size = None
             self.pos_vocab_size = None
-            self.x_train, self.y_train, _, _, self.embed_matrix = self.data_hlp.load_data()
+            self.x_train, self.y_train, _, _, self.embed_matrix_glv = self.data_hlp.load_data()
         elif "2CH" in input_component:
             self.pref2_vocab_size = None
             self.pref3_vocab_size = None
@@ -118,7 +118,8 @@ class TrainTask:
                 pos_vocab_size=self.pos_vocab_size,
                 dataset=self.data_hlp.problem_name,
                 l2_reg_lambda=l2_lambda,
-                init_embedding_glv=self.embed_matrix,
+                init_embedding_glv=self.embed_matrix_glv,
+                init_embedding_w2v=self.embed_matrix_w2v,
                 dropout=dropout,
                 batch_normalize=batch_normalize,
                 elu=elu,
@@ -184,7 +185,7 @@ class TrainTask:
                 # Initialize all variables
                 sess.run(tf.global_variables_initializer())
 
-            if "One" in self.input_component:
+            if "One" in self.input_component or "2CH" in self.input_component:
                 def train_step(x_batch, y_batch):
                     """
                     A single training step
@@ -272,7 +273,7 @@ class TrainTask:
                 raise NotImplementedError
 
             # Generate batches
-            if "One" in self.input_component:
+            if "One" in self.input_component or "2CH" in self.input_component:
                 batches = dh.DataHelperML.batch_iter(list(zip(self.x_train, self.y_train)), self.batch_size,
                                                      num_epochs=300)
             elif "Six" in self.input_component:
@@ -283,7 +284,7 @@ class TrainTask:
                 raise NotImplementedError
             # Training loop. For each batch...
             for batch in batches:
-                if "One" in self.input_component:
+                if "One" in self.input_component or "2CH" in self.input_component:
                     x_batch, y_batch = list(zip(*batch))
                     train_step(x_batch, y_batch)
                 elif "Six" in self.input_component:
@@ -295,7 +296,7 @@ class TrainTask:
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")
-                    if "One" in self.input_component:
+                    if "One" in self.input_component or "2CH" in self.input_component:
                         dev_batches = dh.DataHelperML.batch_iter(list(zip(self.x_dev, self.y_dev)), self.batch_size, 1)
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:

@@ -53,7 +53,7 @@ if __name__ == "__main__":
                              embed_dim=300, target_sent_len=50, target_doc_len=400)
         ev = evaler_one.evaler()
     elif input_component == "ML_2CH":
-        dater = DataHelperML_2CH(doc_level="sent", num_fold=5, fold_index=1,
+        dater = DataHelperML_2CH(doc_level="sent", num_fold=5, fold_index=0,
                                  embed_dim=300, target_sent_len=50, target_doc_len=400)
         ev = evaler_one.evaler()
     elif input_component == "ML_Six":
