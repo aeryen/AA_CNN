@@ -256,9 +256,9 @@ class DataHelperML_2CH(DataHelper):
             [self.x_test, self.labels_test, self.doc_size_test] = \
                 self.comb_all_doc(self.x_test, self.labels_test)
 
-        self.x_train = DataHelperML.build_input_data(self.x_train, self.vocab, self.doc_level_data)
+        self.x_train = DataHelperML_2CH.build_input_data(self.x_train, self.vocab, self.doc_level_data)
         self.x_train = self.pad_sentences(self.x_train, target_length=self.target_sent_len)
-        self.x_test = DataHelperML.build_input_data(self.x_test, self.vocab, self.doc_level_data)
+        self.x_test = DataHelperML_2CH.build_input_data(self.x_test, self.vocab, self.doc_level_data)
         self.x_test = self.pad_sentences(self.x_test, target_length=self.target_sent_len)
 
         if self.doc_level_data == "doc" or self.doc_level_data == "comb":

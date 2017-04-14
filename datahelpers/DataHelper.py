@@ -100,7 +100,7 @@ class DataHelper(object):
     @staticmethod
     def load_w2v_vector():
         word2vec_model = gensim.models.KeyedVectors.load_word2vec_format(
-            '../datahelpers/w2v/GoogleNews-vectors-negative300.bin',
+            './datahelpers/w2v/GoogleNews-vectors-negative300.bin',
             binary=True)
         return word2vec_model
 
