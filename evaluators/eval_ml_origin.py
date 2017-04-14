@@ -162,7 +162,7 @@ class evaler:
             eval_log.write("Doc ACC: " + str(doc_acc) + "\n\n")
 
             y_true = self.dater.doc_labels_test.astype(bool)
-            y_pred = doc_prediction.astype(bool)
+            y_pred = np.array(doc_prediction).astype(bool)
 
             mi_prec = precision_score(y_true=y_true, y_pred=y_pred, average="micro")
             logging.info("micro prec: " + str(mi_prec))
