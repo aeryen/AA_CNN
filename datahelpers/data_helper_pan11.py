@@ -37,11 +37,15 @@ class DataHelperPan11(DataHelper):
 
     author_order = None
 
-    training_options = ["./data/pan11-training/SmallTrain.xml", "./data/pan11-training/LargeTrain.xml"]
-    testing_options = ["./data/pan11-test/SmallTest.xml", "./data/pan11-test/LargeTest.xml"]
-    truth_options = ["./data/pan11-test/GroundTruthSmallTest.xml", "./data/pan11-test/GroundTruthLargeTest.xml"]
+    # training_options = ["./datahelpers/data/pan11-training/SmallTrain.xml", "./datahelpers/data/pan11-training/LargeTrain.xml"]
+    # testing_options = ["./datahelpers/data/pan11-test/SmallTest.xml", "./datahelpers/data/pan11-test/LargeTest.xml"]
+    # truth_options = ["./datahelpers/data/pan11-test/GroundTruthSmallTest.xml", "./datahelpers/data/pan11-test/GroundTruthLargeTest.xml"]
+    # #
+    training_options = ["../datahelpers/data/pan11-training/SmallTrain.xml", "../datahelpers/data/pan11-training/LargeTrain.xml"]
+    testing_options = ["../datahelpers/data/pan11-test/SmallTest.xml", "../datahelpers/data/pan11-test/LargeTest.xml"]
+    truth_options = ["../datahelpers/data/pan11-test/GroundTruthSmallTest.xml", "../datahelpers/data/pan11-test/GroundTruthLargeTest.xml"]
 
-    vocabulary_size = 30000
+    vocabulary_size = 20000
     embedding_dim = 300
 
     problem_name_options = ["PAN11small", "PAN11large"]
@@ -53,6 +57,11 @@ class DataHelperPan11(DataHelper):
     train_f = None
     test_f = None
     truth_f = None
+
+    vocab = None
+    vocab_inv = None
+    embed_matrix_glv = None
+    embed_matrix_w2v = None
 
     def __init__(self, code):
         logging.info("Data Helper: " + __file__ + " initiated.")
@@ -291,14 +300,6 @@ class DataHelperPan11(DataHelper):
 
         return author_list, author_count
 
-    def load_glove_vector(self):
-        glove_lines = list(open("./glove.6B."+str(self.embedding_dim)+"d.txt", "r").readlines())
-        glove_lines = [s.split(" ", 1) for s in glove_lines if (len(s) > 0 and s != "\n")]
-        glove_words = [s[0] for s in glove_lines]
-        vector_list = [s[1] for s in glove_lines]
-        glove_vectors = np.array([np.fromstring(line, dtype=float, sep=' ') for line in vector_list])
-        return [glove_words, glove_vectors]
-
     def build_embedding(self, vocabulary_inv, glove_words, glove_vectors):
         np.random.seed(10)
         embed_matrix = []
@@ -348,15 +349,17 @@ class DataHelperPan11(DataHelper):
         x, y = self.xy_formatter(data_list, author_list)
         # self.longest_sentence(x)
 
-        vocab, vocab_inv = self.build_vocab(x, self.vocabulary_size)
-        pickle.dump([vocab, vocab_inv], open("pan11_vocabulary_"+str(self.prob_code)+".pickle", "wb"))
+        self.vocab, self.vocab_inv = self.build_vocab(x, self.vocabulary_size)
+        pickle.dump([self.vocab, self.vocab_inv], open("pan11_vocabulary_"+str(self.prob_code)+".pickle", "wb"))
 
-        [glove_words, glove_vectors] = self.load_glove_vector()
-        embed_matrix = self.build_embedding(vocab_inv, glove_words, glove_vectors)
+        [glove_words, glove_vectors] = self.load_glove_vector(self.glove_path)
+        self.embed_matrix_glv = self.build_glove_embedding(self.vocab_inv, glove_words, glove_vectors, self.embedding_dim)
+        self.word2vec_model = self.load_w2v_vector()
+        self.embed_matrix_w2v = self.build_w2v_embedding(self.vocab_inv, self.word2vec_model, self.embedding_dim)
 
-        x = self.build_input_data(x, vocab)
-        x = self.pad_sentences(x, target_length=3000)
-        return [x, y, vocab, vocab_inv, embed_matrix]
+        x = self.build_input_data(x, self.vocab)
+        x = self.pad_sentences(x, target_length=200)
+        return [x, y, self.vocab, self.vocab_inv, self.embed_matrix_glv, self.embed_matrix_w2v]
 
     def load_test_data(self):
         # o = DataHelper(file_to_load)
@@ -364,12 +367,11 @@ class DataHelperPan11(DataHelper):
         author_list, author_count = self.author_label(data_list)
         print(author_list)
         x, y = self.xy_formatter(data_list, author_list)
-        self.longest_sentence(x)
 
         vocab, vocab_inv = pickle.load(open("pan11_vocabulary_"+str(self.prob_code)+".pickle", "rb"))
 
         x = self.build_input_data(x, vocab)
-        x = self.pad_sentences(x, target_length=3000)
+        x = self.pad_sentences(x, target_length=200)
         return [x, y, vocab, vocab_inv, None]
 
 

@@ -99,8 +99,7 @@ class evaler:
                 y_batches = data_helpers.DataHelperML.batch_iter(self.y_test, 64, 1, shuffle=False)
 
                 # Collect the predictions here
-                all_score = None
-                all_predictions = np.zeros([0, self.dater.num_of_classes])
+                all_predictions = []
                 for [x_test_batch, y_test_batch] in zip(x_batches, y_batches):
                     if do_is_training:
                         batch_scores, batch_predictions = sess.run([scores, predictions],
@@ -110,96 +109,45 @@ class evaler:
                         batch_scores, batch_predictions = sess.run([scores, predictions],
                                                                    {input_x: x_test_batch, dropout_keep_prob: 1.0})
                     # print batch_predictions
-                    if all_score is None:
-                        all_score = batch_scores
-                    else:
-                        all_score = np.concatenate([all_score, batch_scores], axis=0)
-                    all_predictions = np.concatenate([all_predictions, batch_predictions], axis=0)
+                    all_predictions.append(batch_predictions)
 
-        # Print accuracy
-        np.savetxt('temp.out', all_predictions, fmt='%1.0f')
-        all_predictions = all_predictions >= 0.5
-        self.y_test = np.array(self.y_test)
-        sentence_result_label_matrix = all_predictions == (self.y_test == 1)
-        sentence_result = np.logical_and.reduce(sentence_result_label_matrix, axis=1)
-        correct_predictions = float(np.sum(sentence_result))
-        average_accuracy = correct_predictions / float(all_predictions.shape[0])
+        all_predictions = np.concatenate(all_predictions, axis=0)
 
-        logging.info("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
-        eval_log.write("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")\n")
+        mi_prec = precision_score(y_true=self.y_test_scalar, y_pred=all_predictions, average="micro")
+        logging.info("micro prec:\t" + str(mi_prec))
+        eval_log.write("micro prec:\t" + str(mi_prec) + "\n")
 
-        if documentAcc == True:
-            doc_prediction = []
-            sum_to = 0
-            for i in range(len(self.doc_size_test)):
-                f_size = self.doc_size_test[i]
-                p = all_predictions[sum_to:sum_to + f_size - 1].astype(int)
-                sum_to = sum_to + f_size  # increment to next file
-                p = np.sum(p, axis=0).astype(float)
-                p = p / f_size
-                pred_class = p > 0.3
-                pred_class = pred_class.astype(int)
-                if 1 not in pred_class:
-                    pred_class = np.zeros([self.dater.num_of_classes], dtype=np.int)
-                    pred_class[np.argmax(p)] = 1
-                doc_prediction.append(pred_class)
-                print("pred: " + str(pred_class) + "   " + "true: " + str(self.dater.doc_labels_test[i]))
-                eval_log.write("File:" + self.dater.file_id_test[i] + "\n")
-                eval_log.write("pred: " + str(pred_class) + "   " +
-                                  "true: " + str(self.dater.doc_labels_test[i]) + "\n")
+        mi_recall = recall_score(y_true=self.y_test_scalar, y_pred=all_predictions, average="micro")
+        logging.info("micro recall:\t" + str(mi_recall))
+        eval_log.write("micro recall:\t" + str(mi_recall) + "\n")
 
-            logging.info("")
-            eval_log.write("\n")
+        mi_f1 = f1_score(y_true=self.y_test_scalar, y_pred=all_predictions, average="micro")
+        logging.info("micro f1:\t" + str(mi_f1))
+        eval_log.write("micro f1:\t" + str(mi_f1)+ "\n")
 
-            logging.info("Document ACC")
-            eval_log.write("Document ACC\n")
-            total_doc = len(self.dater.file_id_test)
-            correct = 0.0
-            for i in range(len(doc_prediction)):
-                if np.array_equal(doc_prediction[i], self.dater.doc_labels_test[i]):
-                    correct += 1
-            doc_acc = correct / total_doc
-            print("Doc ACC: " + str(doc_acc))
-            eval_log.write("Doc ACC: " + str(doc_acc) + "\n\n")
+        ma_prec = precision_score(y_true=self.y_test_scalar, y_pred=all_predictions, average='macro')
+        logging.info("macro prec:\t" + str(ma_prec))
+        eval_log.write("macro prec:\t" + str(ma_prec) + "\n")
 
-            y_true = self.dater.doc_labels_test.astype(bool)
-            y_pred = np.array(doc_prediction).astype(bool)
+        ma_recall = recall_score(y_true=self.y_test_scalar, y_pred=all_predictions, average='macro')
+        logging.info("macro recall:\t" + str(ma_recall))
+        eval_log.write("macro recall:\t" + str(ma_recall) + "\n")
 
-            mi_prec = precision_score(y_true=y_true, y_pred=y_pred, average="micro")
-            logging.info("micro prec:\t" + str(mi_prec))
-            eval_log.write("micro prec:\t" + str(mi_prec) + "\n")
+        ma_f1 = f1_score(y_true=self.y_test_scalar, y_pred=all_predictions, average='macro')
+        logging.info("macro f1:\t" + str(ma_f1))
+        eval_log.write("macro f1:\t" + str(ma_f1) + "\n")
 
-            mi_recall = recall_score(y_true=y_true, y_pred=y_pred, average="micro")
-            logging.info("micro recall:\t" + str(mi_recall))
-            eval_log.write("micro recall:\t" + str(mi_recall) + "\n")
+        jaccard = jaccard_similarity_score(y_true=self.y_test_scalar, y_pred=all_predictions)
+        logging.info("jaccard:\t" + str(jaccard))
+        eval_log.write("jaccard:\t" + str(jaccard) + "\n")
 
-            mi_f1 = f1_score(y_true=y_true, y_pred=y_pred, average="micro")
-            logging.info("micro f1:\t" + str(mi_f1))
-            eval_log.write("micro f1:\t" + str(mi_f1)+ "\n")
+        hamming = hamming_loss(y_true=self.y_test_scalar, y_pred=all_predictions)
+        logging.info("hamming:\t" + str(hamming))
+        eval_log.write("hamming:\t" + str(hamming) + "\n")
 
-            ma_prec = precision_score(y_true=y_true, y_pred=y_pred, average='macro')
-            logging.info("macro prec:\t" + str(ma_prec))
-            eval_log.write("macro prec:\t" + str(ma_prec) + "\n")
-
-            ma_recall = recall_score(y_true=y_true, y_pred=y_pred, average='macro')
-            logging.info("macro recall:\t" + str(ma_recall))
-            eval_log.write("macro recall:\t" + str(ma_recall) + "\n")
-
-            ma_f1 = f1_score(y_true=y_true, y_pred=y_pred, average='macro')
-            logging.info("macro f1:\t" + str(ma_f1))
-            eval_log.write("macro f1:\t" + str(ma_f1) + "\n")
-
-            jaccard = jaccard_similarity_score(y_true=y_true, y_pred=y_pred)
-            logging.info("jaccard:\t" + str(jaccard))
-            eval_log.write("jaccard:\t" + str(jaccard) + "\n")
-
-            hamming = hamming_loss(y_true=y_true, y_pred=y_pred)
-            logging.info("hamming:\t" + str(hamming))
-            eval_log.write("hamming:\t" + str(hamming) + "\n")
-
-            acc = accuracy_score(y_true=y_true, y_pred=y_pred)
-            logging.info("acc:\t" + str(acc))
-            eval_log.write("acc:\t" + str(acc) + "\n")
+        acc = accuracy_score(y_true=self.y_test_scalar, y_pred=all_predictions)
+        logging.info("acc:\t" + str(acc))
+        eval_log.write("acc:\t" + str(acc) + "\n")
 
         eval_log.write("\n")
         eval_log.write("\n")
@@ -218,16 +166,16 @@ if __name__ == "__main__":
                                  target_doc_len=400, target_sent_len=50,
                                  num_fold=5, fold_index=1, truth_file="2_authors.csv")
     elif mode == "PAN11":
-        dater = DataHelperPan11(1)
+        dater = DataHelperPan11(0)
 
     dater.load_data()
     e = evaler()
     e.load(dater)
     path = sys.argv[1]
     if len(sys.argv) == 2:
-        e.test(path, step, documentAcc=True, do_is_training=False)
+        e.test(path, step, documentAcc=True, do_is_training=True)
     elif len(sys.argv) > 2:
         steps = list(map(int, sys.argv[2].split("/")))
         for step in steps:
-            e.test(path, step, documentAcc=True, do_is_training=False)
+            e.test(path, step, documentAcc=True, do_is_training=True)
 

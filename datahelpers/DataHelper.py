@@ -177,7 +177,6 @@ class DataHelper(object):
         for record in data_list:
             doc = " <LB> ".join(record.content)
             doc = DataHelper.clean_str(doc)
-            doc = doc.split()
             x.append(doc)
             y[global_index, author_code_map[record.author]] = 1
             global_index += 1
