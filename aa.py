@@ -40,8 +40,8 @@ if __name__ == "__main__":
     # * InceptionLike
     ################################################
 
-    input_component = "ML_Six"
-    middle_component = "InceptionLike"
+    input_component = "ML_One"
+    middle_component = "NParallelConvOnePoolNFC"
 
     am = ArchiveManager(input_component, middle_component)
     get_exp_logger(am)
