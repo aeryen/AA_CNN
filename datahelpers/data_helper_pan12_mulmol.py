@@ -70,7 +70,7 @@ class DataHelperMulMol6(DataHelper):
         if target_ac == self.author_codes_A or target_ac == self.author_codes_C or target_ac == self.author_codes_I:
             self.author_codes = target_ac
         else:
-            print "wrong parameter"
+            print("wrong parameter")
         self.num_of_classes = len(self.author_codes)
         if self.author_codes == self.author_codes_A:
             self.file_name = self.file_name_A
@@ -100,13 +100,13 @@ class DataHelperMulMol6(DataHelper):
 
     @staticmethod
     def clean_str(string):
-        if isinstance(string, unicode):
-            string = re.sub(u"\u2018", u"'", string)
-            string = re.sub(u"\u2019", u"'", string)
-            string = re.sub(u"\u201c", u"\"", string)
-            string = re.sub(u"\u201d", u"\"", string)
-            string = re.sub(u"\u2014", " <EMDASH> ", string)
-            string = re.sub(u"\u2026", " <ELLIPSIS> ", string)
+        if isinstance(string, str):
+            string = re.sub("\u2018", "'", string)
+            string = re.sub("\u2019", "'", string)
+            string = re.sub("\u201c", "\"", string)
+            string = re.sub("\u201d", "\"", string)
+            string = re.sub("\u2014", " <EMDASH> ", string)
+            string = re.sub("\u2026", " <ELLIPSIS> ", string)
 
             string = unidecode(string)
 
@@ -148,7 +148,7 @@ class DataHelperMulMol6(DataHelper):
                 train_content = list(io.open(file_full_path, mode="r", encoding=self.encode).readlines())
                 train_content = [s.strip() for s in train_content]
                 train_content = [s for s in train_content if len(s) > 0]
-                print file_full_path + "\t\t" + str(len(train_content))
+                print(file_full_path + "\t\t" + str(len(train_content)))
                 total_instance += len(train_content)
 
                 # Split by words
@@ -158,9 +158,9 @@ class DataHelperMulMol6(DataHelper):
                     tokens = x_text[train_line_index].split()
 
                     if len(tokens) > self.sentence_cut:
-                        print str(len(tokens)) + "\t" + x_text[train_line_index]
+                        print(str(len(tokens)) + "\t" + x_text[train_line_index])
                         tokens = tokens[:self.sentence_cut]
-                        print "\t### Force Cut"
+                        print("\t### Force Cut")
                         # print "\t" + str(len(tokens)) + "\t" + x_text[train_line_index]
                     x.append(tokens)
 
@@ -169,7 +169,7 @@ class DataHelperMulMol6(DataHelper):
                     else:
                         y = np.concatenate([y, np.expand_dims(y_identity[author_index, :], axis=0)], axis=0)
 
-        print "TOTAL: " + str(total_instance)
+        print("TOTAL: " + str(total_instance))
         return [x, y]
 
 
@@ -190,7 +190,7 @@ class DataHelperMulMol6(DataHelper):
             train_content = list(io.open(file_full_path, mode="r", encoding=self.encode).readlines())
             train_content = [s.strip() for s in train_content]
             train_content = [s for s in train_content if len(s) > 0]
-            print file_full_path + "\t\t" + str(len(train_content))
+            print(file_full_path + "\t\t" + str(len(train_content)))
             file_sizes.append(len(train_content))
 
             # Split by words
@@ -200,9 +200,9 @@ class DataHelperMulMol6(DataHelper):
                 tokens = x_text[train_line_index].split()
 
                 if len(tokens) > self.sentence_cut:
-                    print str(len(tokens)) + "\t" + x_text[train_line_index]
+                    print(str(len(tokens)) + "\t" + x_text[train_line_index])
                     tokens = tokens[:self.sentence_cut]
-                    print "\t### Force Cut"
+                    print("\t### Force Cut")
                     # print "\t" + str(len(tokens)) + "\t" + x_text[train_line_index]
                 x.append(tokens)
                 if y is None:
@@ -285,18 +285,18 @@ class DataHelperMulMol6(DataHelper):
         start = time.clock()
         sentences, labels = self.load_data_and_labels()
         end = time.clock()
-        print "load data from text took: " + str(end - start)
+        print("load data from text took: " + str(end - start))
 
         fm = featuremaker.FeatureMaker(sentences)
         start = time.clock()
         [prefix_2, prefix_3, suffix_2, suffix_3] = fm.prefix_suffix()
         end = time.clock()
-        print "prefix suffix generation took: " + str(end - start)
+        print("prefix suffix generation took: " + str(end - start))
 
         start = time.clock()
         pos_tag = fm.fast_pos_tag()
         end = time.clock()
-        print "pos tagging took: " + str(end - start)
+        print("pos tagging took: " + str(end - start))
 
         start = time.clock()
         vocabulary, vocabulary_inv = self.build_vocab(sentences, self.vocabulary_size)
@@ -306,7 +306,7 @@ class DataHelperMulMol6(DataHelper):
         suff_3_vocab, suff_3_vocab_inv = self.build_vocab(suffix_3, self.vocabulary_size)
         pos_vocab, pos_vocab_inv = self.build_vocab(pos_tag, self.vocabulary_size)
         end = time.clock()
-        print "build all vocab took: " + str(end - start)
+        print("build all vocab took: " + str(end - start))
 
         pickle.dump([vocabulary, vocabulary_inv, pref_2_vocab, pref_2_vocab_inv, pref_3_vocab, pref_3_vocab_inv,
                      suff_2_vocab, suff_2_vocab_inv, suff_3_vocab, suff_3_vocab_inv,

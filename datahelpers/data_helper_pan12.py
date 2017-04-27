@@ -66,7 +66,7 @@ class DataHelperPan12(DataHelper):
         if target_ac == self.author_codes_A or target_ac == self.author_codes_C or target_ac == self.author_codes_I:
             self.author_codes = target_ac
         else:
-            print "wrong parameter"
+            print("wrong parameter")
         self.num_of_classes = len(self.author_codes)
         if self.author_codes == self.author_codes_A:
             self.file_name = self.file_name_A
@@ -96,13 +96,13 @@ class DataHelperPan12(DataHelper):
 
     @staticmethod
     def clean_str(string):
-        if isinstance(string, unicode):
-            string = re.sub(u"\u2018", u"'", string)
-            string = re.sub(u"\u2019", u"'", string)
-            string = re.sub(u"\u201c", u"\"", string)
-            string = re.sub(u"\u201d", u"\"", string)
-            string = re.sub(u"\u2014", " <EMDASH> ", string)
-            string = re.sub(u"\u2026", " <ELLIPSIS> ", string)
+        if isinstance(string, str):
+            string = re.sub("\u2018", "'", string)
+            string = re.sub("\u2019", "'", string)
+            string = re.sub("\u201c", "\"", string)
+            string = re.sub("\u201d", "\"", string)
+            string = re.sub("\u2014", " <EMDASH> ", string)
+            string = re.sub("\u2026", " <ELLIPSIS> ", string)
 
             string = unidecode(string)
 
@@ -145,7 +145,7 @@ class DataHelperPan12(DataHelper):
                 train_content = list(io.open(file_full_path, mode="r", encoding=self.encode).readlines())
                 train_content = [s.strip() for s in train_content]
                 train_content = [s for s in train_content if len(s) > 0]
-                print file_full_path + "\t\t" + str(len(train_content))
+                print(file_full_path + "\t\t" + str(len(train_content)))
                 author_sentence[author_index] += len(train_content)
                 total_instance += len(train_content)
 
@@ -156,9 +156,9 @@ class DataHelperPan12(DataHelper):
                     tokens = x_text[train_line_index].split()
 
                     if len(tokens) > self.sentence_cut:
-                        print str(len(tokens)) + "\t" + x_text[train_line_index]
+                        print(str(len(tokens)) + "\t" + x_text[train_line_index])
                         tokens = tokens[:self.sentence_cut]
-                        print "\t### Force Cut"
+                        print("\t### Force Cut")
                         # print "\t" + str(len(tokens)) + "\t" + x_text[train_line_index]
                     x.append(tokens)
                     if y is None:
@@ -166,8 +166,8 @@ class DataHelperPan12(DataHelper):
                     else:
                         y = np.concatenate([y, np.expand_dims(y_identity[author_index, :], axis=0)], axis=0)
 
-        print "TOTAL: " + str(total_instance)
-        print "AUTHOR SENTENCE: " + str(author_sentence)
+        print("TOTAL: " + str(total_instance))
+        print("AUTHOR SENTENCE: " + str(author_sentence))
         return [x, y, author_sentence]
 
     def load_test_data_and_labels(self):
@@ -187,7 +187,7 @@ class DataHelperPan12(DataHelper):
             train_content = list(io.open(file_full_path, mode="r", encoding=self.encode).readlines())
             train_content = [s.strip() for s in train_content]
             train_content = [s for s in train_content if len(s) > 0]
-            print file_full_path + "\t\t" + str(len(train_content))
+            print(file_full_path + "\t\t" + str(len(train_content)))
             file_sizes.append(len(train_content))
 
             # Split by words
@@ -197,9 +197,9 @@ class DataHelperPan12(DataHelper):
                 tokens = x_text[train_line_index].split()
 
                 if len(tokens) > self.sentence_cut:
-                    print str(len(tokens)) + "\t" + x_text[train_line_index]
+                    print(str(len(tokens)) + "\t" + x_text[train_line_index])
                     tokens = tokens[:self.sentence_cut]
-                    print "\t### Force Cut"
+                    print("\t### Force Cut")
                     # print "\t" + str(len(tokens)) + "\t" + x_text[train_line_index]
                 x.append(tokens)
                 if y is None:

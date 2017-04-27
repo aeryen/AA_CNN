@@ -68,7 +68,7 @@ if __name__ == "__main__":
     tt.training(filter_sizes=[[3, 4, 5], [3, 4, 5]], num_filters=100, dropout_keep_prob=1.0, n_steps=300000, l2_lambda=0.1,
                      dropout=False, batch_normalize=True, elu=False, n_conv=2, fc=[1024])
     end = timer()
-    print(end - start)
+    print((end - start))
 
     ev.load(dater)
     ev.test(am.get_exp_dir(), None, documentAcc=True)

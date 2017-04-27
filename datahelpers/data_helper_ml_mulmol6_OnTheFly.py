@@ -110,7 +110,7 @@ class DataHelperMulMol6(DataHelper):
         for line in truth_file_content[1:]:
             line = line.split(",")
             file_id_list.append(line[0])
-            label_vector = map(int, line[1:])
+            label_vector = list(map(int, line[1:]))
             label_matrix.append(np.array(label_vector))
         # label_matrix = np.matrix(label_matrix)
 
@@ -174,7 +174,7 @@ class DataHelperMulMol6(DataHelper):
         else:
             sent_lengths = [len(x) for x in docs]
             max_length = max(sent_lengths)
-            print "longest doc: " + str(max_length)
+            print("longest doc: " + str(max_length))
 
         if not self.doc_level_data:
             padded_doc = []
@@ -212,7 +212,7 @@ class DataHelperMulMol6(DataHelper):
         else:
             doc_lengths = [len(d) for d in docs]
             tar_length = max(doc_lengths)
-            print "longest doc: " + str(tar_length)
+            print("longest doc: " + str(tar_length))
 
         padded_doc = []
         sent_length = len(docs[0][0])
@@ -301,7 +301,7 @@ class DataHelperMulMol6(DataHelper):
             else:
                 return [self.x_test, self.labels_test, self.vocab, self.vocab_inv, self.doc_size_test]
         else:
-            print "nope"
+            print("nope")
 
     def get_file_id_test(self):
         return self.file_id_test
@@ -314,4 +314,4 @@ if __name__ == "__main__":
     o = DataHelperMulMol6(doc_level=True)
     o.load_data()
     # o.load_test_data()
-    print "o"
+    print("o")

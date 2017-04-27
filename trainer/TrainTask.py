@@ -193,7 +193,7 @@ class TrainTask:
                         [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
                         feed_dict)
                     time_str = datetime.datetime.now().isoformat()
-                    print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+                    print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
                     train_summary_writer.add_summary(summaries, step)
 
                 def dev_step(x_batch, y_batch, writer=None):
@@ -210,7 +210,7 @@ class TrainTask:
                         [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
                         feed_dict)
                     time_str = datetime.datetime.now().isoformat()
-                    print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+                    print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
                     if writer:
                         writer.add_summary(summaries, step)
 
@@ -236,7 +236,7 @@ class TrainTask:
                         [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
                         feed_dict)
                     time_str = datetime.datetime.now().isoformat()
-                    print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+                    print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
                     train_summary_writer.add_summary(summaries, step)
 
                 def dev_step(x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch,
@@ -259,7 +259,7 @@ class TrainTask:
                         [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
                         feed_dict)
                     time_str = datetime.datetime.now().isoformat()
-                    print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+                    print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
                     if writer:
                         writer.add_summary(summaries, step)
             else:
@@ -278,10 +278,10 @@ class TrainTask:
             # Training loop. For each batch...
             for batch in batches:
                 if "One" in self.input_component:
-                    x_batch, y_batch = zip(*batch)
+                    x_batch, y_batch = list(zip(*batch))
                     train_step(x_batch, y_batch)
                 elif "Six" in self.input_component:
-                    x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch = zip(*batch)
+                    x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch = list(zip(*batch))
                     train_step(x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch)
                 else:
                     raise NotImplementedError
@@ -293,7 +293,7 @@ class TrainTask:
                         dev_batches = dh.DataHelperML.batch_iter(list(zip(self.x_dev, self.y_dev)), self.batch_size, 1)
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:
-                                small_dev_x, small_dev_y = zip(*dev_batch)
+                                small_dev_x, small_dev_y = list(zip(*dev_batch))
                                 dev_step(small_dev_x, small_dev_y, writer=dev_summary_writer)
                                 print("")
                     elif "Six" in self.input_component:
@@ -304,7 +304,7 @@ class TrainTask:
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:
                                 small_dev_x, small_dev_y, small_p2_test, small_p3_test, small_s2_test, small_s3_test, \
-                                small_post_test = zip(*dev_batch)
+                                small_post_test = list(zip(*dev_batch))
                                 dev_step(small_dev_x, small_dev_y, small_p2_test, small_p3_test, small_s2_test,
                                          small_s3_test, small_post_test, writer=dev_summary_writer)
                                 print("")
@@ -313,6 +313,6 @@ class TrainTask:
 
                 if current_step % self.checkpoint_every == 0:
                     path = saver.save(sess, checkpoint_prefix, global_step=current_step)
-                    print("Saved model checkpoint to {}\n".format(path))
+                    print(("Saved model checkpoint to {}\n".format(path)))
                 if n_steps is not None and current_step >= n_steps:
                     break

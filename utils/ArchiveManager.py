@@ -44,7 +44,7 @@ class ArchiveManager:
 
 if __name__ == '__main__':
     am = ArchiveManager("ML", "test")
-    print am.get_tag()
-    print am.get_tag_dir()
-    print am.get_exp_dir()
-    print am.get_exp_log_path()
+    print(am.get_tag())
+    print(am.get_tag_dir())
+    print(am.get_exp_dir())
+    print(am.get_exp_log_path())

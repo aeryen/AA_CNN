@@ -66,7 +66,7 @@ class DataHelperMulMol6(DataHelper):
 
     def load_channel_file(self, author_code, file_name):
         if not os.path.exists(os.path.dirname(self.training_data_dir + author_code + "/")):
-            print("error: " + author_code + " does not exit")
+            print(("error: " + author_code + " does not exit"))
             return
 
         original_txt = open(self.training_data_dir + author_code + "/" + file_name, "r").readlines()
@@ -101,7 +101,7 @@ class DataHelperMulMol6(DataHelper):
         for line in truth_file_content[1:]:
             line = line.split(",")
             file_id_list.append(line[0])
-            label_vector = map(int, line[1:])
+            label_vector = list(map(int, line[1:]))
             label_matrix.append(np.array(label_vector))
         # label_matrix = np.matrix(label_matrix)
 
@@ -282,7 +282,7 @@ class DataHelperMulMol6(DataHelper):
 
     def get_comb_count(self, x):
         n = int(len(x) / 50)
-        print "n = " + str(n)
+        print("n = " + str(n))
         if len(x) - (n * 50) > 0:
             n += 1
         return n
@@ -316,7 +316,7 @@ class DataHelperMulMol6(DataHelper):
 
         for comb_index in range(len(x)):
             label_comb.extend(np.tile(label[comb_index], [comb_size[comb_index], 1]))
-            print "number of comb in document: " + str(comb_size[comb_index])
+            print("number of comb in document: " + str(comb_size[comb_index]))
 
         return x_comb, pos_comb, wl_comb, p2_comb, p3_comb, s2_comb, s3_comb, label_comb, comb_size
 
@@ -457,7 +457,7 @@ class DataHelperMulMol6(DataHelper):
                     self.s2_test, self.s3_test,
                     self.labels_test, self.vocab, self.vocab_inv, self.doc_size_test]
         else:
-            print "nope"
+            print("nope")
 
     def get_file_id_test(self):
         return self.file_id_test

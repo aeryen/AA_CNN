@@ -60,7 +60,7 @@ class TextCNN(object):
         num_filters_total = num_filters * len(filter_sizes)
         first_pooled_outputs = tf.concat(concat_dim=2, values=first_pooled_outputs)
         first_pooled_outputs = tf.expand_dims(first_pooled_outputs, -1)
-        print "first_pooled_outputs: " + str(first_pooled_outputs.get_shape())
+        print("first_pooled_outputs: " + str(first_pooled_outputs.get_shape()))
 
         conv_2_pooled_outputs = []
         for i, filter_size in enumerate(filter_sizes):
@@ -107,7 +107,7 @@ class TextCNN(object):
             # l2_loss += tf.nn.l2_loss(b)
             self.scores = tf.nn.xw_plus_b(self.h_drop, W, b, name="scores")
             self.predictions = tf.sigmoid(self.scores, name="predictions")
-            print "Prediction shape: " + str(self.predictions.get_shape())
+            print("Prediction shape: " + str(self.predictions.get_shape()))
             # self.predictions = tf.argmax(self.scores, 1, name="predictions")  #3333333333333333333333333
 
         # self.rate_percentage = [0.0] * num_classes

@@ -9,7 +9,7 @@ from sklearn.multiclass import OneVsRestClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import LinearSVC
 
-import load
+from . import load
 
 classifiers = [OneVsRestClassifier(LinearSVC()), OneVsRestClassifier(MLPClassifier(hidden_layer_sizes = (100, 100)))]
 clf_names = ["OneVsRestClassifier(LinearSVC())", "OneVsRestClassifier(MLPClassifier(hidden_layer_sizes = (100, 100)))"]
@@ -90,7 +90,7 @@ def test():
                     output += "|"
 
             fout.write(output + "\n")
-            print(clf_names[j])
+            print((clf_names[j]))
             classifiers[j] = None   
             j = j + 1
 
