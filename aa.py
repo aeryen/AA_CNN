@@ -43,8 +43,8 @@ if __name__ == "__main__":
     ################################################
 
     input_component = "ML_One"
-    middle_component = "ORIGIN"
-    truth_file = "17_authors.csv"
+    middle_component = "NCrossSizeParallelConvNFC"
+    truth_file = "labels.csv"
 
     am = ArchiveManager(input_component, middle_component, truth_file=truth_file)
     get_exp_logger(am)
@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     if input_component == "ML_One":
         dater = DataHelperML(doc_level="sent", num_fold=5, fold_index=1, embed_type="glove",
-                             embed_dim=300, target_sent_len=50, target_doc_len=400, truth_file=truth_file)
+                             embed_dim=100, target_sent_len=50, target_doc_len=400, truth_file=truth_file)
         ev = evaler_one.evaler()
     elif input_component == "ML_2CH":
         dater = DataHelperML_2CH(doc_level="sent", num_fold=5, fold_index=0,
@@ -70,7 +70,7 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                      batch_size=128, evaluate_every=1000, checkpoint_every=200)
+                      batch_size=2, evaluate_every=1000, checkpoint_every=200)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 

@@ -1,0 +1,953 @@
+Abstract
+
+of the input space, a simple model predicts labels.
+
+Decision tree learning is a popular ap-
+proach for classiﬁcation and regression in ma-
+chine learning and statistics, and Bayesian
+formulations—which introduce a prior dis-
+tribution over decision trees, and formulate
+learning as posterior inference given data—
+have been shown to produce competitive per-
+formance. Unlike classic decision tree learn-
+ing algorithms like ID3, C4.5 and CART,
+which work in a top-down manner, existing
+Bayesian algorithms produce an approxima-
+tion to the posterior distribution by evolving
+a complete tree (or collection thereof) itera-
+tively via local Monte Carlo modiﬁcations to
+the structure of the tree, e.g., using Markov
+chain Monte Carlo (MCMC). We present
+a sequential Monte Carlo (SMC) algorithm
+that instead works in a top-down manner,
+mimicking the behavior and speed of clas-
+sic algorithms. We demonstrate empirically
+that our approach delivers accuracy compa-
+rable to the most popular MCMC method,
+but operates more than an order of mag-
+nitude faster, and thus represents a better
+computation-accuracy tradeoﬀ.
+
+1. Introduction
+
+Decision tree learning algorithms are widely used
+across statistics and machine learning, and often de-
+liver near state-of-the-art performance despite their
+simplicity. Decision trees represent predictive models
+from an input space, typically RD, to an output space
+of labels, and work by specifying a hierarchical parti-
+tion of the input space into blocks. Within each block
+
+Proceedings of the 30 th International Conference on Ma-
+chine Learning, Atlanta, Georgia, USA, 2013.
+JMLR:
+W&CP volume 28. Copyright 2013 by the author(s).
+
+In classical decision tree learning, a decision tree (or
+collection thereof) is learned in a greedy, top-down
+manner from the examples. Examples of classical ap-
+proaches that learn single trees include ID3 (Quin-
+lan, 1986), C4.5 (Quinlan, 1993) and CART (Breiman
+et al., 1984), while methods that learn combinations of
+decisions trees include boosted decision trees (Fried-
+man, 2001), Random Forests (Breiman, 2001), and
+many others.
+
+Bayesian decision tree methods, like those ﬁrst pro-
+posed by Buntine (1992), Chipman et al. (1998), Deni-
+son et al. (1998), and Chipman & McCulloch (2000),
+and more recently revisited by Wu et al. (2007),
+Taddy et al. (2011) and Anagnostopoulos & Gramacy
+(2012), cast the problem of decision tree learning into
+the framework of Bayesian inference.
+In particular,
+Bayesian approaches start by placing a prior distri-
+bution on the decision tree itself. To complete the
+speciﬁcation of the model, it is common to associate
+each leaf node with a parameter indexing a family of
+likelihoods, e.g., the means of Gaussians or Bernoullis.
+The labels are then assumed to be conditionally inde-
+pendent draws from their respective likelihoods. The
+Bayesian approach has a number of useful properties:
+e.g., the posterior distribution on the decision tree can
+be interpreted as reﬂecting residual uncertainty and
+can be used to produce point and interval estimates.
+
+On the other hand, exact posterior computation is
+typically infeasible and so existing approaches use ap-
+proximate methods such as Markov chain Monte Carlo
+(MCMC) in the batch setting. Roughly speaking,
+these algorithms iteratively improve a complete deci-
+sion tree by making a long sequence of random, local
+modiﬁcations, each biased towards tree structures with
+higher posterior probability. These algorithms stand
+in marked contrast with classical decision tree learning
+algorithms like ID3 and C4.5, which rapidly build a de-
+
+Top-down particle ﬁltering for Bayesian decision trees
+
+cision tree for a data set in a top-down greedy fashion
+guided by heuristics. Given the success of these meth-
+ods, one might ask whether they could be adapted to
+work in the Bayesian framework.
+
+In this article, we present such an adaptation, propos-
+ing a sequential Monte Carlo (SMC) method for ap-
+proximate inference in Bayesian decision trees that
+works by sampling a collection of trees in a top-down
+manner like ID3 and C4.5. Unlike classical methods,
+there is no pruning stage after the top-down learn-
+ing stage to prevent over-ﬁtting, as the prior com-
+bines with the likelihood to automatically cut short the
+growth of the trees, and resampling focuses attention
+on those trees that better ﬁt the data. In the end, the
+algorithm produces a collection of sampled trees that
+approximate the posterior distribution. While both
+existing MCMC algorithms and our novel SMC algo-
+rithm produce approximations to the posterior that
+are exact in the limit, we show empirically that our al-
+gorithms run more than an order of magnitude faster
+than existing methods while delivering the same pre-
+dictive performance.
+
+The article is organized as follows: we begin by de-
+scribing the Bayesian decision tree model precisely in
+Section 2, and then describe the SMC algorithm in de-
+tail in Section 3. Through a series of empirical tests,
+we demonstrate in Section 4 that this approach is fast
+and produces good approximations. We conclude in
+Section 5 with a discussion comparing this approach
+with existing ones in the Bayesian setting, and point
+towards future avenues.
+
+2. Model and notation
+
+n=1, xn ∈ RD. The as-
+
+In this section, we present the decision tree model for
+the distribution of the labels Y = {yn}N
+n=1 correspond-
+ing to input vectors X = {xn}N
+sumption is that the probabilistic mapping from input
+vectors to their labels is mediated by a latent deci-
+sion tree T that serves to partition the input space
+into axis-aligned blocks. Each block is then associated
+with a parameter that determines the distribution of
+the labels of the input vectors falling in that block.
+
+A rooted, strictly binary tree T is a ﬁnite tree with
+a single root, denoted by the empty string , where
+each internal node p except the root has exactly two
+children, called the left child p0 and the right child p1.
+Denote the leaves of T (those nodes without children)
+by ∂T. Each node of the tree p ∈ T is associated
+with a block B(p) ⊂ RD of the input space as follows:
+At the root we have B() = RD, while each internal
+node p ∈ T \ ∂T “cuts” its block into two halves, with
+
+κ(p) ∈ {1, . . . , D} denoting the dimension of the cut,
+and τ (p) denoting the location of the cut, so that
+
+B(p0) = B(p) ∩ {z ∈ RD : zκ(p) ≤ τ (p)} and
+B(p1) = B(p) ∩ {z ∈ RD : zκ(p) > τ (p)}.
+
+(1)
+We call the tuple T = (T, κ, τ ) the decision tree. (See
+Figure 1 for more intuition on the representation and
+notation of decision trees.) Note that the blocks asso-
+ciated with the leaves of the tree partition RD. It will
+be convenient to write N (p) for the set of data point
+indices n ∈ {1, . . . , N} such that xn ∈ B(p). For every
+subset A ⊆ {1, . . . , N}, let YA := {yn : n ∈ A} and
+similarly for XA, so that XN (p) are the input vectors in
+block B(p) and YN (p) are their labels. Note that both
+B(p) and N (p) depend on T , although we have chosen
+to elide this dependence for notational simplicity.
+
+Conditioned on the examples X, we assume that the
+joint density f (Y,T | X) of the labels Y and the latent
+decision tree T factorizes as follows:
+f (Y,T | X) = h(T | X) g(Y |T , X)
+
+= h(T | X)(cid:81)
+
+p∈∂T (cid:96)(YN (p)|XN (p))
+
+(2)
+
+where (cid:96) denotes a likelihood, deﬁned below.
+
+In this paper, we focus on the case of categorical la-
+bels taking values in the set {1, . . . , K}. It is natural to
+take (cid:96) to be the Dirichlet-Multinomial likelihood, cor-
+responding to the data being conditionally i.i.d. draws
+from a multinomial distribution on {1, . . . , K} with a
+Dirichlet prior. In particular,
+
+(cid:81)K
+Γ((cid:80)K
+
+(cid:96)(YN (p)|XN (p)) =
+
+Γ(α)
+Γ( α
+K )K
+
+k=1 Γ(mpk + α
+K )
+k=1 mpk + α)
+
+,
+
+(3)
+
+where mpk denotes the number of labels yn = k among
+those n ∈ N (p) and α is the concentration parameter
+of the symmetric Dirichlet prior. Generalisations to
+other likelihood functions based on conjugate pairs of
+exponential families are straightforward.
+The ﬁnal piece of the model is the prior density h(T |X)
+over decision trees. In order to make straightforward
+comparisons with existing algorithms, we adopt the
+model proposed by Chipman et al. (1998).
+In this
+model, the prior distribution of the latent tree is de-
+ﬁned conditionally on the given input vectors X (see
+Section 5 for a discussion of this dependence on X and
+its eﬀect on the exchangeability of the labels). Infor-
+mally, the tree is grown starting at the root, and each
+new node either splits and grows two children (turning
+the node into an internal node) or stops (leaving it a
+leaf) stochastically.
+
+We now describe the generative process more precisely
+in terms of a Markov chain capturing the construction
+
+Top-down particle ﬁltering for Bayesian decision trees
+
+Figure 1. A decision tree T = (T, κ, τ ) represents a hierarchical partitioning of a space. Here, the space is the unit square
+and the tree T contains the nodes {, 0, 1, 10, 11}. The root node  represents the whole space B() = RD, while its two
+children 0 and 1, represent the two halves of the cut (κ(), τ ()) = (1, 0.5), where κ() = 1 represents the dimension of
+the cut, and τ () = 0.5 represents the location of the cut along that dimension. (The origin is at the bottom left of each
+ﬁgure, and the x-axis is dimension 1. The red stars and blue circles represent observed data points.) The second cut,
+(κ(1), τ (1)) = (2, 0.35), splits the block B(1) into the two halves B(11) and B(10). When deﬁning the prior over decision
+trees given by Chipman et al. (1998), it will be necessary to refer to the “extent” of the data in a block. E.g., I 0
+1 and I 0
+2
+are the extent of the data in dimensions 1 and 2, respectively, in block B(0). For each node p, the set Dp contains those
+dimensions with non-trivial extent. Here, D0 = {1, 2}, but D10 = {2}, because there is no variation in dimension 1.
+
+of a decision tree in stages, beginning with the triv-
+ial tree T0 = {} containing only the root node. At
+each stage i, Ti is produced from Ti−1 by choosing one
+leaf in Ti−1 and either growing two children nodes or
+stopping the leaf. Once stopped, a leaf is ineligible for
+future growth. The identity of the chosen leaf is deter-
+ministic, while the choice to grow or stop is stochastic.
+The process proceeds until all leaves are stopped, and
+so each node is considered for expansion exactly once
+throughout the process. This will be seen to give rise
+to a ﬁnite sequence of decision trees Ti = (Ti, κi, τi)
+once we deﬁne the associated cut functions κi and τi.
+We will use this Markov chain in Section 3 as scaﬀold-
+ing for a sequential Monte Carlo algorithm. A similar
+approach was employed by Taddy et al. (2011) in the
+setting of online Bayesian decision trees. There are
+similarities also with the bottom-up SMC algorithms
+by Teh et al. (2008) and Bouchard-Cˆot´e et al. (2012).
+
+If the input vectors XN (p) are all
+
+We next describe the rule for stopping or growing
+nodes, and the distribution of cuts. Let p be the
+node chosen at some stage of the generative pro-
+cess.
+identical,
+then the node stops and becomes a leaf. (Chipman
+et al. chose this rule because no choice of cut to the
+block B(p) would result in both children containing
+at least one input vector.) Otherwise, let Dp be the
+set of dimensions along which XN (p) varies, and let
+I p
+d = [minn∈N (p) xnd, maxn∈N (p) xnd] be the range of
+the input vectors along dimension d ∈ Dp. (See last
+subﬁgure of Figure 1.) Under the Chipman et al.
+model, the probability that node p is split is
+
+αs
+
+(1 + |p|)βs
+
+,
+
+αs ∈ (0, 1), βs ∈ [0,∞),
+
+(4)
+
+where |p| is the depth of the node, and αs and βs
+are parameters governing the shape of the resulting
+
+tree. For larger αs and smaller βs the typical trees are
+larger, while the deeper p is in the tree the less likely it
+will be cut. If p is cut, the dimension κ(p) and then lo-
+cation τ (p) of the cut are sampled uniformly from Dp
+and I p
+κ(p), respectively. Note that the choice for the
+support of the distribution over cut dimensions and
+locations are such that both children of p will, with
+probability one, contain at least one input vector. Fi-
+nally, the choices of whether to grow or stop, as well
+the cut dimensions and locations, are conditionally in-
+dependent across diﬀerent subtrees.
+
+To complete the generative model, we deﬁne T = Tη,
+κ = κη and τ = τη, where η is the ﬁrst stage such
+that all nodes are stopped. We note that η < 2N with
+probability one because each cut of a node p produces
+a non-trivial partition of the data in the block, and
+a node with one data point will be stopped instead
+of cut. The conditional density of the decision tree
+T = (T, κ, τ ) can now be expressed as
+h(T, κ, τ|X) =
+
+(cid:17)1(|Dp|>0)
+
+1 −
+
+αs
+
+(cid:89)
+
+p∈∂T
+
+(cid:16)
+(cid:89)
+
+×
+
+(1 + |p|)βs
+
+αs
+
+p∈T\∂T
+
+(1 + |p|)βs
+
+1
+|Dp|
+
+1
+|I p
+κ(p)|
+
+.
+
+(5)
+
+Note that the prior distribution of T does not depend
+on the deterministic rule for choosing a leaf at each
+stage. However this choice will have an eﬀect on the
+bias/variance of the corresponding SMC algorithm.
+
+3. Sequential Monte Carlo (SMC) for
+
+Bayesian decision trees
+
+In this section we describe an SMC algorithm for ap-
+proximating the posterior distribution over the de-
+cision tree (T, κ, τ ) given the labeled training data
+
+:{x1>0.5}01:{x2>0.35}1011B()B(0)B(1)B(0)B(10)B(11)????I02I01??◦◦◦Top-down particle ﬁltering for Bayesian decision trees
+
+(X, Y ). (We refer the reader to (Capp´e et al., 2007)
+for an excellent overview of SMC techniques.) The
+approach we will take is to perform particle ﬁltering
+following the sequential description of the prior.
+In
+particular, at stage i, the particles approximate a mod-
+iﬁed posterior distribution where the prior on (T, κ, τ )
+is replaced by the distribution of (Ti, κi, τi), i.e., the
+process truncated at stage i.
+
+Let Ei denote the set of unstopped leaves at stage i,
+all of which are eligible for expansion. An important
+freedom we have in our SMC algorithm is the choice
+of which candidate leaf (or set Ci ⊆ Ei of candidate
+leaves) to consider expanding. In order to avoid “mul-
+tipath” issues (Del Moral et al., 2006, §3.5) which lead
+to high variance, we ﬁx a deterministic rule for choos-
+ing Ci ⊆ Ei. (Multiple candidates are expanded or
+stopped in turn, independently.) This rule can be a
+function of (X, Y ) and the state of the current par-
+ticle, as the correctness of resulting approximation is
+unaﬀected. We evaluate two choices in experiments:
+ﬁrst, the rule Ci = Ei where we consider expanding
+all eligible nodes; and second, the rule where Ci con-
+tains a single node chosen in a breadth-ﬁrst (i.e., oldest
+ﬁrst) manner from Ei.
+We may now deﬁne the sequence (PY
+i ) of target dis-
+tributions. Recall the sequential process deﬁned in
+Section 2.
+If the generative process for the decision
+tree has not completed by stage i, the process has
+generated (Ti, κi, τi) along with Ei, capturing which
+leaves in Ti have been considered for expansion in
+previous stages already and which have not. Let
+Ti = (Ti, κi, τi, Ei) be the variables generated on stage
+i, and write P for the prior distribution on the sequence
+(Ti). We construct the target distribution PY
+i as fol-
+lows: Given Ti, we generate labels Y (cid:48) with likelihood
+g(Y (cid:48)
+|Ti, X), i.e., as if (Ti, κi, τi) were the complete de-
+cision tree. We then deﬁne PY
+to be the conditional
+distribution of Ti given Y (cid:48) = Y . That is, PY
+is the
+
+posterior with a truncated prior.
+
+i
+
+i
+
+In order to complete the description of our SMC
+method, we must deﬁne proposal kernels (Qi) that
+sample approximations for the ith stage given values
+for the (i − 1)th stage. As with our choice of Ci, we
+have quite a bit of freedom.
+In particular, the pro-
+posals can depend on the training data (X, Y ). An
+obvious choice is to take Qi to be the conditional dis-
+tribution of Ti given Ti−1 under the prior, i.e., set-
+ting Qi(Ti |Ti−1) = P(Ti |Ti−1). Informally, this choice
+would lead us to propose extensions to trees at each
+stage of the algorithm by sampling from the prior, so
+we will refer to this as the prior proposal kernel (aka
+the Bayesian bootstrap ﬁlter (Gordon et al., 1993)).
+
+We consider two additional proposal kernels: The ﬁrst,
+
+Qi(Ti |Ti−1) = PY
+
+i (Ti |Ti−1),
+
+(6)
+
+is called the (one-step) optimal proposal kernel be-
+cause it would be the optimal kernel assuming that the
+ith stage were the ﬁnal stage. We return to discuss this
+kernel in Section 3.1. The second alternative, which
+we will refer to as the empirical proposal kernel, is
+a small modiﬁcation to the prior proposal, diﬀering
+only in the choice of the split point τ . Recall that, in
+the prior, τi(p) is chosen uniformly from the interval
+I p
+κi(p). This ignores the empirical distribution given
+by the input data XN (p) in the partition. We can ac-
+count for this by ﬁrst choosing, uniformly at random,
+a pair of adjacent data points along feature dimension
+κi(p), and then sampling a cut τi(p) uniformly from
+the interval between these two data points.
+
+The pseudocode for our proposed SMC algorithm is
+given in Algorithm 1 in Appendix A. Note that the
+SMC framework only requires us to compute the den-
+sity of Ti under the target distribution up to a normal-
+ization constant. In fact, the SMC algorithm produces
+an estimate of the normalization constant, which, at
+the end of the algorithm, is equal to the marginal prob-
+ability of the labels Y given X, with the latent decision
+tree T marginalized out. In general, the joint density
+of a Markov chain can be hard to compute, but be-
+cause the set of nodes Ci considered at each stage is a
+deterministic function of Ti, the path (T0,T1, . . . ,Ti−1)
+taken is a deterministic function of Ti. As a result, the
+joint density is simply a product of probabilities for
+each stage. The same property holds for the proposal
+kernels deﬁned above because they use the same can-
+didate set Ci, and have the same support as P. These
+properties justify the equations in Algorithm 1.
+
+3.1. The one-step optimal proposal kernel
+
+In this section we revisit the deﬁnition of the one-step
+optimal proposal kernel. While the prior and empiri-
+cal proposal kernels are relatively straightforward, the
+one-step optimal proposal kernel is deﬁned in terms of
+an additional conditioning on the labels Y , which we
+now study in greater detail.
+Recall that the one-step optimal proposal kernel Qi is
+given by Qi(Ti |Ti−1) = PY
+i (Ti |Ti−1). To begin, we
+note that, conditionally on Ti−1 and Y , the subtrees
+rooted at each node p ∈ Ci−1 are independent. This
+follows from the fact that the likelihood of Y given Ti
+factorizes over the leaves. Thus, the proposal’s proba-
+bility density is
+
+(cid:89)
+
+p∈Ci−1
+
+Qi(Ti|Ti−1) =
+
+Qi(ρi,p, κi(p), τi(p)),
+
+(7)
+
+Top-down particle ﬁltering for Bayesian decision trees
+
+where Qi is the probability density of the cuts at node
+p under Qi, and ρi,p denotes whether the node was
+split or not. On the event we split a node p ∈ Ci−1,
+if we condition further on κi(p) and ρi,p, we note that
+the conditional likelihood of YN (p), when viewed as a
+function of the split τi(p), is piecewise constant, and
+in particular, only changes when the split crosses an
+example. It follows that we can sample from this pro-
+posal by ﬁrst considering the discrete choice of an in-
+terval, and then sampling uniformly at random from
+within the interval, as with the empirical proposal.
+Some algebra shows that
+
+Qi(ρi,p = stop) ∝
+
+1 −
+
+Qi(ρi,p = split, κi(p), τi(p)) ∝
+
+(cid:16)
+
+(cid:17)
+
+αs
+
+(1 + |p|)βs
+αs
+
+(cid:89)
+
+(1 + |p|)βs
+
+(cid:96)(YN (p)|XN (p)) ,
+
+1
+|Dp|
+
+1
+|I p
+κi(p)|
+(cid:96)(YN (pj)|XN (pj)).
+
+×
+
+j=0,1
+
+3.2. Computational complexity
+
+rithms, the space complexity is O(M N )+O((cid:80)
+O((cid:80)
+M(cid:80)
+posals and M(cid:80)
+
+Let Ud denote the number of unique values in di-
+mension d, Np denote the number of training data
+points at node p and η(m) denote the number
+For all the SMC algo-
+of nodes in particle m.
+d Ud)+
+m η(m)). The time complexity is O(DN log N ) +
+p O(2DNp + Np) for prior and empirical pro-
+mal proposal. The optimal proposal typically requires
+higher computational cost per particle, but fewer num-
+ber of particles than the prior and empirical proposals.
+
+(cid:0)DO(Np log Np) + Np
+
+(cid:1) for the opti-
+
+p
+
+4. Experiments
+
+In this section, we experimentally evaluate the design
+choices of the SMC algorithm (proposal, expansion
+strategy, number of particles and “islands”) on real
+world datasets. In addition, we compare the perfor-
+mance of SMC to the most popular MCMC method
+for Bayesian decision tree learning (Chipman et al.,
+1998), as well as CART, a popular (non-Bayesian) tree
+induction algorithm. We evaluate all the algorithms
+on the following datasets from the UCI ML repository
+(Asuncion & Newman, 2007):
+
+N = 19020, D = 10, K = 2.
+
+• MAGIC gamma telescope data 2004 (magic-04 ):
+• Pen-based recognition of handwritten digits (pen-
+
+digits): N = 10992, D = 16, K = 10.
+
+Previous work has focused mainly on small datasets
+(e.g., the Wisconsin breast cancer database used by
+Chipman et al. (1998) has 683 data points). We
+
+chose the above datasets to illustrate the scalability
+of our approach. For the pen-digits dataset, we used
+the predeﬁned training/test splits, while for the other
+datasets, we split the datasets randomly into a train-
+ing set and a test set containing approximately 70%
+and 30% of the data points respectively.
+
+We implemented our scripts in Python and applied
+similar software optimization techniques to SMC and
+MCMC scripts.1 Our experiments were run on a clus-
+ter with machines of similar processing power.
+
+4.1. Design choices in the SMC algorithm
+
+In these set of experiments, we ﬁx the hyperparam-
+eters to α = 5.0, αs = 0.95, βs = 0.5 and compare
+the predictive performance of diﬀerent conﬁgurations
+of the SMC algorithm for this ﬁxed model. Under the
+prior, these values of αs, βs produce trees whose mean
+depth and number of nodes are 5.1 and 18.5, respec-
+tively. Given M particles, we use an eﬀective sample
+size (ESS) threshold of M/10 and set the maximum
+number of stages to 5000 (although the algorithms
+never reached this number).
+
+4.1.1. Proposal choice and node expansion
+
+We consider the SMC algorithm proposed in Section
+3 under two proposals: optimal and prior. (The em-
+pirical proposal performed similar to the prior pro-
+posal and hence we do not report those results here.)
+We consider two strategies for choosing Ci, i.e., the
+list of nodes considered for expansion at stage i: (i)
+node-wise expansion, where a single node is consid-
+ered for expansion per stage (i.e., Ci is a singleton
+chosen deterministically from eligible nodes Ei), and
+(ii) layer-wise expansion, where all nodes at a particu-
+lar depth are considered for expansion simultaneously
+(i.e., Ci = Ei). For node-wise expansion, we evaluate
+two strategies for selecting the node deterministically
+from Ci: (i) breadth-ﬁrst priority, where the oldest
+node is picked ﬁrst, and (ii) marginal-likelihood based
+priority, where we expand the node with the lowest
+marginal likelihood. Both of these priority schemes
+performed similarly; hence we report only the results
+for breadth-ﬁrst priority. We use multinomial resam-
+pling in our experiments. We also evaluated system-
+atic resampling (Douc et al., 2005) but found that the
+performance was not signiﬁcantly diﬀerent.
+
+We report the log predictive probability on test data
+as a function of runtime and of the number of par-
+ticles (similar trends are observed for test accuracy;
+
+1The scripts can be downloaded from the authors’ web-
+
+pages.
+
+Top-down particle ﬁltering for Bayesian decision trees
+
+see Appendix B). The times reported do not account
+for prediction time. We average the numbers over 10
+random initializations and report standard deviations.
+The results are shown in Figure 2.
+In summary, we
+observe the following:
+
+Node-wise expansion outperforms layer-wise expan-
+sion for prior proposal. The prior proposal does not
+account for likelihood; one could think of the resam-
+pling steps as ‘correction steps’ for the sub-optimal
+decisions sampled from the prior proposal. Because
+node-wise expansion can potentially resample at ev-
+ery stage, it can correct individual bad decisions im-
+mediately, whereas layer-wise expansion cannot.
+In
+particular, we have observed that layer-wise expan-
+sion tends to produce shallower trees compared to
+node-wise expansion, leading to poorer performance.
+This phenomenon can be explained as follows: as the
+depth of the node increases, the prior probability of
+stopping increases whereas the posterior probability of
+stopping might be quite low. In node-wise expansion,
+the resampling step can potentially retain the parti-
+cles where the node has not been stopped. However,
+in layer-wise expansion, too many nodes might have
+stopped prematurely and the resampling step cannot
+‘correct’ all these bad decisions easily (i.e., it would
+require many more particles to sample trees where all
+the nodes in a layer have not been stopped). Another
+interesting observation is that layer-wise expansion ex-
+hibits higher variance: this can be explained by the
+fact that layer-wise expansion samples a greater num-
+ber of random variables (on average) than node-wise
+before resampling, and so suﬀers for the same reason
+that importance sampling can suﬀer from high vari-
+ance. Note that both expansion strategies perform
+similarly for the optimal proposal due to the fact that
+the proposal accounts for the likelihood and resam-
+pling does not aﬀect the results signiﬁcantly. Due to
+its superior performance, we consider only node-wise
+expansion in the rest of the paper.
+
+The plots on the right side of Figure 2 suggest that
+the optimal proposal requires fewer particles than the
+prior proposal (as expected). However, the per-stage
+cost of optimal proposal is much higher than the prior,
+leading to signiﬁcant increase in the overall runtime
+(see Section 3.2 for a related discussion). Hence, the
+prior proposal oﬀers a better predictive performance
+vs computation time tradeoﬀ than the optimal pro-
+posal.
+
+The performance of optimal proposal saturates very
+quickly and is near-optimal even when the number of
+particles is small (M = 10).
+
+Figure 2. Results on pen-digits (top), and magic-04 (bot-
+tom). Left column plots test log p(y|x) vs runtime, while
+right column plots test log p(y|x) vs number of particles.
+The blue circles and red squares represent optimal and
+prior proposals respectively. The solid and dashed lines
+represent node-wise and layer-wise proposals respectively.
+
+4.1.2. Effect of irrelevant features
+
+In the next experiment, we test the eﬀect of irrelevant
+features on the performance of the various proposals.
+We use the madelon dataset2 for this experiment, in
+which the data points belong to one of 2 classes and
+lie in a 500-dimensional space, out of which only 20
+dimensions are deemed relevant. The training dataset
+contains 2000 data points and the test dataset contains
+600 data points. We use the validation dataset in the
+UCI ML repository as our test set because labels are
+not available for the test dataset.
+
+The setup is identical to the previous section. The
+results are shown in Figure 3. Here, the optimal
+proposal outperforms the prior proposal in both the
+columns, requiring fewer particles as well as outper-
+forming the prior proposal for a given computational
+budget. While this dataset is atypical (only 4% of the
+features are relevant), it illustrates a potential vulner-
+ability of the prior proposal to irrelevant features.
+
+4.1.3. Effect of the number of islands
+
+Averaging the results of several independent particle
+ﬁlters (aka islands) is a way to reduce variance at the
+cost of bias, compared with running a single, larger
+ﬁlter. In the asymptotic regime, this would not make
+sense, but as we will see, performance is improved
+with multiple islands, suggesting we are not yet in the
+asymptotic regime.
+In this experiment, we evaluate
+the eﬀect of the number of islands on the test perfor-
+
+2http://archive.ics.uci.edu/ml/datasets/Madelon
+
+101102103104MeanTime(s)−1.4−1.2−1.0−0.8−0.6−0.4logp(Y|X)(test)SMCoptimal[node]SMCprior[node]SMCoptimal[layer]SMCprior[layer]101102103Numberofparticles−1.4−1.2−1.0−0.8−0.6−0.4logp(Y|X)(test)SMCoptimal[node]SMCprior[node]SMCoptimal[layer]SMCprior[layer]101102103104105MeanTime(s)−0.55−0.50−0.45−0.40−0.35logp(Y|X)(test)SMCoptimal[node]SMCprior[node]SMCoptimal[layer]SMCprior[layer]101102103Numberofparticles−0.55−0.50−0.45−0.40−0.35logp(Y|X)(test)SMCoptimal[node]SMCprior[node]SMCoptimal[layer]SMCprior[layer]Top-down particle ﬁltering for Bayesian decision trees
+
+we average the MCMC predictions over the trees from
+all previous iterations.
+
+The experimental setup is identical to Section 4.1, ex-
+cept that we ﬁx the number of islands, I = 5. We vary
+the number of particles for SMC3 and the number of
+iterations for MCMC and plot the log predictive prob-
+ability and accuracy on the test data as a function of
+In Figure 5, we observe that SMC (prior,
+runtime.
+node-wise) is roughly two orders of magnitude faster
+than MCMC while achieving similar predictive perfor-
+mance on pen-digits and magic-04 datasets. Although
+the exact speedup factor depends on the dataset in
+general, we have observed that SMC (prior, node-
+wise) is at least an order of magnitude faster
+than MCMC. The SMC runtimes in Figure 5 are
+recorded by running the I islands in a serial fashion.
+As discussed in Section 4.1.3, one could parallelize the
+computation leading to an additional speedup by a fac-
+tor of I. In the pen-digits dataset, the performance of
+prior proposal seems to drop as we increase M beyond
+2000. However, the marginal likelihood on the training
+data increases with M (see Appendix D). We believe
+that the deteriorating performance is due to model
+misspeciﬁcation (axis-aligned decision trees are hardly
+the ‘right’ model for handwritten digits) rather than
+the inference algorithm itself: ‘better’ Bayesian infer-
+ence in a misspeciﬁed model might lead to a poorer
+solution (see (Minka, 2000) for a related discussion).
+
+To evaluate the sensitivity of the trends above to the
+hyper parameters α, αs, βs, we systematically varied
+the values of these hyper parameters and repeated the
+experiment. The results are qualitatively similar. See
+Appendix E for additional information.
+
+4.3. SMC vs other existing approaches
+
+The goal of these experiments was to verify that our
+SMC approximation performed as well as the “gold
+standard” MCMC algorithms most commonly used in
+the Bayesian decision tree learning setting.
+Indeed,
+our results suggest that, for a fraction of the compu-
+tational budget, we can achieve a comparable level of
+accuracy. In this ﬁnal experiment, we re-aﬃrm that
+the Bayesian algorithms are competitive in accuracy
+with the classic CART algorithm. (There are many
+other comparisons that one could pursue and other au-
+thors have already performed such comparisons. E.g.,
+Taddy et al. (2011) demonstrated that their tree struc-
+tured models yield similar performance as Gaussian
+
+3We ﬁx I = 5 so that the minimum value of M (= 100)
+corresponds to M/I = 20 particles per island. Further
+improvements could be obtained by ‘adapting’ I to M as
+discussed in Section 4.1.3.
+
+Figure 3. Results on madelon dataset: The top and bot-
+tom rows display log p(y|x) and accuracy on the test data
+against runtime (left) and the number of particles (right)
+respectively. The blue circles and red squares represent
+optimal and prior proposals respectively.
+
+Figure 4. Results on pen-digits: Test log p(y|x) (left) and
+accuracy (right) vs I and M/I for ﬁxed M = 2000.
+
+mance of the prior proposal. We ﬁx the total number
+of particles to 2000 and vary I, the number of islands
+(and hence, the number of particles per island). Note
+that all the islands operate on the entire dataset unlike
+bagging. Here, we present results only on the pen-digits
+dataset (see Appendix C for results on the magic-04
+dataset). The results are shown in Figure 4. We ob-
+serve that (i) the test performance drops sharply if we
+use fewer than 100 particles per island and (ii) when
+M/I ≥ 100, the choices of I ∈ [5, 100] outperform
+I = 1. Since the islands are independent, the compu-
+tation across islands is ‘embarrassingly parallelizable’.
+
+4.2. SMC vs MCMC
+
+In this experiment, we compare the SMC algorithms
+to the MCMC algorithm proposed by Chipman et al.
+(1998), which employs four types of Metropolis-
+Hastings proposals: grow (split a leaf node into child
+nodes), prune (prune a pair of leaf nodes belonging to
+the same parent), change (change the decision rule at
+a node) and swap (swap the decision rule of a parent
+with the decision rule of the child). In our experiments,
+
+102103104MeanTime(s)−0.70−0.65−0.60−0.55−0.50−0.45logp(Y|X)(test)SMCoptimal[node]SMCprior[node]101102103104Numberofparticles−0.70−0.65−0.60−0.55−0.50−0.45logp(Y|X)(test)SMCoptimal[node]SMCprior[node]102103104MeanTime(s)0.500.550.600.650.700.750.80Accuracy(test)SMCoptimal[node]SMCprior[node]101102103104Numberofparticles0.500.550.600.650.700.750.80Accuracy(test)SMCoptimal[node]SMCprior[node]100101102103104Numberofparticlesperisland−1.8−1.6−1.4−1.2−1.0−0.8−0.6−0.4−0.2logp(Y|X)(test)151020502002000Numberofislands100101102103104Numberofparticlesperisland0.780.800.820.840.860.880.900.920.940.96Accuracy(test)151020502002000NumberofislandsTop-down particle ﬁltering for Bayesian decision trees
+
+rithm. Our algorithms are easier to implement than
+their MCMC counterparts, whose eﬃcient implemen-
+tations require sophisticated book-keeping.
+
+We have also explored various design choices leading
+to diﬀerent SMC algorithms. We have found that
+expanding too many nodes simultaneously degraded
+performance, and more sophisticated ways of choos-
+ing nodes surprisingly did not improve performance.
+Finally, while the one-step optimal proposal often re-
+quired fewer particles to achieve a given accuracy, it
+was signiﬁcantly more computationally intensive than
+the prior proposal, leading to a less eﬃcient algorithm
+overall on datasets with few irrelevant input dimen-
+sions. As the number of irrelevant dimensions in-
+creased the balance tipped in favour of the optimal
+proposal. An interesting direction of exploration is to
+devise some way to interpolate between the prior and
+optimal proposals, getting the best of both worlds.
+
+The model underlying this work assumes that the data
+is explained by a single tree. In contrast, many uses
+of decision trees, e.g., random forests, bagging, etc.,
+can be interpreted as working within a model class
+where the data is explained by a collection of trees.
+Bayesian additive regression trees (BART) (Chipman
+et al., 2010) are such a model class. Prior work has
+considered MCMC techniques for posterior inference
+(Chipman et al., 2010). A signiﬁcant but important
+extension of this work would be to tackle additive com-
+binations of trees, potentially in a way that continues
+to mimic classic algorithms.
+
+Finally, in order to more closely match existing work
+in Bayesian decision trees, we have used a prior over
+decision trees that depends on the input data X. This
+has the undesirable side-eﬀect of breaking exchange-
+ability in the model, making it incoherent with respect
+to changing dataset sizes and to working with online
+data streams. One solution is to use an alternative
+prior for decision trees, e.g., based on the Mondrian
+process (Roy & Teh, 2009), whose projectivity would
+re-establish exchangeability while allowing for eﬃcient
+posterior computations that depend on data.
+
+Acknowledgments
+
+We would like to thank Charles Blundell, Arnaud
+Doucet, David Duvenaud, Jan Gasthaus, Hong Ge,
+Zoubin Ghahramani, and James Robert Lloyd for
+helpful discussions and feedback on drafts. DMR is
+supported by a Newton International Fellowship and
+Emmanuel College. BL and YWT gratefully acknowl-
+edge generous funding from the Gatsby Charitable
+Foundation.
+
+Figure 5. Results on pen-digits (top row), and magic-04
+(bottom row). Left column plots test log p(y|x) vs run-
+time, while right column plots test accuracy vs runtime.
+The blue cirlces, red squares and black diamonds represent
+optimal, prior proposals and MCMC respectively.
+
+processes and random forests.) We used the CART
+implementation provided by scikit-learn (Pedregosa
+et al., 2011) with two criteria: gini purity and infor-
+mation gain and set min samples leaf = 10 (min-
+imum number of data points at a leaf node).4
+In
+addition, we performed Laplacian smoothing on the
+probability estimates from CART using the same α
+as for the Bayesian methods. Our Python implemen-
+tation of SMC takes about 50-100x longer to achieve
+the same test accuracy as the highly-optimized imple-
+mentation of CART. For this reason, we plot CART
+accuracy as a horizontal bar. The accuracy and log
+predictive probability on test data are shown in Fig-
+ure 5. The Bayesian decision tree frameworks achieve
+similar (or better) test accuracy to CART, and out-
+perform CART signiﬁcantly in terms of the predictive
+likelihood. SMC delivers the beneﬁts of having an ap-
+proximation to the posterior, but in a fraction of the
+time required by existing MCMC methods.
+
+5. Discussion and Future work
+
+We have proposed a novel class of Bayesian inference
+algorithms for decision trees, based on the sequential
+Monte Carlo framework. The algorithms mimic classic
+top-down algorithms for learning decision trees, but
+use “local” likelihoods along with resampling steps
+to guide tree growth. We have shown good compu-
+tational and statistical performances, especially com-
+pared with a state-of-the-art MCMC inference algo-
+
+4Lower values (min samples leaf = 1, 5) tend to yield
+slightly higher test accuracies (comparable to SMC and
+MCMC) but much lower predictive probabilities.
+
+102103104MeanTime(s)−0.60−0.55−0.50−0.45−0.40−0.35−0.30−0.25logp(Y|X)(test)SMCoptimal[node]SMCprior[node]Chipman-MCMCCART(gini)CART(entropy)102103104MeanTime(s)0.820.840.860.880.900.920.94Accuracy(test)SMCoptimal[node]SMCprior[node]Chipman-MCMCCART(gini)CART(entropy)102103104MeanTime(s)−0.42−0.40−0.38−0.36−0.34logp(Y|X)(test)SMCoptimal[node]SMCprior[node]Chipman-MCMCCART(gini)CART(entropy)102103104MeanTime(s)0.820.830.840.850.86Accuracy(test)SMCoptimal[node]SMCprior[node]Chipman-MCMCCART(gini)CART(entropy)Top-down particle ﬁltering for Bayesian decision trees
+
+
