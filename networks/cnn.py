@@ -7,6 +7,7 @@ from .middle_components.parallel_size_joined_conv import NCrossSizeParallelConvN
 from .middle_components.parallel_joined_conv import ParallelJoinedConv
 from .middle_components.parallel_conv_DocLevel import NConvDocConvNFC
 from .middle_components.inception_like import InceptionLike
+from .middle_components.pure_rnn import PureRNN
 from .output_components.pan_output import PANOutput
 from .output_components.ml_output import MLOutput
 
@@ -76,6 +77,9 @@ class TextCNN:
                                                          previous_component=self.input_comp, dropout=dropout,
                                                          batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
                                                          fc=fc)
+        elif middle_component == 'PureRNN':
+            self.middle_comp = PureRNN(sequence_length, embedding_size, previous_component=self.input_comp,
+                                       num_layers=1, bidirectional=False, attn_length=50, attn_size=50, attn_vec_size=50)
         else:
             raise NotImplementedError
 
