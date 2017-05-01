@@ -1,0 +1,1056 @@
+Abstract
+
+Markerless tracking of human pose is a hard yet rele-
+vant problem. In this paper, we derive an efcient ltering
+algorithm for tracking human pose at 4-10 frames per sec-
+ond using a stream of monocular depth images. The key
+idea is to combine an accurate generative modelwhich
+is achievable in this setting using programmable graph-
+ics hardwarewith a discriminative model that feeds data-
+driven evidence about body part locations.
+In each lter
+iteration, we apply a form of local model-based search that
+exploits the nature of the kinematic chain. As fast move-
+ments and occlusion can disrupt the local search, we utilize
+a set of discriminatively trained patch classiers to detect
+body parts. We describe a novel algorithm for propagating
+this noisy evidence about body part locations up the kine-
+matic chain using the unscented transform. The resulting
+distribution of body congurations allows us to reinitialize
+the model-based search, which in turn allows our system to
+robustly recover from temporary tracking drift. We provide
+extensive experimental results on 28 real-world sequences
+using automatic ground-truth annotations from a commer-
+cial motion capture system.
+
+1. Introduction
+
+If motion capture technology were to become conve-
+nient, cheap, and applicable in natural environments, then
+a whole range of applications would become possible, such
+as intuitive human-machine interaction, smart surveillance,
+character animation, virtual reality and motion analysis. It
+is likely that many such applications will become apparent
+once the technology is available.
+
+The only viable solution today, that is, marker-based hu-
+man motion capture, has so far mainly been used in the en-
+tertainment industry, largely because the need for special-
+purpose cameras and inconvenient markers or suits requir-
+ing high operation costs. As a result, there has been much
+
+interest in the area of markerless motion capture, and such
+systems are becoming more popular [12].
+
+In recent years, algorithms have been proposed that cap-
+ture full skeletal motion at near real-time frame rates; how-
+ever, they mostly rely on multi-view camera systems and
+special controlled recording conditions that limit their ap-
+plicability. Less expensive systems that use a narrow base-
+line camera system have not yet reached a similar level of
+maturity. Most monocular approaches so far aim at solv-
+ing simplied versions of the full articulated motion cap-
+ture problem, such as gesture disambiguation, or capture of
+restricted motion for certain parts of the body.
+
+Time-of-ight sensors are a technology that offers rich
+sensory information about a large part of the scene and, at
+the same time, enables a convenient, non-invasive system
+setup. These sensors provide dense depth measurements
+at every point in the scene at high frame rates. The range
+data provided allows easy segmentation of the human body
+and can also disambiguate poses that would otherwise have
+similar appearance and therefore confuse most monocular
+systems. Range sensors, in general, lend themselves to a
+faithful generative model (as the robotics literature shows),
+because they are not sensitive to changes in lighting, shad-
+ows, and the variety of the problems that make it nearly
+impossible to generatively model intensity images. In the
+future, these sensors are likely to be as cheap as webcams
+are today. Thus, we approach the human motion capture
+task using time-of-ight sensors. Despite the advantages of
+depth sensors, however, several hard problems have to be
+dealt with, including the high dimensionality of the state-
+space (48 degree-of-freedom in our case) and the nonlinear,
+highly peaked likelihood function.
+
+We propose in this paper a probabilistic ltering frame-
+work that employs a highly accurate generative model
+which is achievable in this setting using an efcient GPU
+implementationwith a discriminative model. Our algo-
+rithm was developed specically for fast operation at video
+frame rates, since natural communication requires a low-
+latency action-reaction cycle. The presented system re-
+
+1
+
+quires 100  250ms per camera frame to estimate the joint
+angles of a 48 degree-of-freedom human model.
+
+Our primary contribution is a novel algorithm for
+combining discriminative part detections with local hill-
+climbing for this task. Our secondary contribution is the
+denition of a smooth likelihood function and a means
+of implementing it on readily available graphics hardware
+(GPUs) efciently in order to obtain near real-time perfor-
+mance. In addition to this, we constructed an extensive set
+of real-world test sequences with annotated ground truth,
+which are published openly [6] for future benchmarks.
+
+2. Related Work
+
+The automatic analysis of human shape and motion from
+sensor data has been researched considerably as Moes-
+lund et al. [9] illustrate in their survey covering more than
+than 350 papers.
+
+Several learning based approaches [1, 17, 14] attempt to
+directly map image structures, silhouettes or features com-
+puted from them directly to poses. While this is an inter-
+esting approach in general, it is not clear yet how to scale
+it robustly to the general problem setting in unconstrained
+environments due to the high dimensionality of the human
+pose space. Related to our approach, this line of research
+would t well into the data-driven component of our algo-
+rithm described in Sec. 4.2. Similarly, several papers try to
+detect parts of the body which they assemble into a com-
+plete form, termed pictorial structures. Although operating
+on high quality point clouds obtained from laser scans in-
+stead of video, Rodgers et al. [13] take a similar approach
+that uses discriminative methods to populate the domains of
+discrete variables in a Bayesian network. In the multi-view
+vision setting, Sigal et al. [15] apply a similar strategy, but
+use Nonparameteric Belief Propagation for their inference
+method. Our approach differs in that we perform inference
+in the continuous domain and that we are working on tem-
+poral data with a noisier sensor. Our approach to body part
+detection employed in this work is described in [11].
+
+Much work has also focused on sampling-based methods
+[5, 3, 16], including partitioned sampling, which updates
+subsets of parameters, and hierarchical sampling, which
+starts at the top of the kinematic chain and proceeds down-
+wards. In our approach, we adopt the idea of hierarchical
+search along the kinematic chain, but replace random sam-
+pling with deterministic sampling because it is allows in-
+creased efciency through precomputation.
+
+Recently there have been several attempts to track people
+using a time-of-ight (TOF) camera. Grest et al. [7] apply
+non-linear least squares to edge maps, that are associated
+from frame to frame. Knoop et al. [8] use a stereo camera
+and a TOF camera to t a cylindrical 3D body model to the
+data via the iterative closest point (ICP) algorithm. Both pa-
+pers focus on tracking of the upper body only. Due to their
+
+Figure 1. Left: The human body is modeled by a kinematic chain
+and a 3D surface mesh. Right: The dynamic Bayesian network
+modeling the poses Xt of the tracked person and the recorded
+range measurements zt.
+
+local nature, both algorithms are susceptible to losing track
+when the motion is too fast. Recently, Zhu et al. [18] have
+proposed an algorithm for upper-body tracking from one
+TOF camera. Their algorithm is based on hand-engineered
+heuristics for detecting joints of the upper body and is opti-
+mized for upper front-facing poses. These algorithms do not
+include any reinitialization component and operate through
+local optimization initialized from the previous frame.
+
+The related problem of tracking using one or many video
+cameras has also received much attention. The classic
+work by Bregler et al. [4] tracks a person from a single
+camera using optical ow to obtain frame-to-frame cor-
+respondences, which are used to calculate motion deriva-
+tives, which are propagated up the kinematic chain. By as-
+sumption, their approach is limited to motions parallel to
+the image plane, and it is also susceptible to losing track.
+However, the central idea of propagating information from
+the image up the kinematic chain is one that we exploit in
+our algorithm, although we use the unscented transform to
+achieve higher quality linearization.
+
+There is a growing trend in papers that use pro-
+grammable graphics hardware (GPUs) to implement com-
+puter vision algorithms [10]. The parallel nature of compu-
+tation on a GPU as well as their optimization for operating
+on images leads us to believe, that they are an ideal platform
+for computer vision algorithms, especially when real-time
+performance is paramount. We exploit GPUs to perform
+large numbers of likelihood evaluations efciently.
+
+3. Probabilistic Model
+
+The objective is to track an articulated body over time
+using a stream of monocular depth images. We rst dene
+a probabilistic model for the variables of interest in this sec-
+tion and then describe how to efciently perform inference
+in Sec. 4.
+
+We model the body as a collection of 15 rigid body
+parts, which are constrained in space according to a tree-
+shaped kinematic chain (skeleton), see the left diagram in
+Fig. 1. A kinematic chain is a directed acyclic graph (DAG)
+
+2
+
+t }N
+
+with well-dened parent-child relations. The surface ge-
+ometry of the model is represented via a closed triangle
+mesh, which deforms with the underlying kinematic chain
+by means of a vertex skinning approach [10]. We de-
+note the conguration of the body by Xt = {X i
+i=1 ,
+where each i indexes a uniquely dened body part in the
+chain. The transformations Xi can be represented in vari-
+ous ways, such as using homogeneous matrices or in vec-
+tor/quaternion form. Independent from the choice of rep-
+resentation, X i denotes the position and orientation of a
+specic body part relative to its parent part. The chain is
+anchored to the world at the pelvis X 1
+t (which does not
+have a parent in the kinematic tree). In our model, we allow
+the pelvis to freely rotate and translate. The remaining body
+parts are connected to the their parent via a ball joint, which
+allows them to rotate in any direction, but not to translate.
+We obtain the absolute orientation W i(X) of a body part
+i by multiplying the transformations of its ancestors in the
+kinematic chain, W i(X) = X 1    X parent(i)X i.
+
+In order to determine the most likely state at any time,
+we must dene a probabilistic model. The state at time t
+is the pose Xt and its rst discrete-time derivative Vt. The
+measurement is the range scan zt. We model our system
+as a dynamic Bayesian network (DBN), see the right dia-
+gram in Fig. 1, which encodes the Markov independence
+assumption that Xt and Vt are independent of z1, . . . , zt1
+given Xt1 and Vt1.
+
+This DBN requires the specication of the conditional
+probabilities P (Vt|Vt1), P (Xt|Xt1, Vt) and the mea-
+surement model P (zt|Xt). We make the assumption that
+the accelerations in our system are drawn from a Gaussian
+distribution with zero mean1. Thus, Vt|Vt1  N (Vt1, )
+with the covariance matrix  being diagonal. We note that
+since X is a list of relative transformations, the velocities
+are also dened relatively. That is, if k is the index of the
+knee, V k
+t encodes the change in the angle between the shin
+and thigh at frame t. The covariance  was specied by
+hand following bio-mechanical principles and the known
+video frame rate, although it could easily be set by an au-
+tomated procedure using the many available human motion
+data sets.
+
+We dene P (Xt|Vt, Xt1) to be a deterministic CPD
+(conditional probability distribution), that applies the trans-
+formations in Vt to those in Xt1. Formally, X i
+with probability 1.
+
+t = V i
+
+t X i
+
+t1
+
+The measurement model denes the distribution on the
+measured range data given the state of the system. The mea-
+sured range scan is denoted by z = {zk}M
+k=1 where zk gives
+the measured depth of the pixel at coordinate k. An example
+scan is shown in Fig. 6. We assume the conditional indepen-
+
+1Note that it is common in the tracking literature to assume random
+
+accelerations rather than random velocities
+
+3
+
+d
+o
+o
+h
+i
+l
+e
+k
+i
+L
+
+1.25
+1
+0.75
+0.5
+0.25
+
+Sensor model
+
+-1
+
+-0.5
+
+0
+
+0.5
+
+1
+
+Distance (z-z*)
+
+Figure 2. Our sensor model for individual range measurements ap-
+proximates the mixture of a Gaussian (measurement noise) and a
+uniform distribution (outliers and mis-associations).
+
+dence of each pixel given the state and scene geometry m,
+
+P (zt|Xt, m) = Y
+
+P (zk
+
+t |Xt, m) .
+
+k
+
+To generate the zk for a specic body conguration X and
+model m, we transform the vertices corresponding to each
+part i by its corresponding transformation matrix W i(X).
+We then cast a ray from the focal point through pixel k and
+calculate the distance to the rst surface it hits, which we
+denote zk. Note, that this is basically a ray-tracing op-
+eration common place in the computer graphics rendering
+literature.
+
+Given the ideal depth value, we can then apply a noise
+model for the given sensor. Noise models for time-of-ight
+sensors have been heavily explored in the robotics litera-
+ture. The standard approach is to explicitly model the dif-
+ferent types of noise that are can occur. In principle, one
+can enumerate the effects, such as Gaussian noise of the
+sensor, the probability of a max range reading, outliers,
+and others. We approximate such a CPD using the func-
+tion shown in Fig. 2. Let us dene smoothstep(x) =
+(min(x, 1))2(3  2 min(x, 1)). We dene
+
+p(|zk  zk|)  exp(smoothstep(|zk  zk|)) .
+
+(1)
+
+We chose this function because it approximates a Gaussian
+mixed with a uniform distribution and it is a built-in func-
+tion in the GPU shading language.
+
+Our goal is to determine the most likely states Xt and Vt
+at time t given the MAP assignments of the previous frame,
+that is, Xt1 and Vt1. At each frame, we face the difcult,
+high dimensional optimization problem h Xt, Vti =
+
+argmaxXt,Vt log P (zt|Xt, Vt)+log P (Xt, Vt| Xt1, Vt1) ,
+
+for which we describe an efcient solution in Sec. 4.
+
+As a central component of our optimization problem, the
+previously described measurement model P (zt|Xt, Vt) is
+inadequate due to its sensitivity to incorrect models m and
+to slight changes in the state X. Parts of the model that vio-
+late their silhouette in the measured image will be penalized
+heavily. For instance, slightly translating an object will re-
+sult in all pixels at the edges evaluating an incorrect depth
+
+value, which would be penalized heavily. The sensor model
+partially accounts for this over-sensitivity through the use
+of a heavy-tailed distribution.
+
+In the literature, it has frequently been observed that the
+true likelihood is often ill-suited for optimization, and sur-
+rogate likelihoods are often used [5]. We develop a func-
+tion that is more robust to the mis-association that occurs
+during optimization. Let us rewrite this likelihood l(X)
+in terms of z(X), the depth image obtained through ray-
+l(X) = Pk log P (zk|z(X)) =
+casting applied to X.
+Pk log P (zk|zk(X)). We construct an alternate smoother
+likelihood
+
+lsmooth(X) = X
+
+k
+
+max
+
+j
+
+log P (zk|zj(X)) + (j, k)
+
+parametrized by a penalty function . Here, (j, k) rep-
+resents a cost for choosing a different pixel index than
+the one predicted by ray casting.
+In our case we dene
+(j, k) = , if j is not an immediate pixel neighbor of
+k, (j, k) = 0, if j = k and set (j, k) to a constant in all
+other cases. We chose the constant 0.05 according to on
+the following reasoning: Given our sensors eld of view,
+the subject will be approximately two meters away in order
+to t completely. At that distance, moving to a neighboring
+pixel results in a Euclidean distance of a approximately 0.05
+meters perpendicular to the direction the camera is facing.
+Near the minimum, the log likelihood of the noise model
+is approximately quadratic.  can be chosen to smooth the
+likelihood further though this could reduce accuracy. Thus,
+the total penalty function approximates Euclidean distance
+for close matches.
+
+This section dened the probabilistic state space and
+measurement model. Inference in this model is non-trivial
+due to the high-dimensional nature of the space of the kine-
+matic conguration space X and the associated velocity
+space V . This is particularly challenging for our real-time
+tracking objective, where exhaustive inference is infeasible.
+
+4. Inference
+
+We now describe how to perform efcient MAP infer-
+ence at each frame. We attack this problem in two ways:
+(1) A model-based component locally optimizes the like-
+lihood function by hill-climbing and (2), a data-driven part
+processes the measurement z to reinitialize parts of the lter
+state when possible. For the latter component, we derive an
+approximate inference procedure termed evidence propaga-
+tion to generate likely states which are then used to initialize
+the model-based algorithm.
+
+4.1. Model(cid:173)Based Hill Climbing Search (HC)
+
+To locally optimize the likelihood, we apply a coarse-
+to-ne hill-climbing procedure. We start from the base of
+
+t |V i
+
+kinematic chain which includes the largest body parts, and
+proceed toward the limbs. For a single dimension i of the
+state space, we sample a grid of values about the mean of
+p(V i
+t1). For each sample of Vt, we deterministically
+generate the state Xt from Xt1. The likelihood of this
+state is evaluated, and the best one of the grid chosen. The
+procedure can then potentially be applied to a smaller inter-
+val about the value chosen at the coarser level. For example,
+to optimize the X axis of the pelvis, we might sample values
+between -0.5 to 0.5 at intervals of 0.05 meters. The bene-
+t of such a procedure is that it is inherently parallel. We
+can send a batch of candidates to the GPU, which evalu-
+ates all of them and returns their costs. We chose a deter-
+ministic sampling strategy over stochastic sampling because
+it allows more precomputation and therefore increases the
+speed of likelihood evaluation.
+
+4.2. Evidence Propagation (EP)
+
+A variety of effects can cause the model-based search to
+fail. One problem is that fast motion causes signicant mo-
+tion blur. Additionally, occlusion can cause the estimate of
+the state of hidden parts to drift. Additionally, the likelihood
+function has ridges that are difcult to navigate. We there-
+fore propose a data-driven procedure that identies promis-
+ing locations for body parts in order to nd likely poses.
+
+The three steps in this procedure are (I) to identify possi-
+ble body part locations from the current range image, (II) to
+update the body conguration X given possible correspon-
+dences between mesh vertices and part detections and (III)
+to determine the best subset of such correspondences.
+
+4.2.1 Body Part Detection
+
+We consider the ve body parts head, left hand, right hand,
+left foot and right foot. The 3D world locations of these
+parts according to the current conguration X of the body
+are denoted as pi, i  {1, . . . , 5}. Note that we represent
+these parts by single vertices on the surface mesh of the
+body, such that all pi are deterministic functions of X. The
+data-driven detections of body partswhich we describe in
+the followingare denoted as pj , j  {1, . . . , J}, where
+J  N can be an arbitrary number depending on the part
+detector. Actual body parts as well as the detections have a
+class assignment ci, cj to {head, hand, f oot}.
+
+We obtain the body part detections using the algorithm
+described in [11]. These detections are produced by a two
+step procedure.
+In the rst step extremal points on the
+recorded surface mesh are determined from the range mea-
+surement zt to form a set of distinct interest points. Dis-
+criminatively trained classiers are applied to patches cen-
+tered on the points to determine to what body part class they
+belong to. If the classier is sufciently condent, the fea-
+ture is reported as a detection (see [11] for details).
+
+4
+
+4.2.2 Probabilistic Inverse Kinematics
+
+We now dene a probabilistic model, visualized in Fig. 3,
+consisting of the variables Vt, Xt, Vt1, Xt1 and pj . As-
+suming a correspondence between body part i and detection
+j, we apply the observation model
+
+pj  N (pi(X), o) .
+
+(2)
+
+We would now like to calculate a MAP estimate of Xt and
+Vt conditioned on Xt1 and pj . This is difcult because the
+intermediate variable pi is a heavily non-linear function of
+X. In order to compute pi(X) we must determine the world
+coordinates W (X), which includes the absolute orientation
+of each body part. Then we transform pi from its location
+in the mesh to its nal location in the world.
+
+To tackle this problem, we observe that Xt is a determin-
+istic function of Vt and Xt1. Therefore, we can rewrite pi
+as a non-linear function pi(Vt, Xt1, Vt1). Our approach
+will be to linearize the function pi. Because the distribution
+P (Vt| Vt1) is a linear Gaussian, linearizing pi results in
+a linear Gaussian network approximation. MAP inference
+on this model is easy, so we can determine an estimate of
+argmaxP (Vt| Xt1, Vt1, pj). We linearize about this esti-
+mate and repeat the procedure until convergence.
+
+There are many ways to linearize pi. We apply the un-
+scented transform which is used in the unscented Kalman
+lter in a similar situation. The basic approach is to com-
+pute sigma points from the prior distribution on Vt, apply
+the non-linear function to them, and then approximate the
+result with a linear Gaussian. We omit the mathematical
+details, but it can be shown that this method provides an
+estimate of the distribution that is more accurate than lin-
+earization through calculating an analytic Jacobian.
+
+To summarize, given a known correspondence between a
+point in the image and a point in the mesh, we can perform
+approximate MAP inference using the algorithm just de-
+scribed. The algorithm is related to existing methods for in-
+verse kinematics using non-linear least squares, except that
+it performs linearization using the unscented transform, and
+it admits prior distributions on the variables.
+
+Figure 3. Dynamical model for the integration of body part detec-
+tions .
+
+is spurious, and if not, which specic body part it is asso-
+ciated with, constrained by the body part class of the detec-
+tion. This results in a large number of possible combina-
+tions. Considering each such combination, which requires
+performing hill-climbing, would be far too time consuming
+for a real-time system. We therefore prune detections that
+are near any part location in X best. This perhaps unintuitive
+heuristic is based on the observation that discriminative de-
+tections are needed most when the hill climbing approach
+has lost track. When such a loss has occurred, it is hoped
+the the discriminative algorithm will detect a part far from
+the location of any part in X best. When the hill climbing al-
+gorithm is doing well, the part detections will be near their
+location in X best and therefore can be ignored. We prune
+detections near any part in X best because the part classiers
+can often confuse classes. The next step is to expand the
+detections into a set of concrete correspondences. A can-
+didate correspondence {(pi, pj)} is created for each body
+part to all detections with a matching class, that is ci = cj .
+For instance, a correspondence is created for the right hand
+to all hand detections.
+
+At this point, we have a concrete list of possible corre-
+spondences from which we must choose a subset. We ap-
+proach this problem in a greedy fashion. We iterate through
+each possible correspondence, and apply evidence propa-
+gation, initialized from X best to nd a new posterior mode
+
+1. Update X best by local hill-climbing on the likelihood
+
+2. Extract part detections from zt
+
+4.2.3 Data Association and Inference
+
+3. Prune hypotheses that are already explained
+
+We now give the entire algorithm for determining Xt from
+Xt1 and zt. In this section, we only assume we are given a
+set of part detections and their estimated body part classes,
+{pj, cj}. The algorithm begins with an initial guess X best
+,
+set to Xt1, which is repeatedly improved by integrating
+part detections.
+
+t
+
+The algorithm begins by updating X best with the estimate
+from produced by hill-climbing as described in Sec. 4.1.
+Part detections are then extracted from the measurement zt.
+In theory, we have to decide for each detection whether it
+
+4. Produce set of correspondences {(pi, pj)} by expanding hy-
+
+potheses
+
+5. Loop i = 1 to N
+
+(a) Let X  be the posterior mode of Evidence Propagation
+
+initialized from X best conditioned on ci
+
+(b) Update X  by local hill-climbing on likelihood
+(c) if likelihood of X  > X best, set X best to Xc
+
+Figure 4. Tracking Algorithm. HC + EP
+
+5
+
+0.4
+0.35
+0.3
+0.25
+0.2
+0.15
+0.1
+0.05
+0
+
+0.1
+0.08
+0.06
+0.04
+0.02
+0
+-0.02
+
+]
+
+m
+
+[
+
+r
+o
+r
+r
+E
+
+e
+s
+o
+P
+
+
+.
+
+g
+v
+A
+
+]
+
+m
+
+[
+
+.
+f
+f
+i
+
+D
+
+
+r
+o
+r
+r
+E
+
+Expectation propagation (EP)
+Hill climbing (HC)
+Our approach (HC+EP)
+
+27
+
+26
+
+25
+
+24
+
+23
+
+22
+
+21
+
+20
+
+19
+
+18
+
+17
+
+16
+
+15
+
+14
+
+13
+
+12
+
+11
+
+10
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1
+
+0
+
+Average error of ground truth recording
+Error reduction of our approach (HC+EP) w.r.t. HC
+
+27
+
+26
+
+25
+
+24
+
+23
+
+22
+
+21
+
+20
+
+19
+
+18
+
+17
+
+16
+
+15
+
+14
+
+13
+
+12
+
+11
+
+10
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1
+
+0
+
+Test Sequence ID
+
+Figure 5. Tracking results on real-world test sequences, sorted from most complex (left) to least complex (right).
+
+X  which incorporates the current correspondence only. EP
+thus allows us to make a big jump in the state space. We
+then restart local hill-climbing from X  to rene it. If the
+nal likelihood is better than X best, X best is replaced with
+the pose found. When this occurs, the candidate correspon-
+dence is considered to be accepted. The only effect of this
+on the subsequent iterations of the algorithm is through its
+update of X best. The correspondence is not incorporated
+during subsequent states of EP, so that subsequent, possi-
+bly better, correspondences can override earlier ones. We
+have observed that this algorithm succesfully rejects incor-
+rect correspondences because the state resulting from their
+incorporation will be penalized by the likelihood function.
+
+5. GPU-Accelerated Implementation
+
+Several technical details enable the efcient evaluation
+of more than 50 000 candidates per second on the GPU.
+The main considerations are to maximize parallelism and
+to minimize uploading and downloading large amounts of
+data. The mesh is initially simplied using quadratic edge
+decimation and uploaded to the GPU along with the part
+assignments for each vertex. We use a custom skinning ver-
+tex shader that allows us to simply upload the transforma-
+tion matrices for the entire conguration in order to render
+the entire body, without transferring any other data. An-
+other shader calculates the measured ray length (since the
+Z-buffer has limited precision) and implements the actual
+cost function as described above. Because issuing opera-
+tions to the GPU involves a certain latency, we process a
+batch of candidates simultaneously. We render a grid of
+candidates tiled on a single texture. This texture is then
+compared against the observation in parallel for each tile.
+By ensuring that the dimensions of the grid are a power of
+two, we can exploit the built-in functionality of the GPU to
+generate a mip-mapped texture. A mip-mapped texture is
+one which contains versions of itself at progressively lower
+resolutions, each calculated by averaging pixels at higher
+
+resolutions. By reading a particular mip-map level, we can
+directly read out the average costs of each candidate, one
+per pixel, which is the minimum amount of data we can
+transfer back to the CPU.
+
+6. Experiments
+
+The described algorithm was fully implemented in C++
+and evaluated on real sequences. The goal of this experi-
+mental evaluation is to show that
+
+ our proposed system is able to estimate the pose and
+conguration of a human over time using only a stream
+of depth images,
+
+ proposing candidates using EP on detected body parts
+signicantly improves performance over just doing lo-
+cal hill-climbing,
+
+ the smoothed energy function (Eq. 1) outperforms the
+
+typically used pixel-wise energy function, and
+
+ the system runs close to real-time at 6 frames per sec-
+
+ond.
+
+To this end, we have created a sophisticated test data
+set, that allows quantitative analysis of the tracking per-
+formance. The data set, which is available openly as
+a benchmark along with our results [6], consists of 28
+real-world depth-image sequences of varying complexity
+ranging from short sequences with single-limb motions
+to longer sequences including fast kicks, swings, self-
+occlusions and full-body rotations. Our denition of com-
+plexity, though subjective, increases with the length of the
+sequence, amount of occlusion, speed of motion, number of
+body parts moving simultaneously, and rotation about the
+vertical axis. The depth image stream is collected using a
+Swissranger SR4000 Time-of-Flight camera, which was set
+to record full-frame infrared intensity images and depth at
+25 fps and a resolution of 176  144 pixels, which we sub-
+sample to 128  128 pixels in order to take advantage of the
+GPU more effectively. In addition to the stream of depth im-
+
+6
+
+]
+
+m
+
+
+
+[
+
+r
+o
+r
+r
+E
+g
+n
+i
+k
+c
+a
+r
+T
+
+Absolute Tracking Error
+
+Average error, HC
+Average error, HC+EP
+Max error, HC
+Max error, HC+EP
+
+11820
+
+11862 11887
+
+Frame ID
+
+1.2
+1.1
+1
+0.9
+0.8
+0.7
+0.6
+0.5
+0.4
+0.3
+0.2
+0.1
+0
+
+Frame 11837
+
+Frame 11843
+
+Frame 11843
+
+Frame 11854
+
+Figure 6. A typical situation in which data-driven evidence is crucial for tracking success (excerpt from Seq. 27). Left: Three exemplary
+frames from the Tennis sequence. Model-Based search (top row) loses track of the tennis swing, since the arm was occluded. Our combined
+tracker that integrates bottom-up evidence about body parts (bottom row) is able to recapture the fast moving arm. The right diagram shows
+the same situation in terms of actual tracking error (see text).
+
+ages, we recorded the locations of 3D markers attached to
+the subjects body using a commercial active marker motion
+capture system. These measured marker locations serve as
+the ground truth in our error metric. Concretely, we con-
+sider the following evaluation metrics
+
+avg =
+
+M
+
+X
+
+i=1
+
+||mi  mi||
+
+M
+
+,
+
+max = maxi ||mi  mi|| ,
+
+where M is the number of visible motion-capture markers,
+mi are the true 3D locations and mi are the corresponding
+3D locations on the estimated surface mesh of the tracked
+person. Through visual inspection, we found that individual
+marker errors ||mi  mi|| of 0.1m or lower can be inter-
+preted as perfectly tracked markers, since this corresponds
+to the approximate accuracy of the recorded ground truth
+data. On the other hand, marker errors of 0.3m or larger can
+be interpreted as tracking failures.
+
+In order to evaluate the effectiveness of the combination
+of model-based and data-driven approaches, we show the
+results of two algorithms in addition to our proposed algo-
+rithm on this extensive dataset. The algorithm labeled EP
+consists of our overall algorithm with local hill-climbing
+
+removed. It simply proposes modes determined by EP, and
+keeps the one with highest likelihood. The algorithm la-
+beled HC consists of just the model-based hill-climbing al-
+gorithm alone. We note that the mesh model for all algo-
+rithms was provided semi-automatically using a Cyberware
+Laser Scanner. The joint locations were determined using
+the SCAPE algorithm [2].
+
+Figure 5 shows numerical results on our data set for all
+three algorithms. In the top panel, we show the errors of all
+algorithms. The results show that the data-driven method
+in isolation (EP) performs far worse than the other two ap-
+proaches. Because of the high error of the data-driven al-
+gorithm alone, in the remaining plots we only consider the
+model-based algorithm and the combined algorithm. In the
+bottom panel, we visualize the difference in error between
+the combined approach (HC+EP) and the model-based ap-
+proach (HC). In all the sequences, the combined approach
+performs best or equally well.
+
+It is interesting to note that on the harder sequences (left
+side), the difference in performance is more pronounced.
+To analyze this in more detail, we consider a challenging
+excerpt from Sequence 27a fast, partially occluded ten-
+
+7
+
+nis swing as visualized in the left panel in Fig. 6. The right
+panel in this gure shows the trace of the error-metrics com-
+paring the model-based and combined algorithm on the ex-
+cerpt. In the beginning, the swinging arm becomes com-
+pletely occluded, followed by moving swiftly forward. The
+max measure (Max error in the diagram) reveals that once
+the hill-climbing tracker loses track, it never recovers. Our
+combined approach is able to again nd the mode and con-
+tinue. The left panel in Fig.6 illustrates this using three
+tracked frames from the sequence. The top row illustrates
+that the model-based algorithm completely loses the arms,
+whereas our algorithm is able to nd the arm after an oc-
+clusion and catch the trailing edge of the Tennis serve. The
+gure also illustrates through green lines from the detected
+body parts the associations that the algorithm considered,
+and how this enables it to use Evidence Propagation to pull
+itself back on track.
+
+Finally, we also compared the effects of likelihood
+smoothing on the performance of the algorithms. We found
+that the smooth likelihood improved the performance in
+terms of average error across all sequences and frames by
+about 10 percent for the model based algorithm and 18 per-
+cent for the combined algorithm. The fact that it helped the
+combined approach more may be a result of the fact that the
+reinitialization is not always close enough to regain track
+with the non-smooth likelihood function.
+
+In terms of efciency, both algorithms are close, though
+the hill-climbing approach is more efcient. The model-
+based algorithm ran at about 5 frames per second, whereas
+the combined algorithm ran at 4 frames per second.
+
+7. Conclusions and Future Work
+
+The ambitious goal of accurate real-time tracking of hu-
+mans and other articulated bodies is one that has enticed
+researchers for many years due to the large number of use-
+ful applications. With the hybrid, GPU-accelerated ltering
+approach introduced in this paper, we believe to have made
+a large step forward, but there remain more challenges to
+overcome. Some examples include cluttered scenes, track-
+ing more than one person at a time, improving the speed fur-
+ther, and fully automatic model initialization. Moreover, it
+would be interesting to integrate traditional imaging modal-
+ities such as color cameras or to apply the developed tech-
+nology to stereo vision setups.
+
+Acknowledgments. This work was supported by NSF (ISS
+0917151), MURI (N000140710747), and the Boeing company.
+

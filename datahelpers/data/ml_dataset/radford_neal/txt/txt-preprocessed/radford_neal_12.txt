@@ -1,0 +1,499 @@
+1. INTRODUCTION
+During its long gestation in the 1970s and early 1980s, arithmetic coding
+[Rissanen 1976; Rissanen and Langdon 1979; Rubin 1979; Rissanen and
+Langdon 1981; Langdon 1984] was widely regarded more as a curiosity
+than a practical coding technique. This was particularly true for applica-
+tions where the alphabet has many symbols, as Huffman coding is usually
+reasonably effective in such cases [Manstetten 1992]. One factor that
+helped arithmetic coding gain the popularity it enjoys today was the
+publication of source code for a multisymbol arithmetic coder by Witten et
+al. [1987] in Communications of the ACM, which we refer to as the CACM
+implementation. One decade later, our understanding of arithmetic coding
+has further matured, and it is timely to review the components of that
+implementation and summarize the improvements that have emerged. We
+also describe a novel, previously unpublished, method for performing the
+underlying calculation needed for arithmetic coding. Software is available
+that implements the revised method.
+
+The major improvements discussed in this article and implemented in
+
+the software are as follows:
+
+Enhanced models that allow higher-performance compression.
+
+A more modular division into modeling, estimation, and coding sub-
+
+systems.
+
+Data structures that support arithmetic coding on large alphabets.
+
+Changes to the coding procedure that reduce the number of multiplica-
+tions and divisions and which permit most of them to be done with
+low-precision arithmetic.
+
+Support for larger alphabet sizes and for more accurate representations
+
+of probabilities.
+
+A reformulation of the decoding procedure that greatly simplifies the
+
+decoding loop and improves decoding speed.
+
+An extension providing efficient coding for binary alphabets.
+
+To motivate these changes, we examine in detail the needs of a word-based
+model for text compression. While not the best-performing model for text
+(see, for example, the compression results listed by Witten et al. [1994]),
+word-based modeling combines several attributes that test the capabilities
+and limitations of an arithmetic coding system.
+
+The new implementation of arithmetic coding is both more versatile and
+more efficient than the CACM implementation. When combined with the
+same character-based model as the CACM implementation, the changes
+that we advocate result in up to two-fold speed improvements, with only a
+small loss of compression. This faster coding will also be of benefit in any
+other compression system that makes use of arithmetic coding (such as the
+block-sorting method of Burrows and Wheeler [1994]), though the percent-
+
+ACM Transactions on Information Systems, Vol. 16, No. 3, July 1998.
+
+258
+
+
+
+A. Moffat et al.
+
+age of overall improvement will of course vary depending on the time used
+in other operations and on the exact nature of the hardware being used.
+
+The new implementation is written in C, and is publicly available
+through the Internet by anonymous ftp, at munnari.oz.au, directory
+/pub/arith_coder, file arith_coder.tar.Z or arith_coder.tar.gz.
+The original CACM package [Witten et al. 1987] is at ftp.cpsc.ucalgary.
+ca in file /pub/projects/ar.cod/cacm-87.shar. Software that imple-
+ments the new method for performing the arithmetic coding calculations,
+but is otherwise similar to the CACM version, can be found at ftp.cs.
+toronto.edu in the directory /pub/radford, file lowp_ac.shar.
+
+In the remainder of this introduction we give a brief review of arithmetic
+coding, describe modeling in general, and word-based models in particular,
+and discuss the attributes that the arithmetic coder must embody if it is to
+be usefully coupled with a word-based model. Section 2 examines the
+interface between the model and the coder, and explains how it can be
+designed to maximize their independence. Section 3 shows how accurate
+probability estimates can be maintained efficiently in an adaptive compres-
+sion system, and describes an elegant structure due to Fenwick [1994]. In
+Section 4 the CACM arithmetic coder is reexamined, and our improvements
+are described. Section 5 analyzes the cost in compression effectiveness of
+using low precision for arithmetic operations. Low-precision operations
+may be desirable because they permit a shift/add implementation, details
+of which are discussed in Section 6. Section 7 describes the restricted coder
+for binary alphabets, and examines a simple binary model for text compres-
+sion. Finally, Section 8 reviews the results and examines the various
+situations in which arithmetic coding should and should not be used.
+
+1.1 The Idea of Arithmetic Coding
+We now give a brief overview of arithmetic coding. For additional back-
+ground the reader is referred to the work of Langdon [1984], Witten et al.
+[1987; 1994], Bell et al. [1990], and Howard and Vitter [1992; 1994].
+
+Suppose we have a message composed of symbols over some finite
+alphabet. Suppose also that we know the probability of appearance of each
+of the distinct symbols, and seek to represent the message using the
+smallest possible number of bits. The well-known algorithm of Huffman
+[1952] takes a set of probabilities and calculates, for each symbol, a code
+word that unambiguously represents that symbol. Huffmans method is
+known to give the best possible representation when all of the symbols
+must be assigned discrete code words, each an integral number of bits long.
+The latter constraint in effect means that all symbol probabilities are
+approximated by negative powers of two. In an arithmetic coder the exact
+symbol probabilities are preserved, and so compression effectiveness is
+better, sometimes markedly so. On the other hand, use of exact probabili-
+ties means that it is not possible to maintain a discrete code word for each
+symbol; instead an overall code for the whole message must be calculated.
+
+ACM Transactions on Information Systems, Vol. 16, No. 3, July 1998.
+
+Arithmetic Coding Revisited
+
+
+
+259
+
+The mechanism that achieves this operates as follows. Suppose that p i is
+the probability of the ith symbol in the alphabet, and that variables L and
+R are initialized to 0 and 1 respectively. Value L represents the smallest
+binary value consistent with a code representing the symbols processed so
+far, and R represents the product of the probabilities of those symbols. To
+encode the next symbol, which (say) is the jth of the alphabet, both L and R
+must be refined: L is replaced by L 1 RO
+j21p i and R is replaced by R z p j,
+i51
+preserving the relationship between L, R, and the symbols so far processed.
+At the end of the message, any binary value between L and L 1 R will
+unambiguously specify the input message. We transmit the shortest such
+binary string, c. Because c must have at least 2 log2 R and at most
+2 log2 R 1 2 bits of precision, the procedure is such that a symbol with
+probability p j is effectively coded in approximately 2log2 p j bits, thereby
+meeting the entropy-based lower bound of Shannon [1948].
+
+This simple description has ignored a number of important problems.
+Specifically, the process described above requires extremely high precision
+arithmetic, since L and R must potentially be maintained to a million bits
+or more of precision. We may also wonder how best to calculate the
+cumulative probability distribution, and how best to perform the arith-
+metic. Solving these problems has been a major focus of past research, and
+of the work reported here.
+
+1.2 The Role of the Model
+The CACM implementation [Witten et al. 1987] included two driver pro-
+grams that coupled the coder with a static zero-order character-based
+model, and with a corresponding adaptive model. These were supplied
+solely to complete a compression program, and were certainly not intended
+to represent excellent models for compression. Nevertheless, several people
+typed in the code from the printed page and compiled and executed it,
+onlymuch to our chagrinto express disappointment that the new
+method was inferior to widely available benchmarks such as Compress
+[Hamaker 1988; Witten et al. 1988].
+
+In fact, all that the CACM article professed to supply was a state-of-the
+art coder with two simple, illustrative, but mediocre models. One can think
+of the model as the intelligence of a compression scheme, which is
+responsible for deducing or interpolating the structure of the input,
+whereas the coder is the engine room of the compression system, which
+converts a probability distribution and a single symbol drawn from that
+distribution into a code [Bell et al. 1990; Rissanen and Langdon 1981]. In
+particular, the arithmetic coding engine is independent of any particular
+model. The example models in this article are meant purely to illustrate
+the demands placed upon the coder, and to allow different coders to be
+compared in a uniform test harness. Any improvements to the coder will
+
+ACM Transactions on Information Systems, Vol. 16, No. 3, July 1998.
+
+260
+
+
+
+A. Moffat et al.
+
+primarily yield better compression efficiency, that is, a reduction in time or
+space usage. Improvements to the model will yield improved compression
+effectiveness, that is, a decrease in the size of the encoded data. In this
+article we are primarily interested in compression efficiency, although we
+will also show that the approximations inherent in the revised coder do not
+result in any substantial loss of compression effectiveness.
+
+The revised implementation does, however,
+
+include a more effective
+word-based model [Bentley et al. 1986; Horspool and Cormack 1992; Moffat
+1989], which represents the stream as a sequence of words and nonwords
+rather than characters, with facilities for spelling out new words as they
+are encountered using a subsidiary character mode. Since the entropy of
+words in typical English text is around 10 15 bits each, and that of
+nonwords is around 23 bits, between 12 and 18 bits are required to encode
+a typical five-character word and the following one-character nonword.
+Large texts are therefore compressed to around 30% of their input size (2.4
+bits per character)a significant improvement over the 55% 60% (4.4  4.8
+bits per character) achieved by zero-order character-based models of En-
+glish. Witten et al. [1994] give results comparing character-based models
+with word-based models.
+
+A word-based compressor can also be faster than a character-based one.
+Once a good vocabulary has been established, most words are coded as
+single symbols rather than as character sequences, reducing the number of
+time-consuming coding operations required.
+
+What is more relevant, for the purposes of this article, is that word-based
+models illustrate several issues that do not arise with character-based
+models:
+
+An efficient data structure is needed to accumulate frequency counts for
+
+a large alphabet.
+
+Multiple coding contexts are necessary,
+
+for tokens, characters, and
+lengths, for both words and nonwords. Here, a coding context is a
+conditioning class on which the probability distribution for the next
+symbol is based.
+
+An escape mechanism is required to switch from one coding context to
+
+another.
+
+Data structures must be resizable because there is no a priori bound on
+
+alphabet size.
+
+All of these issues are addressed in this article.
+
+Arithmetic coding is most useful for adaptive compression, especially
+with large alphabets. This is the application envisioned in this article, and
+in the design of the new implementation. For static and semistatic coding,
+in which the probabilities used for encoding are fixed, Huffman coding is
+usually preferable to arithmetic coding [Bookstein and Klein 1993; Moffat
+and Turpin 1997; Moffat et al. 1994].
+
+ACM Transactions on Information Systems, Vol. 16, No. 3, July 1998.
+
+Arithmetic Coding Revisited
+
+
+
+261
+
+Fig. 1. Modeling, statistics, and coder modules.
+
+2. COOPERATING MODULES
+It is useful to divide the process of data compression into three logically
+disjoint activities: modeling, statistics-gathering, and coding. This separa-
+tion was first articulated by Rissanen and Langdon [1981], although the
+CACM implementation of Witten et al. [1987] combined statistics gathering
+with modeling to give a two-way split. This section describes the three-way
+partition, which is reflected in our implementation by three cooperating
+modules. Examples are given that show how the interfaces are used.
+
+2.1 Modeling, Statistics, and Coding
+Of the three modules, the most visible is that which performs the modeling.
+Least visible is the coder. Between these two is the statistics module, which
+manipulates a data structure to record symbol frequency counts (or some
+other estimate of symbol probabilities). In detail, a statistics module used
+with an arithmetic coder must be able to report the cumulative frequency of
+all symbols earlier in the alphabet than a given symbol, and to record that
+this symbol has occurred one more time. Both the model and the coder are
+oblivious to the exact mechanism used to accomplish this: the model is
+unaware of the probability attached to each symbol; and the coder is
+unaware of symbol identifiers and the size of the alphabet. This organiza-
+tion is shown in Figure 1.
+
+The CACM implementation [Witten et al. 1987] has just one interface
+level, reflecting the two-way modeling/coding division of activity. An array
+cumfreq containing cumulative frequencies and an actual symbol identifier
+s are passed from model to coder to achieve the transmission of each
+
+ACM Transactions on Information Systems, Vol. 16, No. 3, July 1998.
+
+262
+
+
+
+A. Moffat et al.
+
+Module
+
+Statistics
+
+Table I. Module Interface Functions
+
+Encoder
+C 4 create_context()
+encode~C, s!
+install_symbol~C, s!
+purge_context~C!
+
+Decoder
+C 4 create_context()
+s 4 decode~C!
+install_symbol~C, s!
+purge_context~C!
+
+Coder
+
+start_encode()
+arithmetic_encode~l, h, t!
+
+finish_encode()
+
+start_decode()
+target 4 decode_target~t!
+arithmetic_decode~l, h, t!
+finish_decode()
+
+symbol. This forces both modules to use an array to maintain their
+informationan unnecessarily restrictive requirement. By divorcing the
+statistics module from both model and coder, any suitable data structure
+can be used to maintain the statistics. Section 3 below considers some
+alternatives.
+
+The main routines required to interface the modules are listed in Table I.
+(The implementation includes several other routines, mainly for initializing
+and terminating compression.) The routine install_symbol() in both encoder
+and decoder has the same functionality as encode() except that no output
+bits are transmitted or consumed: its purpose is to allow contexts to be
+primed, as if text had preceded the beginning of the transmission.
+
+The routine purge_context removes all records for that context, leaving it
+as if it had just been created. This allows synchronization points to be
+inserted in the compressed output using a finish_encode and start_encode
+pair, from which points adaptive decoding can commence without needing
+to process the entire compressed message. Purging model frequencies and
+inserting synchronization points does, of course, reduce the compression
+rate.
+
+A zero-order character-based model requires just one context and rela-
+tively simple control structures, as shown in the psuedocode of Algorithm
+Zero-Order Character-Based (Figure 2), which closely corresponds to the
+adaptive model described by Witten et al. [1987]. A context C is created,
+install_symbol() is used to make each valid character available, and en-
+code() is called once for each character in the input. The compressed
+message is terminated by an end_of_message symbol which has also been
+previously installed in C. The method of Algorithm Zero-Order Character-
+Based can easily be extended to a first-order character-based model using
+an array of contexts, one for each possible conditioning character. This
+would require considerably more memory, but would improve the compres-
+sion effectiveness without impacting execution speed. Many other modifica-
+tions are possible.
+
+Complex models require the use of multiple contexts. The word-based
+model described in Section 1.2 uses six contexts: a zero-order context for
+words, a zero-order context for nonwords (sequences of spaces and punctu-
+
+ACM Transactions on Information Systems, Vol. 16, No. 3, July 1998.
+
+Arithmetic Coding Revisited
+
+
+
+263
+
+Fig. 2. Algorithm Zero-Order Character-Based.
+
+ation), a zero-order character context for spelling out new words, a zero-
+order character context for spelling out new nonwords, and contexts for
+specifying the lengths of words and of nonwords. The encoder for that
+model is sketched as Algorithm Zero-Order Word-Based (Figure 3), except
+that for brevity the input is treated as a sequence of words rather than
+alternating word, nonword pairs and so only three contexts, denoted W,
+C, and L, are used. To cater for nonwords as well requires additional
+contexts W9, C9, and L9, along with an outer loop that alternates between
+words and nonwords by using each set of contexts in turn. Note that
+Algorithm Zero-Order Word-Based assumes that the length of each word is
+bounded, so that context L can be initialized. In our implementation the
+actual definition of a word was a string of at most 16 alphanumeric
+characters; long symbols are handled by breaking them into shorter ones
+with zero-length opposite symbols between.
+
+ACM Transactions on Information Systems, Vol. 16, No. 3, July 1998.
+
+264
+
+
+
+A. Moffat et al.
+
+Fig. 3. Algorithm Zero-Order Word-Based.
+
+The decoder, omitted in Figure 3, is the natural combination of the ideas
+presented in Algorithms Zero-Order Character-Based (Figure 2) and Zero-
+Order Word-Based (Figure 3).
+
+2.2 Coding Novel Symbols
+The character-based model of Algorithm Zero-Order Character-Based (Fig-
+ure 2) codes at most 257 different symbols (256 different eight-bit charac-
+ters plus the end_of_message symbol), all of which are made available in
+that context by explicit install_symbol() calls. In contrast to this, in the
+word-based model there is no limit to the number of possible symbolsthe
+number of distinct word tokens in an input stream might be hundreds,
+thousands, or even millions. To cater for situations such as this in which
+the alphabet size is indeterminate, the function call encode~C, s! returns a
+flag escape_transmitted if the symbol s is not known in context C, or if, for
+some other reason, s has zero probability. In this event, the word is
+
+ACM Transactions on Information Systems, Vol. 16, No. 3, July 1998.
+
+Arithmetic Coding Revisited
+
+
+
+265
+
+encoded using the length and character models, and is then installed into
+the lexicon. As well as returning a flag to indicate a zero-probability
+symbol, the encoder must also explicitly transmit an escape code to the
+decoder so that the corresponding call decode~C! can similarly return an
+exception flag.
+
+This raises the vexatious question as to what probability should be
+assigned to this escape codethe so-called zero-frequency problem. Of the
+methods described in the literature (summarized by Moffat et al. [1994]),
+we chose a modified version of method XC [Witten and Bell 1991] which we
+call method AX, for approximate X. Method XC approximates the number
+of symbols of frequency zero by the number of symbols of frequency one. If
+t1 symbols have appeared exactly once, symbol s i has appeared c i times,
+and t 5 Oic i is the total number of symbols that have been coded to date,
+then the escape code probability p escape is given by t1/t and the probability
+of symbol s i is estimated as p i 5 ~1 2 t1/t! z ~c i /t!.
+
+The drawback of method XC is the need for a two-stage coding process
+when the symbol is not novel one step to transmit the information not
+novel (probability 1 2 t1/t), and a second to indicate which nonnovel
+symbol it is (probability c i /t). It is not feasible to calculate the exact
+probability for use in a single coding step, since the need to represent the
+product p i restricts t to a very small range of values if overflow is to be
+avoided (see also the discussion in Section 4 below). Instead, for method AX
+we advocate
+
+pescape 5 ~t1 1 1!/~t 1 t1 1 1!
+
+pi 5 ci /~t 1 t1 1 1!.
+
+The 11 allows novel events to be represented even when there are no
+events of
+frequency one (in method XC this exception is handled by
+reverting to another method called method C in the literature); and t1 is
+incorporated additively in the denominator by taking a first-order binomial
+approximation to ~1 2 t1/t! 21. With this method a single coding step
+suffices, as t 1 t1 1 1 can be represented in roughly half the number of
+bits as the denominator t2 required by method XC. The difference is crucial,
+since for flexibility we desire t to be similar in magnitude to the largest
+integer that can be represented in a machine word. The change distorts the
+probabilities slightly, but all zero-frequency methods are heuristics any-
+way, and the effect is small.
+
+Once the escape code has been transmitted, the new token can be spelled
+out and added to the W context. Both encoder and decoder assign it the
+next available symbol number, so there is no need to specify an identifier.
+
+2.3 Storage Management
+An industrial-strength compression system must provide some mechanism
+to bound the amount of memory used during encoding and decoding. For
+
+ACM Transactions on Information Systems, Vol. 16, No. 3, July 1998.
+
+266
+
+
+
+A. Moffat et al.
+
+example, some compressors reclaim list items using a least-recently-used
+policy, so that the model structure continues to evolve when memory is
+exhausted. Others purge the model when memory is full, but retain a
+sliding window buffer of recent symbols so that a smaller replacement
+model can be rebuilt (using install_symbol) immediately. The exact mecha-
+nism used in any application will depend upon the needs of that applica-
+tion, in particular, on the amount of memory consumed by the structural
+model (Figure 1). Because of this dependence, the only facility we provide
+in our implementation is the routine purge_context(), which removes all
+records for that context, as if it had just been created. One rationalization
+for this abrupt trash and start again approach is that memory is typically
+so plentiful that trashing should be rare enough to cause little deteriora-
+tion in the average compression rate. Furthermore, in the particular case of
+the word-based model the impact is softened by the fact that the underlying
+character-based models do not need to be purged, so transmission of novel
+words while the lexicon is rebuilt is less expensive than it was originally. In
+practice, purging of the lexicon in the word-based compressor is rare. A
+memory limit of one megabyte is ample to process texts with a vocabulary
+of about 30,000 distinct words, such as The Complete Works of Shakespeare.
+
+3. DATA STRUCTURES
+We now turn to the statistics module, which is responsible for managing
+the data structure that records cumulative symbol frequencies. In particu-
+lar, a call encode~C, s! to encode symbol s in context C must result in a call
+to the coder module of arithmetic_encode~l C, s, h C, s, t C!, where l C, s and
+h C, s are the cumulative frequency counts in context C of symbols respec-
+tively prior to and including s, according to some symbol ordering, and t C is
+the total frequency of all symbols recorded in context C, possibly adjusted
+upward by the inclusion of a count for the escape symbol. To avoid

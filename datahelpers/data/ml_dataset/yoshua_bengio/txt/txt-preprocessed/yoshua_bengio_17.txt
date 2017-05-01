@@ -1,0 +1,653 @@
+Abstract
+
+Complexity theory of circuits strongly suggests that deep architectures can be much
+more ef(cid:2)cient (sometimes exponentially) than shallow architectures, in terms of
+computational elements required to represent some functions. Deep multi-layer
+neural networks have many levels of non-linearities allowing them to compactly
+represent highly non-linear and highly-varying functions. However, until recently
+it was not clear how to train such deep networks, since gradient-based optimization
+starting from random initialization appears to often get stuck in poor solutions. Hin-
+ton et al. recently introduced a greedy layer-wise unsupervised learning algorithm
+for Deep Belief Networks (DBN), a generative model with many layers of hidden
+causal variables. In the context of the above optimization problem, we study this al-
+gorithm empirically and explore variants to better understand its success and extend
+it to cases where the inputs are continuous or where the structure of the input dis-
+tribution is not revealing enough about the variable to be predicted in a supervised
+task. Our experiments also con(cid:2)rm the hypothesis that the greedy layer-wise unsu-
+pervised training strategy mostly helps the optimization, by initializing weights in a
+region near a good local minimum, giving rise to internal distributed representations
+that are high-level abstractions of the input, bringing better generalization.
+
+1 Introduction
+Recent analyses (Bengio, Delalleau, & Le Roux, 2006; Bengio & Le Cun, 2007) of modern non-
+parametric machine learning algorithms that are kernel machines, such as Support Vector Machines
+(SVMs), graph-based manifold and semi-supervised learning algorithms suggest fundamental limita-
+tions of some learning algorithms. The problem is clear in kernel-based approaches when the kernel
+is (cid:147)local(cid:148) (e.g., the Gaussian kernel), i.e., K(x; y) converges to a constant when jjx (cid:0) yjj increases.
+These analyses point to the dif(cid:2)culty of learning (cid:147)highly-varying functions(cid:148), i.e., functions that have
+a large number of (cid:147)variations(cid:148) in the domain of interest, e.g., they would require a large number of
+pieces to be well represented by a piecewise-linear approximation. Since the number of pieces can be
+made to grow exponentially with the number of factors of variations in the input, this is connected with
+the well-known curse of dimensionality for classical non-parametric learning algorithms (for regres-
+sion, classi(cid:2)cation and density estimation). If the shapes of all these pieces are unrelated, one needs
+enough examples for each piece in order to generalize properly. However, if these shapes are related
+and can be predicted from each other, (cid:147)non-local(cid:148) learning algorithms have the potential to generalize
+to pieces not covered by the training set. Such ability would seem necessary for learning in complex
+domains such as Arti(cid:2)cial Intelligence tasks (e.g., related to vision, language, speech, robotics).
+Kernel machines (not only those with a local kernel) have a shallow architecture, i.e., only two
+levels of data-dependent computational elements. This is also true of feedforward neural networks
+with a single hidden layer (which can become SVMs when the number of hidden units becomes
+large (Bengio, Le Roux, Vincent, Delalleau, & Marcotte, 2006)). A serious problem with shallow
+architectures is that they can be very inef(cid:2)cient in terms of the number of computational units (e.g.,
+bases, hidden units), and thus in terms of required examples (Bengio & Le Cun, 2007). One way to
+represent a highly-varying function compactly (with few parameters) is through the composition of
+many non-linearities, i.e., with a deep architecture. For example, the parity function with d inputs
+requires O(2d) examples and parameters to be represented by a Gaussian SVM (Bengio et al., 2006),
+O(d2) parameters for a one-hidden-layer neural network, O(d) parameters and units for a multi-layer
+network with O(log2 d) layers, and O(1) parameters with a recurrent neural network. More generally,
+
+boolean functions (such as the function that computes the multiplication of two numbers from their
+d-bit representation) expressible by O(log d) layers of combinatorial logic with O(d) elements in
+each layer may require O(2d) elements when expressed with only 2 layers (Utgoff & Stracuzzi, 2002;
+Bengio & Le Cun, 2007). When the representation of a concept requires an exponential number of
+elements, e.g., with a shallow circuit, the number of training examples required to learn the concept
+may also be impractical. Formal analyses of the computational complexity of shallow circuits can be
+found in (Hastad, 1987) or (Allender, 1996). They point in the same direction: shallow circuits are
+much less expressive than deep ones.
+However, until recently, it was believed too dif(cid:2)cult to train deep multi-layer neural networks. Empiri-
+cally, deep networks were generally found to be not better, and often worse, than neural networks with
+one or two hidden layers (Tesauro, 1992). As this is a negative result, it has not been much reported in
+the machine learning literature. A reasonable explanation is that gradient-based optimization starting
+from random initialization may get stuck near poor solutions. An approach that has been explored with
+some success in the past is based on constructively adding layers. This was previously done using a
+supervised criterion at each stage (Fahlman & Lebiere, 1990; Lengelle & Denoeux, 1996). Hinton,
+Osindero, and Teh (2006) recently introduced a greedy layer-wise unsupervised learning algorithm for
+Deep Belief Networks (DBN), a generative model with many layers of hidden causal variables. The
+training strategy for such networks may hold great promise as a principle to help address the problem
+of training deep networks. Upper layers of a DBN are supposed to represent more (cid:147)abstract(cid:148) concepts
+that explain the input observation x, whereas lower layers extract (cid:147)low-level features(cid:148) from x. They
+learn simpler concepts (cid:2)rst, and build on them to learn more abstract concepts. This strategy, studied
+in detail here, has not yet been much exploited in machine learning. We hypothesize that three aspects
+of this strategy are particularly important: (cid:2)rst, pre-training one layer at a time in a greedy way; sec-
+ond, using unsupervised learning at each layer in order to preserve information from the input; and
+(cid:2)nally, (cid:2)ne-tuning the whole network with respect to the ultimate criterion of interest.
+We (cid:2)rst extend DBNs and their component layers, Restricted Boltzmann Machines (RBM), so that
+they can more naturally handle continuous values in input. Second, we perform experiments to better
+understand the advantage brought by the greedy layer-wise unsupervised learning. The basic question
+to answer is whether or not this approach helps to solve a dif(cid:2)cult optimization problem. In DBNs,
+RBMs are used as building blocks, but applying this same strategy using auto-encoders yielded similar
+results. Finally, we discuss a problem that occurs with the layer-wise greedy unsupervised procedure
+when the input distribution is not revealing enough of the conditional distribution of the target variable
+given the input variable. We evaluate a simple and successful solution to this problem.
+2 Deep Belief Nets
+Let x be the input, and gi the hidden variables at layer i, with joint distribution
+
+P (x; g1; g2; : : : ; g) = P (xjg1)P (g1jg2) (cid:1) (cid:1) (cid:1) P (g(cid:0)2jg(cid:0)1)P (g(cid:0)1; g);
+
+where all the conditional layers P (gijgi+1) are factorized conditional distributions for which compu-
+tation of probability and sampling are easy. In Hinton et al. (2006) one considers the hidden layer g i
+j:
+a binary random vector with ni elements gi
+
+ni
+
+Yj=1
+
+ni+1Xk=1
+
+W i
+
+kj gi+1
+
+k
+
+)
+
+(1)
+
+P (gijgi+1) =
+
+P (gi
+
+jjgi+1) with P (gi
+
+j = 1jgi+1) = sigm(bi
+
+j +
+
+j are biases for unit j of layer i, and W i is the weight matrix for
+
+where sigm(t) = 1=(1 + e(cid:0)t), the bi
+layer i. If we denote g0 = x, the generative model for the (cid:2)rst layer P (xjg1) also follows (1).
+2.1 Restricted Boltzmann machines
+The top-level prior P (g(cid:0)1; g) is a Restricted Boltzmann Machine (RBM) between layer  (cid:0) 1
+and layer . To lighten notation, consider a generic RBM with input layer activations v (for visi-
+ble units) and hidden layer activations h (for hidden units). It has the following joint distribution:
+Z eh0W v+b0v+c0h, where Z is the normalization constant for this distribution, b is the vec-
+P (v; h) = 1
+tor of biases for visible units, c is the vector of biases for the hidden units, and W is the weight matrix
+for the layer. Minus the argument of the exponential is called the energy function,
+
+(2)
+We denote the RBM parameters together with (cid:18) = (W; b; c). We denote Q(hjv) and P (vjh)
+the layer-to-layer conditional distributions associated with the above RBM joint distribution.
+
+energy(v; h) = (cid:0)h0W v (cid:0) b0v (cid:0) c0h:
+
+The layer-to-layer conditionals associated with the RBM factorize like in (1) and give rise to
+
+P (vk = 1jh) = sigm(bk +Pj Wjkhj) and Q(hj = 1jv) = sigm(cj +Pk Wjkvk).
+
+2.2 Gibbs Markov chain and log-likelihood gradient in an RBM
+To obtain an estimator of the gradient on the log-likelihood of an RBM, we consider a Gibbs Markov
+chain on the (visible units, hidden units) pair of variables. Gibbs sampling from an RBM proceeds by
+sampling h given v, then v given h, etc. Denote vt for the t-th v sample from that chain, starting at
+t = 0 with v0, the (cid:147)input observation(cid:148) for the RBM. Therefore, (vk; hk) for k ! 1 is a sample from
+the joint P (v; h). The log-likelihood of a value v0 under the model of the RBM is
+
+log P (v0) = logXh
+
+P (v0; h) = logXh
+
+e(cid:0)energy(v0;h) (cid:0) logXv;h
+
+e(cid:0)energy(v;h)
+
+and its gradient with respect to (cid:18) = (W; b; c) is
+
+@ log P (v0)
+
+@(cid:18)
+
+= (cid:0)Xh0
+
+Q(h0jv0)
+
+@energy(v0; h0)
+
+@(cid:18)
+
++ Xvk;hk
+
+P (vk; hk)
+
+@energy(vk; hk)
+
+@(cid:18)
+
++ Ehk(cid:20) @energy(vk; hk)
+
+@(cid:18)
+
+jvk(cid:21) ;
+
+@energy(v0; h0)
+
+@(cid:18)
+
+for k ! 1. An unbiased sample is (cid:0)
+where h0 is a sample from Q(h0jv0) and (vk; hk) is a sample of the Markov chain, and the expecta-
+tion can be easily computed thanks to P (hkjvk) factorizing. The idea of the Contrastive Divergence
+algorithm (Hinton, 2002) is to take k small (typically k = 1). A pseudo-code for Contrastive Di-
+vergence training (with k = 1) of an RBM with binomial input and hidden units is presented in the
+Appendix (Algorithm RBMupdate(x; (cid:15); W; b; c)). This procedure is called repeatedly with v0 = x
+sampled from the training distribution for the RBM. To decide when to stop one may use a proxy for
+the training criterion, such as the reconstruction error (cid:0) log P (v1 = xjv0 = x).
+2.3 Greedy layer-wise training of a DBN
+A greedy layer-wise training algorithm was proposed (Hinton et al., 2006) to train a DBN one layer at
+a time. One (cid:2)rst trains an RBM that takes the empirical data as input and models it. Denote Q(g1jg0)
+the posterior over g1 associated with that trained RBM (we recall that g0 = x with x the observed
+
+input). This gives rise to an (cid:147)empirical(cid:148) distribution bp1 over the (cid:2)rst layer g1, when g0 is sampled
+from the data empirical distributionbp: we havebp1(g1) =Xg0 bp(g0)Q(g1jg0):
+
+Note that a 1-level DBN is an RBM. The basic idea of the greedy layer-wise strategy is that after
+training the top-level RBM of a -level DBN, one changes the interpretation of the RBM parameters
+to insert them in a ( + 1)-level DBN: the distribution P (g(cid:0)1jg) from the RBM associated with
+layers  (cid:0) 1 and  is kept as part of the DBN generative model. In the RBM between layers  (cid:0) 1
+and , P (g) is de(cid:2)ned in terms on the parameters of that RBM, whereas in the DBN P (g ) is de(cid:2)ned
+in terms of the parameters of the upper layers. Consequently, Q(gjg(cid:0)1) of the RBM does not
+correspond to P (gjg(cid:0)1) in the DBN, except when that RBM is the top layer of the DBN. However,
+we use Q(gjg(cid:0)1) of the RBM as an approximation of the posterior P (gjg(cid:0)1) for the DBN.
+
+The samples of g(cid:0)1, with empirical distributionbp(cid:0)1, are converted stochastically into samples of g
+with distribution bp through bp(g) = Pg(cid:0)1 bp(cid:0)1(g(cid:0)1)Q(gjg(cid:0)1): Although bp cannot be rep-
+
+resented explicitly it is easy to sample unbiasedly from it: pick a training example and propagate it
+stochastically through the Q(gijgi(cid:0)1) at each level. As a nice side bene(cid:2)t, one obtains an approxi-
+mation of the posterior for all the hidden variables in the DBN, at all levels, given an input g0 = x.
+Mean-(cid:2)eld propagation (see below) gives a fast deterministic approximation of posteriors P (g jx):
+Note that if we consider all the layers of a DBN from level i to the top, we have a smaller DBN,
+which generates the marginal distribution P (gi) for the complete DBN. The motivation for the greedy
+procedure is that a partial DBN with  (cid:0) i levels starting above level i may provide a better model for
+P (gi) than does the RBM initially associated with level i itself.
+The above greedy procedure is justi(cid:2)ed using a variational bound (Hinton et al., 2006). As a con-
+sequence of that bound, when inserting an additional layer, if it is initialized appropriately and has
+enough units, one can guarantee that initial improvements on the training criterion for the next layer
+
+((cid:2)tting bp) will yield improvement on the training criterion for the previous layer (likelihood with
+respect tobp(cid:0)1). The greedy layer-wise training algorithm for DBNs is quite simple, as illustrated by
+
+the pseudo-code in Algorithm TrainUnsupervisedDBN of the Appendix.
+2.4 Supervised (cid:2)ne-tuning
+As a last training stage, it is possible to (cid:2)ne-tune the parameters of all the layers together. For exam-
+ple Hinton et al. (2006) propose to use the wake-sleep algorithm (Hinton, Dayan, Frey, & Neal, 1995)
+to continue unsupervised training. Hinton et al. (2006) also propose to optionally use a mean-(cid:2)eld ap-
+proximation of the posteriors P (gijg0), by replacing the samples gi(cid:0)1
+at level i (cid:0) 1 by their bit-wise
+, with (cid:22)i = sigm(bi + W i(cid:22)i(cid:0)1). According to these propagation
+mean-(cid:2)eld expected value (cid:22)i(cid:0)1
+rules, the whole network now deterministically computes internal representations as functions of the
+network input g0 = x. After unsupervised pre-training of the layers of a DBN following Algorithm
+TrainUnsupervisedDBN (see Appendix) the whole network can be further optimized by gradient
+descent with respect to any deterministically computable training criterion that depends on these rep-
+resentations. For example, this can be used (Hinton & Salakhutdinov, 2006) to (cid:2)ne-tune a very deep
+auto-encoder, minimizing a reconstruction error. It is also possible to use this as initialization of all
+except the last layer of a traditional multi-layer neural network, using gradient descent to (cid:2)ne-tune the
+whole network with respect to a supervised training criterion.
+Algorithm DBNSupervisedFineTuning in the appendix contains pseudo-code for supervised
+(cid:2)ne-tuning, as part of the global supervised learning algorithm TrainSupervisedDBN. Note that
+better results were obtained when using a 20-fold larger learning rate with the supervised criterion
+(here, squared error or cross-entropy) updates than in the contrastive divergence updates.
+3 Extension to continuous-valued inputs
+With the binary units introduced for RBMs and DBNs in Hinton et al. (2006) one can (cid:147)cheat(cid:148) and
+handle continuous-valued inputs by scaling them to the (0,1) interval and considering each input con-
+tinuous value as the probability for a binary random variable to take the value 1. This has worked
+well for pixel gray levels, but it may be inappropriate for other kinds of input variables. Previous
+work on continuous-valued input in RBMs include (Chen & Murray, 2003), in which noise is added
+to sigmoidal units, and the RBM forms a special form of Diffusion Network (Movellan, Mineiro, &
+Williams, 2002). We concentrate here on simple extensions of the RBM framework in which only the
+energy function and the allowed range of values are changed.
+Linear energy: exponential or truncated exponential
+Consider a unit with value y of an RBM, connected to units z of the other layer. p(yjz) can be
+obtained from the terms in the exponential that contain y, which can be grouped in ya(z) for linear
+energy functions as in (2), where a(z) = b + w 0z with b the bias of unit y, and w the vector of weights
+connecting unit y to units z. If we allow y to take any value in interval I, the conditional density
+of y becomes p(yjz) =
+: When I = [0; 1), this is an exponential density
+with parameter a(z), and the normalizing integral equals (cid:0)1=a(z), but only exists if 8z, a(z) < 0
+Computing the density, computing the expected value (= (cid:0)1=a(z)) and sampling would all be easy.
+Alternatively, if I is a closed interval (as in many applications of interest), or if we would like to
+use such a unit as a hidden unit with non-linear expected value, the above density is a truncated
+exponential. For simplicity we consider the case I = [0; 1] here, for which the normalizing integral,
+which always exists, is exp((cid:0)a(z))(cid:0)1
+. The conditional expectation of u given z is interesting because
+a(z) : A
+it has a sigmoidal-like saturating and monotone non-linearity: E[yjz] =
+sampling from the truncated exponential is easily obtained from a uniform sample U, using the inverse
+cumulative F (cid:0)1 of the conditional density yjz: F (cid:0)1(U ) = log(1(cid:0)U (cid:2)(1(cid:0)exp(a(z))))
+: In both truncated
+and not truncated cases, the Contrastive Divergence updates have the same form as for binomial units
+(input value times output value), since the updates only depend on the derivative of the energy with
+respect to the parameters. Only sampling is changed, according to the units conditional density.
+Quadratic energy: Gaussian units
+
+1(cid:0)exp((cid:0)a(z)) (cid:0) 1
+
+exp(ya(z))1y2I
+
+Rv exp(va(z))1v2I dv
+
+To obtain Gaussian-distributed units, one adds quadratic terms to the energy. AddingPi d2
+
+i gives
+rise to a diagonal covariance matrix between units of the same layer, where yi is the continuous value
+of a Gaussian unit and d2
+i is a positive parameter that is equal to the inverse of the variance of yi. In
+
+i y2
+
+1
+
+a(z)
+
+j
+
+j
+
+a(z)
+
+t
+
+e
+s
+
+
+i
+
+g
+n
+n
+a
+r
+t
+
+
+i
+
+n
+o
+
+
+r
+o
+r
+r
+e
+
+
+
+n
+o
+
+i
+t
+
+a
+c
+i
+f
+i
+s
+s
+a
+c
+
+l
+
+0.6
+
+0.55
+
+0.5
+
+0.45
+
+0.4
+
+0.35
+
+0.3
+
+
+
+0.25
+0
+
+50
+
+100
+
+150
+
+200
+
+250
+
+300
+
+350
+
+400
+
+1. Deep Network with no pre-training
+2. Logistic regression
+3. DBN, binomial inputs, unsupervised
+4. DBN, binomial inputs, partially supervised
+5. DBN, Gaussian inputs, unsupervised
+6. DBN, Gaussian inputs, partially supervised
+
+Deep Network with no pretraining
+DBN with partially supervised pretraining
+DBN with unsupervised pretraining
+
+
+
+Figure 1: Training classi(cid:2)cation error vs training
+iteration, on the Cotton price task, for deep net-
+work without pre-training, for DBN with unsuper-
+vised pre-training, and DBN with partially super-
+vised pre-training.
+Illustrates optimization dif(cid:2)-
+culty of deep networks and advantage of partially
+supervised training.
+
+Abalone
+valid.
+4.43
+(cid:1)
+4.60
+4.45
+4.42
+4.43
+
+train.
+4.23
+(cid:1)
+4.59
+4.39
+4.25
+4.23
+
+test.
+4.2
+(cid:1)
+4.47
+4.28
+4.19
+4.18
+
+Cotton
+valid.
+
+test.
+
+train.
+45.2% 42.9% 43.0%
+44.0% 42.6% 45.0%
+44.0% 42.6% 45.0%
+43.3% 41.1% 43.7%
+35.7% 34.9% 35.8%
+27.5% 28.4% 31.4%
+
+Table 1: MeansquaredpredictionerroronAbalonetaskandclassi(cid:2)cationerroronCottontask,
+showingimprovementwithGaussianunits.
+this case the variance is unconditional, whereas the mean depends on the inputs of the unit: for a unit
+y with inputs z and inverse variance d2, E[yjz] = a(z)
+2d2 :
+The Contrastive Divergence updates are easily obtained by computing the derivative of the energy
+with respect to the parameters. For the parameters in the linear terms of the energy function (e.g., b
+and w above), the derivatives have the same form (input unit value times output unit value) as for the
+case of binomial units. For quadratic parameter d > 0, the derivative is simply 2dy 2. Gaussian units
+were previously used as hidden units of an RBM (with binomial or multinomial inputs) applied to an
+information retrieval task (Welling, Rosen-Zvi, & Hinton, 2005). Our interest here is to use them for
+continuous-valued inputs.
+Using continuous-valued hidden units
+Although we have introduced RBM units with continuous values to better deal with the representa-
+tion of input variables, they could also be considered for use in the hidden layers, in replacement or
+complementing the binomial units which have been used in the past. However, Gaussian and expo-
+nential hidden units have a weakness: the mean-(cid:2)eld propagation through a Gaussian unit gives rise
+to a purely linear transformation. Hence if we have only such linear hidden units in a multi-layered
+network, the mean-(cid:2)eld propagation function that maps inputs to internal representations would be
+completely linear. In addition, in a DBN containing only Gaussian units, one would only be able
+to model Gaussian data. On the other hand, combining Gaussian with other types of units could be
+interesting. In contrast with Gaussian or exponential units, remark that the conditional expectation
+of truncated exponential units is non-linear, and in fact involves a sigmoidal form of non-linearity
+applied to the weighted sum of its inputs.
+Experiment 1
+This experiment was performed on two data sets: the UCI repository Abalone data set (split in 2177
+training examples, 1000 validation examples, 1000 test examples) and a (cid:2)nancial data set. The latter
+has real-valued input variables representing averages of returns and squared returns for which the bino-
+mial approximation would seem inappropriate. The target variable is next months return of a Cotton
+futures contract. There are 13 continuous input variables, that are averages of returns over different
+time-windows up to 504 days. There are 3135 training examples, 1000 validation examples, and 1000
+test examples. The dataset is publicly available at http://www.iro.umontreal.ca/(cid:152)lisa/
+fin_data/. In Table 1 (rows 3 and 5), we show improvements brought by DBNs with Gaussian
+inputs over DBNs with binomial inputs (with binomial hidden units in both cases). The networks have
+two hidden layers. All hyper-parameters are selected based on validation set performance.
+4 Understanding why the layer-wise strategy works
+A reasonable explanation for the apparent success of the layer-wise training strategy for DBNs is that
+unsupervised pre-training helps to mitigate the dif(cid:2)cult optimization problem of deep networks by
+better initializing the weights of all layers. Here we present experiments that support and clarify this.
+
+Training each layer as an auto-encoder
+We want to verify that the layer-wise greedy unsupervised pre-training principle can be applied when
+using an auto-encoder instead of the RBM as a layer building block. Let x be the input vector
+with xi 2 (0; 1). For a layer with weights matrix W , hidden biases column vector b and input
+biases column vector c, the reconstruction probability for bit i is pi(x), with the vector of proba-
+bilities p(x) = sigm(c + W sigm(b + W 0x)): The training criterion for the layer is the average
+of negative log-likelihoods for predicting x from p(x). For example, if x is interpreted either as a
+sequence of bits or a sequence of bit probabilities, we minimize the reconstruction cross-entropy:
+
+R = (cid:0)Pi xi log pi(x) + (1 (cid:0) xi) log(1 (cid:0) pi(x)): We report several experimental results using this
+
+training criterion for each layer, in comparison to the contrastive divergence algorithm for an RBM.
+Pseudo-code for a deep network obtained by training each layer as an auto-encoder is given in Ap-
+pendix (Algorithm TrainGreedyAutoEncodingDeepNet).
+One question that arises with auto-encoders in comparison with RBMs is whether the auto-encoders
+will fail to learn a useful representation when the number of units is not strictly decreasing from one
+layer to the next (since the networks could theoretically just learn to be the identity and perfectly min-
+imize the reconstruction error). However, our experiments suggest that networks with non-decreasing
+layer sizes generalize well. This might be due to weight decay and stochastic gradient descent, prevent-
+ing large weights: optimization falls in a local minimum which corresponds to a good transformation
+of the input (that provides a good initialization for supervised training of the whole net).
+Greedy layer-wise supervised training
+A reasonable question to ask is whether the fact that each layer is trained in an unsupervised way is
+critical or not. An alternative algorithm is supervised, greedy and layer-wise: train each new hidden
+layer as the hidden layer of a one-hidden layer supervised neural network NN (taking as input the
+output of the last of previously trained layers), and then throw away the output layer of NN and use the
+parameters of the hidden layer of NN as pre-training initialization of the new top layer of the deep net,
+to map the output of the previous layers to a hopefully better representation. Pseudo-code for a deep
+network obtained by training each layer as the hidden layer of a supervised one-hidden-layer neural
+network is given in Appendix (Algorithm TrainGreedySupervisedDeepNet).
+Experiment 2.
+We compared the performance on the MNIST digit classi(cid:2)cation task obtained with (cid:2)ve algorithms:
+(a) DBN, (b) deep network whose layers are initialized as auto-encoders, (c) above described su-
+pervised greedy layer-wise algorithm to pre-train each layer, (d) deep network with no pre-training
+(random initialization), (e) shallow network (1 hidden layer) with no pre-training.
+The (cid:2)nal (cid:2)ne-tuning is done by adding a logistic regression layer on top of the network and train-
+ing the whole network by stochastic gradient descent on the cross-entropy with respect to the target
+classi(cid:2)cation. The networks have the following architecture: 784 inputs, 10 outputs, 3 hidden layers
+with variable number of hidden units, selected by validation set performance (typically selected layer
+sizes are between 500 and 1000). The shallow network has a single hidden layer. An L2 weight
+decay hyper-parameter is also optimized. The DBN was slower to train and less experiments were
+performed, so that longer training and more appropriately chosen sizes of layers and learning rates
+could yield better results (Hinton 2006, unpublished, reports 1.15% error on the MNIST test set).
+
+DBN, unsupervised pre-training
+Deep net, auto-associator pre-training
+Deep net, supervised pre-training
+Deep net, no pre-training
+Shallow net, no pre-training
+
+Experiment 2
+
+Experiment 3
+
+test
+
+train.
+
+valid.
+1.2% 1.2% 0%
+1.4% 1.4% 0%
+1.7% 2.0% 0%
+
+valid.
+train.
+1.5% 1.5%
+0%
+1.4% 1.6%
+0%
+0%
+1.8% 1.9%
+.004% 2.1% 2.4% .59% 2.1% 2.2%
+.004% 1.8% 1.9% 3.6% 4.7% 5.0%
+
+test
+
+Table 2: Classi(cid:2)cation error on MNIST training, validation, and test sets, with the best hyper-
+parametersaccordingtovalidationerror,withandwithoutpre-training,usingpurelysupervisedor
+purelyunsupervisedpre-training.Inexperiment3,thesizeofthetophiddenlayerwassetto20.
+On MNIST, differences of more than .1% are statistically signi(cid:2)cant. The results in Table 2 suggest
+that the auto-encoding criterion can yield performance comparable to the DBN when the layers are
+(cid:2)nally tuned in a supervised fashion. They also clearly show that the greedy unsupervised layer-wise
+pre-training gives much better results than the standard way to train a deep network (with no greedy
+
+pre-training) or a shallow network, and that, without pre-training, deep networks tend to perform worse
+than shallow networks. The results also suggest that unsupervised greedy layer-wise pre-training can
+perform signi(cid:2)cantly better than purely supervised greedy layer-wise pre-training. A possible expla-
+nation is that the greedy supervised procedure is too greedy: in the learned hidden units representation
+it may discard some of the information about the target, information that cannot be captured easily by
+a one-hidden-layer neural network but could be captured by composing more hidden layers.
+Experiment 3
+However, there is something troubling in the Experiment 2 results (Table 2): all the networks, even
+those without greedy layer-wise pre-training, perform almost perfectly on the training set, which
+would appear to contradict the hypothesis that the main effect of the layer-wise greedy strategy is
+to help the optimization (with poor optimization one would expect poor training error). A possible
+explanation coherent with our initial hypothesis and with the above results is captured by the following
+hypothesis. Without pre-training, the lower layers are initialized poorly, but still allowing the top two
+layers to learn the training set almost perfectly, because the output layer and the last hidden layer
+form a standard shallow but fat neural network. Consider the top two layers of the deep network
+with pre-training: it presumably takes as input a better representation, one that allows for better
+generalization. Instead, the network without pre-training sees a (cid:147)random(cid:148) transformation of the input,
+one that preserves enough information about the input to (cid:2)t the training set, but that does not help to
+generalize. To test that hypothesis, we performed a second series of experiments in which we constrain
+the top hidden layer to be small (20 hidden units). The Experiment 3 results (Table 2) clearly con(cid:2)rm
+our hypothesis. With no pre-training, training error degrades signi(cid:2)cantly when there are only 20
+hidden units in the top hidden layer. In addition, the results obtained without pre-training were found
+to have extremely large variance indicating high sensitivity to initial conditions. Overall, the results
+in the tables and in Figure 1 are consistent with the hypothesis that the greedy layer-wise procedure
+essentially helps to better optimize the deep networks, probably by initializing the hidden layers so that
+they represent more meaningful representations of the input, which also yields to better generalization.
+Continuous training of all layers of a DBN
+With the layer-wise training algorithm for DBNs (TrainUnsupervisedDBN in Appendix), one
+element that we would like to dispense with is having to decide the number of training iterations for
+each layer. It would be good if we did not have to explicitly add layers one at a time, i.e., if we
+could train all layers simultaneously, but keeping the (cid:147)greedy(cid:148) idea that each layer is pre-trained to
+model its input, ignoring the effect of higher layers. To achieve this it is suf(cid:2)cient to insert a line
+in TrainUnsupervisedDBN, so that RBMupdate is called on all the layers and the stochastic
+hidden values are propagated all the way up. Experiments with this variant demonstrated that it works
+at least as well as the original algorithm. The advantage is that we can now have a single stopping
+criterion (for the whole network). Computation time is slightly greater, since we do more computations
+initially (on the upper layers), which might be wasted (before the lower layers converge to a decent
+representation), but time is saved on optimizing hyper-parameters. This variant may be more appealing
+for on-line training on very large data-sets, where one would never cycle back on the training data.
+5 Dealing with uncooperative input distributions
+In classi(cid:2)cation problems such as MNIST where classes are well separated, the structure of the input
+distribution p(x) naturally contains much information about the target variable y. Imagine a super-
+vised learning task in which the input distribution is mostly unrelated with y. In regression problems,
+which we are interested in studying here, this problem could be much more prevalent. For example
+imagine a task in which x (cid:24) p(x) and the target y = f (x) + noise (e.g., p is Gaussian and f = sinus)
+with no particular relation between p and f.
+In such settings we cannot expect the unsupervised
+greedy layer-wise pre-training procedure to help in training deep supervised networks. To deal with
+such uncooperative input distributions, we propose to train each layer with a mixed training criterion
+that combines the unsupervised objective (modeling or reconstructing the input) and a supervised ob-
+jective (helping to predict the target). A simple algorithm thus adds the updates on the hidden layer
+weights from the unsupervised algorithm (Contrastive Divergence or reconstruction error gradient)
+with the updates from the gradient on a supervised prediction error, using a temporary output layer, as
+with the greedy layer-wise supervised training algorithm. In our experiments it appeared suf(cid:2)cient to
+perform that partial supervision with the (cid:2)rst layer only, since once the predictive information about
+the target is (cid:147)forced(cid:148) into the representation of the (cid:2)rst layer, it tends to stay in the upper layers. The
+results in Figure 1 and Table 1 clearly show the advantage of this partially supervised greedy training
+
+algorithm, in the case of the (cid:2)nancial dataset. Pseudo-code for partially supervising the (cid:2)rst (or later
+layer) is given in Algorithm TrainPartiallySupervisedLayer (in the Appendix).
+6 Conclusion
+This paper is motivated by the need to develop good training algorithms for deep architectures, since
+these can be much more representationally ef(cid:2)cient than shallow ones such as SVMs and one-hidden-
+layer neural nets. We study Deep Belief Networks applied to supervised learning tasks, and the prin-
+ciples that could explain the good performance they have yielded. The three principal contributions
+of this paper are the following. First we extended RBMs and DBNs in new ways to naturally handle
+continuous-valued inputs, showing examples where much better predictive models can thus be ob-
+tained. Second, we performed experiments which support the hypothesis that the greedy unsupervised
+layer-wise training strategy helps to optimize deep networks, but suggest that better generalization is
+also obtained because this strategy initializes upper layers with better representations of relevant high-
+level abstractions. These experiments suggest a general principle that can be applied beyond DBNs,
+and we obtained similar results when each layer is initialized as an auto-associator instead of as an
+RBM. Finally, although we found that it is important to have an unsupervised component to train each
+layer (a fully supervised greedy layer-wise strategy performed worse), we studied supervised tasks in
+which the structure of the input distribution is not revealing enough of the conditional density of y
+given x. In that case the DBN unsupervised greedy layer-wise strategy appears inadequate and we
+proposed a simple (cid:2)x based on partial supervision, that can yield signi(cid:2)cant improvements.

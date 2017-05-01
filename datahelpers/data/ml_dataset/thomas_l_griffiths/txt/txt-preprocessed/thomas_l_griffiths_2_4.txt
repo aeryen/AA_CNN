@@ -1,0 +1,3599 @@
+Abstract
+
+The Indian buffet process is a stochastic process dening a probability distribution over equiva-
+lence classes of sparse binary matrices with a nite number of rows and an unbounded number of
+columns. This distribution is suitable for use as a prior in probabilistic models that represent objects
+using a potentially innite array of features, or that involve bipartite graphs in which the size of at
+least one class of nodes is unknown. We give a detailed derivation of this distribution, and illustrate
+its use as a prior in an innite latent feature model. We then review recent applications of the Indian
+buffet process in machine learning, discuss its extensions, and summarize its connections to other
+stochastic processes.
+Keywords: nonparametric Bayes, Markov chain Monte Carlo, latent variable models, Chinese
+restaurant processes, beta process, exchangeable distributions, sparse binary matrices
+
+1. Introduction
+
+Unsupervised learning aims to recover the latent structure responsible for generating observed data.
+One of the key problems faced by unsupervised learning algorithms is thus determining the amount
+of latent structurethe number of clusters, dimensions, or variablesneeded to account for the
+regularities expressed in the data. Often, this is treated as a model selection problem, choosing
+the model with the dimensionality that results in the best performance. This treatment of the prob-
+lem assumes that there is a single, nite-dimensional representation that correctly characterizes the
+properties of the observed objects. An alternative is to assume that the amount of latent structure is
+actually potentially unbounded, and that the observed objects only manifest a sparse subset of those
+classes or features (Rasmussen and Ghahramani, 2001).
+
+The assumption that the observed data manifest a subset of an unbounded amount of latent
+structure is often used in nonparametric Bayesian statistics, and has recently become increasingly
+popular in machine learning. In particular, this assumption is made in Dirichlet process mixture
+models, which are used for nonparametric density estimation (Antoniak, 1974; Escobar and West,
+1995; Ferguson, 1983; Neal, 2000). Under one interpretation of a Dirichlet process mixture model,
+each datapoint is assigned to a latent class, and each class is associated with a distribution over
+
+. Also at the Machine Learning Department, Carnegie Mellon University, Pittsburgh PA 15213, USA.
+
+c(cid:13)2011 Thomas L. Grifths and Zoubin Ghahramani.
+
+GRIFFITHS AND GHAHRAMANI
+
+observable properties. The prior distribution over assignments of datapoints to classes is specied
+in such a way that the number of classes used by the model is bounded only by the number of
+objects, making Dirichlet process mixture models innite mixture models (Rasmussen, 2000).
+
+Recent work has extended Dirichlet process mixture models in a number of directions, making
+it possible to use nonparametric Bayesian methods to discover the kinds of structure common in
+machine learning: hierarchies (Blei et al., 2004; Heller and Ghahramani, 2005; Neal, 2003; Teh
+et al., 2008), topics and syntactic classes (Teh et al., 2004) and the objects appearing in images
+(Sudderth et al., 2006). However, the fact that all of these models are based upon the Dirichlet
+process limits the kinds of latent structure that they can express. In many of these models, each
+object described in a data set is associated with a latent variable that picks out a single class or
+parameter responsible for generating that datapoint. In contrast, many models used in unsupervised
+learning represent each object as having multiple features or being produced by multiple causes.
+For instance, we could choose to represent each object with a binary vector, with entries indicating
+the presence or absence of each feature (e.g., Ueda and Saito, 2003), allow each feature to take on
+a continuous value, representing datapoints with locations in a latent space (e.g., Jolliffe, 1986), or
+dene a factorial model, in which each feature takes on one of a discrete set of values (e.g., Zemel
+and Hinton, 1994; Ghahramani, 1995). Innite versions of these models are difcult to dene using
+the Dirichlet process.
+
+In this paper, we summarize recent work exploring the extension of this nonparametric approach
+to models in which objects are represented using an unknown number of latent features. Following
+Grifths and Ghahramani (2005, 2006), we provide a detailed derivation of a distribution that can be
+used to dene probabilistic models that represent objects with innitely many binary features, and
+can be combined with priors on feature values to produce factorial and continuous representations.
+This distribution can be specied in terms of a simple stochastic process called the Indian buffet
+process, by analogy to the Chinese restaurant process used in Dirichlet process mixture models. We
+illustrate how the Indian buffet process can be used to specify prior distributions in latent feature
+models, using a simple linear-Gaussian model to show how such models can be dened and used.
+
+The Indian buffet process can also be used to dene a prior distribution in any setting where the
+latent structure expressed in data can be expressed in the form of a binary matrix with a nite number
+of rows and innite number of columns, such as the adjacency matrix of a bipartite graph where one
+class of nodes is of unknown size, or the adjacency matrix for a Markov process with an unbounded
+set of states. As a consequence, this approach has found a number of recent applications within
+machine learning. We review these applications, summarizing some of the innovations that have
+been introduced in order to use the Indian buffet process in different settings, as well as extensions
+to the basic model and alternative inference algorithms. We also describe some of the interesting
+connections to other stochastic processes that have been identied. As for the Chinese restaurant
+process, we can arrive at the Indian buffet process in a number of different ways: as the innite limit
+of a nite model, via the constructive specication of an innite model, or by marginalizing out an
+underlying measure. Each perspective provides different intuitions, and suggests different avenues
+for designing inference algorithms and generalizations.
+
+The plan of the paper is as follows. Section 2 summarizes the principles behind innite mixture
+models, focusing on the prior on class assignments assumed in these models, which can be dened in
+terms of a simple stochastic processthe Chinese restaurant process. We then develop a distribution
+on innite binary matrices by considering how this approach can be extended to the case where
+objects are represented with multiple binary features. Section 3 discusses the role of a such a
+
+1186
+
+INDIAN BUFFET PROCESS
+
+distribution in dening innite latent feature models. Section 4 derives the distribution, making use
+of the Indian buffet process. Section 5 illustrates how this distribution can be used as a prior in a
+nonparametric Bayesian model, dening an innite-dimensional linear-Gaussian model, deriving a
+sampling algorithm for inference in this model, and applying it to two simple data sets. Section 6
+describes further applications of this approach, both in latent feature models and for inferring graph
+structures, and Section 7 discusses recent work extending the Indian buffet process and providing
+connections to other stochastic processes. Section 8 presents conclusions and directions for future
+work.
+
+2. Latent Class Models
+
+Assume we have N objects, with the ith object having D observable properties represented by a row
+vector xi. In a latent class model, such as a mixture model, each object is assumed to belong to
+a single class, ci, and the properties xi are generated from a distribution determined by that class.
+
+1 xT
+
+2    xT
+
+Using the matrix X =(cid:2)xT
+
+N(cid:3)T to indicate the properties of all N objects, and the vector c =
+
+[c1 c2    cN]T to indicate their class assignments, the model is specied by a prior over assignment
+vectors P(c), and a distribution over property matrices conditioned on those assignments, p(X|c).1
+These two distributions can be dealt with separately: P(c) species the number of classes and their
+relative probability, while p(X|c) determines how these classes relate to the properties of objects.
+In this section, we will focus on the prior over assignment vectors, P(c), showing how such a prior
+can be dened without placing an upper bound on the number of classes.
+
+2.1 Finite Mixture Models
+
+Mixture models assume that the assignment of an object to a class is independent of the assignments
+of all other objects. If there are K classes, we have
+
+P(c|q ) =
+
+P(ci|q ) =
+
+N(cid:213)
+
+i=1
+
+N(cid:213)
+
+i=1
+
+q ci,
+
+where q
+is a multinomial distribution over those classes, and q k is the probability of class k under
+that distribution. Under this assumption, the probability of the properties of all N objects X can be
+written as
+
+p(X|q ) =
+
+N(cid:213)
+
+K(cid:229)
+
+i=1
+
+k=1
+
+p(xi|ci = k)q k.
+
+(1)
+
+The distribution from which each xi is generated is thus a mixture of the K class distributions
+p(xi|ci = k), with q k determining the weight of class k.
+
+The mixture weights q can be treated as a parameter to be estimated. In Bayesian approaches
+is assumed to follow a prior distribution p(q ), with a standard choice being
+to mixture modeling, q
+a symmetric Dirichlet distribution. The Dirichlet distribution on multinomials over K classes has
+parameters a 1,a 2, . . . ,a K, and is conjugate to the multinomial (e.g., Bernardo and Smith, 1994).
+
+1. We will use P() to indicate probability mass functions, and p() to indicate probability density functions. We will
+assume that xi  RD, and p(X|c) is thus a density, although variants of the models we discuss also exist for discrete
+data.
+
+1187
+
+GRIFFITHS AND GHAHRAMANI
+
+The probability density for the parameter q of a multinomial distribution is given by
+
+p(q ) =
+
+(cid:213) K
+
+k=1
+
+a k1
+k
+
+D(a 1,a 2, . . . ,a K)
+
+,
+
+in which D(a 1,a 2, . . . ,a K) is the Dirichlet normalizing constant
+
+D(a 1,a 2, . . . ,a K) = ZD K
+(cid:213) K
+k=1
+G ((cid:229) K
+
+=
+
+a k1
+k
+
+K(cid:213)
+k=1
+G (a k)
+a k)
+k=1
+
+dq
+
+,
+
+(2)
+
+where D K is the simplex of multinomials over K classes, and G () is the gamma, or generalized
+factorial, function, with G (m) = (m  1)! for any non-negative integer m. In a symmetric Dirichlet
+distribution, all a k are equal. For example, we could take a k =
+K for all k. In this case, Equation 2
+becomes
+
+D(
+
+K ,
+
+K , . . . ,
+
+K ) =
+
+G (
+K )K
+G (a )
+
+,
+
+and the mean of q
+
+is the multinomial that is uniform over all classes.
+
+The probability model that we have dened is
+
+|a  Dirichlet(
+K ,
+ci |q  Discrete(q )
+
+K , . . . ,
+
+K ),
+
+where Discrete(q ) is the multiple-outcome analogue of a Bernoulli event, where the probabilities
+of the outcomes are specied by q
+(i.e., P(ci = k|q ) = q k). The dependencies among variables in
+this model are shown in Figure 1. Having dened a prior on q
+, we can simplify this model by
+integrating over all values of q
+rather than representing them explicitly. The marginal probability of
+an assignment vector c, integrating over all values of q
+
+, is
+
+n(cid:213)
+
+P(c) = ZD K
+= ZD K
+
+=
+
+=
+
+i=1
+(cid:213) K
+D(
+D(m1 +
+
+P(ci|q ) p(q ) dq
+q mk+a /K1
+k=1
+k
+K )
+K ,
+K , . . . ,
+K , m2 +
+K , . . . , mk +
+D(
+
+dq
+
+K ,
+G (mk +
+G (
+K )K
+
+K , . . . ,
+K )
+
+K )
+G (a )
+
+G (N + a )
+
+(cid:213) K
+
+k=1
+
+K )
+
+,
+
+(3)
+
+where mk = (cid:229) N
+i=1
+integral is a result of the fact that the Dirichlet is conjugate to the multinomial.
+
+d (ci = k) is the number of objects assigned to class k. The tractability of this
+
+Equation 3 denes a joint probability distribution for all class assignments c in which individual
+class assignments are not independent. Rather, they are exchangeable (Bernardo and Smith, 1994),
+with the probability of an assignment vector remaining the same when the indices of the objects are
+permuted. Exchangeability is a desirable property in a distribution over class assignments, because
+
+1188
+
+q
+q
+a
+a
+a
+a
+a
+q
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+INDIAN BUFFET PROCESS
+
+zi
+
+N
+
+Figure 1: Graphical model for the Dirichlet-multinomial model used in dening the Chinese restau-
+rant process. Nodes are variables, arrows indicate dependencies, and plates (Buntine,
+1994) indicate replicated structures.
+
+we have no special knowledge about the objects that would justify treating them differently from
+one another. However, the distribution on assignment vectors dened by Equation 3 assumes an
+upper bound on the number of classes of objects, since it only allows assignments of objects to up
+to K classes.
+
+2.2 Innite Mixture Models
+
+Intuitively, dening an innite mixture model means that we want to specify the probability of X in
+terms of innitely many classes, modifying Equation 1 to become
+
+p(X|q ) =
+
+N(cid:213)
+
+p(xi|ci = k)q k,
+
+i=1
+
+k=1
+
+where q
+is an innite-dimensional multinomial distribution. In order to repeat the argument above,
+we would need to dene a prior, p(q ), on innite-dimensional multinomials, and compute the prob-
+ability of c by integrating over q
+. This is essentially the strategy that is taken in deriving innite
+mixture models from the Dirichlet process (Antoniak, 1974; Ferguson, 1983; Ishwaran and James,
+2001; Sethuraman, 1994).
+Instead, we will work directly with the distribution over assignment
+vectors given in Equation 3, considering its limit as the number of classes approaches innity (cf.,
+Green and Richardson, 2001; Neal, 1992, 2000).
+
+Expanding the gamma functions in Equation 3 using the recursion G (x) = (x  1)G (x  1) and
+
+cancelling terms produces the following expression for the probability of an assignment vector c:
+
+P(c) =(cid:16)
+
+K(cid:17)K+  K+(cid:213)
+
+k=1
+
+mk1
+
+( j +
+
+j=1
+
+K )! G (a )
+
+G (N + a )
+
+,
+
+(4)
+
+where K+ is the number of classes for which mk > 0, and we have re-ordered the indices such that
+mk > 0 for all k  K+. There are KN possible values for c, which diverges as K  
+. As this
+happens, the probability of any single set of class assignments goes to 0. Since K+  N and N is
+nite, it is clear that P(c)  0 as K  
+K  0. Consequently, we will dene a distribution
+over equivalence classes of assignment vectors, rather than the vectors themselves.
+
+, since 1
+
+Specically, we will dene a distribution on partitions of objects. In our setting, a partition
+is a division of the set of N objects into subsets, where each object belongs to a single subset
+and the ordering of the subsets does not matter. Two assignment vectors that result in the same
+division of objects correspond to the same partition. For example, if we had three objects, the class
+
+1189
+
+q
+a
+
+(cid:229)
+a
+(cid:213)
+a
+GRIFFITHS AND GHAHRAMANI
+
+assignments {c1, c2, c3} = {1, 1, 2} would correspond to the same partition as {2, 2, 1}, since all that
+differs between these two cases is the labels of the classes. A partition thus denes an equivalence
+class of assignment vectors, which we denote [c], with two assignment vectors belonging to the same
+equivalence class if they correspond to the same partition. A distribution over partitions is sufcient
+to allow us to dene an innite mixture model, provided the prior distribution on the parameters is
+the same for all classes. In this case, these equivalence classes of class assignments are the same as
+those induced by identiability: p(X|c) is the same for all assignment vectors c that correspond to
+the same partition, so we can apply statistical inference at the level of partitions rather than the level
+of assignment vectors.
+
+Assume we have a partition of N objects into K+ subsets, and we have K = K0 + K+ class
+labels that can be applied to those subsets. Then there are K!
+K0! assignment vectors c that belong to
+the equivalence class dened by that partition, [c]. We can dene a probability distribution over
+partitions by summing over all class assignments that belong to the equivalence class dened by
+each partition. The probability of each of those class assignments is equal under the distribution
+specied by Equation 4, so we obtain
+
+P([c]) = (cid:229)
+
+P(c)
+
+c[c]
+
+=
+
+K!
+
+K0!(cid:16)
+
+K(cid:17)K+  K+(cid:213)
+
+k=1
+
+mk1
+
+( j +
+
+j=1
+
+K )! G (a )
+
+G (N + a )
+
+.
+
+Rearranging the rst two terms, we can compute the limit of the probability of a partition as K  
+which is
+
+,
+
+lim
+K
+
+a K+ 
+
+K!
+
+K0! KK+
+
+= a K+ 
+
+1
+
+k=1
+
+  K+(cid:213)
+   K+(cid:213)
+
+k=1
+
+mk1
+
+j=1
+
+( j +
+
+K )! 
+(mk  1)!! 
+
+G (a )
+
+G (N + a )
+
+G (a )
+
+G (N + a )
+
+.
+
+(5)
+
+The details of the steps taken in computing this limit are given in Appendix A. These limiting
+probabilities dene a valid distribution over partitions, and thus over equivalence classes of class
+assignments, providing a prior over class assignments for an innite mixture model. Objects are
+exchangeable under this distribution, just as in the nite case: the probability of a partition is not
+affected by the ordering of the objects, since it depends only on the counts mk.
+
+As noted above, the distribution over partitions specied by Equation 5 can be derived in a vari-
+ety of waysby taking limits (Green and Richardson, 2001; Neal, 1992, 2000), from the Dirichlet
+process (Blackwell and MacQueen, 1973), or from other equivalent stochastic processes (Ishwaran
+and James, 2001; Sethuraman, 1994). We will briey discuss a simple process that produces the
+same distribution over partitions: the Chinese restaurant process.
+
+2.3 The Chinese Restaurant Process
+
+The Chinese restaurant process (CRP) was named by Jim Pitman and Lester Dubins, based upon
+a metaphor in which the objects are customers in a restaurant, and the classes are the tables at
+which they sit (the process rst appears in Aldous 1985, where it is attributed to Pitman, although
+
+1190
+
+a
+(cid:213)
+a
+(cid:213)
+a
+INDIAN BUFFET PROCESS
+
+2
+
+6
+
+7
+
+10
+
+5
+
+1
+
+3
+
+4
+
+8
+
+...
+
+9
+
+Figure 2: A partition induced by the Chinese restaurant process. Numbers indicate customers (ob-
+
+jects), circles indicate tables (classes).
+
+it is identical to the extended Polya urn scheme introduced by Blackwell and MacQueen 1973).
+Imagine a restaurant with an innite number of tables, each with an innite number of seats.2 The
+customers enter the restaurant one after another, and each choose a table at random. In the CRP
+with parameter a
+, each customer chooses an occupied table with probability proportional to the
+number of occupants, and chooses the next vacant table with probability proportional to a
+. For
+example, Figure 2 shows the state of a restaurant after 10 customers have chosen tables using this
+procedure. The rst customer chooses the rst table with probability a
+a = 1. The second customer
+chooses the rst table with probability 1
+. After the
+1+a
+second customer chooses the second table, the third customer chooses the rst table with probability
+1
+. This process
+2+a
+continues until all customers have seats, dening a distribution over allocations of people to tables,
+and, more generally, objects to classes. Extensions of the CRP and connections to other stochastic
+processes are pursued in depth by Pitman (2002).
+
+, and the second table with probability a
+1+a
+
+, the second table with probability 1
+2+a
+
+, and the third table with probability a
+2+a
+
+The distribution over partitions induced by the CRP is the same as that given in Equation 5. If
+we assume an ordering on our N objects, then we can assign them to classes sequentially using the
+method specied by the CRP, letting objects play the role of customers and classes play the role of
+tables. The ith object would be assigned to the kth class with probability
+
+P(ci = k|c1, c2, . . . , ci1) =(cid:26) mk
+
+i1+a
+i1+a
+
+k  K+
+k = K + 1
+
+where mk is the number of objects currently assigned to class k, and K+ is the number of classes for
+which mk > 0. If all N objects are assigned to classes via this process, the probability of a partition
+of objects c is that given in Equation 5. The CRP thus provides an intuitive means of specifying a
+prior for innite mixture models, as well as revealing that there is a simple sequential process by
+which exchangeable class assignments can be generated.
+
+2.4 Inference by Gibbs Sampling
+
+Inference in an innite mixture model is only slightly more complicated than inference in a mixture
+model with a nite, xed number of classes. The standard algorithm used for inference in innite
+mixture models is Gibbs sampling (Bush and MacEachern, 1996; Neal, 2000). Gibbs sampling
+
+2. Pitman and Dubins, both statisticians at the University of California, Berkeley, were inspired by the apparently innite
+
+capacity of Chinese restaurants in San Francisco when they named the process.
+
+1191
+
+a
+GRIFFITHS AND GHAHRAMANI
+
+is a Markov chain Monte Carlo (MCMC) method, in which variables are successively sampled
+from their distributions when conditioned on the current values of all other variables (Geman and
+Geman, 1984). This process denes a Markov chain, which ultimately converges to the distribution
+of interest (see Gilks et al., 1996). Recent work has also explored variational inference algorithms
+for these models (Blei and Jordan, 2006), a topic we will return to later in the paper.
+
+Implementing a Gibbs sampler requires deriving the full conditional distribution for all variables
+to be sampled. In a mixture model, these variables are the class assignments c. The relevant full
+conditional distribution is P(ci|ci,X), the probability distribution over ci conditioned on the class
+assignments of all other objects, ci, and the data, X. By applying Bayes rule, this distribution can
+be expressed as
+
+P(ci = k|ci,X) (cid:181)
+
+p(X|c)P(ci = k|ci),
+
+where only the second term on the right hand side depends upon the distribution over class assign-
+ments, P(c). Here we assume that the parameters associated with each class can be integrated out,
+so we that the probability of the data depends only on the class assignment. This is possible when a
+conjugate prior is used on these parameters. For details, and alternative algorithms that can be used
+when this assumption is violated, see Neal (2000).
+
+In a nite mixture model with P(c) dened as in Equation 3, we can compute P(ci = k|ci) by
+
+integrating over q
+
+, obtaining
+
+P(ci = k|ci) = Z P(ci = k|q )p(q |ci) dq
+
+=
+
+mi,k +
+K
+N  1 + a
+
+,
+
+(6)
+
+where mi,k is the number of objects assigned to class k, not including object i. This is the posterior
+predictive distribution for a multinomial distribution with a Dirichlet prior.
+
+In an innite mixture model with a distribution over class assignments dened as in Equation 5,
+we can use exchangeability to nd the full conditional distribution. Since it is exchangeable, P([c])
+is unaffected by the ordering of objects. Thus, we can choose an ordering in which the ith object
+is the last to be assigned to a class. It follows directly from the denition of the Chinese restaurant
+process that
+
+P(ci = k|ci) =
+
+
+mi,k
+N1+a
+N1+a
+0
+
+mi,k > 0
+k = Ki,+ + 1
+otherwise
+
+(7)
+
+where Ki,+ is the number of classes for which mi,k > 0. The same result can be found by taking
+the limit of the full conditional distribution in the nite model, given by Equation 6 (Neal, 2000).
+
+When combined with some choice of p(X|c), Equations 6 and 7 are sufcient to dene Gibbs
+samplers for nite and innite mixture models respectively. Demonstrations of Gibbs sampling
+in innite mixture models are provided by Neal (2000) and Rasmussen (2000). Similar MCMC
+algorithms are presented in Bush and MacEachern (1996), West et al. (1994), Escobar and West
+(1995) and Ishwaran and James (2001). Algorithms that go beyond the local changes in class
+assignments allowed by a Gibbs sampler are given by Jain and Neal (2004) and Dahl (2003).
+
+2.5 Summary
+
+Our review of innite mixture models serves three purposes: it shows that innite statistical models
+can be dened by specifying priors over innite combinatorial objects; it illustrates how these priors
+
+1192
+
+a
+a
+INDIAN BUFFET PROCESS
+
+can be derived by taking the limit of priors for nite models; and it demonstrates that inference in
+these models can remain possible, despite the large hypothesis spaces they imply. However, innite
+mixture models are still fundamentally limited in their representation of objects, assuming that each
+object can only belong to a single class. In the next two sections, we use the insights underlying
+innite mixture models to derive methods for representing objects in terms of innitely many latent
+features, leading us to derive a distribution on innite binary matrices.
+
+3. Latent Feature Models
+
+In a latent feature model, each object is represented by a vector of latent feature values fi, and the
+properties xi are generated from a distribution determined by those latent feature values. Latent fea-
+ture values can be continuous, as in factor analysis (Roweis and Ghahramani, 1999) and probabilis-
+tic principal component analysis (PCA; Tipping and Bishop, 1999), or discrete, as in cooperative
+vector quantization (CVQ; Zemel and Hinton, 1994; Ghahramani, 1995). In the remainder of this
+
+section, we will assume that feature values are continuous. Using the matrix F =(cid:2)fT
+
+indicate the latent feature values for all N objects, the model is specied by a prior over features,
+p(F), and a distribution over observed property matrices conditioned on those features, p(X|F). As
+with latent class models, these distributions can be dealt with separately: p(F) species the number
+of features, their probability, and the distribution over values associated with each feature, while
+p(X|F) determines how these features relate to the properties of objects. Our focus will be on p(F),
+showing how such a prior can be dened without placing an upper bound on the number of features.
+
+N(cid:3)T to
+
+1 fT
+
+2    fT
+
+We can break the matrix F into two components: a binary matrix Z indicating which features
+are possessed by each object, with zik = 1 if object i has feature k and 0 otherwise, and a second
+matrix V indicating the value of each feature for each object. F can be expressed as the elementwise
+(Hadamard) product of Z and V, F = ZV, as illustrated in Figure 3. In many latent feature models,
+such as PCA and CVQ, objects have non-zero values on every feature, and every entry of Z is 1. In
+sparse latent feature models (e.g., sparse PCA; dAspremont et al., 2004; Jolliffe and Uddin, 2003;
+Zou et al., 2006) only a subset of features take on non-zero values for each object, and Z picks out
+these subsets.
+
+A prior on F can be dened by specifying priors for Z and V separately, with p(F) = P(Z)p(V).
+We will focus on dening a prior on Z, since the effective dimensionality of a latent feature model is
+determined by Z. Assuming that Z is sparse, we can dene a prior for innite latent feature models
+by dening a distribution over innite binary matrices. Our analysis of latent class models provides
+two desiderata for such a distribution: objects should be exchangeable, and inference should be
+tractable. It also suggests a method by which these desiderata can be satised: start with a model
+that assumes a nite number of features, and consider the limit as the number of features approaches
+innity.
+
+4. A Distribution on Innite Sparse Binary Matrices
+
+In this section, we derive a distribution on innite binary matrices by starting with a simple model
+that assumes K features, and then taking the limit as K  
+. The resulting distribution corresponds
+to a simple generative process, which we term the Indian buffet process.
+
+1193
+
+GRIFFITHS AND GHAHRAMANI
+
+(a)
+
+K features
+
+(b)
+
+K features
+
+(c)
+
+K features
+
+s
+t
+c
+e
+j
+b
+o
+
+N
+
+s
+t
+c
+e
+j
+b
+o
+
+N
+
+0.9
+
+1.4
+
+0
+
+3.2
+
+0
+
+0.9
+
+0
+
+0
+
+0.3
+
+0
+
+0.2 2.8
+
+1.8
+
+0
+
+0.1
+
+4
+
+0
+
+0
+
+0
+
+3
+
+4
+
+3
+
+0
+
+1
+
+0
+
+s
+t
+c
+e
+j
+b
+o
+
+N
+
+1
+
+5
+
+0
+
+2
+
+5
+
+Figure 3: Feature matrices. A binary matrix Z, as shown in (a), can be used as the basis for sparse
+innite latent feature models, indicating which features take non-zero values. Element-
+wise multiplication of Z by a matrix V of continuous values gives a representation like
+that shown in (b). If V contains discrete values, we obtain a representation like that shown
+in (c).
+
+4.1 A Finite Feature Model
+
+We have N objects and K features, and the possession of feature k by object i is indicated by a
+binary variable zik. Each object can possess multiple features. The zik thus form a binary N  K
+feature matrix, Z. We will assume that each object possesses feature k with probability p k, and that
+the features are generated independently. In contrast to the class models discussed above, for which
+k q k = 1, the probabilities p k can each take on any value in [0, 1]. Under this model, the probability
+of a matrix Z given p = {p 1,p 2, . . . ,p K}, is
+
+P(Z|p ) =
+
+K(cid:213)
+
+N(cid:213)
+
+k=1
+
+i=1
+
+P(zik|p k) =
+
+K(cid:213)
+
+k=1
+
+p mk
+k (1  p k)Nmk,
+
+where mk = (cid:229) N
+
+i=1 zik is the number of objects possessing feature k.
+
+We can dene a prior on p by assuming that each p k follows a beta distribution. The beta
+distribution has parameters r and s, and is conjugate to the binomial. The probability of any p k
+under the Beta(r, s) distribution is given by
+
+p(p k) =
+
+p r1
+k
+
+(1  p k)s1
+B(r, s)
+
+,
+
+where B(r, s) is the beta function,
+
+B(r, s) = Z 1
+
+(1  p k)s1 dp k
+
+p r1
+k
+0
+G (r)G (s)
+G (r + s)
+
+=
+
+.
+
+(8)
+
+We will take r =
+
+K and s = 1, so Equation 8 becomes
+G (
+K )
+G (1 +
+
+K , 1) =
+
+B(
+
+= K
+
+,
+
+K )
+
+1194
+
+(cid:229)
+a
+a
+a
+a
+a
+INDIAN BUFFET PROCESS
+
+p k
+
+zik
+
+N
+
+K
+
+Figure 4: Graphical model for the beta-binomial model used in dening the Indian buffet process.
+Nodes are variables, arrows indicate dependencies, and plates (Buntine, 1994) indicate
+replicated structures.
+
+exploiting the recursive denition of the gamma function.3
+
+The probability model we have dened is
+
+p k |a  Beta(
+zik |p k  Bernoulli(p k).
+
+K , 1),
+
+(9)
+Each zik is independent of all other assignments, conditioned on p k, and the p k are generated in-
+dependently. A graphical model illustrating the dependencies among these variables is shown in
+Figure 4. Having dened a prior on p
+, we can simplify this model by integrating over all values for
+
+rather than representing them explicitly. The marginal probability of a binary matrix Z is
+
+P(Z) =
+
+=
+
+=
+
+K(cid:213)
+
+k=1
+
+K(cid:213)
+
+k=1
+
+K(cid:213)
+
+k=1
+
+P(zik|p k)! p(p k) dp k
+
+Z   N(cid:213)
+
+i=1
+B(mk +
+
+K , N  mk + 1)
+B(
+G (mk +
+
+K , 1)
+K )G (N  mk + 1)
+
+K
+
+G (N + 1 +
+
+K )
+
+.
+
+(10)
+
+Again, the result follows from conjugacy, this time between the binomial and beta distributions.
+This distribution is exchangeable, depending only on the counts mk.
+
+This model has the important property that the expectation of the number of non-zero entries
+ik zik], has an upper bound that is independent of K. Since each
+column of Z is independent, the expectation is K times the expectation of the sum of a single
+
+in the matrix Z, E(cid:2)1T Z1(cid:3) = E [(cid:229)
+column, E(cid:2)1T zk(cid:3). This expectation is easily computed,
+Z 1
+
+E(zik) =
+
+N(cid:229)
+
+N(cid:229)
+
+i=1
+
+0
+
+E(cid:2)1T zk(cid:3) =
+
+i=1
+
+p k p(p k) dp k = N
+
+K
+1 +
+
+,
+
+K
+
+(11)
+
+where the result follows from the fact that the expectation of a Beta(r, s) random variable is
+
+r
+r+s.
+. For nite K, the expectation of the number of entries
+
+Consequently, E(cid:2)1T Z1(cid:3) = KE(cid:2)1T zk(cid:3) = Na
+
+in Z is bounded above by Na
+
+1+
+
+.
+
+K
+
+K will be clear when we take the limit K  
+
+in Section 4.3, while the choice of
+
+3. The motivation for choosing r =
+
+s = 1 will be relaxed in Section 7.1.
+
+1195
+
+a
+a
+p
+a
+a
+a
+a
+a
+a
+a
+a
+a
+GRIFFITHS AND GHAHRAMANI
+
+lof
+
+Figure 5: Binary matrices and the left-ordered form. The binary matrix on the left is transformed
+into the left-ordered binary matrix on the right by the function lo f (). This left-ordered
+matrix was generated from the exchangeable Indian buffet process with a = 10. Empty
+columns are omitted from both matrices.
+
+4.2 Equivalence Classes
+In order to nd the limit of the distribution specied by Equation 10 as K  
+, we need to dene
+equivalence classes of binary matricesthe analogue of partitions for assignment vectors. Identi-
+fying these equivalence classes makes it easier to be precise about the objects over which we are
+dening probability distributions, but the reader who is satised with the intuitive idea of taking the
+limit as K  
+
+can safely skip the technical details presented in this section.
+
+Our equivalence classes will be dened with respect to a function on binary matrices, lo f ().
+This function maps binary matrices to left-ordered binary matrices. lo f (Z) is obtained by order-
+ing the columns of the binary matrix Z from left to right by the magnitude of the binary number
+expressed by that column, taking the rst row as the most signicant bit. The left-ordering of a
+binary matrix is shown in Figure 5. In the rst row of the left-ordered matrix, the columns for which
+z1k = 1 are grouped at the left. In the second row, the columns for which z2k = 1 are grouped at the
+left of the sets for which z1k = 1. This grouping structure persists throughout the matrix.
+
+Considering the process of placing a binary matrix in left-ordered form motivates the deni-
+tion of a further technical term. The history of feature k at object i is dened to be (z1k, . . . , z(i1)k).
+Where no object is specied, we will use history to refer to the full history of feature k, (z1k, . . . , zNk).
+We will individuate the histories of features using the decimal equivalent of the binary numbers cor-
+responding to the column entries. For example, at object 3, features can have one of four histories:
+0, corresponding to a feature with no previous assignments, 1, being a feature for which z2k = 1
+but z1k = 0, 2, being a feature for which z1k = 1 but z2k = 0, and 3, being a feature possessed by
+both previous objects were assigned. Kh will denote the number of features possessing the history
+h, with K0 being the number of features for which mk = 0 and K+ = (cid:229) 2N 1
+h=1 Kh being the number of
+features for which mk > 0, so K = K0 + K+. The function lo f thus places the columns of a matrix
+in ascending order of their histories.
+
+lo f () is a many-to-one function: many binary matrices reduce to the same left-ordered form,
+and there is a unique left-ordered form for every binary matrix. We can thus use lo f () to dene a
+set of equivalence classes. Any two binary matrices Y and Z are lo f -equivalent if lo f (Y) = lo f (Z),
+that is, if Y and Z map to the same left-ordered form. The lo f -equivalence class of a binary matrix
+Z, denoted [Z], is the set of binary matrices that are lo f -equivalent to Z. lo f -equivalence classes
+
+1196
+
+INDIAN BUFFET PROCESS
+
+are preserved through permutation of either the rows or the columns of a matrix, provided the same
+permutations are applied to the other members of the equivalence class. Performing inference at
+the level of lo f -equivalence classes is appropriate in models where feature order is not identiable,
+with p(X|F) being unaffected by the order of the columns of F. Any model in which the probability
+of X is specied in terms of a linear function of F, such as PCA or CVQ, has this property.
+
+We need to evaluate the cardinality of [Z], being the number of matrices that map to the same
+left-ordered form. The columns of a binary matrix are not guaranteed to be unique: since an object
+can possess multiple features, it is possible for two features to be possessed by exactly the same set
+of objects. The number of matrices in [Z] is reduced if Z contains identical columns, since some
+re-orderings of the columns of Z result in exactly the same matrix. Taking this into account, the
+, where Kh is the count of the number of columns with
+
+K
+
+cardinality of [Z] is(cid:16)
+
+full history h.
+
+K0...K2N 1(cid:17) =
+
+K!
+2N 1
+h=0 Kh!
+
+lo f -equivalence classes play the same role for binary matrices as partitions do for assignment
+vectors: they collapse together all binary matrices (assignment vectors) that differ only in column
+ordering (class labels). This relationship can be made precise by examining the lo f -equivalence
+classes of binary matrices constructed from assignment vectors. Dene the class matrix generated
+by an assignment vector c to be a binary matrix Z where zik = 1 if and only if ci = k. It is straight-
+forward to show that the class matrices generated by two assignment vectors that correspond to the
+same partition belong to the same lo f -equivalence class, and vice versa.
+
+4.3 Taking the Innite Limit
+
+Under the distribution dened by Equation 10, the probability of a particular lo f -equivalence class
+of binary matrices, [Z], is
+
+P([Z]) = (cid:229)
+
+P(Z)
+
+Z[Z]
+
+=
+
+K!
+2N 1
+h=0 Kh!
+
+K(cid:213)
+
+k=1
+
+K
+
+G (mk +
+
+K )G (N  mk + 1)
+
+G (N + 1 +
+
+K )
+
+.
+
+(12)
+
+In order to take the limit of this expression as K  
+, we will divide the columns of Z into two
+subsets, corresponding to the features for which mk = 0 and the features for which mk > 0. Re-
+ordering the columns such that mk > 0 if k  K+, and mk = 0 otherwise, we can break the product
+in Equation 12 into two parts, corresponding to these two subsets. The product thus becomes
+
+K
+
+K(cid:213)
+
+k=1
+
+G (mk +
+
+G (
+K
+G (N + 1 +
+G (
+K
+G (N + 1 +
+
+K )G (N  mk + 1)
+G (N + 1 +
+K )
+K )G (N + 1)
+K ) (cid:19)KK+
+K )G (N + 1)
+K ) (cid:19)K
+K )!K
+
+j=1( j +
+
+(cid:213) N
+
+N!
+
+= (cid:18)
+= (cid:18)
+=
+
+(cid:16)
+
+K+(cid:213)
+
+k=1
+
+K+(cid:213)
+
+k=1
+
+K(cid:17)K+
+
+1197
+
+K+(cid:213)
+
+k=1
+
+G (mk +
+
+K )G (N  mk + 1)
+
+K
+
+G (N + 1 +
+
+K )
+
+K )G (N  mk + 1)
+G (mk +
+K )G (N + 1)
+G (
+(N  mk)!(cid:213) mk1
+
+j=1 ( j +
+
+N!
+
+K )
+
+,
+
+(13)
+
+(cid:213)
+(cid:213)
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+GRIFFITHS AND GHAHRAMANI
+
+where we have used the fact that G (x) = (x  1)G (x  1) for x > 1. Substituting Equation 13 into
+Equation 12 and rearranging terms, we can compute our limit
+
+lim
+K
+
+=
+
+a K+
+2N 1
+h=1 Kh!
+a K+
+2N 1
+h=1 Kh!
+
+
+
+
+
+K!
+
+K0! KK+
+
+
+
+N!
+
+(cid:213) N
+
+j=1( j +
+
+K )!K
+
+1
+
+
+
+exp{a HN}
+
+
+
+
+
+K+(cid:213)
+
+k=1
+
+K+(cid:213)
+
+k=1
+
+(N  mk)!(cid:213) mk1
+
+j=1 ( j +
+
+K )
+
+N!
+
+(N  mk)!(mk  1)!
+
+N!
+
+,
+
+(14)
+
+where HN is the Nth harmonic number, HN = (cid:229) N
+1
+j . The details of the steps taken in computing
+this limit are given in Appendix A. Again, this distribution is exchangeable: neither the number of
+identical columns nor the column sums are affected by the ordering on objects.
+
+j=1
+
+4.4 The Indian Buffet Process
+
+The probability distribution dened in Equation 14 can be derived from a simple stochastic process.
+As with the CRP, this process assumes an ordering on the objects, generating the matrix sequen-
+tially using this ordering. We will also use a culinary metaphor in dening our stochastic process,
+appropriately adjusted for geography.4 Many Indian restaurants offer lunchtime buffets with an
+apparently innite number of dishes. We can dene a distribution over innite binary matrices by
+specifying a procedure by which customers (objects) choose dishes (features).
+
+In our Indian buffet process (IBP), N customers enter a restaurant one after another. Each cus-
+tomer encounters a buffet consisting of innitely many dishes arranged in a line. The rst customer
+starts at the left of the buffet and takes a serving from each dish, stopping after a Poisson(a ) number
+of dishes as his plate becomes overburdened. The ith customer moves along the buffet, sampling
+dishes in proportion to their popularity, serving himself with probability mk
+i , where mk is the number
+of previous customers who have sampled a dish. Having reached the end of all previous sampled
+dishes, the ith customer then tries a Poisson( a
+
+i ) number of new dishes.
+
+We can indicate which customers chose which dishes using a binary matrix Z with N rows and
+innitely many columns, where zik = 1 if the ith customer sampled the kth dish. Figure 6 shows
+a matrix generated using the IBP with a = 10. The rst customer tried 17 dishes. The second
+customer tried 7 of those dishes, and then tried 3 new dishes. The third customer tried 3 dishes tried
+by both previous customers, 5 dishes tried by only the rst customer, and 2 new dishes. Vertically
+concatenating the choices of the customers produces the binary matrix shown in the gure.
+
+to indicate the number of new dishes sampled by the ith customer, the probability of
+
+Using K(i)
+1
+
+any particular matrix being produced by this process is
+K+(cid:213)
+
+exp{a HN}
+
+P(Z) =
+
+a K+
+i=1 K(i)
+1 !
+
+(cid:213) N
+
+(N  mk)!(mk  1)!
+
+N!
+
+.
+
+(15)
+
+k=1
+
+As can be seen from Figure 6, the matrices produced by this process are generally not in left-ordered
+form. However, these matrices are also not ordered arbitrarily because the Poisson draws always
+result in choices of new dishes that are to the right of the previously sampled dishes. Customers
+are not exchangeable under this distribution, as the number of dishes counted as K(i)
+1 depends upon
+4. This work was started when both authors were at the Gatsby Computational Neuroscience Unit in London, where the
+
+Indian buffet is the dominant culinary metaphor.
+
+1198
+
+(cid:213)
+a
+a
+(cid:213)
+INDIAN BUFFET PROCESS
+
+Dishes
+
+s
+r
+e
+m
+o
+t
+s
+u
+C
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+
+Figure 6: A binary matrix generated by the Indian buffet process with a = 10.
+
+the order in which the customers make their choices. However, if we only pay attention to the
+lo f -equivalence classes of the matrices generated by this process, we obtain the exchangeable dis-
+tribution P([Z]) given by Equation 14:
+matrices generated via this process map to the same
+left-ordered form, and P([Z]) is obtained by multiplying P(Z) from Equation 15 by this quantity.
+
+(cid:213) N
+i=1 K(i)
+1 !
+2N 1
+h=1 Kh!
+
+It is possible to dene a similar sequential process that directly produces a distribution on lo f
+equivalence classes in which customers are exchangeable, but this requires more effort on the part
+of the customers. In the exchangeable Indian buffet process, the rst customer samples a Poisson(a )
+number of dishes, moving from left to right. The ith customer moves along the buffet, and makes
+a single decision for each set of dishes with the same history. If there are Kh dishes with history h,
+under which mh previous customers have sampled each of those dishes, then the customer samples a
+Binomial( mh
+i , Kh) number of those dishes, starting at the left. Having reached the end of all previous
+sampled dishes, the ith customer then tries a Poisson( a
+i ) number of new dishes. Attending to the
+history of the dishes and always sampling from the left guarantees that the resulting matrix is in
+left-ordered form, and it is easy to show that the matrices produced by this process have the same
+probability as the corresponding lo f -equivalence classes under Equation 14.
+
+4.5 A Distribution over Collections of Histories
+
+In Section 4.2, we noted that lo f -equivalence classes of binary matrices generated from assignment
+vectors correspond to partitions. Likewise, lo f -equivalence classes of general binary matrices cor-
+respond to simple combinatorial structures: vectors of non-negative integers. Fixing some ordering
+of N objects, a collection of feature histories on those objects can be represented by a frequency
+
+1199
+
+(cid:213)
+GRIFFITHS AND GHAHRAMANI
+
+vector K = (K1, . . . , K2N 1), indicating the number of times each history appears in the collection.
+A collection of feature histories can be translated into a left-ordered binary matrix by horizontally
+concatenating an appropriate number of copies of the binary vector representing each history into
+a matrix. A left-ordered binary matrix can be translated into a collection of feature histories by
+counting the number of times each history appears in that matrix. Since partitions are a subset
+of all collections of historiesnamely those collections in which each object appears in only one
+historythis process is strictly more general than the CRP.
+
+This connection between lo f -equivalence classes of feature matrices and collections of feature
+histories suggests another means of deriving the distribution specied by Equation 14, operating
+directly on the frequencies of these histories. We can dene a distribution on vectors of non-negative
+integers K by assuming that each Kh is generated independently from a Poisson distribution with
+parameter a B(mh, N  mh + 1) = a
+where mh is the number of non-zero elements in
+the history h. This gives
+
+(mh1)!(Nmh)!
+
+N!
+
+P(K) =
+
+2N 1
+
+h=1 (cid:16)a
+
+(mh1)!(Nmh)!
+
+N!
+Kh!
+
+=
+
+(cid:229) 2N 1
+
+h=1 Kh
+2N 1
+h=1 Kh!
+
+exp{a HN}
+
+(cid:17)Kh
+exp(cid:26)a (mh  1)!(N  mh)!
+(cid:19)Kh
+h=1 (cid:18) (mh  1)!(N  mh)!
+
+2N 1
+
+N!
+
+N!
+
+(cid:27)
+
+,
+
+which is easily seen to be the same as P([Z]) in Equation 14. The harmonic number in the expo-
+nential term is obtained by summing (mh1)!(Nm)!
+which mh = j, so we have
+
+over all histories h. There are(cid:16)N
+
+j(cid:17) histories for
+
+N!
+
+2N 1
+
+h=1
+
+(mh  1)!(N  mh)!
+
+N!
+
+4.6 Properties of this Distribution
+
+N(cid:229)
+
+=
+
+j=1
+
+(N
+j)
+
+( j  1)!(N  j)!
+
+N!
+
+=
+
+N(cid:229)
+
+j=1
+
+1
+j
+
+= HN.
+
+(16)
+
+These different views of the distribution specied by Equation 14 make it straightforward to derive
+some of its properties. First, the effective dimension of the model, K+, follows a Poisson(a HN)
+distribution. This is easily shown using the generative process described in Section 4.5: K+ =
+(cid:229) 2N 1
+h=1 Kh, and under this process is thus the sum of a set of Poisson distributions. The sum of a set
+of Poisson distributions is a Poisson distribution with parameter equal to the sum of the parameters
+of its components. Using Equation 16, this is a HN. Alternatively, we can use the fact that the
+i ), with the total number of columns
+number of new columns generated at the ith row is Poisson(
+being the sum of these quantities.
+
+A second property of this distribution is that the number of features possessed by each object
+follows a Poisson(a ) distribution. This follows from the denition of the exchangeable IBP. The
+rst customer chooses a Poisson(a ) number of dishes. By exchangeability, all other customers must
+also choose a Poisson(a ) number of dishes, since we can always specify an ordering on customers
+which begins with a particular customer.
+
+Finally, it is possible to show that Z remains sparse as K  
+
+. The simplest way to do this is to
+exploit the previous result: if the number of features possessed by each object follows a Poisson(a )
+distribution, then the expected number of entries in Z is Na
+. This is consistent with the quantity
+
+1200
+
+(cid:213)
+a
+(cid:213)
+(cid:213)
+(cid:229)
+a
+INDIAN BUFFET PROCESS
+
+obtained by taking the limit of this expectation in the nite model, which is given in Equation 11:
+
+limK E(cid:2)1T Z1(cid:3) = limK
+
+4.7 Inference by Gibbs Sampling
+
+Na
+1+
+
+K
+
+= Na
+
+.
+
+We have dened a distribution over innite binary matrices that satises one of our desiderata
+objects (the rows of the matrix) are exchangeable under this distribution. It remains to be shown
+that inference in innite latent feature models is tractable, as was the case for innite mixture mod-
+els. We will derive a Gibbs sampler for sampling from the distribution dened by the IBP, which
+suggests a strategy for inference in latent feature models in which the exchangeable IBP is used as
+a prior. We will consider alternative inference algorithms later in the paper.
+
+To sample from the distribution dened by the IBP, we need to compute the conditional distri-
+bution P(zik = 1|Z(ik)), where Z(ik) denotes the entries of Z other than zik. In the nite model,
+where P(Z) is given by Equation 10, it is straightforward to compute the conditional distribution
+for any zik. Integrating over p k gives
+
+P(zik = 1|zi,k) = Z 1
+
+P(zik|p k)p(p k|zi,k) dp k
+
+=
+
+K
+
+,
+
+(17)
+
+0
+mi,k +
+
+N +
+
+K
+
+where zi,k is the set of assignments of other objects, not including i, for feature k, and mi,k is the
+number of objects possessing feature k, not including i. We need only condition on zi,k rather than
+Z(ik) because the columns of the matrix are generated independently under this prior.
+
+In the innite case, we can derive the conditional distribution from the exchangeable IBP. Choos-
+ing an ordering on objects such that the ith object corresponds to the last customer to visit the buffet,
+we obtain
+
+P(zik = 1|zi,k) =
+
+,
+
+(18)
+
+mi,k
+
+N
+
+for any k such that mi,k > 0. The same result can be obtained by taking the limit of Equation 17
+as K  
+. Similarly the number of new features associated with object i should be drawn from a
+Poisson( a
+N ) distribution. This can also be derived from Equation 17, using the same kind of limiting
+argument as that presented above to obtain the terms of the Poisson.
+
+This analysis results in a simple Gibbs sampling algorithm for generating samples from the
+distribution dened by the IBP. We start with an arbitrary binary matrix. We then iterate through the
+rows of the matrix, i. For each column k, if mi,k is greater than 0 we set zik = 1 with probability
+given by Equation 18. Otherwise, we delete that column. At the end of the row, we add Poisson( a
+N )
+new columns that have ones in that row. After sufciently many passes through the rows, the
+resulting matrix will be a draw from the distribution P(Z) given by Equation 15.
+
+This algorithm suggests a heuristic strategy for sampling from the posterior distribution P(Z|X)
+in a model that uses the IBP to dene a prior on Z. In this case, we need to sample from the full
+conditional distribution
+
+P(zik = 1|Z(ik),X) (cid:181)
+
+p(X|Z)P(zik = 1|Z(ik))
+
+where p(X|Z) is the likelihood function for the model, and we assume that parameters of the like-
+lihood have been integrated out. We can proceed as in the Gibbs sampler given above, simply
+
+1201
+
+a
+a
+a
+GRIFFITHS AND GHAHRAMANI
+
+incorporating the likelihood term when sampling zik for columns for which mi,k is greater than 0
+and drawing the new columns from a distribution where the prior is Poisson( a
+N ) and the likelihood
+is given by P(X|Z).5
+
+5. An Example: A Linear-Gaussian Latent Feature Model with Binary Features
+
+We have derived a prior for innite sparse binary matrices, and indicated how statistical inference
+can be done in models dened using this prior. In this section, we will show how this prior can be
+put to use in models for unsupervised learning, illustrating some of the issues that can arise in this
+process. We will describe a simple linear-Gaussian latent feature model, in which the features are
+binary. As above, we will start with a nite model and then consider the innite limit.
+
+5.1 A Finite Linear-Gaussian Model
+
+In our nite model, the D-dimensional vector of properties of an object i, xi is generated from a
+Gaussian distribution with mean ziA and covariance matrix S X = s 2
+XI, where zi is a K-dimensional
+binary vector, and A is a K  D matrix of weights. In matrix notation, E [X] = ZA. If Z is a feature
+matrix, this is a form of binary factor analysis. The distribution of X given Z, A, and s X is matrix
+Gaussian:
+
+p(X|Z,A,s X ) =
+
+1
+X )ND/2 exp{
+2
+
+1
+2s 2
+X
+
+(2p
+
+tr((X  ZA)T (X  ZA))}
+
+(19)
+
+where tr() is the trace of a matrix. This makes it easy to integrate out the model parameters A. To
+do so, we need to dene a prior on A, which we also take to be matrix Gaussian:
+
+p(A|s A) =
+
+1
+A)KD/2 exp{
+2
+
+1
+2s 2
+A
+
+(2p
+
+tr(AT A)},
+
+(20)
+
+where s A is a parameter setting the diffuseness of the prior. The dependencies among the variables
+in this model are shown in Figure 7.
+
+Combining Equations 19 and 20 results in an exponentiated expression involving the trace of
+
+1
+s 2
+X
+
+(X  ZA)T (X  ZA) +
+
+AT A
+
+1
+s 2
+A
+
+=
+
+=
+
+1
+s 2
+X
+1
+s 2
+X
+
+1
+s 2
+X
+
+XT X 
+
+XT ZA 
+
+1
+s 2
+X
+(XT (I  ZMZT )X) + (MZT X  A)T (s 2
+XM)1(MZT X  A),
+
+AT ZT X + AT (
+
+ZT Z +
+
+I)A
+
+1
+s 2
+A
+
+1
+s 2
+X
+
+5. As was pointed out by an anonymous reviewer, this is a heuristic strategy rather than a valid algorithm for sampling
+from the posterior because it violates one of the assumptions of Markov chain Monte Carlo algorithms, with the order
+in which variables are sampled being dependent on the state of the Markov chain. This is not an issue in the algorithm
+for sampling from P(Z), since the columns of Z are independent, and the kernels corresponding to sampling from
+each of the conditional distributions thus act independently of one another.
+
+1202
+
+s
+s
+INDIAN BUFFET PROCESS
+
+s X
+
+Z
+
+A
+
+X
+
+s A
+
+Figure 7: Graphical model for the linear-Gaussian model with binary features.
+
+where I is the identity matrix, M = (ZT Z +
+square for the quadratic term in A in the second line. We can then integrate out A to obtain
+
+I)1, and the last line is obtained by completing the
+
+A
+
+s 2
+Xs 2
+
+p(X|Z,s X ,s A)
+= Z p(X|Z,A,s X )p(A|s A) dA
+exp{
+
+=
+
+1
+
+(2p )(N+K)D/2s ND
+X
+
+s KD
+A
+Z exp{
+
+1
+2
+
+1
+2s 2
+X
+
+tr(XT (I  ZMZT )X)}
+
+tr((MZT X  A)T (s 2
+
+XM)1(MZT X  A))} dA
+
+=
+
+=
+
+|s 2
+
+XM|D/2
+(2p )ND/2s ND
+X
+
+s KD
+A
+
+(2p )ND/2s
+
+(NK)D
+X
+
+exp{
+
+tr(XT (I  ZMZT )X)}
+
+1
+2s 2
+X
+
+1
+s KD
+A |ZT Z +
+
+s 2
+Xs 2
+
+A
+
+I|D/2
+
+exp{
+
+1
+2s 2
+X
+
+tr(XT (I  Z(ZT Z +
+
+s 2
+X
+s 2
+A
+
+I)1ZT )X)}.
+
+(21)
+
+This result is intuitive: the exponentiated term is the difference between the inner product matrix
+of the raw values of X and their projections onto the space spanned by Z, regularized to an extent
+determined by the ratio of the variance of the noise in X to the variance of the prior on A. This is
+simply the marginal likelihood for a Bayesian linear regression model (Minka, 2000).
+
+We can use this derivation of p(X|Z,s X ,s A) to infer Z from a set of observations X, provided
+we have a prior on Z. The nite feature model discussed as a prelude to the IBP is such a prior. The
+full conditional distribution for zik is given by:
+P(zik|X,Z(i,k),s X ,s A) (cid:181)
+
+p(X|Z,s X ,s A)P(zik|zi,k).
+
+(22)
+
+While evaluating p(X|Z,s X ,s A) always involves matrix multiplication, it need not always involve
+a matrix inverse. ZT Z can be rewritten as (cid:229)
+i zi, allowing us to use rank one updates to efciently
+
+i zT
+
+1203
+
+a
+GRIFFITHS AND GHAHRAMANI
+
+compute the inverse when only one zi is modied. Dening Mi = ((cid:229)
+
+j6=i zT
+
+j z j +
+
+s 2
+Xs 2
+
+A
+
+I)1, we have
+
+Mi = (M1  zT
+MzT
+ziMzT
+i + zT
+
+M = (M1
+
+i zi)1
+i ziM
+i  1
+i zi)1
+
+= M 
+
+,
+
+= Mi 
+
+MizT
+ziMizT
+
+i ziMi
+i + 1
+
+.
+
+(23)
+
+(24)
+
+Iteratively applying these updates allows p(X|Z,s X ,s A), to be computed via Equation 21 for dif-
+ferent values of zik without requiring an excessive number of inverses, although a full rank update
+should be made occasionally to avoid accumulating numerical errors. The second part of Equation
+22, P(zik|zi,k), can be evaluated using Equation 17.
+
+5.2 Taking the Innite Limit
+To make sure that we can dene an innite version of this model, we need to check that p(X|Z,s X ,s A)
+remains well-dened if Z has an unbounded number of columns. Z appears in two places in Equa-
+tion 21: in |ZT Z +
+.
+If Z is in left-ordered form, we can write it as [Z+ Z0], where Z+ consists of K+ columns with
+sums mk > 0, and Z0 consists of K0 columns with sums mk = 0. It follows that the rst of the two
+expressions we are concerned with reduces to
+
+I)1ZT . We will examine how these behave as K  
+
+I| and in Z(ZT Z +
+
+s 2
+Xs 2
+
+s 2
+Xs 2
+
+A
+
+A
+
+ZT Z +
+
+(cid:12)(cid:12)(cid:12)(cid:12)
+
+s 2
+X
+s 2
+A
+
+I(cid:12)(cid:12)(cid:12)(cid:12)
+
++Z+ 0
+0
+
+0 (cid:21) +
+
+ZT
++Z+ +
+
+(cid:20) ZT
+= (cid:12)(cid:12)(cid:12)(cid:12)
+= (cid:18)s 2
+K0(cid:12)(cid:12)(cid:12)(cid:12)
+A(cid:19)
+
+X
+s 2
+
+s 2
+X
+s 2
+A
+s 2
+X
+s 2
+A
+
+IK(cid:12)(cid:12)(cid:12)(cid:12)
+IK+(cid:12)(cid:12)(cid:12)(cid:12)
+
+.
+
+(25)
+
+The appearance of K0 in this expression is not a problem, as we will see shortly. The abundance of
+zeros in Z leads to a direct reduction of the second expression to
+s 2
+X
+s 2
+A
+
+I)1ZT = Z+(ZT
+
+IK+)1ZT
++,
+
+Z(ZT Z +
+
++Z+ +
+
+s 2
+X
+s 2
+A
+
+which only uses the nite portion of Z. Combining these results yields the likelihood for the innite
+model
+
+p(X|Z,s X ,s A) =
+
+(2p )ND/2s
+
+(NK+)D
+X
+
+1
+s K+D
+A
+
+|ZT
+
++Z+ +
+
+s 2
+Xs 2
+
+A
+
+exp{
+
+1
+2s 2
+X
+
+tr(XT (I  Z+(ZT
+
+IK+)1ZT
+
++)X)}.
+
+(26)
+
+IK+|D/2
+s 2
+X
+s 2
+A
+
++Z+ +
+
+The K+ in the exponents of s A and s X appears as a result of introducing D/2 multiples of the factor
+from Equation 25. The likelihood for the innite model is thus just the likelihood for the
+
+Xs 2
+
+A(cid:17)K0
+of(cid:16) s 2
+
+nite model dened on the rst K+ columns of Z.
+
+1204
+
+INDIAN BUFFET PROCESS
+
+The heuristic Gibbs sampling algorithm dened in Section 4.7 can now be used in this model.
+Assignments to classes for which mi,k > 0 are drawn in the same way as for the nite model, via
+Equation 22, using Equation 26 to obtain p(X|Z,s X ,s A) and Equation 18 for P(zik|zi,k). As in
+the nite case, Equations 23 and 24 can be used to compute inverses efciently. The distribution
+over the number of new features can be approximated by truncation, computing probabilities for
+1 up to some reasonable upper bound. For each value, p(X|Z,s X ,s A) can
+a range of values of K(i)
+be computed from Equation 26, and the prior on the number of new classes is Poisson( a
+N ). More
+elaborate samplers which do not require truncation are presented in Meeds et al. (2007) and in Teh
+et al. (2007).
+
+5.3 Demonstrations
+
+As a rst demonstration of the ability of this algorithm to recover the latent structure responsible
+for having generated observed data, we applied the Gibbs sampler for the innite linear-Gaussian
+model to a simulated data set consisting of 100 6  6 images, each generated by randomly assigning
+a feature to each image to a class with probability 0.5, and taking a linear combination of the
+weights associated with features to which the images were assigned (a similar data set was used by
+Ghahramani, 1995). Some of these images are shown in Figure 8, together with the weights A that
+were used to generate them. The non-zero elements of A were all equal to 1.0, and s X was set to
+0.5, introducing a large amount of noise.
+
+The algorithm was initialized with K+ = 1, choosing the feature assignments for the rst column
+s A was set to 1.0. The Gibbs sampler rapidly discovered
+by setting zi1 = 1 with probability 0.5.
+that four classes were sufcient to account for the data, and converged to a distribution focused on
+matrices Z that closely matched the true class assignments. The results are shown in Figure 8. Each
+of the features is represented by the posterior mean of the feature weights, A, given X and Z, which
+is
+
+E[A|X,Z] = (ZT Z +
+
+I)1ZT X.
+
+s 2
+X
+s 2
+A
+
+for a single sample Z. The results shown in the gure are from the 200th sample produced by the
+algorithm.
+
+These results indicate that the algorithm can recover the features used to generate simulated
+data. In a further test of the algorithm with more realistic data, we applied it to a data set consisting
+of 100 240  320 pixel images. We represented each image, xi, using a 100-dimensional vector
+corresponding to the weights of the mean image and the rst 99 principal components. Each image
+contained up to four everyday objectsa $20 bill, a Klein bottle, a prehistoric handaxe, and a
+cellular phone. The objects were placed in xed locations, but were put into the scenes by hand,
+producing some small variation in location. The images were then taken with a low resolution
+webcam. Each object constituted a single latent feature responsible for the observed pixel values.
+The images were generated by sampling a feature vector, zi, from a distribution under which each
+feature was present with probability 0.5, and then taking a photograph containing the appropriate
+objects using a LogiTech digital webcam. Sample images are shown in Figure 9 (a). The only noise
+in the images was the noise from the camera.
+
+The Gibbs sampler was initialized with K+ = 1, choosing the feature assignments for the rst
+s A, s X , and a were initially set to 0.5, 1.7, and
+column by setting zi1 = 1 with probability 0.5.
+1 respectively, and then sampled by adding Metropolis steps to the MCMC algorithm. Figure 9
+
+1205
+
+GRIFFITHS AND GHAHRAMANI
+
+1  0  0  0
+
+1  0  1  1
+
+0  0  1  0
+
+1  1  1  0
+
+1  0  0  0
+
+1  0  1  1
+
+0  0  1  0
+
+1  1  1  0
+
+(a)
+
+(b)
+
+(c)
+
+3200
+
+)
+
+Z
+
+
+
+,
+
+
+X
+
+
+(
+
+P
+
+g
+o
+l
+
+
+3400
+
+3600
+
+3800
+
+0
+
+20
+
+40
+
+60
+
+80
+
+100
+
+Iteration
+
+120
+
+140
+
+160
+
+180
+
+200
+
+(d)
+
+)
+
+
++
+
+K
+
+l
+
+
+(
+
+s
+e
+s
+s
+a
+c
+
+f
+o
+
+r
+e
+b
+m
+u
+N
+
+5
+
+4
+
+3
+
+2
+
+0
+
+20
+
+40
+
+60
+
+80
+
+100
+
+Iteration
+
+120
+
+140
+
+160
+
+180
+
+200
+
+Figure 8: Demonstration of the linear-Gaussian model described in the text, using a binary repre-
+sentation. (a) 100 images were generated as binary linear combinations of four sets of
+class weights, shown in the images on the left. The images on the right are the posterior
+mean weights A for a single sample of Z after 200 iterations, ordered to match the true
+classes. (b) The images on the left show four of the datapoints to which the model was
+applied. The numbers above each image indicate the classes responsible for generating
+that image, matching the order above. The images on the right show the predictions of
+the model for these images, based on the posterior mean weights, together with the class
+assignments from the sampled Z. (c) Trace plot of log P(X,Z) over 200 iterations. (d)
+Trace plot of K+, the number of classes, over 200 iterations. The data were generated
+from a model with K+ = 4.
+
+1206
+
+INDIAN BUFFET PROCESS
+
+(Positive)
+
+(Negative)
+
+(Negative)
+
+(Negative)
+
+0  0  0  0
+
+0  1  0  0
+
+1  1  1  0
+
+1  0  1  1
+
+100
+
+200
+
+300
+
+400
+
+500
+
+600
+
+700
+
+800
+
+900
+
+1000
+
+100
+
+200
+
+300
+
+400
+
+500
+
+600
+
+700
+
+800
+
+900
+
+1000
+
+100
+
+200
+
+300
+
+400
+
+500
+
+600
+
+700
+
+800
+
+900
+
+1000
+
+100
+
+200
+
+300
+
+400
+
+500
+
+Iteration
+
+600
+
+700
+
+800
+
+900
+
+1000
+
+(a)
+
+(b)
+
+(c)
+
+10
+
++
+
+K
+
+
+
+X
+
+A
+
+5
+
+0
+
+4
+
+2
+
+0
+
+2
+
+1
+
+0
+
+2
+
+1
+
+0
+
+0
+
+0
+
+0
+
+0
+
+Figure 9: Data and results for the application of the innite linear-Gaussian model to photographic
+images. (a) Four sample images from the 100 in the data set. Each image had 320  240
+pixels, and contained from zero to four everyday objects. (b) The posterior mean of the
+weights (A) for the four most frequent binary features from the 1000th sample. Each
+image corresponds to a single feature. These features perfectly indicate the presence or
+absence of the four objects. The rst feature indicates the presence of the $20 bill, the
+other three indicate the absence of the Klein bottle, the handaxe, and the cellphone. (c)
+Reconstructions of the images in (a) using the binary codes inferred for those images.
+These reconstructions are based upon the posterior mean of A for the 1000th sample. For
+example, the code for the rst image indicates that the $20 bill is absent, while the other
+three objects are not. The lower panels show trace plots for the dimensionality of the
+representation (K+) and the parameters a
+, s X , and s A over 1000 iterations of sampling.
+The values of all parameters stabilize after approximately 100 iterations.
+
+1207
+
+a
+s
+s
+GRIFFITHS AND GHAHRAMANI
+
+shows trace plots for the rst 1000 iterations of MCMC for the number of features used by at least
+one object, K+, and the model parameters s A, s X , and a
+. All of these quantities stabilized after
+approximately 100 iterations, with the algorithm nding solutions with approximately seven latent
+features.
+
+Figure 9 (b) shows the posterior mean of ak for the four most frequent features in the 1000th
+sample produced by the algorithm. These features perfectly indicated presence and absence of
+the four objects. Three less common features coded for slight differences in the locations of those
+objects. Figure 9 (c) shows the feature vectors zi from this sample for the four images in Figure 9(b),
+together with the posterior means of the reconstructions of these images for this sample, ziE[A|X,Z].
+Similar reconstructions are obtained by averaging over all values of Z produced by the Markov
+chain. The reconstructions provided by the model clearly pick out the relevant content of the images,
+removing the camera noise in the original images.
+
+These applications of the linear-Gaussian latent feature model are intended primarily to demon-
+strate that this nonparametric Bayesian approach can efciently learn satisfying representations
+without requiring the dimensionality of those representations to be xed a priori. The data set
+consisting of images of objects was constructed in a way that removes many of the basic challenges
+of computer vision, with objects appearing in xed orientations and locations. Dealing with these
+issues requires using a more sophisticated image representation or a more complex likelihood func-
+tion than the linear-Gaussian model. Despite its simplicity, the example of identifying the objects in
+images illustrates the kind of problems for which the IBP provides an appropriate prior. We describe
+a range of other applications of the Indian buffet process in detail in the next section.
+
+6. Further Applications and Alternative Inference Algorithms
+
+We now outline six applications of the Indian buffet process, each of which uses the same prior
+over innite binary matrices, P(Z), but different choices for the likelihood relating such matrices to
+observed data. These applications provide an indication of the potential uses of the IBP in machine
+learning, and have also led to a number of alternative inference algorithms, which we will describe
+briey.
+
+6.1 Choice Behavior
+
+Choice behavior refers to our ability to decide between several options. Models of choice behavior
+are of interest to psychology, marketing, decision theory, and computer science. Our choices are
+often governed by features of the different options. For example, when choosing which car to buy,
+one may be inuenced by fuel efciency, cost, size, make, etc. Gorur et al. (2006) present a non-
+parametric Bayesian model based on the IBP which, given the choice data, infers latent features of
+the options and the corresponding weights of these features. The likelihood function is taken from
+Tverskys (1972) classic elimination by aspects model of choice, with the probability of choosing
+option A over option B being proportional to the sum of the weights of the distinctive features of A.
+The IBP is the prior over these latent features, which are assumed to be either present or absent.
+
+The likelihood function used in this model does not have a natural conjugate prior, meaning that
+the approach taken in our Gibbs sampling algorithmintegrating out the parameters associated with
+the featurescannot be used. This led Gorur et al. to develop a similar Markov chain Monte Carlo
+algorithm for use with a non-conjugate prior. The basic idea behind the algorithm is analogous to
+Algorithm 8 of Neal (2000) for Dirichlet process mixture models, using a set of auxiliary variables
+
+1208
+
+INDIAN BUFFET PROCESS
+
+to represent the weights associated with features that are currently not possessed by any of the
+available options. These auxiliary variables effectively provide a Monte Carlo approximation to the
+sum over parameters used in our Gibbs sampler (although there is no approximation error introduced
+through this step).
+
+6.2 Modeling Protein Interactions
+
+Proteomics aims to understand the functional interactions of proteins, and is a eld of growing
+importance to modern biology and medicine. One of the key concepts in proteomics is a protein
+complex, a group of several interacting proteins. Protein complexes can be experimentally deter-
+mined by doing high-throughput protein-protein interaction screens. Typically the results of such
+experiments are subjected to mixture-model based clustering methods. However, a protein can be-
+long to multiple complexes at the same time, making the mixture model assumption invalid. Chu
+et al. (2006) proposed a nonparametric Bayesian approach based on the IBP for identifying protein
+complexes and their constituents from interaction screens. The latent binary feature zik indicates
+whether protein i belongs to complex k. The likelihood function captures the probability that two
+proteins will be observed to bind in the interaction screen as a function of how many complexes they
+both belong to, (cid:229)
+k=1 zikz jk. The approach automatically infers the number of signicant complexes
+from the data and the results are validated using afnity purication/mass spectrometry experimen-
+tal data from yeast RNA-processing complexes.
+
+6.3 Binary Matrix Factorization for Modeling Dyadic Data
+
+Many interesting data sets are dyadic: there are two sets of objects or entities and observations are
+made on pairs with one element from each set. For example, the two sets might consist of movies
+and viewers, and the observations are ratings given by viewers to movies. Alternatively, the two sets
+might be genes and biological tissues and the observations may be expression levels for particular
+genes in different tissues. Dyadic data can often be represented as matrices and many models
+of dyadic data can be expressed in terms of matrix factorization. Models of dyadic data make it
+possible to predict, for example, the ratings a viewer might give to a movie based on ratings from
+other viewers, a task known as collaborative ltering. A traditional approach to modeling dyadic
+data is bi-clustering: simultaneously clustering both the rows (e.g., viewers) and the columns (e.g.,
+movies) of the observation matrix using coupled mixture models. However, as we have discussed,
+mixture models provide a very limited latent variable representation of data. Meeds et al. (2007)
+presented a more expressive model of dyadic data based on the two-parameter version of the Indian
+buffet process. In this model, both movies and viewers are represented by binary latent vectors
+with an unbounded number of elements, corresponding to the features they might possess (e.g.,
+likes horror movies). The two corresponding innite binary matrices interact via a real-valued
+weight matrix which links features of movies to features of viewers, resulting in a binary matrix
+factorization of the observed ratings.
+
+The basic inference algorithm used in this model was similar to the non-conjugate version of
+the Gibbs sampler outlined above, but the authors also developed a number of novel Metropolis-
+Hastings proposals that are mixed with the steps of the Gibbs sampler. One proposal directly han-
+dles the number of new features associated with each object, facilitating one of the more difcult
+aspects of non-conjugate inference. Another proposal is a split-merge move, analogous to similar
+proposals used in models based on the CRP (Jain and Neal, 2004; Dahl, 2003). In contrast to the
+
+1209
+
+
+GRIFFITHS AND GHAHRAMANI
+
+Gibbs sampler, which slowly affects the number of features used in the model by changing a single
+feature allocation for a single object at a time, the split-merge proposal explores large-scale moves
+such as dividing a single feature into two, or collapsing two features together. Combining these
+large-scale moves with the Gibbs sampler can result in a Markov chain Monte Carlo algorithm that
+explores the space of latent matrices faster.
+
+6.4 Extracting Features from Similarity Judgments
+
+One of the goals of cognitive psychology is to determine the kinds of representations that underlie
+peoples judgments. In particular, the additive clustering method has been used to infer peoples
+beliefs about the features of objects from their judgments of the similarity between them (Shepard
+and Arabie, 1979). Given a square matrix of judgments of the similarity between N objects, where
+si j is the similarity between objects i and j, the additive clustering model seeks to recover a N  K
+binary feature matrix F and a vector of K weights associated with those features such that si j 
+(cid:229) K
+k=1 wk fik f jk. A standard problem for this approach is determining the value of K, for which a
+variety of heuristic methods have been used. Navarro and Grifths (2007) presented a nonparametric
+Bayesian solution to this problem, using the IBP to dene a prior on F and assuming that si j has
+a Gaussian distribution with mean (cid:229) K+
+k=1 wk fik f jk (following Tenenbaum, 1996). Using this method
+provides a posterior distribution over the effective dimension of F, K+, and gives both a weight and
+a posterior probability for the presence of each feature.
+
+Samples from the posterior distribution over feature matrices reveal some surprisingly rich rep-
+resentations expressed in classic similarity data sets. Performing posterior inference makes it possi-
+ble to discover that there are multiple sensible sets of features that could account for human similar-
+ity judgments, while previous approaches that had focused on nding the single best set of features
+might only nd one such set. For example, the nonparametric Bayesian model reveals that peoples
+similarity judgments for numbers from 0-9 can be accounted for by a set of features that includes
+both the odd and the even numbers, while previous additive clustering analyses (e.g., Tenenbaum,
+1996) had only produced the odd numbers.
+
+The additive clustering model, like the choice model discussed above, is another case in which
+non-conjugate inference is necessary. In this case, the inference algorithm is rendered simpler by
+the fact that no attempt is made to model the similarity of an object to itself, sii. As a consequence, a
+feature possessed by a single object has no effect on the likelihood, and the number of such features
+and their associated weights can be drawn directly from the prior. Inference thus proceeds using an
+algorithm similar to the Gibbs sampler derived above, with the addition of a Metropolis-Hastings
+step to update the weights associated with each feature.
+
+6.5 Latent Features in Link Prediction
+
+Network data, indicating the relationships among a group of people or objects, have been analyzed
+by both statisticians and sociologists. A basic goal of these analyses is predicting which unobserved
+relationships might exist. For example, having observed friendly interactions among several pairs
+of people, a sociologist might seek to predict which other people are likely to be friends with one
+another. This problem of link prediction can be solved using a probabilistic model for the structure
+of graphs. One popular class of models, known as stochastic blockmodels, assume that each entity
+belongs to a single latent class, and that the probability of a relationship existing between two en-
+tities depends only on the classes of those entities (Nowicki and Snijders, 2001; Wang and Wong,
+
+1210
+
+INDIAN BUFFET PROCESS
+
+1987). This is analogous to a mixture model, in which the probability that an object has certain
+observed properties depends only on its latent class. Nonparametric versions of stochastic block-
+models can be dened using the Chinese restaurant process (Kemp et al., 2006), corresponding to
+an underlying stochastic process that generalizes the Dirichlet process (Roy and Teh, 2009).
+
+Just as allowing objects to have latent features rather than a single latent class makes it possible
+to go beyond mixture models, this approach allows us to dene models for link prediction that
+are richer than stochastic blockmodels. Miller et al. (2010) dened a class of nonparametric latent
+feature models that can be used for link prediction. The key idea is to dene the probability of the
+existence of a link between two entities in terms of a squashing function (such as the logistic or
+probit) applied to a real-valued score for that link. The scores then depend on the features of the
+two entities. For a set of N entities, the pairwise scores are given by the N  N matrix ZWZT ,
+where Z is a binary feature matrix, as used throughout this paper, and W is a matrix of real-valued
+feature weights. Since the feature weights can be positive or negative, features can interact to either
+increase or decrease the probability of a link. The resulting model is strictly more expressive than a
+stochastic blockmodel and produces more accurate predictions, particularly in cases where multiple
+factors interact to inuence the existence of a relationship (such as in the decision to co-author a
+paper, for example).
+
+6.6 Independent Components Analysis and Sparse Factor Analysis
+
+Independent Components Analysis (ICA) is a model which explains observed signals in terms of a
+linear superposition, or mixing, of independent hidden sources (Comon, 1994; Bell and Sejnowski,
+1995; MacKay, 1996; Cardoso, 1998). ICA has been used to solve the problem of blind source
+separation in which the goal is to unmix the hidden sources from the observed mixed signals
+without assuming much knowledge of the hidden source distribution. This models, for example, a
+listener in a cocktail party who may want to unmix the signals received on his two ears into the many
+independent sound sources that produced them. ICA is closely related to factor analysis, except that
+while in factor analysis the sources are assumed to be Gaussian distributed, in ICA the sources are
+assumed to have any distribution other than the Gaussian.
+
+One of the key practical problems in ICA is determining the number of hidden sources. Knowles
+and Ghahramani (2007) provided a solution to this problem by devising a non-parametric Bayesian
+model for ICA based on the IBP. The basic assumption of this ICA model is that the number of
+potential sources is unbounded, but that any particular source is typically not present in a given
+signal. The IBP provides a natural model for determining which sources are present in each signal.
+In the notation of Section 3, the observed signals are represented by a matrix X, the presence or
+absence of the hidden sources by the IBP distributed matrix Z, and the value taken by the sources by
+the matrix V. Knowles and Ghahramani (2007) considered several variants of the model, including
+ICA models where the elements of V have Laplacian distributions, sparse FA models where the
+elements of V have Gaussian distributions, and one and two parameter versions of the IBP in both
+cases. The model was applied to discovering gene signatures from gene expression microarray data
+from an ovarian cancer study.
+
+Rai and Daume (2009) developed two interesting extensions of this model also motivated by
+applications to gene expression data. First they considered both factor analysis and factor regression
+models, where the latter refers to solving a regression problem with a typically large number of
+input features by making predictions based solely on the factor representation. Second, they used
+
+1211
+
+GRIFFITHS AND GHAHRAMANI
+
+an IBP to model the sparsity in the factor loading matrix (rather than the factor or source matrix in
+nonparametric ICA) and they moreover assume that the factors are related to each other through a
+hierarchy. They used Kingmans coalescent as a nonparametric Bayesian model for this hierarchy,
+following the inference algorithms developed in Teh et al. (2008). This paper shows a nice example
+of how the IBP can be integrated with other nonparametric Bayesian distributions in a fairly modular
+manner to solve useful inference problems.
+
+6.7 Bipartite Graphs and Learning Hidden Causes
+
+Wood et al. (2006) used the IBP as part of an algorithm for learning the structure of graphical
+models. Specically, they focused on the case where an unknown number of hidden variables (e.g.,
+diseases) are causes for some set of observed variables (e.g., symptoms). Rather than dening a prior
+over the number of hidden causes, Wood et al. used a non-parametric Bayesian approach based on
+the IBP to model the structure of graphs with countably innitely many hidden causes. The binary
+variable zik indicates whether hidden variable k has a direct causal inuence on observed variable
+i; in other words whether k is a parent of i in the graph. The data being modeled were the values
+of the set of observed variables over a number of trials, where each variable was either present or
+absent on each trial. Each hidden variable could be either present or absent on a particular trial, with
+the probabilities of these states being determined by a parameter of the model, and hidden variables
+were assumed to combine via a noisy-OR (Pearl, 1988) to inuence the observed variables.
+
+Wood et al. (2006) described an MCMC algorithm for inference in this model. Like many of the
+cases discussed in this section, this model lacked natural conjugate priors. Inference was done using
+a variant on the Gibbs sampler introduced above, with additional steps to modify the values of the
+hidden variables. The sampling step for the introduction of new hidden causes into the graph was
+facilitated by an analytic result making it possible to sum out the values of the variables associated
+with those causes in a way that is analogous to summing out the parameters in a conjugate model.
+However, Wood and Grifths (2007) developed a sequential Monte Carlo algorithm for use in this
+model, similar to algorithms that have been developed for use with the CRP (such as Fearnhead,
+2004). This algorithm is a form of particle lter, updating the posterior distribution on Z one row
+at a time (in this case, as new observed variables are added to the data). The particle lter provides
+an efcient and straightforward alternative for inference in models that lack conjugate priors, and
+generalizes naturally to other models using the IBP.
+
+6.8 Structuring Markov Transition Matrices
+
+Discrete Markov processes are widely used in machine learning, as part of hidden Markov models
+and state-space models. Nonparametric Bayesian methods have been used to dene innite ver-
+sions of these models, allowing the number of states in a hidden Markov model to be unbounded
+(Beal et al., 2002). An innite discrete Markov process can be dened by assuming that transitions
+from each state follow a Chinese restaurant process, with transitions that have been made frequently
+in the past being more likely in the future. When a new transition is generated, the next state is
+drawn from a higher-level Chinese restaurant process that is shared across all states. The resulting
+distribution can also be obtained from a hierarchical Dirichlet process (Teh et al., 2004).
+
+Fox et al. (2010) recently explored another way of dening an innite discrete Markov process,
+which allows for more structure in the transition matrix. In this model, it is assumed that each state
+can only make transitions to a subset of other states. Thus, each state is associated with a binary
+
+1212
+
+INDIAN BUFFET PROCESS
+
+vector indicating whether or not it makes transitions to other states. With an innite set of states,
+a distribution over these vectors can be dened using the IBP. This approach was used to dene a
+nonparametric autoregressive hidden Markov model, in which a sequence of continuous variables
+were predicted as a linear function of the variables at the previous timestep, but the parameters of
+the function were determined by a latent Markov process. The resulting model was able to identify
+meaningful action components in motion capture data. In addition to introducing a novel model, this
+paper explored the use of birth and death moves in the Markov chain Monte Carlo algorithm used
+for inference, in which entire columns of the matrix produced by the IBP were created or destroyed.
+
+6.9 Other Inference Algorithms
+
+The broad range of settings in which the IBP has been applied have encouraged the development of
+more efcient methods for probabilistic inference in the resulting nonparametric Bayesian models.
+As discussed above, several innovations have been used to speed mixing in the Markov chain Monte
+Carlo algorithms used with specic models. Other work has explored schemes for making inference
+in the linear-Gaussian model discussed in Section 5 more efcient and scalable to larger data sets.
+For example, if instead of integrating out the weight matrix A, the posterior distribution over A is
+maintained, it is possible to use an alternative sampling scheme that still mixes quickly where the
+time for each iteration scales linearly in N (Doshi-Velez and Ghahramani, 2009a). This observation
+also provides the basis for a parallelization scheme in which the features of different objects are
+computed on different machines, with the potential to make large-scale applications of this linear-
+Gaussian model possible (Doshi-Velez et al., 2010). Similar principles may apply in the other
+models using the IBP discussed in this section.
+
+An alternative approach to probabilistic inference is to reject the stochastic approximations pro-
+vided by MCMC algorithms in favor of deterministic approximations, using variational inference to
+approximate the posterior. A mean eld approximation to the IBP was developed by Doshi-Velez
+et al. (2009), building on similar approximations for Dirichlet process mixture models (Blei and
+Jordan, 2006). This variational inference method was applied to the innite ICA model discussed
+in Section 6.6, and compared against sampling schemes on both synthetic and real data. The results
+of these comparisons suggested that the variational approach provides a more efcient strategy for
+inference in this model when the dimensionality of the observed data is high. Variational inference
+may thus be useful in working with some of the other models discussed in this section, at least in
+specic regimes.
+
+7. Extensions and Connections to Other Processes
+
+The Indian buffet process gives a way to characterize our distribution on innite binary matrices in
+terms of a simple stochastic process. In this section we review how the IBP can be extended to yield
+more general classes of distributions, and summarize some of the connections between the IBP and
+other stochastic processes. Our derivation of the IBP was based on considering the innite limit
+of a distribution on nite binary matrices. As with the CRP, this distribution can also be derived
+via a stick-breaking construction, or by marginalizing out an underlying measure. These different
+views of the IBP yield different generalizations of the distribution, and different opportunities for
+developing inference algorithms.
+
+1213
+
+GRIFFITHS AND GHAHRAMANI
+
+7.1 A Two-Parameter Generalization
+
+As was discussed in Section 4.6, the distribution on the number of features per object and on the
+total number of features produced by the IBP are directly coupled, through a
+. This is an undesirable
+constraint, as the sparsity of a matrix and its dimensionality should be able to vary independently.
+Ghahramani et al. (2007) introduced a two-parameter generalization of the IBP that separates these
+two aspects of the distribution.6 This generalization keeps the average number of features per object
+at a
+, an extreme
+where all features are shared between all objects, to Na
+, an extreme where no features are shared at
+all. Between these extremes lie many distributions that capture the amount of sharing appropriate
+for different domains.
+
+as before, but allows the overall number of represented features to range from a
+
+,b  Beta(
+
+As the one-parameter model, this two-parameter model can be derived by taking the limit of
+a nite model, but using p k|a
+K ,b ) instead of Equation 9. Here we will focus on the
+equivalent sequential generative process. To return to the language of the Indian buffet, the rst
+customer starts at the left of the buffet and samples Poisson(a ) dishes. The ith customer serves
+himself from any dish previously sampled by mk > 0 customers with probability mk/(b + i  1),
+and in addition from Poisson(a
+is introduced in such a
+way as to preserve the expected number of features per object, a
+, but the expected overall number of
+features is a
+b +i1, and the distribution of K+ is Poisson with this mean. The total number of
+features used thus increases as b
+, the expected number of features increases
+as a
+
+ln N, but if b  1 the logarithmic regime is preceded by linear growth at small N < b
+
+/(b + i  1)) new dishes. The parameter b
+
+increases. For nite b
+
+Figure 10 shows three matrices drawn from the two-parameter IBP, all with a = 10 but with
+b = 0.2, b = 1, and b = 5 respectively. Although all three matrices have roughly the same number
+of non-zero entries, the number of features used varies considerably. At small values of b
+features
+become likely to be shared by all objects. At high values of b
+features are more likely to be spe-
+cic to particular objects. Further details about the properties of this distribution are provided in
+Ghahramani et al. (2007).
+
+(cid:229) N
+i=1
+
+.
+
+Prior sample from IBP with a =10 b =1
+
+Prior sample from IBP
+with a =10 b =0.2
+
+0
+
+10
+
+20
+
+30
+
+40
+
+50
+
+60
+
+70
+
+80
+
+90
+
+)
+s
+r
+e
+m
+o
+
+t
+s
+u
+c
+(
+
+s
+t
+c
+e
+b
+o
+
+j
+
+100
+features (dishes)
+
+5 10 15
+
+0
+
+0
+
+10
+
+20
+
+30
+
+40
+
+50
+
+60
+
+70
+
+80
+
+90
+
+)
+s
+r
+e
+m
+o
+t
+s
+u
+c
+(
+
+s
+t
+c
+e
+b
+o
+
+j
+
+100
+
+0
+
+10
+
+Prior sample from IBP with a =10 b =5
+
+0
+
+10
+
+20
+
+30
+
+40
+
+50
+
+60
+
+70
+
+80
+
+90
+
+)
+s
+r
+e
+m
+o
+t
+s
+u
+c
+(
+
+s
+t
+c
+e
+b
+o
+
+j
+
+20
+
+30
+
+40
+
+features (dishes)
+
+50
+
+100
+
+0
+
+20
+
+40
+
+60
+
+80
+
+100
+features (dishes)
+
+120
+
+140
+
+160
+
+Figure 10: Three samples from the two-parameter Indian buffet process with a = 10 and b = 0.2
+
+(left), b = 1 (middle), and b = 5 (right).
+
+7.2 A Stick-Breaking Construction
+
+Our strategy of taking the limit of a nite exchangeable distribution in deriving the IBP was inspired
+by the derivation of the CRP as the limit of a Dirichlet-multinomial model. However, there are many
+
+6. The original idea and analysis was described in an unpublished note by Sollich (2005).
+
+1214
+
+a
+b
+b
+b
+b
+INDIAN BUFFET PROCESS
+
+other routes by which the CRP can be derived. One of these is via the Dirichlet process (Ferguson,
+1973). A simple way to think about the Dirichlet process is in terms of a probability measure over
+probability measures. The parameters of the process are its concentration a
+and a base measure
+G0. In a typical use, we would draw a measure G from the Dirichlet process, and then generate
+parameters for a model f
+i by sampling them independently from G. Since the Dirichlet process
+generates discrete measures with probability 1, it is possible for multiple parameters f
+j
+drawn from G to take the same value. We can thus imagine indexing the values taken by the f
+i with
+discrete variables zi, such that zi = z j if and only if f
+i,
+and correspond to a partition of the indices of the f
+i. The distribution over partitions z produced by
+the Dirichlet process, integrating over G, is the CRP (Blackwell and MacQueen, 1973).
+
+j. The zi thus index unique values of f
+
+i and f
+
+i = f
+
+A straightforward way to understand how the Dirichlet process allocates probabilities to a dis-
+crete set of atoms is to think about assigning probabilities in terms of breaking off pieces of a stick.
+The stick is one unit in length, corresponding to the fact that our probabilities must sum to one.
+Each piece of stick we break off represents the probability assigned to another discrete atom. After
+breaking off each piece, we then consider how much of the remainder to break off as the next piece.
+Sethuraman (1994) showed that if this process is repeated innitely often, with a proportion of the
+stick drawn from a Beta(a
+, 1) distribution being broken off at each step, the lengths of the pieces
+of broken stick are equivalent to the probabilities assigned to a discrete set of atoms by the Dirich-
+let process with parameter a
+. This stick-breaking representation of the Dirichlet process is useful
+in deriving its properties, and in developing inference algorithms such as the variational inference
+algorithm proposed by Blei and Jordan (2006).
+
+Teh et al. (2007) showed that a similar stick-breaking construction can be dened for the IBP.
+First, we imagine sorting the p k representing the probability of each feature being possessed by
+an object from largest to smallest. Then, if we consider the proportion of the stick that is broken
+off and discarded at each break in the stick-breaking construction for the Dirichlet process, the
+distribution of the sequence of stick lengths corresponds exactly to the distribution of these ordered
+probabilities. This stick-breaking construction identies an interesting relationship between the IBP
+and the Dirichlet process, and is useful for exactly the same reasons. In particular, the stick-breaking
+construction was used in dening the variational inference algorithm summarized in Section 6.9, and
+can also be used to derive other inference algorithms for the IBP, such as slice sampling (Teh et al.,
+2007).
+
+7.3 Connections to the Beta Process
+
+The relationship between the CRP and the Dirichlet process is an instance of a more general re-
+lationship between exchangeable distributions and underlying probability measures. The results
+summarized in the previous paragraph indicate that we can write
+
+P(z) = Z
+
+N(cid:213)
+
+i=1
+
+P(zi|G)p(G)dG,
+
+where the zi are drawn independently from the measure G, which is generated from the Dirichlet
+process. The fact that we can represent the exchangeable distribution P(z) as the result of generating
+the zi independently from a latent measure is a specic instance of the more general principle stated
+in de Finettis exchangeability theorem, which indicates that any exchangeable distribution can be
+represented in this way (see Bernardo and Smith, 1994, for details). This raises a natural question:
+is there a similar measure underlying the exchangeable distribution produced by the IBP?
+
+1215
+
+GRIFFITHS AND GHAHRAMANI
+
+Thibaux and Jordan (2007) provided an answer to this question, showing that the exchangeable
+distribution produced by the IBP corresponds to the use of a latent measure based on the beta process
+(Hjort, 1990). The beta process provides a source of Bernoulli parameters p k associated with the
+elements of a (possibly continuous) index set. Sampling each of the zik independently according
+to the distribution dened by the appropriate parameter results in the same distribution on Z as
+the IBP. This perspective also makes it straightforward to dene analogues of the two-parameter
+process described in Section 7.1, and to extend the IBP to a hierarchical model that can capture
+correlations in the features exhibited in multiple data sets. Teh and Gorur (2010) also recently
+used the relationship to the beta process to dene a variant of the IBP that produces a power-law
+distribution in feature frequencies, exploiting a connection to stable processes. Variants of this kind
+may be useful in settings where power-law distributions are common, such as natural language
+processing.
+
+7.4 Relaxing the Assumption of Exchangeability
+
+The IBP assumes independence between the columns of Z, and only the kind of weak dependency
+implied by exchangeability for the rows of Z. Both of these assumptions have been relaxed in sub-
+sequent work. Producing correlations between the columns of Z can be done by supplementing the
+IBP with a secondary process capturing patterns in the latent features (Doshi-Velez and Ghahramani,
+2009b). Modifying the assumption of exchangeability is potentially more problematic. Exchange-
+ability was one of our original desiderata, since it is a reasonable assumption in many settings and
+simplies probabilistic inference. However, this assumption is not warranted in cases where we
+have additional information about the properties of our observations, such as the fact that they were
+produced in a particular temporal sequence, or reect a known pattern of correlation. The chal-
+lenge is thus to identify how the assumption of exchangeability can be relaxed while maintaining
+the tractability of probabilistic inference. Two recent papers have presented strategies for modifying
+the IBP to capture different forms of dependency between the rows of Z.
+
+The rst kind of dependency can arise as the consequence of observations being generated in a
+specic sequence. In such a case, it might be appropriate to assume that the latent features associated
+with observations made closer in time should be more correlated. A strategy for modifying the IBP
+to capture this kind of dependency was introduced by Van Gael et al. (2009). In this modelthe
+Markov Indian buffet processit is assumed that the rows of Z are generated via a Markov process,
+where the values in each column are generated based on the corresponding values in the previous
+row. This Markov process has two parameters, giving the probability of a 0 in the previous row
+changing to a 1, and the probability of a 1 in the previous row remaining unchanged. By assuming
+that these parameters are generated from a Beta distribution and taking a limit analogous to that used
+in the derivation of the IBP, it is possible to dene a distribution over equivalence classes of binary
+matrices in which the rows of the matrix reect a Markov dependency structure. This model can be
+used to dene richer nonparametric models for temporal data, such as an innite factorial hidden
+Markov model, and probabilistic inference can be carried out using a slice sampler (see Van Gael
+et al., 2009, for details).
+
+A second kind of dependency can be the result of known degrees of relatedness among observa-
+tions. For example, one might seek to draw inferences about a group of people with known genetic
+relationships, or about a set of organisms or languages with a known evolutionary history. In cases
+where the degrees of relatedness can be expressed in a tree, the phylogenetic Indian buffet process
+
+1216
+
+INDIAN BUFFET PROCESS
+
+(Miller et al., 2008) can be used. In this model, the tree expresses the dependency structure that
+governs the rows of Z, and each column is generated independently by sampling from a stochastic
+process dened on the tree. The parameters of the stochastic process are specied in a way that
+guarantees the total number of columns follows a Poisson distribution, and the original IBP is re-
+covered as the special case where the tree is degenerate, with all branches meeting at the root. Trees
+can be used to capture a wide range of dependency structures, including partial exchangeability, and
+probabilistic inference by MCMC remains tractable because belief propagation on the tree can be
+used to efciently compute the relevant conditional probabilities.
+
+8. Conclusions and Future Work
+
+The methods that have been used to dene innite latent class models can be extended to models in
+which objects are represented in terms of a set of latent features, and used to derive distributions on
+innite binary matrices that can be used as priors for such models. We used this method to derive a
+prior that is the innite limit of a simple distribution on nite binary matrices, and showed that the
+same distribution can be specied in terms of a simple stochastic processthe Indian buffet process.
+This distribution satises our two desiderata for a prior for innite latent feature models: objects
+are exchangeable, and inference remains tractable. When used as a prior in models that represent
+objects using latent features, this distribution can be used to automatically infer the number of
+features required to account for observed data. More generally, it can be used as a prior in any
+setting where a sparse binary matrix with a nite number of rows and innite number of columns is
+appropriate, such as estimating the adjacency matrix of a bipartite graph where the size of one class
+of nodes is unknown.
+
+Recent work has made signicant progress on turning this nonparametric approach to inferring
+latent features into a tool that can be used to solve a wide range of machine learning problems. These
+advances include more sophisticated MCMC algorithms, schemes for parallelizing probabilistic
+inference, and deterministic methods for approximating posterior distributions over latent feature
+matrices. The connections between the IBP and other stochastic processes provide the groundwork
+for further understanding and extending this class of probabilistic models, making it possible to
+modify the distribution over feature assignments and to capture different patterns of dependency
+that might exist among the latent features of objects. As with the CRP, the different views of the
+IBP that result from considering the stick-breaking construction or the underlying measure that is
+marginalized out to obtain the combinatorial stochastic process each support different extensions,
+generalizations, and inference algorithms.
+
+Despite the wide array of successful applications of the IBP and related distributions, we view
+one of the primary contributions of this work to be the idea that we can dene richer nonparametric
+Bayesian models to suit the unique challenges of machine learning. Our success in transferring
+the strategy of taking the limit of a nite model from latent classes to latent features suggests that
+the same strategy might be applied with other representations, broadening the kinds of latent struc-
+ture that can be recovered through unsupervised learning. This idea receives support both from
+other examples of new nonparametric models dened via a similar strategy (e.g., Titsias, 2008),
+and from theoretical analyses of the conditions under which innite models remain well dened
+when obtained as limits of nite models (Orbanz, 2010). We anticipate that there will be other
+combinatorial structures for which this strategy will result in new and useful distributions.
+
+1217
+
+GRIFFITHS AND GHAHRAMANI
+
+Acknowledgments
+
+This work was presented at the Neural Information Processing Systems conference, and draws on
+the conference paper (Grifths and Ghahramani, 2006) and associated technical report (Grifths
+and Ghahramani, 2005). The preparation of this article was supported by grants BCS-0631518 and
+IIS-0845410 from the National Science Foundation, and grant FA-9550-10-1-0232 from the Air
+Force Ofce of Scientic Research. We thank three anonymous reviewers for their comments on
+the manuscript.
+
+Appendix A. Details of Limits
+
+This appendix contains the details of the limits of three expressions that appear in Equations 5 and
+14.
+
+The rst expression is
+
+K!
+
+K0! KK+
+
+=
+
+=
+
+(cid:213) K+
+
+k=1(K  k + 1)
+
+KK+
+
+KK+  (K+1)K+
+
+2
+
+KK+1 +    + (1)K+1(K+  1)!K
+
+= 1 
+
+(K+  1)K+
+
+2K
+
++    +
+
+KK+
+(1)K+1(K+  1)!
+
+KK+1
+
+.
+
+For nite K+, all terms except the rst go to zero as K  
+
+.
+
+The second expression is
+
+mk1
+
+( j +
+
+j=1
+
+K ) = (mk  1)! +
+
+K
+
+mk1
+
+(mk  1)!
+
+j=1
+
+j
+
++    +(cid:0)
+
+For nite mk and a
+
+, all terms except the rst go to zero as K  
+
+.
+
+N!
+
+(cid:213) N
+
+j=1( j +
+
+K )!K
+
+The third expression is
+
+
+
+We can now use the fact that
+
+j=1 j
+j=1( j +
+
+(cid:213) N
+
+=   (cid:213) N
+=   N(cid:213)
+j=1
+N(cid:213)
+
+
+j=1
+
+=
+
+1 +
+
+j
+( j +
+
+1
+
+K )!K
+K )!K
+
+
+
+1
+j
+K
+
+K
+
+.
+
+lim
+
+K (cid:18) 1
+
+1 + x
+
+K(cid:19)K
+
+= exp{x}
+
+1218
+
+.
+
+K(cid:1)mk1
+
+(27)
+
+(cid:213)
+a
+a
+(cid:229)
+a
+a
+a
+a
+a
+INDIAN BUFFET PROCESS
+
+to compute the limit of Equation 27 as K  
+
+, obtaining
+
+lim
+K
+
+j=1
+N(cid:213)
+
+
+1
+
+1 +
+
+1
+j
+K
+
+K
+
+
+
+
+=
+
+N(cid:213)
+
+j=1
+
+exp{a
+
+1
+j }
+
+N(cid:229)
+
+= exp{a
+
+1
+j }
+j=1
+= exp{a HN},
+
+as desired.
+

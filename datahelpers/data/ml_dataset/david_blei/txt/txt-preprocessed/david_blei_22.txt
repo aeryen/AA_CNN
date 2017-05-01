@@ -1,0 +1,696 @@
+Abstract
+
+We introduce supervised latent Dirichlet allocation (sLDA), a statistical model of
+labelled documents. The model accommodates a variety of response types. We
+derive a maximum-likelihood procedure for parameter estimation, which relies on
+variational approximations to handle intractable posterior expectations. Prediction
+problems motivate this research: we use the tted model to predict response values
+for new documents. We test sLDA on two real-world problems: movie ratings
+predicted from reviews, and web page popularity predicted from text descriptions.
+We illustrate the benets of sLDA versus modern regularized regression, as well
+as versus an unsupervised LDA analysis followed by a separate regression.
+
+1 Introduction
+
+There is a growing need to analyze large collections of electronic text. The complexity of document
+corpora has led to considerable interest in applying hierarchical statistical models based on what are
+called topics. Formally, a topic is a probability distribution over terms in a vocabulary. Informally,
+a topic represents an underlying semantic theme; a document consisting of a large number of words
+might be concisely modelled as deriving from a smaller number of topics. Such topic models provide
+useful descriptive statistics for a collection, which facilitates tasks like browsing, searching, and
+assessing document similarity.
+Most topic models, such as latent Dirichlet allocation (LDA) [4], are unsupervised: only the words
+in the documents are modelled. The goal is to infer topics that maximize the likelihood (or the pos-
+terior probability) of the collection. In this work, we develop supervised topic models, where each
+document is paired with a response. The goal is to infer latent topics predictive of the response.
+Given an unlabeled document, we infer its topic structure using a tted model, then form its pre-
+diction. Note that the response is not limited to text categories. Other kinds of document-response
+corpora include essays with their grades, movie reviews with their numerical ratings, and web pages
+with counts of how many online community members liked them.
+Unsupervised LDA has previously been used to construct features for classication. The hope was
+that LDA topics would turn out to be useful for categorization, since they act to reduce data di-
+mension [4]. However, when the goal is prediction, tting unsupervised topics may not be a good
+choice. Consider predicting a movie rating from the words in its review. Intuitively, good predictive
+topics will differentiate words like excellent, terrible, and average, without regard to genre.
+But topics estimated from an unsupervised model may correspond to genres, if that is the dominant
+structure in the corpus.
+The distinction between unsupervised and supervised topic models is mirrored in existing
+dimension-reduction techniques. For example, consider regression on unsupervised principal com-
+ponents versus partial least squares and projection pursuit [7], which both search for covariate linear
+combinations most predictive of a response variable. These linear supervised methods have non-
+
+1
+
+parametric analogs, such as an approach based on kernel ICA [6]. In text analysis, McCallum et al.
+developed a joint topic model for words and categories [8], and Blei and Jordan developed an LDA
+model to predict caption words from images [2]. In chemogenomic proling, Flaherty et al. [5]
+proposed labelled LDA, which is also a joint topic model, but for genes and protein function
+categories. It differs fundamentally from the model proposed here.
+This paper is organized as follows. We rst develop the supervised latent Dirichlet allocation model
+(sLDA) for document-response pairs. We derive parameter estimation and prediction algorithms for
+the real-valued response case. Then we extend these techniques to handle diverse response types,
+using generalized linear models. We demonstrate our approach on two real-world problems. First,
+we use sLDA to predict movie ratings based on the text of the reviews. Second, we use sLDA to
+predict the number of diggs that a web page will receive in the www.digg.com community, a
+forum for sharing web content of mutual interest. The digg count prediction for a page is based
+on the pages description in the forum. In both settings, we nd that sLDA provides much more
+predictive power than regression on unsupervised LDA features. The sLDA approach also improves
+on the lasso, a modern regularized regression technique.
+
+2 Supervised latent Dirichlet allocation
+
+In topic models, we treat the words of a document as arising from a set of latent topics, that is, a
+set of unknown distributions over the vocabulary. Documents in a corpus share the same set of K
+topics, but each document uses a mix of topics unique to itself. Thus, topic models are a relaxation
+of classical document mixture models, which associate each document with a single unknown topic.
+Here we build on latent Dirichlet allocation (LDA) [4], a topic model that serves as the basis for
+many others. In LDA, we treat the topic proportions for a document as a draw from a Dirichlet
+distribution. We obtain the words in the document by repeatedly choosing a topic assignment from
+those proportions, then drawing a word from the corresponding topic.
+In supervised latent Dirichlet allocation (sLDA), we add to LDA a response variable associated
+with each document. As mentioned, this variable might be the number of stars given to a movie, a
+count of the users in an on-line community who marked an article interesting, or the category of a
+document. We jointly model the documents and the responses, in order to nd latent topics that will
+best predict the response variables for future unlabeled documents.
+We emphasize that sLDA accommodates various types of response: unconstrained real values, real
+values constrained to be positive (e.g., failure times), ordered or unordered class labels, nonnegative
+integers (e.g., count data), and other types. However, the machinery used to achieve this generality
+complicates the presentation. So we rst give a complete derivation of sLDA for the special case
+of an unconstrained real-valued response. Then, in Section 2.3, we present the general version of
+sLDA, and explain how it handles diverse response types.
+Focus now on the case y  R. Fix for a moment the model parameters: the K topics 1:K (each
+k a vector of term probabilities), the Dirichlet parameter , and the response parameters  and  2.
+Under the sLDA model, each document and response arises from the following generative process:
+
+1. Draw topic proportions  |   Dir().
+2. For each word
+
+(a) Draw topic assignment zn |   Mult( ).
+3. Draw response variable y | z1:N , ,  2  N(cid:0)>z,  2(cid:1).
+(b) Draw word wn | zn, 1:K  Mult(zn
+).
+
+Here we dene z := (1/N )PN
+
+n=1 zn. The family of probability distributions corresponding to this
+
+generative process is depicted as a graphical model in Figure 1.
+Notice the response comes from a normal linear model. The covariates in this model are the (un-
+observed) empirical frequencies of the topics in the document. The regression coefcients on those
+frequencies constitute . Note that a linear model usually includes an intercept term, which amounts
+to adding a covariate that always equals one. Here, such a term is redundant, because the compo-
+nents of z always sum to one.
+
+2
+
+By regressing the response on the empirical topic frequencies, we treat the response as non-
+exchangeable with the words. The document (i.e., words and their topic assignments) is generated
+rst, under full word exchangeability; then, based on the document, the response variable is gen-
+erated. In contrast, one could formulate a model in which y is regressed on the topic proportions
+. This treats the response and all the words as jointly exchangeable. But as a practical matter,
+our chosen formulation seems more sensible: the response depends on the topic frequencies which
+actually occurred in the document, rather than on the mean of the distribution generating the topics.
+Moreover, estimating a fully exchangeable model with enough topics allows some topics to be used
+entirely to explain the response variables, and others to be used to explain the word occurrences.
+This degrades predictive performance, as demonstrated in [2].
+We treat , 1:K , , and  2 as unknown constants to be estimated, rather than random variables. We
+carry out approximate maximum-likelihood estimation using a variational expectation-maximization
+(EM) procedure, which is the approach taken in unsupervised LDA as well [4].
+
+2.1 Variational E-step
+
+Given a document and response, the posterior distribution of the latent variables is
+
+(cid:16)QN
+(cid:17)
+p(, z1:N | w1:N , y, , 1:K , ,  2) =
+(cid:16)QN
+(cid:17)
+p(y | z1:N , ,  2)
+n=1 p(zn |  )p(wn | zn, 1:K )
+R d p( | )P
+n=1 p(zn |  )p(wn | zn, 1:K )
+
+p( | )
+
+z1:N
+
+p(y | z1:N , ,  2)
+
+.
+
+(1)
+
+The normalizing value is the marginal probability of the observed data, i.e., the document w1:N and
+response y. This normalizer is also known as the likelihood, or the evidence. As with LDA, it is not
+efciently computable. Thus, we appeal to variational methods to approximate the posterior.
+Variational objective function. We maximize the evidence lower bound (ELBO) L(), which for a
+single document has the form
+
+log p(cid:0)w1:N , y | , 1:K , ,  2(cid:1)  L( , 1:N; , 1:K , ,  2) = E[log p( | )] +
+NX
+
+E[log p(wn | Zn, 1:K )] + E[log p(y | Z1:N , ,  2)] + H(q) .
+
+E[log p(Zn |  )] + NX
+
+(2)
+
+n=1
+
+n=1
+
+Here the expectation is taken with respect to a variational distribution q. We choose the fully factor-
+ized distribution,
+
+q(, z1:N |  , 1:N ) = q( |  )QN
+
+n=1 q(zn | n),
+
+(3)
+
+3
+
+Figure 1:  (Left) A graphical model representation of Supervised Latent Dirichlet allocation.  (Bottom) The topics of a 10-topic sLDA model t to the movie review data of Section 3. bothmotionsimpleperfectfascinatingpowercomplexhowevercinematographyscreenplayperformancespictureseffectivepicturehistheircharactermanywhileperformancebetween!30!20!1001020!!!!!!!!!!morehasthanlmsdirectorwillcharactersonefromtherewhichwhomuchwhatawfulfeaturingroutinedryofferedcharlieparisnotaboutmovieallwouldtheyitshavelikeyouwasjustsomeoutbadguyswatchableitsnotonemovieleastproblemunfortunatelysupposedworseatdulldZd,nWd,nNDKkYd,2(4)
+
+(5)
+
+2 2 .
+
+(cid:17).
+
+>(cid:3)
+
+y2  2y>
+
+where  is a K-dimensional Dirichlet parameter vector and each n parametrizes a categorical dis-
+tribution over K elements. Notice E[Zn] = n.
+The rst three terms and the entropy of the variational distribution are identical to the corresponding
+log(cid:0)2  2(cid:1) (cid:16)
+terms in the ELBO for unsupervised LDA [4]. The fourth term is the expected log probability of the
+response variable given the latent topic assignments,
+E[log p(y | Z1:N , ,  2)] = = 1
+2
+The rst expectation is E(cid:2) Z(cid:3) =  := (1/N )PN
+(cid:16)PN
+>(cid:3) = (1/N 2)
+P
+m6=n n>
+n=1
+To see (5), notice that for m 6= n, E[Zn Z>
+m ] = E[Zn]E[Zm]> = n>
+distribution is fully factorized. On the other hand, E[Zn Z>
+is an indicator vector.
+For a single document-response pair, we maximize (2) with respect to 1:N and  to obtain an
+estimate of the posterior. We use block coordinate-ascent variational inference, maximizing with
+respect to each variational parameter vector in turn.
+Optimization with respect to  . The terms that involve the variational Dirichlet  are identical to
+those in unsupervised LDA, i.e., they do not involve the response variable y. Thus, the coordinate
+ascent update is as in [4],
+
+m +PN
+m because the variational
+n ] = diag(E[Zn]) = diag(n) because Zn
+
+E(cid:2) Z Z
+E(cid:2) Z(cid:3) + >
+n=1 diag{n}(cid:17)
+
+n=1 n, and the second expectation is
+.
+
+E(cid:2) Z Z
+
+n=1 n.
+(6)
+n6= j n. Given j  {1, . . . , N}. In [3], we
+maximize the Lagrangian of the ELBO, which incorporates the constraint that the components of  j
+sum to one, and obtain the coordinate update
+
+ new   +PN
+Optimization with respect to  j. Dene  j := P
+(cid:2)2(cid:0)> j
+(cid:26)
+E[log  |  ] + E[log p(w j | 1:K )] +(cid:16) y
+j  exp
+new
+that E[log i |  ] = (i )  (P  j ), where () is the digamma function.
+
+Exponentiating a vector means forming the vector of exponentials. The proportionality symbol
+means the components of new
+are computed according to (7), then normalized to sum to one. Note
+
+(cid:1) + (  )(cid:3)
+
+2N 2 2
+
+.
+
+(7)
+
+j
+
+(cid:17)
+
+ 
+
+N  2
+
+(cid:27)
+
+The central difference between LDA and sLDA lies in this update. As in LDA, the jth words
+variational distribution over topics depends on the words topic probabilities under the actual model
+(determined by 1:K ). But w j s variational distribution, and those of all other words, affect the
+probability of the response, through the expected residual sum of squares (RSS), which is the second
+term in (4). The end result is that the update (7) also encourages  j to decrease this expected RSS.
+The update (7) depends on the variational parameters  j of all other words. Thus, unlike LDA, the
+ j cannot be updated in parallel. Distinct occurrences of the same term are treated separately.
+
+2.2 M-step and prediction
+
+The corpus-level ELBO lower bounds the joint log likelihood across documents, which is the sum of
+the per-document log-likelihoods. In the E-step, we estimate the approximate posterior distribution
+for each document-response pair using the variational inference algorithm described above. In the
+M-step, we maximize the corpus-level ELBO with respect to the model parameters 1:K , , and  2.
+For our purposes, it sufces simply to x  to 1/K times the ones vector. In this section, we add
+document indexes to the previous sections quantities, so y becomes yd and Z becomes Zd.
+Estimating the topics. The M-step updates of the topics 1:K are the same as for unsupervised
+LDA, where the probability of a word under a topic is proportional to the expected number of times
+that it was assigned to that topic [4],
+new
+
+NX
+
+k,w  DX
+
+1(wd,n = w)k
+d,n.
+
+(8)
+
+d=1
+
+n=1
+
+4
+
+Here again, proportionality means that each new
+Estimating the regression parameters. The only terms of the corpus-level ELBO involving  and
+ 2 come from the corpus-level analog of (4).
+Dene y = y1:D as the vector of response values across documents. Let A be the D  (K + 1)
+matrix whose rows are the vectors Z>
+
+d . Then the corpus-level version of (4) is
+
+is normalized to sum to one.
+
+k
+
+h
+
+i
+(y  A)>(y  A)
+
+.
+
+(9)
+
+E[log p(y | A, ,  2)] =  D
+2
+
+log(2  2)  1
+
+2 2 E
+
+>
+
+E(cid:2)A
+
+Here the expectation is over the matrix A, using the variational distribution parameters chosen in
+the previous E-step. Expanding the inner product, using linearity of expectation, and applying the
+rst-order condition for , we arrive at an expected-value version of the normal equations:
+
+A(cid:3) = E[A]
+y
+(10)
+(cid:3), with each term having a xed value from the previous E-step
+step. Also, E(cid:2)A> A(cid:3) =P
+d E(cid:2) Zd
+Note that the dth row of E[A] is just d, and all these average vectors were xed in the previous E-
+Z>
+as well, given by (5). We caution again: formulas in the previous section, such as (5), suppress the
+document indexes which appear here.
+We now apply the rst-order condition for  2 to (9) and evaluate the solution at new, obtaining:
+
+new (cid:16)
+
+A(cid:3)(cid:17)1
+
+E(cid:2)A
+
+E[A]
+
+
+
+y .
+
+>
+
+>
+
+>
+
+d
+
+new  (1/D){y
+ 2
+
+>
+
+y  y
+
+>
+
+E[A]
+
+>
+
+y} .
+
+E[A]
+
+(11)
+
+(cid:16)
+
+E(cid:2)A
+
+>
+
+A(cid:3)(cid:17)1
+
+Prediction. Our focus in applying sLDA is prediction. Specically, we wish to compute the ex-
+pected response value, given a new document w1:N and a tted model {, 1:K , ,  2}:
+
+E[Y | w1:N , , 1:K , ,  2] = >
+
+E[ Z | w1:N , , 1:K ].
+
+(12)
+The identity follows easily from iterated expectation. We approximate the posterior mean of Z using
+the variational inference procedure of the previous section. But here, the terms depending on y are
+removed from the  j update in (7). Notice this is the same as variational inference for unsupervised
+LDA: since we averaged the response variable out of the right-hand side in (12), what remains is the
+standard unsupervised LDA model for Z1:N and .
+Thus, given a new document, we rst compute Eq[Z1:N ], the variational posterior distribution of the
+latent variables Zn. Then, we estimate the response with
+E[Y | w1:N , , 1:K , ,  2]  >
+2.3 Diverse response types via generalized linear models
+
+Eq[ Z] = > .
+
+(13)
+
+Up to this point, we have conned our attention to an unconstrained real-valued response variable.
+In many applications, however, we need to predict a categorical label, or a non-negative integral
+count, or a response with other kinds of constraints. Sometimes it is reasonable to apply a normal
+linear model to a suitably transformed version of such a response. When no transformation results
+in approximate normality, statisticians often make use of a generalized linear model, or GLM [9].
+In this section, we describe sLDA in full generality, replacing the normal linear model of the earlier
+exposition with a GLM formulation. As we shall see, the result is a generic framework which can be
+specialized in a straightforward way to supervised topic models having a variety of response types.
+There are two main ingredients in a GLM: the random component and the systematic compo-
+nent. For the random component, one takes the distribution of the response to be an exponential
+dispersion family with natural parameter  and dispersion parameter :
+
+p(y | , ) = h(y, ) exp
+
+.
+
+(14)
+
+(cid:26)  y  A( )
+
+(cid:27)
+
+
+
+For each xed , (14) is an exponential family, with base measure h(y, ), sufcient statistic y,
+and log-normalizer A( ). The dispersion parameter provides additional exibility in modeling the
+variance of y. Note that (14) need not be an exponential family jointly in (, ).
+
+5
+
+In the systematic component of the GLM, we relate the exponential-family parameter  of the ran-
+dom component to a linear combination of covariates  the so-called linear predictor. For sLDA,
+the linear predictor is >z. In fact, we simply set  = >z. Thus, in the general version of sLDA,
+the previous specication in step 3 of the generative process is replaced with
+
+so that
+
+p(y | z1:N , , ) = h(y, ) exp
+
+y | z1:N , ,   GLM(z, , ) ,
+
+(cid:26) >(zy)  A(>z)
+
+(cid:27)
+
+.
+
+(15)
+
+(16)
+
+
+
+
+
+.
+
+(17)
+
+(cid:17)
+
+n
+
+(cid:19) 
+
+(cid:18)1
+
+E[log p(y | Z1:N , , )] = log h(y, ) + 1
+
+The reader familiar with GLMs will recognize that our choice of systematic component means sLDA
+uses only canonical link functions. In future work, we will relax this constraint.
+We now have the exibility to model any type of response variable whose distribution can be written
+in exponential dispersion form (14). As is well known, this includes many commonly used distribu-
+tions: the normal; the binomial (for binary response); the Poisson and negative binomial (for count
+data); the gamma, Weibull, and inverse Gaussian (for failure time data); and others. Each of these
+
+distributions corresponds to a particular choice of h(y, ) and A( ). For example, it is easy to show
+that the normal distribution corresponds to h(y, ) = (1/
+2 ) exp{y2/(2)} and A( ) =  2/2.
+In this case, the usual parameters  and  2 just equal  and , respectively.
+>(cid:0)E(cid:2) Z(cid:3) y(cid:1)  E(cid:2)A(> Z )(cid:3)i
+h
+Variational E-step. The distribution of y appears only in the cross-entropy term (4). Its form under
+the GLM is
+= E[log  |  ]+E[log p(w j | 1:K )]log  j +1+(cid:16) y
+
+This changes the coordinate ascent step for each  j , but the variational optimization is otherwise
+unaffected. In particular, the gradient of the ELBO with respect to  j becomes
+L
+ j
+Thus, the key to variational inference in sLDA is obtaining the gradient of the expected GLM log-
+normalizer. Sometimes there is an exact expression, such as the normal case of Section 2. As another
+example, the Poisson GLM leads to an exact gradient, which we omit for brevity.
+Other times, no exact gradient is available. In a longer paper [3], we study two methods for this
+situation. First, we can replace E[A(> Z )] with an adjustable lower bound whose gradient is
+known exactly; then we maximize over the original variational parameters plus the parameter con-
+trolling the bound. Alternatively, an application of the multivariate delta method for moments [1],
+plus standard exponential family theory, shows
+
+E(cid:2)A(> Z )(cid:3)o
+
+E(cid:2)A(> Z )(cid:3)  A(> ) + VarGLM(Y |  = > )  >
+
+(19)
+Here, VarGLM denotes the response variance under the GLM, given a specied value of the natu-
+ral parameterin all standard cases, this variance is a closed-form function of  j . The variance-
+covariance matrix of Z under q is already known in closed from from E[ Z] and (5). Thus, computing
+/ j of (19) exactly is mechanical. However, using this approximation gives up the usual guaran-
+tee that the ELBO lower bounds the marginal likelihood. We forgo details and further examples due
+to space constraints.
+The GLM contribution to the gradient determines whether the  j coordinate update itself has a
+closed form, as it does in the normal case (7) and the Poisson case (omitted). If the update is not
+closed-form, we use numerical optimization, supplying a gradient obtained from one of the methods
+described in the previous paragraph.
+Parameter estimation (M-step). The topic parameter estimates are given by (8), as before. For the
+corpus-level ELBO, the gradient with respect to  becomes
+
+Varq ( Z ) .
+
+. (18)
+
+
+
+ j
+
+N 
+
+(cid:18)1
+
+(cid:19) DX
+
+n
+
+> d yd  E(cid:2)A(> Zd )(cid:3)o =(cid:18)1
+
+(cid:19)( DX
+
+d yd  DX
+
+
+
+d=1
+
+(20)
+The appearance of () = EGLM[Y |  = ] follows from exponential family properties. This GLM
+mean response is a known function of > Zd in all standard cases. However, Eq[(> Zd ) Zd] has
+
+d=1
+
+d=1
+
+Eq
+
+
+
+.
+
+(cid:2)(> Zd ) Zd
+
+(cid:3))
+
+
+
+
+6
+
+Figure 2: Predictive R2 and per-word likelihood for the movie and Digg data (see Section 3).
+
+an exact solution only in some cases (e.g. normal, Poisson). In other cases, we approximate the
+expectation with methods similar to those applied for the  j coordinate update. Reference [3] has
+details, including estimation of  and prediction, where we encounter the same issues.
+The derivative with respect to , evaluated at new, is
+
+Zd ) Zd
+
+new
+
+.
+
+(21)
+
+( DX
+
+d=1
+
+h(yd , )/
+
+h(yd , )
+
+)
+
+(cid:18) 1
+
+2
+
+(cid:19)( DX
+
+d=1
+
+d yd  DX
+
+Eq
+
+d=1
+
+(cid:2)(>
+
+(cid:3))
+
+Given that the rightmost summation has been evaluated, exactly or approximately, during the 
+optimization, (21) has a closed form. Depending on h(y, ) and its partial with respect to , we
+obtain new either in closed form or via one-dimensional numerical optimization.
+Prediction. We form predictions just as in Section 2.2. The difference is that we now approximate
+the expected response value of a test document as
+
+E[Y | w1:N , , 1:K , , ]  Eq[(> Z )].
+
+(22)
+
+Again, this follows from iterated expectation plus the variational approximation. When the varia-
+tional expectation cannot be computed exactly, we apply the approximation methods we relied on
+for the GLM E-step and M-step. We defer specics to [3].
+
+3 Empirical results
+
+We evaluated sLDA on two prediction problems. First, we consider sentiment analysis of news-
+paper movie reviews. We use the publicly available data introduced in [10], which contains movie
+reviews paired with the number of stars given. While Pang and Lee treat this as a classication
+problem, we treat it as a regression problem. With a 5000-term vocabulary chosen by tf-idf, the
+corpus contains 5006 documents and comprises 1.6M words.
+Second, we introduce the problem of predicting web page popularity on Digg.com. Digg is a com-
+munity of users who share links to pages by submitting them to the Digg homepage, with a short
+description. Once submitted, other users digg the links they like. Links are sorted on the Digg
+homepage by the number of diggs they have received. Our Digg data set contains a year of link
+descriptions, paired with the number of diggs each received during its rst week on the homepage.
+(This corpus will be made publicly available at publication.) We restrict our attention to links in the
+technology category. After trimming the top ten outliers, and using a 4145-term vocabulary chosen
+by tf-idf, the Digg corpus contains 4078 documents and comprises 94K words.
+For both sets of response variables, we transformed to approximate normality by taking logs. This
+makes the data amenable to the continuous-response model of Section 2; for these two problems,
+generalized linear modeling turned out to be unnecessary. We initialized 1:K to uniform topics,  2
+to the sample variance of the response, and  to a grid on [1, 1] in increments of 2/K . We ran EM
+until the relative change in the corpus-level likelihood bound was less than 0.01%. In the E-step,
+we ran coordinate-ascent variational inference for each document until the relative change in the
+
+7
+
+241020300.000.020.040.060.080.100.12Number of topicsPredictive R2241020308.68.58.48.38.28.18.0Number of topicsPerword held out log likelihood51015202530354045506.426.416.406.396.386.37Number of topicsPerword held out log likelihood51015202530354045500.00.10.20.30.40.5Number of topicsPredictive R2sLDALDAMovie corpusDigg corpusper-document ELBO was less than 0.01%. For the movie review data set, we illustrate in Figure 1 a
+matching of the top words from each topic to the corresponding coefcient k.
+captured by the out-of-fold predictions: pR2 := 1  (P(y  y)2)/(P(y  y)2).
+We assessed the quality of the predictions with predictive R2. In our 5-fold cross-validation (CV),
+we dened this quantity as the fraction of variability in the out-of-fold response values which is
+We compared sLDA to linear regression on the d from unsupervised LDA. This is the regression
+equivalent of using LDA topics as classication features [4].Figure 2 (L) illustrates that sLDA pro-
+vides improved predictions on both data sets. Moreover, this improvement does not come at the cost
+of document model quality. The per-word hold-out likelihood comparison in Figure 2 (R) shows that
+sLDA ts the document data as well or better than LDA. Note that Digg prediction is signicantly
+harder than the movie review sentiment prediction, and that the homogeneity of Digg technology
+content leads the model to favor a small number of topics.
+Finally, we compared sLDA to the lasso, which is L1-regularized least-squares regression. The
+lasso is a widely used prediction method for high-dimensional problems. We used each documents
+empirical distribution over words as its lasso covariates, setting the lasso complexity parameter with
+5-fold CV. On Digg data, the lassos optimal model complexity yielded a CV pR2 of 0.088. The best
+sLDA pR2 was 0.095, an 8.0% relative improvement. On movie data, the best Lasso pR2 was 0.457
+versus 0.500 for sLDA, a 9.4% relative improvement. Note moreover that the Lasso provides only a
+prediction rule, whereas sLDA models latent structure useful for other purposes.
+
+4 Discussion
+
+We have developed sLDA, a statistical model of labelled documents. The model accommodates the
+different types of response variable commonly encountered in practice. We presented a variational
+procedure for approximate posterior inference, which we then incorporated in an EM algorithm
+for maximum-likelihood parameter estimation. We studied the models predictive performance on
+two real-world problems. In both cases, we found that sLDA moderately improved on the lasso,
+a state-of-the-art regularized regression method. Moreover, the topic structure recovered by sLDA
+had higher hold-out likelihood than LDA on one problem, and equivalent hold-out likelihood on the
+other. These results illustrate the benets of supervised dimension reduction when prediction is the
+ultimate goal.
+
+Acknowledgments
+
+David M. Blei is supported by grants from Google and the Microsoft Corporation.
+

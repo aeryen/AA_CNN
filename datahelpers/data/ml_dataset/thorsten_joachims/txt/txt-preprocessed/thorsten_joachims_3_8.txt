@@ -1,0 +1,1259 @@
+Abstract. We explore an algorithm for training SVMs with Kernels
+that can represent the learned rule using arbitrary basis vectors, not
+just the support vectors (SVs) from the training set. This results in two
+benets. First, the added exibility makes it possible to nd sparser so-
+lutions of good quality, substantially speeding-up prediction. Second, the
+improved sparsity can also make training of Kernel SVMs more ecient,
+especially for high-dimensional and sparse data (e.g. text classication).
+This has the potential to make training of Kernel SVMs tractable for
+large training sets, where conventional methods scale quadratically due
+to the linear growth of the number of SVs. In addition to a theoretical
+analysis of the algorithm, we also present an empirical evaluation.
+
+1
+
+Introduction
+
+(cid:105)
+
+i=1 iK(xi, x)
+
+While Support Vector Machines (SVMs) with kernels oer great exibility and
+prediction performance on many application problems, their practical use is often
+hindered by the following two problems. Both problems can be traced back to the
+number of Support Vectors (SVs), which is known to generally grow linearly with
+the data set size [1]. First, training is slower than other methods and linear SVMs,
+where recent advances in training algorithms vastly improved training time.
+Second, since the prediction rule takes the form h(x) = sign
+,
+it is too expensive to evaluate in many applications when the number of SVs is
+large.
+
+(cid:104)(cid:80)#SV
+
+This paper tackles these two problems by generalizing the notion of Support
+Vector to arbitrary points in input space, not just training vectors. Unlike Wu et
+al. [2], who explore making the location of the points part of a large non-convex
+optimization problem, we propose an algorithm that iteratively constructs the
+set of basis vectors from a cutting-plane model. This makes our algorithm, called
+Cutting-Plane Subspace Pursuit (CPSP), ecient and modular. We analyze the
+training eciency and the solution quality of the CPSP algorithm both theo-
+retically and empirically. We nd that its classication rules can be orders of
+magnitude sparser than the conventional support-vector representation while
+providing comparable prediction accuracy. The sparsity of the CPSP represen-
+tation not only makes predictions substantially more ecient, it also allows the
+user to control training time. Especially for large datasets with sparse feature
+vectors (e.g. text classication), the CPSP methods is substantially faster than
+methods that only consider basis vectors from the training set.
+
+2
+
+2 Related Work
+
+w = (cid:80)n
+
+Most existing algorithms for training kernel SVMs follow the Representer Theo-
+rem and search for the optimal weight vector in the span of the training vectors
+i=1 i(xi). This includes decomposition methods [3, 4] and all other
+dual approaches. To overcome the problems resulting from the growing number
+of support vectors, Burges and Scholkopf [5] propose to post-process their so-
+lution and replace the support vector expansion with an approximation that is
+more sparse. Clearly, this can improve only the prediction eciency, while it is
+still necessary to compute a full solution during training. For large datasets, this
+is intractable.
+
+An alternative to post-processing are methods for selecting a set of basis
+vectors a priori. This includes sampling randomly from the training set in the
+Nystrom method [6], greedily minimizing reconstruction error [7], and variants
+of the Incomplete Cholesky factorization [8, 9]. However, these selection methods
+are not part of the optimization process, which makes a goal-directed choice of
+basis vectors dicult. In fact, all but [9] ignore label information, and all methods
+are limited to selecting basis vectors from the training set.
+
+Methods like the Core Vector Machine (CVM) [10], the Ball Vector Ma-
+chine (BVM) [11], and the active selection strategy of the LASVM method [12]
+greedily select which basis vectors to include in the classication rule. While
+they allow the user to sacrice solution quality to gain sparsity and training
+eciency, they are also limited to selecting basis vectors from the training set.
+Another set of methods are basis pursuit approaches [13, 14]. They repeatedly
+solve the optimization problem for a given set of basis vector, and then greedily
+search for vectors to add or remove. The Cutting-Plane Subspace Pursuit method
+we propose is similar in the respect that it iteratively constructs the basis set.
+However, the construction of the basis set is part of the optimization algorithm
+itself, and the cutting-plane model makes it straightforward to add basis vectors
+that are not in the training set. It is not clear how to eciently add such general
+basis vectors in other basis pursuit approaches.
+
+The method most closely related to ours was proposed in [2]. They treat
+the basis vectors as variables in the SVM optimization problem, and solve the
+resulting non-convex program via gradient descent to a local optimum. However,
+training eciency is a bottleneck in this approach and they focus only on small
+datasets in their evaluation. We will consider datasets that are several orders of
+magnitude larger. Furthermore, we will provide theoretical results giving insight
+into the quality of the CPSP solution.
+
+3 Cutting-Plane Algorithm for SVMs
+
+We rst introduce the Cutting-Plane Algorithm for training SVMs [15, 16], since
+it is the basis for the CPSP algorithm proposed in this paper. For a training
+sample, (x1, y1), ..., (xn, yn), the following is a general formulation of the large-
+margin training problem for learning a rule h : X  Y mapping from some input
+
+space X to some output space Y [17]. For dierent choices of the joint feature
+map (x, y) and the loss function (y, y), it can be specialized to classication
+SVMs, to Maximum-Margin Markov Networks, or various structured prediction
+problems.
+
+3
+
+n(cid:88)
+
+i=1
+
+min
+w,
+
+1
+2
+
+(cid:104)w, w(cid:105)+ C
+n
+
+s.t.i,yY : (cid:104)w, (xi, yi)(xi, y)(cid:105) (yi, y)i (1)
+
+i
+
+(cid:104)., .(cid:105) denotes an inner product. For the sake of simplicity, this paper only deals
+with the special case of binary classication with X = (cid:60)N and Y = {1, +1},
+2 y(x) for the kernel
+where the joint feature map is (x, y) = 1
+K(x, x(cid:48)) = (cid:104)(x), (x(cid:48))(cid:105)) and where the loss function (y, y) is the zero/one-
+loss. In this case, it is easy to verify that (1) is equivalent to the following
+program, which corresponds to a binary classication SVM without explicit o-
+set.
+
+2 yx (or (x, y) = 1
+
+s.t. i : yi (cid:104)w, xi(cid:105)  1  i
+
+i
+
+n(cid:88)
+
+i=1
+
+min
+w,
+
+1
+2
+
+(cid:104)w, w(cid:105) + C
+n
+
+3.1 Linear SVMs
+
+Instead of solving (1) directly, [15] proposes to solve the following equivalent
+program.
+
+min
+w,
+
+1
+2
+
+(cid:104)w, w(cid:105) + C
+
+s.t. y1...yn  Y n :
+
+(cid:42)
+
+n(cid:88)
+
+i=1
+
+w,
+
+1
+n
+
+((xi, yi)  (xi, yi))
+
+(cid:43)
+
+n(cid:88)
+
+i=1
+
+ 1
+n
+
+(2)
+
+(yi, yi)  
+
+(cid:80)n
+
+This program has only a single slack variable , and is therefore called the 1-slack
+formulation. It is shown in [15] that any w solving (2) is also a solution of (1),
+and that  = 1
+i=1 i. While (2) has a huge number of constraints, Algorithm 1
+n
+is a cutting-plane procedure that always constructs a solution of precision  with
+at most O( C
+ ) active constraints [15, 18, 16]. In the experiments from Section 6,
+the number of active constraints was typically around 30  independent of the
+size of the training set.
+
+Algorithm 1 maintains a working set of m constraints(cid:10)w, i
+
+(cid:11)  i   over
+
+which it solves the QP in Line 4. In each iteration I, the algorithm nds the
+most violated constraint from (2) (Lines 5-7) and adds it to the working set, so
+m  I. Typically, however, m << I, since constraints become inactive in later
+iterations and can be removed from the working set (Line 8). Therefore, the
+size m of the working set is roughly equal to the number of active constraints
+(i.e. m  30). The algorithm is known to need at most I  O( C
+ ) iterations to
+converge to an -accurate solution [15, 18, 16]. This means that the number of
+iterations is independent of the number of training examples n and the number
+of features N.
+
+4
+
+Algorithm 1 Cutting-Plane Algorithm for Structural SVM (primal)
+1: Input: S = ((x1, y1), . . . , (xn, yn)), C, 
+2:   0,   0, m  0
+3: repeat
+(w, )  argminw,0
+4:
+
+2 (cid:104)w, w(cid:105) + C
+
+s.t. i : (cid:10)w, i
+
+1
+
+(cid:11)  i  
+
+yi  argmaxyY{(yi, y) + wT  (xi, y)}
+
+end for
+(  , , m) = remove inactive(  , , w, )
+
+for i=1,...,n do
+
+5:
+6:
+7:
+8:
+9: m  m + 1
+10:
+
+n(cid:80)
+n(cid:80)
+(cid:11)  m    
+12: until(cid:10)w, m
+
+m  1
+m  1
+
+(yi, yi)
+
+11:
+
+n
+
+n
+
+i=1
+
+i=1
+
+[ (xi, yi)   (xi, yi)]
+
+13: return(w,)
+
+3.2 SVMs with Kernels
+
+and the solution vector in the RKHS is w (cid:80)
+
+While originally proposed for linear SVMs, the cutting-plane method can be ex-
+tended to the non-linear case with kernels. Since w now lies in the Reproducing
+Kernel Hilbert Space (RKHS) of the kernel K(x, x(cid:48)) = (cid:104)(x), (x(cid:48))(cid:105), we need
+to move to the dual representation. Algorithm 2 is this dual variant of Algo-
+rithm 1 and specialized to the case of binary classication as implemented in
+the SVMperf software. It replaces the primal QP with its Wolfe dual in Line 5,
+i i i. Note that sums cannot
+be computed eciently in the RKHS. Therefore, the assignment operator  is
+replaced with a rewrite operator  where appropriate. However, it is easy to
+verify that all inner products (Lines 4, 9, 15) can be computed as sums of kernel
+evaluations. The O( C
+ ) bound on the number of iterations [15, 16] holds inde-
+pendent of whether a kernel is used or not, but how does the time complexity
+per iteration change when moving from a linear to a kernelized SVM?
+
+Without kernels, any iteration in Algorithm 2 takes at most O(m3) for solving
+the QP, O(m2) for , O(mN) for w, O(nN) for computing the most violated
+constraint, O(n) for , O(nN) for , and O(mN) for adding a row/column to
+H. So the overall time complexity is O(m3 + mN + nN).
+When using a kernel, however, computing (cid:104)w, (xi)(cid:105) and H becomes more
+expensive than in the linear case. Denote with Y the matrix with Yij = (yi  yi)
+for the j-the constraint in . To nd the most violated constraint, for each
+example one now needs to evaluate
+
+n(cid:88)
+
+ m(cid:88)
+
+k=1
+
+j=1
+
+ K(xi, xk).
+
+(cid:104)w, (xi)(cid:105) =
+
+jYkj
+
+(3)
+
+5
+
+Algorithm 2 Cutting-Plane Algorithm for Classication SVM (dual)
+1: Input: S = ((x1, y1), . . . , (xn, yn)), C, , K(x, x(cid:48)) = (cid:104)(x), (x(cid:48))(cid:105)
+2:   0,   0, H  0,m  0
+3: repeat
+
+4: H  (Hij)1i,jm, where Hij =(cid:10) i, j
+7: w (cid:80)
+
+(cid:11)
+2 TH s.t. T 1  C
+
+  argmax0 T  1
+  1
+C (T   T H)
+
+5:
+6:
+
+i i i
+
+end for
+(  , , m) = remove inactive(  , , )
+
+for i=1,...,n do
+
+yi  sign((cid:104)w, (xi)(cid:105)  yi)
+
+8:
+9:
+10:
+11:
+12: m  m + 1
+13:
+
+n(cid:80)
+n(cid:80)
+15: until(cid:10)w, m
+(cid:11)  m    
+
+(yi  yi)(xi)
+|yi  yi|
+
+m  1
+m  1
+
+14:
+
+i=1
+
+2n
+
+i=1
+
+2n
+
+16: return(w,)
+
+Over all n examples, this has a cost of O(n2+mn). Similarly, adding a row/column
+for the new m to the Gram matrix H now requires computing
+
+i : Hmi = Him =(cid:10) i, m
+
+(cid:11) =
+
+n(cid:88)
+
+n(cid:88)
+
+YkiYlmK(xk, xl)
+
+(4)
+
+k=1
+
+l=1
+
+This takes time O(mn2), counting a single kernel evaluation as O(1). So, the
+overall time complexity of an iteration when kernels are used is O(m3 + mn2).
+This O(n2) scaling is not practical for any reasonably-sized dataset, and the
+algorithm has worse constants than decomposition methods like SVMlight that
+also typically scale O(n2). However, Algorithm 2 does provide a path to a sub-
+stantially more ecient algorithm that is explored in the next section.
+
+4 Cutting-Plane Subspace Pursuit
+
+constructs a low-dimensional subspace W = span( 1, ..., m) = {(cid:80)m
+
+Is it possible to remove the O(n2) scaling behavior? Here is the intuition for the
+approach we take. A property of the cutting-plane algorithm is that it iteratively
+i=1 i i :
+  (cid:60)m} in which the nal solution
+
+m(cid:88)
+
+w =
+
+i i
+
+(5)
+
+is guaranteed to lie. Instead of using the Representer Theorem and considering
+the larger subspace F = span((x1), ..., (xn)) to express the optimal weight
+
+i=1
+
+6
+
+vector as w = (cid:80)n
+
+i=1 (cid:48)
+
+i(xi), the cutting-plane method tells us that we only
+need to consider the subspace W  F in each iteration, where m << n and
+m does not grow with n. Our core idea is to nd a small set of basis vectors
+b1, ..., bk so that
+
+which means that we can express the nal solution from (5) as
+
+W(cid:48) = span((b1), ..., (bk))  W,
+
+w  k(cid:88)
+
+(cid:48)(cid:48)
+i (bi).
+
+(6)
+
+(7)
+
+This enables ecient prediction using the rule h(x) = sign[(cid:80)k
+
+i K(bi, x)],
+given that k is small. Furthermore, we will elaborate in the following how pro-
+jecting into the subspace W(cid:48) allows computing H and (cid:104)w, (x)(cid:105) in time inde-
+pendent of n.
+
+i=1 (cid:48)(cid:48)
+
+i=1
+
+To understand the intuition behind our approach, consider the ideal case
+(cid:80)n
+where for every i there exists a vector bi in input space (not necessarily from
+the training set) so that i = (bi) (as it does in the linear case, where bi =
+j=1(yj  yj)xj). Then we could replace each i with (bi), and it is easy to
+1
+n
+verify that the time complexity of an iteration goes down to O(m3+mn)  almost
+like in the linear case. Furthermore, the resulting classier would only have
+k = m  30 Support Vectors  or, more generally named, Basis Vectors ,
+making it much faster than conventional SVM classiers that often have 10000s
+of SVs.
+
+Unfortunately, in most cases there will be no single pre-image b so that
+ = (b). However, in any iteration it suces to nd a set of pre-image vectors
+so that 1, ..., m lie (approximately) in their span. In particular, we are looking
+for a set of basis vectors B = (b1, ..., bk), bi  (cid:60)N , so that for every i in 
+
+j(bj)||2  
+
+(8)
+
+j=1
+
+then replace i with its projection i (cid:80)k
+
+for some (small)   0. When computing H and (cid:104)w, (xi)(cid:105) in Algorithm 2, we
+j=1 j(bj). This is summarized in
+Algorithm 3, which we call the Cutting-Plane Subspace Pursuit (CPSP) algo-
+rithm. It is easy to verify that H and all (cid:104)w, (xi)(cid:105) can now be computed in
+time O(m2k2) (or O(k3 + m2k + mk2)) and O(mk + kn), respectively.
+
+Using  instead of  in Algorithm 3 is straightforward. However, we still
+have to dene how the function extend basis(B, m) (Line 15) computes the set
+of basis vectors B = (b1, ..., bk) and how the function project( i, B) (Line 17)
+computes the approximate cutting-planes i. This is addressed in the following.
+
+|| i  k(cid:88)
+
+min
+
+
+4.1 Projecting Cutting-Planes  onto B
+For a given subspace span((b1), ..., (bk)), the function project( i,B) com-
+putes the projection i of a cutting-plane i via the following least-squares
+
+7
+
+Algorithm 3 Cutting-Plane Subspace Pursuit (CPSP) Algorithm
+1: Input: S = ((x1, y1), . . . , (xn, yn)), C, , kmax, K(x, x(cid:48)) = (cid:104)(x), (x(cid:48))(cid:105)
+2:   0,   0,   0, H  0,B  , m  0
+3: repeat
+4: H  (Hij)1i,jm, where Hij =
+5:
+6:
+
+(cid:69)
+2 TH s.t. T 1  C
+
+  argmax0 T  1
+  1
+C (T   T H)
+
+(cid:68) i, j
+
+7: w (cid:80)
+
+i i i
+
+for i=1,...,n do
+
+yi  sign((cid:104)w, (xi)(cid:105)  yi)
+
+end for
+(  , , m) = remove inactive(  , , )
+
+2n
+
+(yi  yi)(xi)
+|yi  yi|
+
+m  1
+m  1
+if |B| < kmax then B  extend basis(B, m)
+for i=1,...,k do
+
+i=1
+
+2n
+
+8:
+9:
+10:
+11:
+12: m  m + 1
+13:
+
+n(cid:80)
+n(cid:80)
+
+i=1
+
+14:
+
+15:
+16:
+17:
+18:
+
+i  project( i, B)
+
+19: until(cid:10)w, m
+
+end for
+
+(cid:11)  m    
+
+20: return(w,)
+
+problem:
+
+k(cid:88)
+
+j=1
+
+i =
+
+j(bj) where  = min
+
+
+|| i  k(cid:88)
+
+j=1
+
+j(bj)||2
+
+(9)
+
+To accomodate kernels, we maintain the k  k-matrix G with Gij = K(bi, bj)
+and the k  n-matrix K with Kij = K(bi, xj). The solution of the least-squares
+2n G1KYi. It is more ecient, however,
+problem can then be written as  = 1
+G). With LG, the so-
+to use the Cholesky decomposition LG of G (i.e. G = LGLT
+lution can be computed via forward and back-substitution from LG = 1
+2n KYi
+and LT
+G =  in time O(k2 + kn). This excludes the time for computing K,
+G, and its Cholesky decomposition LG, since these need to be computed only
+once and can then be used until B changes. This is further discussed in the next
+section.
+
+4.2 Constructing the Set of Basis Vectors B
+
+The method for constructing the set of basis vectors B is the nal part of
+Algorithm 3 that still needs to be specied. The goal is to nd a set of basis
+vectors B = (b1, ..., bk) such that for some small   0, all i that are active in
+the current iteration fulll (8). Recomputing B in each iteration would be costly,
+
+8
+
+but fortunately it is unnecessary. Only m is new and all other i are already
+well approximated by the set of basis vectors from the previous iteration. The
+function extend basis(B, m) therefore only adds some new basis vectors to
+B that are required to t m. Note that this can only improve the t for the
+other i.
+
+To decide which basis vectors to add, we follow [5] and take a greedy ap-
+proach. We search for the basis vector bk+1 that minimizes the residual error for
+m, where m is the projection for the current B.
+
+((cid:48), b(cid:48)) = argmin
+
+k+1,bk+1
+
+|| m  m  k+1(bk+1)||2
+
+(10)
+
+This optimization problem is commonly referred to as the preimage problem.
+While exact solutions are dicult to obtain, approximate solutions can be found
+with gradient-based methods [19, 20] or randomized search. In this paper, we use
+the x-point iteration approach described in [20, Sec. 18.2.2] for the RBF kernel
+to solve (10) to a local optimum. In this way we can eciently produce arbitrary
+vectors as basis vectors to add to B. We refer to the Cutting-Plane Subspace
+Pursuit algorithm with this preimage method as CPSP in the following.
+
+To evaluate in how far general basis vectors improve sparsity, we also ex-
+plore a second preimage method that is restricted to using basis vectors from
+the training set. We refer to this method as CPSP(tr). As proposed by Smola
+and Scholkopf [7] (and used by most of the methods we compare against), we
+randomly sample 59 feature vectors from the training set and pick the one with
+maximum objective value in (10). Note that this alternative strategy is intro-
+duced only to evaluate the benet of selecting support vectors outside the
+training set.
+
+The number of new basis vectors to add for each m is a design choice. One
+could either use a xed number, or keep adding until a certain  is achieved. In
+the following experiments, we use the simplest choice and add exactly one basis
+vector for each m until the maximum size kmax specied by the user has been
+reached. At that point, no further vectors are added and extend basis(B, m)
+returns B unchanged.
+
+After a new bk+1 is added to B, a column/row needs to be added to the kernel
+matrices G and K. This takes O(n + k) kernel evaluations, and the Cholesky
+factorization of G can be updated in time O(k2).
+
+5 Theoretical Analysis
+
+Before evaluating the CPSP algorithm empirically, we rst give a theoretical
+characterization of the quality of its solutions and the number of iterations it
+takes until convergence.
+
+The following theorem gives an upper bound on the number of iterations of
+Algorithm 3. It extends the general results [15, 18, 16] for cutting-plane training
+of SVMs to the CPSP algorithm.
+
+Theorem 1. For parameter C, precision , training-set size n, and basis-set
+size kmax, Algorithm 3 terminates after at most O(kmax + C
+Proof. After the rst kmax iterations, the basis B becomes xed, and from then
+on we are essentially solving the optimization problem:
+
+ ) iterations.
+
+9
+
+min
+w,
+
+1
+2
+
+(cid:107)w(cid:107)2 + C
+
+s.t. y{1,1}n :
+
+(cid:42)
+
+w,
+
+n(cid:88)
+
+(cid:43)
+
+(yi yi)(xi)
+
+ n(cid:88)
+
+(yi, yi) and w(cid:88)
+
+i=1
+
+i=1
+
+(11)
+
+i(bi)
+
+biB
+
+Let PB be the orthogonal projection operator onto the subspace spanned by B.
+Such an orthogonal projection operator always exists in a Hilbert Space. After
+folding the subspace constraint into the objective by replacing w with PBw, the
+above optimization problem can be re-written as (using the self-adjointness and
+linearity of PB):
+
+min
+w,
+
+1
+2
+
+(cid:107)PBw(cid:107)2 + C
+
+s.t. y  {1, 1}n :
+
+(cid:42)
+
+w,
+
+n(cid:88)
+
+i=1
+
+(cid:43)
+
+(yi  yi)PB(xi)
+
+ n(cid:88)
+
+i=1
+
+(yi, yi)  
+
+Finally the operator PB in the objective can be dropped since if w contains any
+component in B, it will only increase the objective without changing value of
+the LHS of the constraints. This is in the form of the general Structural SVM
+optimization problem solved by Algorithm 1, with the feature space changed
+ ) iteration
+from being spanned by (xi) to being spanned by PB(xi). The O( C
+bound from [15, 18, 16] therefore applies.
+2
+The time complexity of each iteration was already discussed in Section 4, but
+can be summarized as follows. In iterations where no new basis vector is added
+to B, the time complexity is O(m3 + mk2 + kn), since only the new m needs to
+be projected and the respective column be added to H. In iterations where B
+is extended, the time complexity is O(m3 + k2m + km2 + kmn) plus the time it
+takes to solve the preimage problem (10). Note that typical values are m  30,
+k  [10..1000], and n > 10000.
+
+The following theorem describes the quality of the solution at termination,
+accounting for the error incurred by projecting on an imperfect B. Most impor-
+tantly, the theorem justies our use of (10) for deciding which basis vectors to
+add.
+Theorem 2. When Algorithm 3 terminates with || i  i||   for all i and
+i, then the primal objective value o of the solution found does not exceed the
+exact solution o by more than o  o  C(
+Proof. Let w be the optimal solution with value o. We know that the optimal
+w satises (cid:107)w(cid:107)  
+|(cid:10)w, i
+
+(cid:69)|  (cid:107)w(cid:107)(cid:107) i  i(cid:107)  
+
+2C. Hence for all i,
+
+(cid:11) (cid:68)
+
+2C + ).
+
+
+
+2C
+
+w, i
+
+
+
+10
+
+Let PB be the orthogonal projection on the subspace spanned by (bi) in
+the nal basis B. Let v be the optimal solution to the optimization problem
+(12) restricted to the subspace B, we have:
+
+(cid:69)
+
+(cid:69)
+(cid:69)
+
+PBw, i
+
+] + C
+
+v, i
+
+] + C
+
+o  1
+(cid:107)v(cid:107)2 + C( + )
+2
+1
+(cid:107)v(cid:107)2 + C max
+=
+1im
+2
+ 1
+(cid:107)PBw(cid:107)2 + C max
+1im
+2
+[since v is the optimal solution wrt the basis B]
+1
+(cid:107)PBw(cid:107)2 + C max
+1im
+2
+1
+(cid:107)PBw(cid:107)2 + C max
+=
+1im
+2
+ 1
+(cid:107)w(cid:107)2 + C max
+1im
+2
+ 1
+(cid:107)w(cid:107)2 + C max
+1im
+2
+ o + C(
+2C + )
+
+[ i (cid:68)
+[ i (cid:68)
+[ i (cid:68)
+[ i (cid:68)
+[ i (cid:68)
+[ i (cid:10)w, i
+
+(cid:69)
+(cid:69)
+(cid:11) + 
+
+w, PB i
+w, i
+
+] + C
+
+
+2C] + C
+
+2
+
+] + C
+
+] + C
+
+w, i
+
+=
+
+
+
+6 Experimental Analysis
+
+The following experiments are designed to evaluate how the CPSP method
+compares to conventional training methods in terms of sparsity (i.e. prediction
+eciency) and training eciency. In particular, they explore whether the use of
+general basis vectors outside the training set improves prediction accuracy and
+training eciency, and how both quantities scale with basis set size kmax.
+
+Our implementation of the CPSP algorithm is available for download at
+
+http://svmlight.joachims.org/svm perf.html.
+
+We compare the CPSP algorithm with the exact solution computed by
+SVMlight, as well as approximate solutions of the Nystrom method (Nystrom)
+[6], the Incomplete Cholesky Factorization (IncChol) [8], the Core Vector Ma-
+chine (CVM) [10], the Ball Vector Machine (BVM) [11], and LASVM with
+margin-based active selection and nishing [12]. Both the Nystrom method and
+the Incomplete Cholesky Factorization are implemented in SVMperf as described
+in [16]. We use the RBF-Kernel K(x, x(cid:48)) = exp(||xx(cid:48)||2) in all experiments.
+The cache sizes of SVMlight, CVM, BVM, and LASVM were set to 1GB.
+
+We compare on the following ve binary classication tasks, each split into
+training/validation/test set. If not mentioned otherwise, parameters (i.e. C and
+) are selected to maximize performance on the validation set for each method
+and kmax individually. Both C and  are explored on a log-scale. The rst
+dataset is Adult as compiled by John Platt with 123 features and using a
+train/validation/test split of 20000/6281/6280. Second is the Reuters RCV1
+
+Table 1. Prediction accuracy with kmax = 1000 basis vectors (except SVMlight, where
+the number of SVs is shown in the third line) using the RBF kernel (except linear).
+
+11
+
+Adult CCAT OCR0 OCR* IJCNN
+
+SVM-light (linear)
+
+84.4
+
+94.2
+
+99.4
+
+87.6
+
+SVM-light (RBF)
+
+#SV
+
+95.1
+84.4
+7125 28748
+
+98.6
+99.8
+2786 19309
+
+CPSP
+CPSP(tr)
+Nystrom
+IncChol
+CVM
+BVM
+LASVM
+
+84.5
+84.1
+84.3
+84.0
+78.4
+77.1
+83.8
+
+95.0
+93.5
+92.5
+92.1
+88.1
+56.1
+91.7
+
+99.8
+99.8
+99.7
+99.7
+99.8
+99.8
+99.8
+
+98.5
+97.9
+97.0
+97.0
+96.9
+89.1
+97.2
+
+92.2
+
+99.4
+9243
+
+99.3
+99.2
+99.1
+98.9
+98.2
+97.7
+97.5
+
+CCAT text-classication dataset with 47236 features. We use 78127 examples
+from the original test set for training and split the original training set into
+validation and test sets of sizes 11575 and 11574 respectively. Third and fourth,
+we classify the digit 0 against the rest (OCR0), as well as classify the dig-
+its 01234 against the digits 56789 (OCR*) on the MNIST dataset. The
+MNIST datasets have 780 features and we use a training/validation/test split of
+50000/5000/5000. Finally, we use the IJCNN (task 1) dataset as pre-processed
+by Chih-Jen Lin. It has 22 features and we use a training/validation/test split
+of 113533/14169/14169.
+How Accurate are the Solutions for a given Sparsity Budget? We rst
+explore a scenario where the application demands an upper bound on the number
+of support vectors to achieve a desired computational eciency at prediction
+time. Table 1 summarizes the results. The rst two lines show the performance
+of SVMlight for the linear kernel and SVMlight for the RBF kernel as baselines to
+compare against. All but the Adult dataset show substantial non-linear structure,
+and the RBF kernel outperforms a linear SVM. The number of SVs when using
+the RBF kernel is given in the third line. The remaining lines in Table 1 are for
+the sparse methods, all of which use kmax = 1000 basis vectors. Note that this
+is well below the 2786 to 28748 support vectors required by the exact SVM.
+The CPSP algorithm with the general preimage method matches the accu-
+racy of SVMlight up to 0.1. This means that the prediction accuracy is roughly
+the same as for the exact method, while speeding up prediction by a factor
+between 2.7 to 28. We will see in Section 6 that far fewer than kmax = 1000
+basis vectors would have suced on some of the tasks for the CPSP algorithm,
+leading to an even larger speedup.
+
+Random sampling of the basis vectors in the Nystrom method and the
+Incomplete Cholesky factorization (IncChol) perform consistently worse than
+the CPSP method, except on the OCR0 dataset where all methods do well
+with kmax = 1000 basis vectors. The Core Vector Machine (CVM), the Ball
+Vector Machine (BVM), and the LASVM algorithm with active selection are
+not competitive on most datasets.
+
+12
+
+Fig. 1. Decrease in accuracy w.r.t. exact SVM for dierent basis-set sizes kmax.
+
+How does Accuracy Scale with Basis-Set Size? As mentioned above, a
+lower number of basis vectors kmax << 1000 could have suced to get reasonable
+accuracy on some datasets. The plots in Figure 1 investigate this question and
+show by how much the test accuracies for a given kmax are lower than the
+accuracy of the exact SVM solution. In each plot, 0 corresponds to the accuracy
+of the exact SVM solution.
+
+Figure 1 shows that CPSP dominates all other methods not only for kmax =
+1000, but over the whole range. For all datasets, the CPSP method using general
+preimages outperforms the other methods especially for small numbers of basis
+vectors. In particular, on three of the ve datasets, CPSP already performs
+within 1% of the exact solution with only 50 basis vectors. Similarly, on all ve
+datasets does CPSP perform equivalent or better than the linear SVM when
+using 50 basis vectors or more. Especially on Adult, CCAT, and OCR0 far
+fewer than kmax = 1000 basis vectors would have suced to reach an acceptable
+level of performance.
+What is the Benet of using General Basis Vectors? A key premise of
+the paper is that using basis vectors outside the training set is benecial. To
+test its validity, Figure 1 and Table 1 include the performance of the CPSP(tr)
+algorithm, which is identical to CPSP except for selecting basis vectors only
+
+0 1 2 3 4 5 10 100 1000Decrease in AccuracyNumber of Basis VectorsadultCPSPCPSP (tr)NystromIncCholCVMBVM 0 2 4 6 8 10 10 100 1000Number of Basis VectorsReuters CCAT 0 1 2 3 4 5 10 100 1000Number of Basis VectorsMNIST 0-123456789 0 1 2 3 4 5 10 100 1000Number of Basis VectorsMNIST 01234-56789 0 2 4 6 8 10 10 100 1000Number of Basis Vectorsijcnn113
+
+Fig. 2. Primal objective value of the approximate solutions expressed as multiples of
+the exact SVM solution.
+
+from the training set. Consistently over all dataset, Figure 1 shows that the
+general CPSP algorithm provides improved prediction accuracy over CPSP(tr)
+especially for small numbers of basis vectors. The dierence is largest on the
+CCAT dataset, where the general CPSP algorithm with 10 basis vectors already
+performs at an accuracy for which CPSP(tr) requires about 1000 basis vectors.
+This conrms our hypothesis that basis vectors outside the training set can lead
+to more accurate solutions at a given level of sparsity.
+
+How Accurate is the Objective Value? The four methods CPSP, CPSP(tr),
+Nystrom, and IncChol all optimize the same objective function as a regular
+SVM. How well do they manage to minimize this objective? The plots in Fig-
+ure 6 show by what factor their primal objective value is higher than the exact
+SVM solution. All methods use the same parameters (i.e. C and ), which are
+picked to optimize validation set accuracy of the exact SVM.
+
+Again, CPSP dominates the other methods, and the curves in Figure 6 very
+much resemble the curves in Figure 1. This veries that nding a subspace that
+contains a solution of low objective value is indeed crucial for good prediction
+accuracy, and that the subspaces found by CPSP are of superior delity (also
+compared to CPSP(tr)).
+
+1 2 3 4 5 10 100 1000Obj. Value (in mult. of exact solution)Number of Basis VectorsadultCPSPCPSP (tr)NystromIncChol 1 2 3 4 5 6 7 8 9 10 10 100 1000Number of Basis VectorsReuters CCAT 1 2 3 4 5 6 7 8 9 10 10 100 1000Number of Basis VectorsMNIST 0-123456789 1 2 3 4 5 6 7 8 9 10 10 100 1000Number of Basis VectorsMNIST 01234-56789 1 2 3 4 5 6 7 8 9 10 10 100 1000Number of Basis VectorsIJCNN114
+
+Table 2. Number of SV (left) and training time (right) to reach an accuracy that is not
+more than 0.5% below the accuracy of the exact solution of SVM-light (see Table 1).
+The RBF kernel is used for all methods. > indicates that the largest tractable solution
+did not achieve the target accuracy.
+
+Number of SV
+
+Training Time (CPU-Seconds)
+
+Adult CCAT OCR0 OCR* IJCNN Adult CCAT OCR0 OCR* IJCNN
+
+SVM-light 7125 28748
+CPSP
+200
+10
+CPSP(tr)
+50
+5000
+Nystrom
+50 >5000
+IncChol
+50 >2000
+CVM
+5000 20000
+BVM
+5000 20000
+LASVM 2000 10000
+
+2786 19309
+
+500
+20
+2000
+50
+5000
+100
+100 >2000
+5000
+200
+5000
+200
+100
+2000
+
+9243
+
+500
+500
+1000
+2000
+2000
+5000
+5000
+
+56
+
+9272
+
+400
+
+4629
+
+1175
+
+225
+6
+30
+88873
+10 >2281
+14 >21673
+23730
+43
+11004
+67
+51
+3433
+
+465
+11
+8967
+57
+2270
+37
+66 >12330
+497
+2
+538
+2
+5
+295
+
+2728
+2178
+1572
+59454
+29
+229
+705
+
+What is the Training and Test Eciency? While eciency at test time
+may be the dominant criterion for many applications, training has to be tractable
+as well. Since CPSP does more work in each iteration (e.g. solve a pre-image
+problem), one supercial concern might be that the training process is slow.
+However, the following shows that the increased sparsity observed in Figure 1
+not only improves prediction eciency, but also speeds up training. This is a
+key dierence to the Reduced Set method [5]. The Reduced Set method requires
+solving an exact SVM, making it intractable for large training sets.
+
+Table 2 compares the training time and number of basis vectors that each
+method needs to reach a certain prediction accuracy. The experiment simu-
+lates how a user may chose to trade prediction accuracy for improved train-
+ing and test eciency. In particular, Table 2 shows the number of basis vec-
+tors (left) and the training time (right) to reach a test accuracy that is not
+more than 0.5% below the test accuracy of the exact SVM. Basis set sizes
+kmax  {10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000} were tried for
+each method and the results for the smallest kmax that achieved the target
+accuracy are shown.
+
+Table 2 shows that the solutions found by CPSP are typically substantially
+more sparse than those of the other methods. Compared to the exact solution,
+they lead to an 18 to 712 fold speed-up at prediction time. Compared to the
+other approximate methods, the speed-up is still typically between 5 and 10.
+
+The increased sparsity also leads to very ecient training times for CPSP.
+While it is dicult to rank methods by aggregated training times, CPSP is
+clearly among the fastest methods in the comparison, especially on those tasks
+where general basis vectors provide a substantial gain in sparsity. On the CCAT
+text-classication dataset, it is orders of magnitude faster than any of the other
+methods (and CPSP(tr)). For such large and sparse data, there simply does not
+appear to be a small subset of training vectors that can represent an accurate
+
+15
+
+Fig. 3. Training times of CPSP for varying basis-set sizes (left) and training-set sizes
+with kmax = 1000 (right).
+
+classier, and the increased sparsity from allowing general basis vectors greatly
+improves training eciency. More generally, all training methods for SVMs scale
+super-linearly with the number of SVs, so that improving sparsity is the key
+to making large-scale training tractable. The scaling properties of CPSP are
+explored in more detail in the following section.
+
+Comparing to the results published in [2], our method is substantially faster.
+They focus mostly on small training sets with less than 1000 examples. The USPS
+OCR dataset with 7291 and 256 features is their largest dataset, and they report
+and average training time of 2400 seconds. This dataset roughly compares to
+our OCR0 task. However, the OCR0 dataset is an order of magnitude larger.
+
+How does Training Time Scale with Basis-Set Size? Finally, let us in-
+vestigate the eciency of CPSP in more detail. The left-hand plots in Figure 3
+show training time for dierent values of kmax. Parameters (regularization C,
+RBF ) are individually picked via CV for each method and kmax. While the
+theoretical time complexity is O(kmax
+3), the actual scaling shown in Figure 3
+(left) is much more benign. For kmax < 1000, the time contribution of the cubic
+parts of the algorithm (e.g. repeatedly updating the Cholesky factorization LG)
+is still rather small, and the scaling behavior is only modestly super-linear.
+
+How does Training Time Scale with Training-Sample Size? Finally, the
+right-hand plot in Figure 3 shows training time of CPSP for dierent training
+set sizes. Parameters (regularization C, RBF ) are individually picked via CV
+for each method and training set size. As expected from the theoretical analysis,
+the scaling behavior is roughly linear, making CPSP particularly attractive for
+large datasets.
+
+7 Conclusions
+
+We presented a training algorithm for kernel SVMs that constructs a sparse set of
+basis vectors as part of the cutting-plane optimization process. The algorithms
+
+1 10 100 1000 10000 10 100 1000Training TimeNumber of Basis Vectors 1 10 100 1000 10000 1000 10000 100000Training TimeNumber of Training ExamplesAdultReuters CCATMNIST 0:1-9MNIST 0-4:5-9IJCNN1x116
+
+eciency and eectiveness is characterized theoretically, and an experimental
+comparison shows that is produces solutions of a sparsity that is superior to
+Nystrom, IncChol, CVM, BVM, and LASVM. We nd that the ability to
+use basis vectors outside the training set substantially contributes to this gain in
+sparsity and eciency, especially on large datasets with sparse feature vectors.
+Acknowledgments This work was funded in part under NSF awards IIS-
+0713483.
+

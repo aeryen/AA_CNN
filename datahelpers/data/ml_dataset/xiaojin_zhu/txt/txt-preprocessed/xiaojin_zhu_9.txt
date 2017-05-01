@@ -1,0 +1,2957 @@
+ABSTRACT
+TCP throughput prediction is an important capability in wide area
+overlay and multi-homed networks where multiple paths may exist
+between data sources and receivers. In this paper we describe a new,
+lightweight method for TCP throughput prediction that can gener-
+ate accurate forecasts for a broad range of le sizes and path condi-
+tions. Our method is based on Support Vector Regression modeling
+that uses a combination of prior le transfers and measurements of
+simple path properties. We calibrate and evaluate the capabilities
+of our throughput predictor in an extensive set of lab-based exper-
+iments where ground truth can be established for path properties
+using highly accurate passive measurements. We report the perfor-
+mance for our method in the ideal case of using our passive path
+property measurements over a range of test congurations. Our
+results show that for bulk transfers in heavy trafc, TCP through-
+put is predicted within 10% of the actual value 87% of the time,
+representing nearly a 3-fold improvement in accuracy over prior
+history-based methods.
+In the same lab environment, we assess
+our method using less accurate active probe measurements of path
+properties, and show that predictions can be made within 10% of
+the actual value nearly 50% of the time over a range of le sizes
+and trafc conditions. This result represents approximately a 60%
+improvement over history-based methods with a much lower impact
+on end-to-end paths. Finally, we implement our predictor in a tool
+called PathPerf and test it in experiments conducted on wide area
+paths. The results demonstrate that PathPerf predicts TCP through-
+put accurately over a variety of paths.
+Categories and Subject Descriptors: C.4 [Performance of Sys-
+tems]: Measurement Techniques
+General Terms: Measurement
+Keywords: TCP Throughput Prediction, Active Measurements, Ma-
+chine Learning, Support Vector Regression
+
+1.
+
+INTRODUCTION
+
+The availability of multiple paths between sources and receivers
+enabled by content distribution, multi-homing, and overlay or vir-
+
+Permission to make digital or hard copies of all or part of this work for
+personal or classroom use is granted without fee provided that copies are
+not made or distributed for prot or commercial advantage and that copies
+bear this notice and the full citation on the rst page. To copy otherwise, to
+republish, to post on servers or to redistribute to lists, requires prior specic
+permission and/or a fee.
+SIGMETRICS07, June 1216, 2007, San Diego, California, USA.
+Copyright 2007 ACM 978-1-59593-639-4/07/0006 ...$5.00.
+
+tual networks suggests the need for the ability to select the best
+path for a particular data transfer. A common starting point for this
+problem is to dene best in terms of the throughput that can be
+achieved over a particular path between two end hosts for a given
+sized TCP transfer. In this case, the fundamental challenge is to
+develop a technique that provides an accurate TCP throughput fore-
+cast for arbitrary and possibly highly dynamic end-to-end paths.
+
+There are several difculties in generating accurate TCP through-
+put predictions. Prior work on the problem has largely fallen into
+two categories:
+those that investigate formula-based approaches
+and those that investigate history-based approaches. Formula-based
+methods, as the name suggests, predict throughput using mathemat-
+ical expressions that relate a TCP senders behavior to path and end
+host properties such as RTT, packet loss rate, and receive window
+size. In this case, different measurement tools can be used to gather
+the input data that is then plugged into the formula to generate a pre-
+diction. However, well-known network dynamics and limited in-
+strumentation access complicate the basic task of gathering timely
+and accurate path information, and the ever evolving set of TCP
+implementations means that a corresponding set of formula-based
+models must be maintained.
+
+History-based TCP throughput prediction methods are concep-
+tually straightforward. They typically use some kind of standard
+time series forecasting based on throughput measurements derived
+from prior le transfers, gathered either passively (e.g., by tapping
+a link) or actively (e.g., by periodically sending a le). In recent
+work, He et al. show convincingly that history-based methods are
+generally more accurate than formula-based methods. However, the
+authors carefully outline the conditions under which history-based
+prediction can be effective [11]. Also, history-based approaches
+described to date remain relatively inaccurate and potentially heavy
+weight processes focused on bulk transfer throughput prediction.
+
+Our goal is to develop an accurate, lightweight tool for predicting
+end-to-end TCP throughput for arbitrary le sizes. We investigate
+the hypothesis that the accuracy of history-based predictors can be
+improved and their impact on a path reduced by augmenting the pre-
+dictor with periodic measurements of simple path properties. The
+questions addressed in this paper include: 1) Which path proper-
+ties or combination of path properties increase the accuracy of TCP
+throughput prediction the most? and 2) What is a minimum set of
+le sizes required to generate history-based throughput predictors
+for arbitrary le sizes? Additional goals for our TCP throughput
+prediction tool are: 1) to make it robust to level shifts (i.e., when
+path properties change signicantly) which He et al. show to be
+a challenge in history-based predictors, and 2) to include a con-
+dence value with predictionsa metric with little treatment in prior
+history-based throughput predictors.
+
+The analytical framework for the study that we report in this pa-
+per is based on the use of Support Vector Regression (SVR), a pow-
+erful machine learning technique that has shown good empirical
+performance in many domains. SVR has several attractive proper-
+ties that make it well suited for our study: 1) It can accept multiple
+inputs (i.e., multivariate features) and will use all of these to gen-
+erate the throughput prediction, which is a requirement for our ap-
+proach. 2) SVR does not commit to any particular parametric form,
+unlike formula-based approaches. Instead, SVR models are exible
+based on their use of so-called non-linear kernels. This expressive
+power is an important reason for the potential for more accurate pre-
+dictions than formula-based methods. 3) SVR is computationally
+efcient, which makes it attractive for inclusion in a tool that can be
+deployed and used in the wide area. For our application, we extend
+the basic SVR predictor with a condence interval estimator based
+on an assumption that prediction errors are normally distributed,
+an assumption that we test in our laboratory experiments. Estima-
+tion of condence intervals is critical for on-line prediction, since
+retraining can be triggered if measured throughput falls outside a
+condence interval computed through previous measurements.
+
+We begin by using laboratory-based experiments to investigate
+the relationship between TCP throughput and measurements of path
+properties including available bandwidth (AB), queuing delays (Q),
+and packet loss (L). The lab environment enables us to gather
+highly accurate passive measurements of throughput and all path
+properties, and develop and test our SVR-based predictor over a
+range of realistic trafc conditions. Our initial experiments fo-
+cus on bulk transfers and compare ground truth measurements of
+throughput of target TCP ows (i.e., actual throughput) with pre-
+dicted TCP throughput values generated by multiple instances of
+our SVR-based tool trained with different combinations of path
+properties. We compare the actual and predicted throughput using
+the Relative Prediction Error (E) metric described in [11]. Our re-
+sults show that throughput predictions can be improved by as much
+as a factor of 3 when including path properties in the SVR-based
+tool versus a history-based predictor. For example, our results show
+that the SVR-based predictions are within 10% of actual 87% of
+the time for bulk transfers under heavy trafc conditions (90% av-
+erage utilization on the bottleneck link). Interestingly, we nd that
+the path properties that provide the most improvement to the SVR-
+based predictor are Q and L respectively, and that including AB
+provides almost no improvement to the predictor.
+
+Toward our goal of developing a robust tool that can be used in
+the wide area, we expand the core SVR-based tool in three ways.
+First, the initial tests were based entirely on passive trafc measure-
+ments, which are unlikely to be widely available in the Internet. To
+address this, we tested our SVR-based approach using measure-
+ments of Q and L provided by the BADABING tool [25]. The reduc-
+tion in accuracy of active versus passive measurements of Q and
+L resulted in a corresponding reduction in accuracy of SVR-based
+throughput predictions for bulk transfers under heavy trafc con-
+ditions on the order of about 35%still a signicant improvement
+on history-base estimates. It is also important to note that through-
+put prediction based on training plus lightweight active measure-
+ments results in a dramatically lower network probe load than prior
+history-based methods using long-lived TCP transfers and heavy-
+weight probe-based estimates of available bandwidth such as de-
+scribed in [11]. We quantify this difference in Section 7. Second,
+we experimented with training data in order to enable predictions
+over a range of le sizes instead of only bulk transfers which is
+the focus of prior work. We found that a training set of only three
+
+le sizes results in accurate throughput predictions for a wide range
+of le sizes, which highlights another strength of our SVR-based
+approach. Third, He et al. showed that level shifts in path con-
+ditions pose difculties for throughput prediction [11], suggesting
+the need for adaptivity. To accomplish this, we augmented the basic
+SVR predictor with a condence interval estimator as a mechanism
+for triggering a retraining process. We show in Section 5.2 that our
+technique is able to adapt to level shifts quickly and to maintain
+high accuracy on paths where level shifts occur.
+
+This combination of capabilities was sufcient for us to develop
+an active probe tool for TCP throughput prediction we call Path-
+Perf 1 that we deployed and tested in the wide area. Through a se-
+ries of experiments over six end-to-end paths in the RON testbed [3]
+paths, we found that in the best case PathPerf provides TCP through-
+put estimates within 10% of actual value 100% of the time, and
+in the worst case provides estimates within 10% of actual 35% of
+the time. We believe that improvements in tools for gathering path
+property information will lead to corresponding improvements in
+throughput prediction accuracy. We plan to investigate these possi-
+bilities in future work.
+
+2. RELATED WORK
+
+Since the seminal work by Jacobson and Karels established the
+basic mechanisms for modern TCP implementations [13], it has
+been well known that many factors affect TCP throughput. In gen-
+eral, these include the TCP implementation, the underlying network
+structure, and the dynamics of the trafc sharing the links on the
+path between two hosts. Steps toward understanding TCP behavior
+have been taken in a number of studies including [1,2] which devel-
+oped stochastic models for TCP based on packet loss characteris-
+tics. A series of studies develop increasingly detailed mathematical
+expressions for TCP throughput based on modeling the details of
+the TCP congestion control algorithm and measurements of path
+properties [4, 8, 10, 17, 18]. While our predictor also relies on mea-
+surement of path properties, the SVR-based approach is completely
+distinguished from prior formula-based models.
+
+A large number of empirical studies of TCP le transfer and
+throughput behavior have provided valuable insight into TCP per-
+formance. Paxson conducted one of the most comprehensive stud-
+ies of TCP behavior [19,20]. While that work exposed a plethora of
+issues, it provided some of the rst empirical data on the character-
+istics of packet delay, queuing, and loss within TCP le transfers.
+Barford and Crovellas application of critical path analysis to TCP
+le transfers provides an even more detailed perspective on how
+delay, queuing, and loss relate to TCP performance [6]. In [5], Bal-
+akrishnan et al. studied throughput from the perspective of a large
+web server and showed how it varied depending on end-host and
+time of day characteristics. Finally, detailed studies of throughput
+variability over time and correlations between throughput and ow
+size can be found in [31,32], respectively. These studies inform our
+work in terms of the basic characteristics of throughput that must
+be considered when building our predictor.
+
+Past studies of history-based methods for TCP throughput pre-
+diction are based on the use of standard time series forecasting
+methods. Vazhkudia et al. compare several different simple fore-
+casting methods to estimate TCP throughput for transfers of large
+les and nd similar performance across predictors [30]. A well-
+known system for throughput prediction is the Network Weather
+Service [28]. That system makes bulk transfer forecasts by attempt-
+1PathPerf
+http://wail.cs.wisc.edu/waildownload.py
+
+available
+
+at
+
+is
+
+openly
+
+ing to correlate measurements of prior large TCP le transfers with
+periodic small (64KB) TCP le transfers (referred to as bandwidth
+probes). The DualPats system for TCP throughput prediction is
+described in [16]. That system makes throughput estimates based
+on an exponentially weighted moving average of larger size band-
+width probes (1.2MB total). Similar to our work, Lu et al. found
+that prediction errors generally followed a normal distribution. As
+mentioned earlier, He et al. extensively studied history-based pre-
+dictors using three different time series forecasts [11]. Our SVR-
+based method includes information from prior transfers for training,
+but otherwise only requires measurements from lightweight probes
+and is generalized for all les sizes, not just bulk transfers.
+
+Many techniques have been developed to measure path prop-
+erties (see CAIDAs excellent summary page for examples [9]).
+Prior work on path property measurement directs our selection of
+lightweight probe tools to collect data for our predictor. Recent
+studies have focused on measuring available bandwidth on a path.
+AB is dened informally as the minimum unused capacity on an
+end-to-end path, which is a conceptually appealing property with
+respect to throughput prediction. A number of studies have de-
+scribed techniques for measuring AB including [14, 26, 27]. We
+investigate the ability of AB measurement as well as other path
+properties to enhance TCP throughput predictions.
+
+Finally, machine learning techniques have not been widely ap-
+plied to network measurement. One notable exception is in network
+intrusion detection (e.g., [12]). The only other application of Sup-
+port Vector Regression that we know of is to the problem of using
+IP address structure to predict round trip time latency [7].
+
+3. A MULTIVARIATE MACHINE
+
+LEARNING TOOL
+
+The main hypothesis of this work is that history-based TCP through-
+
+put prediction can be improved by incorporating measurements of
+end-to-end path properties. The task of throughput prediction can
+be formulated as a regression problem, i.e., predicting a real-valued
+number based on multiple real-valued input features. Each le
+transfer is represented by a feature vector x  Rd of dimension d.
+Each dimension is an observed feature, e.g., the le size, proximal
+measurements of path properties such as queuing delay, loss, avail-
+able bandwidth, etc. Given x, we want to predict the throughput
+y  R. This is achieved by training a regression function f : Rd 7
+R, and applying f to x. The function f is trained using training
+data, i.e., historical le transfers with known features and the cor-
+responding measured throughput.
+
+The analytical framework that we apply to this problem is Sup-
+port Vector Regression (SVR), a state-of-the-art machine learning
+tool for multivariate regression. SVR is the regression version of
+the popular Support Vector Machines [29]. It has a solid theoretical
+foundation, and is favored in practice for its good empirical perfor-
+mance. We briey describe SVR below, and refer readers to [21,23]
+for details, and to [15] as an example of an SVR software package.
+To understand SVR we start from a linear regression function
+f (x) = b x + b 0. Assume we have a training set of n le transfers
+{(x1 , y1), . . . , (xn , yn)}. Training involves estimating the d-dimensional
+weight vector b and offset b 0 so that f (xi) is close to the truth yi
+for all training examples i = 1 . . .n. There are many ways to mea-
+sure closeness. The traditional measure used in SVR is the e -
+insensitive loss, dened as
+
+L( f (x), y) =(cid:26)
+
+0
+
+| f (x)  y|  e
+
+if | f (x)  y|  e
+
+otherwise.
+
+(1)
+
+This loss function measures the absolute error between prediction
+and truth, but with a tolerance of e . The value e
+is application-
+dependent in general, and in our experiments we set it to zero. Other
+loss functions (e.g., the squared loss) are possible too, and often
+give similar performance. They are not explored in this paper.
+
+i=1 L( f (xi), yi).
+
+,
+
+It might seem that the appropriate way to estimate the parameters
+b 0 is to minimize the overall loss on the training set (cid:229) n
+
+b
+However if d is large compared to the number of training examples
+n, one can often t the training data perfectly. This is dangerous,
+because the truth y in training data actually contain random uctua-
+tions, and f is partly tting the noise. Such f will generalize poorly,
+i.e. causing bad predictions on future test data. This phenomenon
+is known as overtting. To prevent overtting, one can reduce the
+degree of freedom in f by selecting a subset of features, thus re-
+ducing d. An implicit but more convenient alternative is to require
+f to be smooth2, dened as having a small parameter norm kb k2.
+Combining loss and smoothness, we estimate the parameters b
+b 0
+by solving the following optimization problem
+
+,
+
+C
+
+min
+b 0
+b
+
+,
+
+n(cid:229)
+
+i=1
+
+L( f (xi), yi) + kb k2
+
+,
+
+(2)
+
+where C is a weight parameter to balance the two terms. The value
+of C is usually selected by a procedure called cross-validation, where
+the training set is randomly split into two parts, then regression
+functions with different C are trained on one part and their per-
+formance measured on the other part, and nally one selects the
+C value with the best performance.
+In our experiments we used
+C = 3.162 using cross-validation. The optimization problem can be
+solved using a quadratic program.
+
+1 , x1x2 , x2 , x2
+
+Nonetheless, a linear function f (x) is fairly restrictive and may
+not be able to describe the true function y. A standard mathemati-
+cal trick is to augment the feature vector x with non-linear bases de-
+rived from x. For example, if x = (x1 , x2), one can augment it with
+f (x) = (x1 , x2
+2). The linear regressor in the augmented
+feature space f (x) = b f (x) +b 0 then produces a non-linear t in
+the original feature space. Note b has more dimensions than before.
+The more dimensions f (x) has, the more expressive f becomes.
+
+In the extreme (and often benecial) case f (x) can even have in-
+nite dimensions. It seems computationally impossible to estimate
+the corresponding innite-dimensional parameter b . However, if
+we convert the primal optimization problem (2) into its dual form,
+one can show that the number of dual parameters is actually n in-
+stead of the dimension of f (x). Furthermore, the dual problem
+never uses the augmented feature f (x) explicitly. It only uses the
+inner product between pairs of augmented features f (x)f (x) 
+K(x,x). The function K is known as the kernel, and can be com-
+puted from the original feature vectors x,x. For instance, the Ra-
+
+dial Basis Function (RBF) kernel K(x,x) = exp(cid:0)g kx  xk2(cid:1) im-
+plicitly corresponds to an innite dimensional feature space. In our
+experiments we used a RBF kernel with g = 0.3162, again selected
+by cross-validation. The dual problem can still be efciently solved
+using a quadratic program.
+
+SVR therefore works as follows: For training, one collects a
+training set {(x1 , y1), . . . , (xn , yn)}, and species a kernel K. SVR
+solves the dual optimization problem, which equivalently nds the
+potentially very high-dimensional parameter b and b 0 in the aug-
+mented feature space dened by K. This produces a potentially
+2If b are the coefcients of a polynomial function, the function
+will tend to be smooth (changes slowly) if kb k2 is small, or noisy
+if kb k2 is large.
+
+highly non-linear prediction function f (x). The function f (x) can
+then be applied to arbitrary test cases x, and produces a prediction.
+In our case, test cases are the le size for which a prediction is to be
+made and current path properties based on active measurements.
+
+4. EXPERIMENTAL ENVIRONMENT AND
+
+METHODOLOGY
+
+This section describes the laboratory environment and experi-
+mental procedure that we used to evaluate our throughput predictor.
+4.1 Experimental Environment
+
+The laboratory testbed used in our experiments is shown in Fig-
+ure 1. It consisted of commodity end hosts connected to a dumbbell-
+like topology of Cisco GSR 12000 routers. Both measurement and
+background trafc was generated and received by the end hosts.
+Trafc owed from the sending hosts on separate paths via Giga-
+bit Ethernet to separate Cisco GSRs (hop B in the gure) where it
+was forwarded on OC12 (622 Mb/s) links. This conguration was
+created in order to accommodate a precision passive measurement
+system, as we describe below. Trafc from the OC12 links was then
+multiplexed onto a single OC3 (155 Mb/s) link (hop C in the gure)
+which formed the bottleneck where congestion took place. We used
+an AdTech SX-14 hardware-based propagation delay emulator on
+the OC3 link to add 25 milliseconds delay in each direction for all
+experiments, and congured the bottleneck queue to hold approx-
+imately 50 milliseconds of packets. Packets exited the OC3 link
+via another Cisco GSR 12000 (hop D in the gure) and passed to
+receiving hosts via Gigabit Ethernet.
+
+The measurement hosts and trafc generation hosts were identi-
+cally congured workstations running FreeBSD 5.4. The worksta-
+tions had 2 GHz Intel Pentium 4 processors with 2 GB of RAM and
+Intel Pro/1000 network cards. They were also dual-homed, so that
+all management trafc was on a separate network than depicted in
+Figure 1. We disabled the TCP throughput history caching feature
+in FreeBSD 5.4, controlled by the variable net.inet.tcp.inight.enable,
+to allow TCP throughput to be determined by current path proper-
+ties rather than throughput history.
+
+A key aspect of our testbed was the measurement system used to
+establish the true path properties for our evaluation. Optical split-
+ters were attached to both the ingress and egress links at hop C
+and Endace DAG 3.5 and 3.8 passive monitoring cards were used
+to capture traces of all packets entering and leaving the bottleneck
+node. By comparing packet headers, we were able to identify which
+packets were lost at the congested output queue during experiments,
+and accurately measure available bandwidth on the congested link.
+Furthermore, the fact that the measurements of packets entering and
+leaving hop C were synchronized at a very ne granularity (i.e., a
+single microsecond) enabled us to precisely measure queuing de-
+lays through the congested router.
+4.2 Experimental Protocol
+
+We generated background trafc by running the Harpoon IP traf-
+c generator [24] between up to four pairs of trafc generation hosts
+as illustrated in Figure 1. Harpoon produced open-loop self-similar
+trafc using a heavy-tailed le size distribution, mimicking a mix of
+application trafc such as web and peer-to-peer applications com-
+mon in todays Internet. Harpoon was congured to produce aver-
+age offered loads ranging from approximately 60% to 105% on the
+bottleneck link (the OC3 between hops C and D).
+
+Measurement trafc in the testbed consisted of le transfers, and
+active measurements of queuing delay, packet loss, and available
+
+bandwidth. For the measurement trafc hosts, we set the TCP re-
+ceive window size to 128 KB. In receive window limited transfers,
+le transfer throughput was approximately 21 Mb/s. That is, if the
+available bandwidth on the bottleneck link was 21 Mb/s or more,
+the ow was receive window (rwnd) limited, otherwise it was con-
+gestion window (cwnd) limited. We experimented with both rwnd-
+and cwnd-limited scenarios.
+
+For active measurements of available bandwidth and queuing/loss,
+we used the YAZ [26] and BADABING [25] tools, respectively. YAZ
+estimates end-to-end available bandwidth using a relatively low-
+overhead, iterative method similar to PATHLOAD [14]. Since the
+probe process is iterative, the time taken to produce an estimate can
+vary from a few seconds to tens of seconds.
+
+BADABING reports two characteristics of loss episodes, namely
+the frequency of loss episodes, and mean duration of loss episodes,
+using a lightweight probe process. We used a probe probability
+parameter p of 0.3. Other parameters were set according to [25]. In
+the rest of the paper, we refer to both loss characteristics combined
+as loss or L. BADABING requires the sender and receiver to be
+time-synchronized. To accommodate our wide area experiments,
+the BADABING receiver was modied to reect probes back to the
+sender, where they were timestamped and logged as on the original
+receiver. Thus, the sender clock was used for all probe timestamps.
+We used BADABING to measure loss characteristics because it
+is the most accurate loss characteristics measurement tool currently
+available; if accurate loss rate measurement tools become available
+in the future, loss rate may replace frequency and duration as the
+loss characteristic we use for our prediction mechanism.
+
+The measurement collection protocol consisted of the following:
+
+1. Run BADABING for 30 seconds.
+
+2. Run YAZ to obtain an estimate of the available bandwidth.
+
+3. Transfer a le.
+
+In the remainder of the paper, we refer to the above series of steps
+as a single experiment, and to a number of consecutive experiments
+as a series. Experiments in the wide area omit the available band-
+width measurement. Individual experiments in a series are sepa-
+rated by a 30 second period. Series of experiments differ from each
+other in that either the background trafc is different between series,
+or the distribution of le sizes transferred is different, or the exper-
+iments are conducted over different physical paths. Each series of
+experiments is divided into two mutually exclusive training and test
+sets for the SVR. The SVR mechanism does not require that the sets
+of experiments that form the training and test set be consecutive or
+contiguous in time. In contrast, history-based prediction methods
+generally require consecutive historical information since they rely
+on standard timeseries-based forecasting models. In our evaluation
+we use contiguous portions for training and test sets, i.e.
+the be-
+ginning part of a series becomes the training set and the rest the
+test set. The number of experiments in training and test sets may
+be the same or different. Notions of separate training and test data
+sets are not required for history-based methods; rather, predictions
+are made over the continuous notion of distant and recent history. In
+our evaluation of history-based methods, we use the nal prediction
+of the training set as the starting point for the test set.
+
+From each series of experiments, we gather three different sets
+of measurements. The rst set, Oracular Passive Measurements
+(OPM), are AB, Q, and L measurements during a le transfer that
+we obtain from packet traces. We refer to these measurements as
+oracular because they give us essentially perfect information about
+
+traffic generator hosts
+
+Cisco 12000
+
+Cisco 6500
+
+GE
+
+Si
+
+GE
+
+GE
+
+OC12
+
+OC12
+
+probe sender
+
+hop
+
+identifier
+
+A
+
+DAG monitor host
+
+Cisco 12000
+
+Adtech SX14
+
+Cisco 12000 Cisco 6500
+
+traffic generator hosts
+
+OC3
+propagation delay
+
+OC3
+
+emulator
+
+(25 milliseconds
+each direction)
+
+GE
+
+Si
+
+GE
+
+probe receiver
+
+B
+
+C
+
+D
+
+E
+
+1: Laboratory testbed. Cross trafc owed across one of two routers at hop B, while probe trafc owed through the other. Optical splitters
+connected Endace DAG 3.5 and 3.8 passive packet capture cards to the testbed between hops B and C, and hops C and D. Measurement trafc
+(le transfers, loss probes, and available bandwidth probes) owed from left to right. Congestion in the testbed occurred at hop C.
+
+network conditions.
+In practice, this information would not be
+available when making a prediction for an arbitrary path. We use
+this information to establish the best possible accuracy of our pre-
+diction mechanism. The second set, Active Measurements (AM),
+are the measurements from our active measurement tools. Note
+that, unlike the OPM, the AM provide AB, Q, and L values before
+the actual transfer. The third set, Practical Passive Measurements
+(PPM), are trace-based measurements of AB, Q and L taken at the
+same time as AM are taken. Their purpose is to show the best possi-
+ble accuracy of our prediction mechanism with measurements that
+can be obtained in practice, or to show how much better the accu-
+racy would be if the active measurements had perfect accuracy. All
+measurements are aggregates for conditions on the path: they are
+not specic to any single TCP ow on the path.
+
+For experiments in the wide area, we created a tool, PathPerf.
+This tool, designed to run between a pair of end hosts, initiates TCP
+le transfers and path property measurements (using our modied
+version of BADABING), and produces throughput estimates using
+our SVR-based method. It can be congured to generate arbitrary
+le size transfers for both training and testing and initiates retrain-
+ing when level shifts are identied as described in Section 7.
+4.3 Evaluating Prediction Accuracy
+
+We denote the actual throughput by R and the predicted through-
+put by R. We use the metric relative prediction error E introduced
+in [11] to evaluate the accuracy of an individual throughput predic-
+tion. Relative prediction error is dened as
+
+E =
+
+R  R
+
+min( R, R)
+
+In what follows, we use the distribution of the absolute value of E
+to compare different prediction methods.
+
+5. BUILDING A ROBUST PREDICTOR
+
+This section describes how we developed, calibrated, and eval-
+uated our prediction mechanism through an extensive set of tests
+conducted in our lab test-bed.
+5.1 Calibration and Evaluation in the High
+
+Trafc Scenario
+
+The rst step in developing our SVR-based throughput predic-
+tor is to nd the combination of training features which lead to the
+most accurate predictions over a wide variety of path conditions.
+We trained the predictor using a feature vector for each test that
+contained different combination of our set of target path measure-
+ments (AB, Q, L) and the measured throughput. Although we re-
+fer to both loss frequency and loss duration together as L or loss
+
+for expositional ease, these measures are two different features in
+the feature vector. The trained SVR model is then used to predict
+throughput for a feature vector containing the corresponding sets
+of network measurements, and we compare the prediction accuracy
+for the different combinations.
+
+We also compare the accuracy of SVR to the exponentially weighted
+
+moving average (EWMA) History-Based Predictor (HB) described
+in [11], Ri+1 = a Ri + (1  a ) Ri , with an a value of 0.3.
+
+We do not report detailed results from tests with low utiliza-
+tion on the bottleneck link, i.e., receive window bound ows, be-
+cause in the low utilization scenarios there is very little variance in
+throughput of ows. Our SVR-based predictor generated 100% ac-
+curate forecasts for these tests. However, any reasonable prediction
+method can forecast throughput quite accurately in this scenario.
+For example, the formula-based predictor used in [11], which is
+based on [18], performs poorly in high utilization scenarios, but is
+accurate in low utilization scenarios.
+
+For most of the results reported, we generated an average of 140
+Mb/s of background trafc to create high utilization on our OC3
+(155 Mb/s) bottleneck link. We used one set of 100 experiments for
+training and another set of 100 experiments for testing. An 8 MB
+le was transferred in each experiment. In our initial experiments
+we use an 8 MB le because it is large enough to make slow-start
+an insignicant factor in throughput for our receive window size
+of 128 KB; in later sections we consider smaller le sizes where
+slow-start has a bigger impact on overall throughput.
+
+Figures 2a to 2l show scatter plots comparing the actual and pre-
+dicted throughput using different prediction methods as discussed
+below. A point on the diagonal represents perfect prediction accu-
+racy; the farther a point is from the diagonal, the greater the predic-
+tion error.
+
+5.1.1 Using Path Measurements from an Oracle
+
+Figure 2a shows the prediction accuracy scatter plot for the HB
+method. Figures 2b to 2h show the prediction error with SVR using
+Oracular Passive Measurements (OPM) for different combinations
+of path measurements in the feature vector. For example, SVR-
+OPM-Queue means that only queuing delay measurements were
+used to train and test, while SVR-OPM-AB-Queue means that both
+available bandwidth and queuing delay measurements were used to
+train and test.
+
+Table 1 shows relative prediction errors for HB forecasting and
+for SVM-OPM-based predictions. Values in the table indicate the
+fraction of predictions for a given method within a given accuracy
+level. For example, the rst two columns of the rst row in Table 1
+mean that 32% of HB predictions have relative prediction errors
+of 10% or smaller while 79% of SVR-OPM-AB predictions have
+relative prediction errors of 10% or smaller. We present scatter plots
+
+)
+s
+/
+
+b
+M
+
+(
+
+t
+
+u
+p
+h
+g
+u
+o
+r
+h
+T
+d
+e
+
+
+
+i
+
+t
+c
+d
+e
+r
+P
+
+)
+s
+/
+
+b
+M
+
+(
+
+t
+
+u
+p
+h
+g
+u
+o
+r
+h
+T
+d
+e
+
+
+
+i
+
+t
+c
+d
+e
+r
+P
+
+)
+s
+/
+
+b
+M
+
+(
+
+t
+
+u
+p
+h
+g
+u
+o
+r
+h
+T
+d
+e
+
+
+
+i
+
+t
+c
+d
+e
+r
+P
+
+0
+2
+
+5
+1
+
+0
+1
+
+5
+
+0
+
+0
+2
+
+5
+1
+
+0
+1
+
+5
+
+0
+
+0
+2
+
+5
+1
+
+0
+1
+
+5
+
+0
+
+)
+s
+/
+
+b
+M
+
+(
+
+t
+
+u
+p
+h
+g
+u
+o
+r
+h
+T
+d
+e
+
+
+
+i
+
+t
+c
+d
+e
+r
+P
+
+0
+2
+
+5
+1
+
+0
+1
+
+5
+
+0
+
+)
+s
+/
+
+b
+M
+
+(
+
+t
+
+u
+p
+h
+g
+u
+o
+r
+h
+T
+d
+e
+
+
+
+i
+
+t
+c
+d
+e
+r
+P
+
+0
+2
+
+5
+1
+
+0
+1
+
+5
+
+0
+
+)
+s
+/
+
+b
+M
+
+(
+
+t
+
+u
+p
+h
+g
+u
+o
+r
+h
+T
+d
+e
+
+
+
+i
+
+t
+c
+d
+e
+r
+P
+
+0
+2
+
+5
+1
+
+0
+1
+
+5
+
+0
+
+0
+
+5
+
+10
+
+15
+
+20
+
+0
+
+5
+
+10
+
+15
+
+20
+
+0
+
+5
+
+10
+
+15
+
+20
+
+Actual Throughput (Mb/s)
+(a) HB
+
+Actual Throughput (Mb/s)
+(b) SVR-OPM-AB
+
+Actual Throughput (Mb/s)
+(c) SVR-OPM-Loss
+
+)
+s
+/
+
+b
+M
+
+(
+
+t
+
+u
+p
+h
+g
+u
+o
+r
+h
+T
+d
+e
+
+
+
+i
+
+t
+c
+d
+e
+r
+P
+
+0
+2
+
+5
+1
+
+0
+1
+
+5
+
+0
+
+)
+s
+/
+
+b
+M
+
+(
+
+t
+
+u
+p
+h
+g
+u
+o
+r
+h
+T
+d
+e
+
+
+
+i
+
+t
+c
+d
+e
+r
+P
+
+0
+2
+
+5
+1
+
+0
+1
+
+5
+
+0
+
+0
+
+5
+
+10
+
+15
+
+20
+
+0
+
+5
+
+10
+
+15
+
+20
+
+0
+
+5
+
+10
+
+15
+
+20
+
+Actual Throughput (Mb/s)
+(d) SVR-OPM-Queue
+
+Actual Throughput (Mb/s)
+
+(e) SVR-OPM-AB-Loss
+
+Actual Throughput (Mb/s)
+
+(f) SVR-OPM-AB-Queue
+
+)
+s
+/
+
+b
+M
+
+(
+
+t
+
+u
+p
+h
+g
+u
+o
+r
+h
+T
+d
+e
+
+
+
+i
+
+t
+c
+d
+e
+r
+P
+
+0
+2
+
+5
+1
+
+0
+1
+
+5
+
+0
+
+)
+s
+/
+
+b
+M
+
+(
+
+t
+
+u
+p
+h
+g
+u
+o
+r
+h
+T
+d
+e
+
+
+
+i
+
+t
+c
+d
+e
+r
+P
+
+0
+2
+
+5
+1
+
+0
+1
+
+5
+
+0
+
+0
+
+5
+
+10
+
+15
+
+20
+
+0
+
+5
+
+10
+
+15
+
+20
+
+0
+
+5
+
+10
+
+15
+
+20
+
+Actual Throughput (Mb/s)
+
+Actual Throughput (Mb/s)
+
+Actual Throughput (Mb/s)
+
+(g) SVR-OPM-Loss-Queue
+
+(h) SVR-OPM-AB-Loss-Queue
+
+(i) SVR-PPM-Loss-Queue
+
+)
+s
+/
+
+b
+M
+
+(
+
+t
+
+u
+p
+h
+g
+u
+o
+r
+h
+T
+d
+e
+
+
+
+i
+
+t
+c
+d
+e
+r
+P
+
+0
+2
+
+5
+1
+
+0
+1
+
+5
+
+0
+
+)
+s
+/
+
+b
+M
+
+(
+
+t
+
+u
+p
+h
+g
+u
+o
+r
+h
+T
+d
+e
+
+
+
+i
+
+t
+c
+d
+e
+r
+P
+
+0
+2
+
+5
+1
+
+0
+1
+
+5
+
+0
+
+0
+
+5
+
+10
+
+15
+
+20
+
+0
+
+5
+
+10
+
+15
+
+20
+
+0
+
+5
+
+10
+
+15
+
+20
+
+Actual Throughput (Mb/s)
+
+Actual Throughput (Mb/s)
+
+Actual Throughput (Mb/s)
+
+(j) SVR-PPM-AB-Loss-Queue
+
+(k) SVR-AM-Loss-Queue
+
+(l) SVR-AM-AB-Loss-Queue
+
+2: Comparison of Prediction Accuracy of HB, SVR-OPM, SVR-PPM, and SVR-AM in High Background Trafc Conditions.
+
+in addition to tabular data to provide insight into how different path
+properties contribute to throughput prediction in the SVR method.
+From Figure 2a, we can see that the predictions for the HB pre-
+dictor are rather diffusely scattered around the diagonal, and that
+predictions in low-throughput conditions tend to have large rela-
+tive error. Figures 2b, 2c, and 2d show the behavior of the SVR
+predictor using a single measure of path properties in the feature
+vectorAB, L, and Q respectively. The AB and Q graphs have a
+similar overall trend: predictions are accurate (i.e., points are close
+to the diagonal) for high actual throughput values, but far from the
+diagonal, almost in a horizontal line, for lower values of actual
+throughput. The L graph has the opposite trend: points are close
+to the diagonal for lower values of actual throughput, and form a
+horizontal line for higher values of actual throughput.
+
+The explanation for these trends lies in the fact that le trans-
+fers with low actual throughput experience loss, while le transfers
+with high actual throughput do not experience any loss. When loss
+occurs, the values of AB and Q for the path are nearly constant.
+AB is almost zero, and Q is the maximum possible value (which
+depends on the amount of buffering available at the bottleneck link
+in the path). In this case, throughput depends on the value of L.
+Hence, L appears to be a good predictor when there is loss on the
+path, and AB and Q, being constants in this case, have no predictive
+power, resulting in horizontal lines, i.e., a single value of predicted
+throughput. On the other hand, when there is no loss, L is a con-
+stant with value zero, so L has no predictive power, while AB and
+Q are able to predict throughput quite accurately.
+
+Figures 2e to 2h show improvements on the prediction accuracy
+obtained by using more than one path property in the SVR feature
+vector. We can see that when L is combined with either AB or Q, the
+horizontal lines on the graphs are replaced by points much closer to
+the diagonal, so combining L with AB or Q allows the SVR method
+to predict accurately in both lossy and lossless network conditions.
+Measurements of AB and Q appear to serve the same function,
+namely, helping to predict throughput in lossless conditions. This
+observation begs the question: do we really need both AB and Q,
+or can we use just one of the two and still achieve the same predic-
+tion accuracy? To answer this question, we compared AB-Loss and
+Loss-Queue predictions with each other and with AB-Loss-Queue
+predictions (i.e., Figures 2e, 2g, and 2h). The general trend in all
+three cases, as seen from the scatter plots, is the same: the horizon-
+tal line of points is reduced or eliminated, suggesting that predic-
+tion from non-constant-value measurements is occurring for both
+lossy and lossless network conditions. If we compare the AB-Loss
+and Loss-Queue graphs more closely, we observe two things. First,
+in the lossless prediction case, the points are closer to the diago-
+nal in the Loss-Queue case than in the AB-Loss case. Second, in
+the Loss-Queue case, the transition in the prediction from the loss-
+less to the lossy case is smooth, i.e., there is no horizontal line of
+points, while in the AB-Loss case there is still a horizontal line of
+points in the actual throughput range of 1114 Mb/s. This sug-
+gests that Q is a more accurate predictor than AB in the lossless
+case. The relative prediction error data of Table 1 supports this:
+SVR with a feature vector containing Loss-Queue information pre-
+dicts throughput within 10% of actual for 87% of transfers, while a
+feature vector containing AB-Loss measurements predicts with the
+same accuracy level for 78% of transfers. Finally, there is no dif-
+ference in accuracy (either qualitatively or quantitatively) between
+Loss-Queue and AB-Loss-Queue.
+
+The above discussion suggests that AB measurements are not re-
+quired for highly accurate throughput prediction, and that a combi-
+
+1: Relative accuracy of history-based (HB) throughput prediction
+and SVR-based predictors using different types of oracular passive
+path measurements (SVR-OPM) in the feature vector. Table values
+indicate the fraction of predictions within a given accuracy level.
+
+Relative
+Error
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+80%
+90%
+
+HB
+
+AB
+
+L
+
+Q
+
+AB-L
+
+AB-Q
+
+L-Q
+
+AB-L-Q
+
+0.32
+0.67
+0.80
+0.87
+0.88
+0.88
+0.89
+0.92
+0.92
+
+0.79
+0.87
+0.87
+0.87
+0.88
+0.88
+0.89
+0.91
+0.92
+
+0.54
+0.86
+0.92
+0.94
+0.95
+0.97
+0.97
+0.98
+0.98
+
+0.87
+0.87
+0.87
+0.87
+0.89
+0.92
+0.94
+0.95
+0.96
+
+0.78
+0.87
+0.91
+0.92
+0.97
+0.97
+0.97
+0.98
+0.98
+
+0.87
+0.87
+0.87
+0.87
+0.89
+0.92
+0.94
+0.95
+0.96
+
+0.86
+0.90
+0.90
+0.93
+0.96
+0.97
+0.98
+0.99
+0.99
+
+0.86
+0.90
+0.90
+0.93
+0.96
+0.97
+0.98
+0.99
+0.99
+
+2: Relative accuracy of history-based (HB) throughput prediction
+and SVR-based predictors using trace-based passive path measure-
+ments (PPM) or active path measurements (AM). Table values in-
+dicate the fraction of predictions within a given accuracy level.
+
+Relative
+Error
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+80%
+90%
+
+HB
+
+0.32
+0.67
+0.80
+0.87
+0.88
+0.88
+0.89
+0.92
+0.92
+
+PPM
+
+AM
+
+AB-L-Q
+0.49
+0.77
+0.86
+0.86
+0.88
+0.90
+0.90
+0.91
+0.92
+
+L-Q
+0.53
+0.81
+0.86
+0.89
+0.89
+0.89
+0.91
+0.94
+0.95
+
+AB-L-Q
+0.49
+0.78
+0.86
+0.86
+0.86
+0.88
+0.88
+0.90
+0.92
+
+L-Q
+0.51
+0.76
+0.86
+0.86
+0.87
+0.87
+0.88
+0.90
+0.92
+
+nation of L and Q is sufcient (given our framework). This obser-
+vation is not only surprising, but rather good news. Prior work has
+shown that accurate measurements of AB require at least moder-
+ate amounts of probe trafc [22, 26], and some formula-based TCP
+throughput estimation schemes take as a given that AB measure-
+ments are necessary for accurate throughput prediction [11].
+In
+contrast, measurements of L and Q can be very lightweight probe
+processes [25]. We discuss measurement overhead further in Sec-
+tion 7.
+
+5.1.2 Using Practical Passive and Active Path Mea-
+
+surements
+
+So far, we have considered the prediction accuracy of SVR based
+on only Oracular Passive Measurements (OPM). This gives us the
+baseline for the best-case accuracy with SVR, and also provides in-
+sight into how SVR uses different path properties for prediction.
+Table 1 and the graphs in Figure 5.1 shows that HB predicts 32% of
+transfers within 10% of actual while SVR-OPM-Loss-Queue pre-
+dicts 87%, an almost 3-fold improvement.
+In practice, however,
+perfect measurements of path properties are not available, so in
+what follows we assess SVR using measurements that are more like
+those available in the wide area.
+
+We compare HB with SVR-PPM and SVR-AM. Due to space
+limitations, we present only Loss-Queue and AB-Loss-Queue re-
+sults for SVR. We choose these because we expect AB-Loss-Queue
+to have the highest accuracy as it has the most information about
+path properties, and Loss-Queue because it is very lightweight and
+has accuracy equal to AB-Loss-Queue for SVR-OPM.
+
+Figures 2i and 2j show predicted and actual throughput for SVR-
+PPM and Figures 2k and 2l show predicted and actual throughput
+
+for SVR-AM. Table 2 presents relative prediction error data for HB,
+SVR-PPM and SVR-AM. We wish to examine three issues: rst,
+whether our nding that Loss-Queue has the same prediction accu-
+racy as AB-Loss-Queue from the SVR-OPM case holds for the SVR-
+PPM and SVR-AM case; second, whether SVR-PPM and SVR-AM
+have the same accuracy; and third, how SVR-AM accuracy com-
+pares with HB prediction accuracy.
+
+All the scatter plots from Figures 2i to 2l are qualitatively very
+similar; this is encouraging because it suggests two things. First,
+Loss-Queue has similar prediction accuracy as AB-Loss-Queue, i.e.,
+the observation from SVR-OPM still holds, so we can achieve good
+prediction accuracy without having to measure AB. The relative
+prediction error data in Table 2 supports this graphical observation:
+AB-Loss-Queue has only slightly better accuracy than Loss-Queue
+for both SVR-PPM and SVR-AM. Second, SVR-AM has accuracy
+similar to SVR-PPM, i.e., using active measurement tools to esti-
+mate path properties yields predictions almost as accurate as hav-
+ing ground-truth measurements. The data in Table 2 further sub-
+stantiates this observation. Similar accuracy between SVR-PPM
+predictions and SVR-AM predictions is important because in real
+wide-area Internet paths instrumentation is generally not available
+for providing accurate passive measurements.
+
+Finally, we compare HB with SVR-AM. Although Figures 2a,
+2k and 2l are qualitatively similar, SVR-AM has a tighter cluster
+of points around the diagonal for high actual throughput than HB.
+Thus, SVR-AM appears to have higher accuracy than HB. As Ta-
+ble 2 shows, SVR-AM-Loss-Queue predicts throughput within 10%
+of actual accuracy 49% of the time, while HB does so only 32% of
+the time. Hence, for high trafc scenarios, SVR-AM-Loss-Queue,
+the practically deployable lightweight version of the SVR-based
+prediction mechanism, signicantly outperforms HB prediction.
+
+5.1.3 The Nature of Prediction Error
+
+Lu et al. [16] observed in their study that throughput prediction
+errors were approximately normal in distribution. As the authors
+noted, normality would justify standard computations of condence
+intervals. We examined the distribution of errors in our experiments
+and also found evidence suggestive of normality.
+
+Figure 3 shows two normal quantile-quantile (Q-Q) plots for SVR-
+OPM-Loss-Queue (Figure 3a) and SVR-AM-Loss-Queue (Figure 3b).
+Samples that are consistent with a normal distribution form approx-
+imately a straight line in the graph, particularly toward the center.
+In Figures 3a and 3b, we see that the throughput prediction sam-
+ples in each case form approximately straight lines. These observa-
+tions are consistent with normality in the distribution of prediction
+errors. Error distributions from other experiments were also con-
+sistent with the normal distribution, but are not shown due to space
+limitations. We further discuss the issues of retraining and of de-
+tecting estimation problems in Section 7.
+5.2 Evaluation of Prediction Accuracy with
+
+Level-shift Background Trafc
+
+In the previous section, we considered SVR and HB prediction
+accuracy under variable but stationary background trafc. In this
+section, we consider the case where there is a shift in average load
+of background trafc.
+
+We congure our trafc generation process to cycle between 120
+Mb/s and 160 Mb/s average offered loads. With 120 Mb/s trafc,
+there is virtually no loss along the path and the throughput is bound
+by the receive window size. With 160 Mb/s trafc, the OC3 bot-
+tleneck is saturated and endemic loss ensues. The procedure is to
+run 120 Mb/s background trafc for 75 minutes, followed by 160
+
+s
+e
+
+l
+i
+t
+n
+a
+u
+Q
+
+e
+p
+m
+a
+S
+
+l
+
+4
+
+2
+
+0
+
+2
+
+
+4
+
+
+2
+
+1
+
+0
+
+1
+
+2
+
+(a) Q-Q Plot SVR-OPM-Loss-Queue.
+
+Theoretical Quantiles
+
+5
+
+0
+
+5
+
+
+s
+e
+
+l
+i
+t
+n
+a
+u
+Q
+
+e
+p
+m
+a
+S
+
+l
+
+2
+
+1
+
+0
+
+1
+
+2
+
+(b) Q-Q Plot
+Queue.
+
+Theoretical Quantiles
+
+for SVR-AM-Loss-
+
+3: Normal Q-Q Plots for Prediction Errors with (a) oracular mea-
+surements and (b) active measurements of Loss-Queue.
+
+Mb/s of trafc for 2 hours 15 min, repeating this cycle several times.
+We follow the measurement protocol in Section 4.2 for collecting
+AB, L, Q, and throughput measurements. We rst train our SVR
+predictor in the 120 Mb/s environment, and test it in the 160 Mb/s
+environment. The column labeled OPM-L-Q TrainLowTestHigh in
+Table 3 shows the results. Clearly, the prediction accuracy is very
+poor: all predictions are off by a factor of two or more. Next, we
+train the predictor on one whole cycle of 120 Mb/s and 160 Mb/s,
+and test it on a series of cycles. The last two columns of Table 3,
+OPM-Loss-Queue and AM-Loss-Queue, and Figure 4a show the re-
+sults from these experiments. The x-axis in Figure 4a is time repre-
+sented by the number of le transfers that have completed, and the
+y-axis is throughput. In this case, both SVR-OPM and SVR-AM pre-
+dict throughput with high accuracy. SVR-OPM predicts throughput
+within 10% of actual 62% of the time, and SVR-AM 52% of the
+time. For comparison, the rst column of Table 3 and Figure 4b
+present results for the history-based predictor. HB accuracy is sig-
+nicantly lower than SVR accuracy, only about half as much as
+SVR-OPM. Figure 4b explains why. After every level-shift in the
+background trafc, the HB predictor takes time to re-adapt. In con-
+trast, no adaptation time is required for the SVR predictor if it has
+already been trained on the range of expected trafc conditions.
+
+One issue regarding shifts in average trafc volume is how many
+samples from a new, previously unseen trafc level are needed to
+adequately train the predictor. To examine this issue, we train our
+predictor on two new kinds of average trafc loads: a step con-
+stituting 75 minutes of 120 Mb/s trafc followed by 10 minutes
+of 160 Mb/s trafc resulting in 5 experiments at the higher trafc
+level, and a step constituting of 75 minutes of 120 Mb/s trafc fol-
+lowed by 20 minutes of 160 Mb/s trafc resulting in 10 experiments
+
+)
+s
+/
+b
+M
+
+(
+
+t
+u
+p
+h
+g
+u
+o
+r
+h
+T
+
+)
+s
+/
+b
+M
+
+(
+
+t
+u
+p
+h
+g
+u
+o
+r
+h
+T
+
+20
+
+15
+
+10
+
+5
+
+0
+
+0
+
+Actual Throughput
+SVR-AM-Loss-Queue
+
+20
+
+40
+
+60
+
+80
+
+100
+
+120
+
+140
+
+File Transfer Timeline
+
+(a) Level Shift: SVR-AM-Loss-Queue
+
+20
+
+15
+
+10
+
+5
+
+0
+
+0
+
+Actual Throughput
+HB
+
+20
+
+40
+
+60
+
+80
+
+100
+
+120
+
+140
+
+File Transfer Timeline
+
+(b) Level Shift: HB
+
+4: Prediction Accuracy in Fluctuating Background Trafc
+
+at the higher trafc level. We call these conditions SVR-AM-L-Q-
+5 and SVR-AM-L-Q-10 respectively. The prediction accuracy of
+these schemes is presented in Table 4. As can be seen in the table,
+these training schemes yield most of the accuracy of SVR-AM-L-
+Q, which trains at the 160 Mb/s level for approximately 40 experi-
+ments. These results demonstrate that fairly small training sets from
+new trafc levels are needed for accurate prediction. A comparison
+of time series plots from these experiments (not shown due to space
+constraints) provides further insight into how prediction accuracy
+improves with larger training sets. Both SVR-AM-L-Q-5 and SVR-
+AM-L-Q-10 have periods where the predicted throughput is virtu-
+ally constant even though the actual throughput is not. Such periods
+are shorter for SVR-AM-L-Q-10 compared to SVR-AM-L-Q-5. SVR-
+AM-L-Q (Figure 4a) has no such periods. The reason for this effect
+is that predictors incorporating fewer samples may not include a
+broad enough range of possible network conditions. However, the
+SVR prediction mechanism can still yield high accuracy using a
+small set of training samples if the samples are representative of the
+range of network conditions along a path.
+
+5.3 Evaluation of Prediction Accuracy for Dif-
+
+ferent File Sizes
+
+We have so far considered only 8 MB le transfers in step 3 of
+the experimental protocol of Section 4.2. For a TCP receive win-
+dow of 128 KB, the majority of the lifetime of an 8 MB transfer is
+spent in TCPs congestion avoidance phase. However, our goal is
+an accurate predictor for a range of le sizes, not just bulk transfers.
+Predicting throughput for small les is complicated by TCPs slow
+start phase in which throughput changes rapidly with increasing le
+size due to the doubling of the window every round-trip time, and
+because packet loss during the transfer of a small le can have a
+large relative impact on throughput. We hypothesize that using dif-
+
+3: Relative accuracy of history-based (HB) and SVR-based
+throughput predictors using oracular path measurements (OPM)
+and active measurements (AM) when predictors are subjected to
+shifts in average background trafc volume.
+
+Relative
+Error
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+80%
+90%
+
+HB
+
+0.29
+0.40
+0.52
+0.55
+0.62
+0.64
+0.66
+0.71
+0.74
+
+OPM-L-Q
+TrainLowTestHigh
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+0.00
+
+OPM-Loss-Queue
+
+AM-Loss-Queue
+
+0.62
+0.72
+0.81
+0.84
+0.88
+0.90
+0.91
+0.92
+0.92
+
+0.52
+0.61
+0.69
+0.73
+0.77
+0.78
+0.80
+0.83
+0.84
+
+4: Comparison of relative accuracy of SVR-based throughput pre-
+diction using active measurements (AM) and different numbers of
+training samples. 40 training samples are used in AM-Loss-Queue,
+5 samples for AM-L-Q-5, and 10 samples for AM-L-Q-10. Back-
+ground trafc consists of shifts in average trafc volume between
+120 Mb/s and 160 Mb/s.
+
+Relative
+Error
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+80%
+90%
+
+AM-Loss-Queue
+
+AM-L-Q-5
+
+AM-L-Q-10
+
+0.52
+0.61
+0.69
+0.73
+0.77
+0.78
+0.80
+0.83
+0.84
+
+0.44
+0.49
+0.51
+0.55
+0.58
+0.60
+0.62
+0.65
+0.67
+
+0.45
+0.53
+0.55
+0.59
+0.62
+0.65
+0.67
+0.73
+0.73
+
+ferent le sizes to train the SVR predictor will lead to accurate fore-
+casts for a broad range of le sizes - something not treated in prior
+HB prediction studies.
+
+We conducted experiments using background trafc at an aver-
+age offered load of 135 Mb/s and using a series of 9 training sets
+consisting of between 1 and 9 unique le sizes. The le sizes for
+the training sets are between 32 KB and 8 MB. The rst training
+set consists of a single le size of 8 MB, the second training set
+consists of two le sizes of 32 KB and 8 MB, and the third training
+set adds a le size of 512 KB. Subsequent training sets sample the
+range between 32 KB and 8 MB such that the fraction of a transfer
+lifetime spent in slow start covers a wider range.
+
+Test sets for our experiments consist of 100 le sizes between 2
+KB and 8 MB  a much more diverse set than the training set. The
+test le sizes are drawn from a biased random number generator in
+such a way that the resulting le transfers exhibit a wide range of
+behavior, i.e., les that are fully transferred during slow start, and
+transfers consisting of a varying proportion of time spent in slow
+start versus congestion avoidance. We use a wider range of small
+les in the test set to allow us to see how our predictor performs
+for unseen and difcult to predict le sizes. We do not use a wider
+range for large le sizes because we expect the throughput to be
+almost constant (i.e., window or congestion limited) once slow start
+becomes an insignicant fraction of the transfer time.
+
+Tables 5 and 6 present prediction accuracy for training sets con-
+sisting of 1, 2, 3, 6, or 8 distinct le sizes for SVR-OPM and SVR-
+AM. Graphs in Figure 5 present SVR-AM results for one, two, and
+three le sizes in the training set. We do not include graphs for re-
+maining training sets due to space limitations: they are similar to
+
+5: Relative accuracy of SVR-based predictor using oracular passive
+measurements (OPM) and training sets consisting of 1, 2, 3, 6, or 8
+distinct le sizes.
+
+Relative
+Error
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+80%
+90%
+
+No. of distinct le sizes in training
+8
+0.34
+0.51
+0.54
+0.61
+0.66
+0.67
+0.67
+0.68
+0.68
+
+6
+0.35
+0.48
+0.54
+0.59
+0.65
+0.66
+0.67
+0.68
+0.68
+
+2
+0.24
+0.40
+0.52
+0.61
+0.64
+0.67
+0.69
+0.71
+0.72
+
+3
+0.49
+0.57
+0.64
+0.66
+0.67
+0.68
+0.68
+0.69
+0.70
+
+1
+0.06
+0.16
+0.18
+0.19
+0.22
+0.24
+0.24
+0.29
+0.30
+
+6: Relative accuracy of SVR-based predictor using active measure-
+ments (AM) and training sets consisting of 1, 2, 3, 6, or 8 distinct
+le sizes.
+
+Relative
+Error
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+80%
+90%
+
+No. of distinct le sizes in training
+8
+0.29
+0.47
+0.55
+0.61
+0.64
+0.65
+0.66
+0.67
+0.68
+
+6
+0.29
+0.47
+0.52
+0.57
+0.62
+0.64
+0.64
+0.64
+0.65
+
+2
+0.29
+0.41
+0.53
+0.58
+0.64
+0.66
+0.70
+0.70
+0.71
+
+3
+0.40
+0.51
+0.59
+0.64
+0.65
+0.66
+0.67
+0.68
+0.69
+
+1
+0.10
+0.15
+0.16
+0.19
+0.23
+0.23
+0.26
+0.28
+0.31
+
+7: Details of RON Paths used for wide-area experiments
+
+Path Number
+
+Path 1
+Path 2
+Path 3
+Path 4
+Path 5
+Path 6
+
+Node Locations
+Amsterdam-Utah
+Utah-Maryland
+Maryland-Utah
+Maryland-New York
+New Mexico-Ithaca
+New Mexico-New York
+
+Path RTT (ms)
+144
+54
+54
+10
+86
+83
+
+8: Wide Area Results for 512KB Transfers
+
+Path 1
+
+Path 2
+
+Path 3
+
+Path 4
+
+Path 5
+
+Path 6
+
+0.43
+0.76
+0.86
+0.94
+0.94
+0.94
+0.96
+0.96
+0.96
+
+0.96
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+
+0.35
+0.73
+0.98
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+
+0.55
+0.90
+0.98
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+
+0.92
+0.96
+0.98
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+
+Relative
+Error
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+80%
+90%
+
+9: Wide Area Results for 2MB Transfers
+
+Path1
+
+Path2
+
+Path3
+
+Path4
+
+Path5
+
+Path6
+
+0.48
+0.77
+0.92
+0.98
+0.98
+0.98
+0.98
+0.98
+1.00
+
+0.98
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+
+0.92
+0.98
+0.98
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+
+0.52
+0.75
+0.94
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+
+0.96
+0.98
+0.98
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+
+0.98
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+
+Relative
+Error
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+80%
+90%
+
+those for two and three le sizes in the training set. The rst obser-
+vation is that for the single le size in training, the prediction error
+is very high. This inaccuracy is expected because the predictor has
+been given no information about the relationship between size and
+throughput for small les. The second observation is that for more
+than one le size, prediction becomes dramatically more accurate,
+i.e., the predictor is able to successfully extrapolate from a handful
+of sizes in training to a large number of sizes in testing. The third
+observation is that relative error is low for large le sizes (corre-
+sponding to high actual throughput) while it is higher for small les
+(low actual throughput). This is consistent with our expectation that
+it would be more difcult to accurately predict throughput for small
+les. The fourth observation is that for small le sizes (i.e., small
+actual throughput), the error is always that of over-prediction. The
+smallest le in the training set is 32KB while the smallest le in
+the test set is 2KB. This difference is the cause of over-prediction
+errors: the relationship between le size and throughput is compli-
+cated for small les, and without a broader training set, the SVR
+mechanism is unable to provide accurate prediction.
+
+An important nal observation is that prediction accuracy reaches
+a maximum at three le sizes in the training set, and there is no clear
+trend for four to nine le sizes in the training set. A feature of our
+training set is that the number of transfers is always constant at one
+hundred, so for the single training size, there are one hundred 8
+MB transfers, and for the two training sizes, there are fty 32 KB
+transfers and fty 8 MB transfers. We believe that accuracy is max-
+imum at three training sizes in our experiments because there is a
+trade-off between capturing a diversity of le sizes and the number
+of samples for a single le sizethis was alluded to in our discus-
+sion of the number of samples needed for good prediction accuracy
+in Section 5.2. In other words, we believe that we would not see
+maximum accuracy occurring at three le sizes and would instead
+see an increase in accuracy with increasing number of le sizes in
+the training set if we kept the number of samples of a single le size
+constant in the training set and allowed the size of the training set
+to increase from 100 to 200, 300, etc., as we increase the number
+of le sizes in the training set. A thorough characterization of the
+trade-off between diversity of le sizes and number of samples of
+each le size is future work.
+
+6. WIDE AREA TEST RESULTS
+
+To further evaluate our SVR throughput prediction method we
+created a prototype tool called PathPerf that can generate mea-
+surements and make forecasts on wide area paths. We used Path-
+Perf to conduct experiments over a small set of paths in the RON
+testbed [3].
+
+The RON nodes used in our experiments have a range of CPU
+and memory congurations, but all ran FreeBSD 4.7 and had lim-
+ited additional experimental load during the time of our tests. We
+conducted our tests over the set of paths described in Table 7. These
+include ve trans-continental paths and one trans-Atlantic path. While
+this path set is modest in size, it has relative diversity in path charac-
+teristics and round-trip times that range between 10ms and 144ms.
+Since we have shown that AB measurement does not improve
+throughput prediction accuracy, we eliminate it in the experimental
+protocol described in Section 4.2. We conduct experiments for
+two target le sizes: 512 KB and 2MB. The training and test sets
+consist of 50 transfers of a particular le size. The experiments
+were conducted between October 20, 2006 and October 31, 2006.
+Tables 8 and 9 show the results of the tests. The prediction ac-
+curacy is high on all paths for both le sizes: in many cases SVR
+
+)
+s
+/
+b
+M
+
+(
+
+t
+u
+p
+h
+g
+u
+o
+r
+h
+T
+
+d
+e
+t
+c
+d
+e
+r
+P
+
+i
+
+20
+
+15
+
+10
+
+5
+
+0
+
+0
+
+5
+
+10
+
+15
+
+20
+
+Actual Throughput (Mb/s)
+
+)
+s
+/
+b
+M
+
+(
+
+t
+u
+p
+h
+g
+u
+o
+r
+h
+T
+
+d
+e
+t
+c
+d
+e
+r
+P
+
+i
+
+20
+
+15
+
+10
+
+5
+
+0
+
+0
+
+5
+
+10
+
+15
+
+20
+
+Actual Throughput (Mb/s)
+
+)
+s
+/
+b
+M
+
+(
+
+t
+u
+p
+h
+g
+u
+o
+r
+h
+T
+
+d
+e
+t
+c
+d
+e
+r
+P
+
+i
+
+20
+
+15
+
+10
+
+5
+
+0
+
+0
+
+5
+
+10
+
+15
+
+20
+
+Actual Throughput (Mb/s)
+
+(a) SVR-AM with le size of 8 MB in
+training set.
+
+(b) SVR-AM with le sizes of 32 KB and
+8 MB in training set.
+
+(c) SVR-AM with le sizes of 32 KB,
+512 KB, and 8 MB in training set.
+
+5: Scatter plots for the SVR-based predictor using 1, 2, or 3 distinct le sizes in the training set. All results shown use active measurements
+to train the predictor. Testing is done using a range of 100 le sizes from 2 KB to 8 MB.
+
+prediction accuracy is within 10% of actual greater than 90% of the
+time. In most cases, the prediction accuracy for 512KB and 2MB
+transfers is similar. The one exception is Path 3, where accuracy
+is within 10% of original only 35% of the time for 512KB trans-
+fers, but is much higher at 92% of the time for 2MB transfers. We
+found that on this particular path the coefcient of variation for the
+actual throughput of 512KB les is twice that of 2MB les, making
+prediction for 512KB les more difcult and suggesting that path
+conditions were more dynamic during this test.
+
+Our measurement data showed that many wide area paths were
+lightly loaded during our tests and exhibited very little variation in
+throughput between different le transfers. We are in the process
+of extending our wide area experiment set considerably in the hope
+that we will encounter more variability on these paths, which will
+enable us to further rene PathPerfs capability. Finally, we also
+evaluated the HB predictors performance in these experiments and
+found its forecasts to be approximately the same as SVR. We ex-
+pect that, as we nd paths with more dynamic conditions, our SVR
+predictor will distinguish itself as our lab experiments demonstrate.
+
+7. DISCUSSION
+
+This section addresses two key issues related to running PathPerf
+
+in operational settings.
+Network Load Introduced by PathPerf. Trafc introduced by
+active measurement tools is of concern because excessive trafc
+can skew the network property being measured. Furthermore, net-
+work operators and engineers generally wish to minimize any im-
+pact measurement trafc may have on customer trafc.
+
+For history-based TCP throughput estimation methods, the spe-
+cic amount of trafc introduced depends on the measurement pro-
+tocol. For example, two approaches may be taken. The rst method
+is to periodically transfer xed-size les; the second is to allow a
+TCP connection to transfer data for a xed time period. The lat-
+ter approach was taken in the history-based evaluation of He et
+al. [11]. To estimate the overhead of a history-based predictor us-
+ing xed-duration transfers, assume that (1) the TCP connection is
+not rwnd-limited, (2) that the xed duration of data transfer is 50
+seconds (as in [11]), (3) throughput measurements are initiated ev-
+ery 5 minutes, and (4) throughput closely matches available band-
+width. For this example, assume that the average available band-
+width for the duration of the experiment is approximately 50 Mb/s.
+Thus, over a 30 minute period, nearly 2 GB in measurement trafc
+is produced, resulting in an average bandwidth of about 8.3 Mb/s.
+
+In the case of PathPerf, measurement overhead in the training pe-
+riod consists of le transfers and queuing/loss probe measurements.
+In the testing phase, overhead consists solely of loss measurements.
+Assume that we have a 15 minute training period followed by a 15
+minute testing period. Assume that le sizes of 32 KB, 512 KB,
+and 8 MB are transferred during the training period, using 10 sam-
+ples of each le, and that each le transfer is preceeded by a 30
+second BADABING measurement. With a probe probability of 0.3,
+BADABING trafc for each measurement is about 1.5 MB. For test-
+ing, only BADABING measurements must be ongoing. Assume that
+a 30 second BADABING measurement is initiated every three min-
+utes. Thus, over the 15 minute training period about 130 MB of
+measurement trafc is produced, resulting in an average bandwidth
+of about 1.2 Mb/s for the rst 15 minutes. For the testing period,
+a total of 7.5 MB of measurement trafc is produced, resulting in
+a rate of about 66 Kb/s. Overall, PathPerf produces 633 Kb/s on
+average over the 30 minute measurement period, dramatically dif-
+ferent from a standard history-based measurement approach. Even
+if more conservative assumptions are made on the history-based
+approach, the differences in overhead are signicant. Again, the
+reason for the dramatic savings is that once the SVR predictor has
+been trained, only lightweight measurements are required for accu-
+rate predictions.
+Detecting Problems in Estimation. An important capability for
+throughput estimation in live deployments is to detect when there
+are signicant estimation errors. Such errors could be indicative
+of a change in network routing, causing an abrupt change in delay,
+loss, and throughput. It could also signal a pathological network
+condition, such as an ongoing denial-of-service attack leading to
+endemic network loss along a path. On the other hand, it may sim-
+ply be a measurement outlier with no network-based cause.
+
+As discussed in Section 5.1.3, normality allows us to use stan-
+dard statistical machinery to compute condence intervals (i.e., us-
+ing measured variance of prediction error). We show that prediction
+errors are consistent with a normal distribution and further propose
+using condence intervals as a mechanism for triggering retraining
+of the SVR in the following way. Assume that we have trained the
+SVR predictor over n measurement periods (i.e., we have n through-
+put samples and n samples of L and Q). Assume that we then col-
+lect k additional throughput samples, making predictions for each
+sample and recording the error. We therefore have k error samples
+between what was predicted and what was subsequently measured.
+Given a condence level, e.g., 95%, we can calculate condence
+intervals on the sample error distribution. We can then, with low
+
+frequency, collect additional throughput samples to test whether the
+prediction error exceeds the interval bounds. (Note that these addi-
+tional samples may be application trafc for which predictions are
+used.) If so, we may decide that retraining the SVR predictor is
+appropriate. A danger in triggering an immediate retraining is that
+such a policy may be too sensitive to outliers regardless of the con-
+dence interval chosen. More generally, we can consider a threshold
+m of consecutive prediction errors that exceed the computed con-
+dence interval bounds as a trigger for retraining.
+
+8. SUMMARY AND FUTURE WORK
+
+In this paper we address the problem of how to generate accurate
+TCP throughput predictions for arbitrary paths in the Internet. Our
+approach uses a powerful machine learning tool - Support Vector
+Regression - which provides an efcient mechanism for generating
+a predictor using multiple inputs. We investigate measurements of
+path properties including queuing delay, packet loss, and available
+bandwidth that can be used along with prior throughput measure-
+ments as the feature set for our predictor. Through an extensive se-
+ries of lab-based experiments we nd that our SVR predictor makes
+highly accurate forecasts using measurements of queuing and loss,
+and that available bandwidth measurement does not improve pre-
+dictions. In heavy trafc conditions, the SVR forecasts are nearly
+3 times more accurate than prior HB predictors. We make a se-
+ries of extensions to the SVR predictor to make it operationally
+viable. Further lab experiments show that these extensions enable
+the predictor to work well for a wide range of le sizes, to be robust
+to measurements from active probe tools, and to adapt to changing
+path conditions. We created a tool called PathPerf which enables us
+to test our SVR predictor in the Internet. In initial tests in the RON
+testbed, we show that PathPerf generates highly accurate through-
+put predictions. PathPerf also generates far less probe trafc com-
+pared to a HB predictor congured as suggested in prior work.
+
+In future work, we intend to continue to rene PathPerf by inves-
+tigating how to better tune the training set, and possibly experiment
+with other machine learning tools. We are continuing to expand
+the tests run in the wide area so that we can evaluate PathPerfs
+capability under a broader range of path conditions.
+
+9. ACKNOWLEDGEMENTS
+
+We would like to thank David Andersen for providing us access
+to the RON testbed, and Ana Bizzaro for help with the WAIL lab
+testbed. We also thank the anonymous reviewers for their help-
+ful suggestions. This work was supported in part by NSF grants
+numbers CNS-0347252, CNS-0646256, CNS-0627102, and CCR-
+0325653. Any opinions, ndings, conclusions, or recommenda-
+tions expressed in this material are those of the authors and do not
+necessarily reect the views of the NSF.
+

@@ -1,0 +1,4635 @@
+Abstract
+
+Kernel-based learning algorithms work by embedding the data into a Euclidean space, and then
+searching for linear relations among the embedded data points. The embedding is performed
+implicitly, by specifying the inner products between each pair of points in the embedding space.
+This information is contained in the so-called kernel matrix, a symmetric and positive semidenite
+matrix that encodes the relative positions of all points. Specifying this matrix amounts to specifying
+the geometry of the embedding space and inducing a notion of similarity in the input space|classical
+model selection problems in machine learning. In this paper we show how the kernel matrix can
+be learned from data via semidenite programming (SDP) techniques. When applied to a kernel
+matrix associated with both training and test data this gives a powerful transductive algorithm|
+using the labeled part of the data one can learn an embedding also for the unlabeled part. The
+similarity between test points is inferred from training points and their labels. Importantly, these
+learning problems are convex, so we obtain a method for learning both the model class and the
+function without local minima. Furthermore, this approach leads directly to a convex method for
+learning the 2-norm soft margin parameter in support vector machines, solving an important open
+problem.
+
+Keywords: kernel methods, learning kernels, transduction, model selection, support vector ma-
+chines, convex optimization, semidenite programming
+
+c(cid:176)2004 Gert R.G. Lanckriet, Nello Cristianini, Peter Bartlett, Laurent El Ghaoui and Michael I. Jordan.
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+1. Introduction
+
+Recent advances in kernel-based learning algorithms have brought the eld of machine learning
+closer to the desirable goal of autonomy|the goal of providing learning systems that require as
+little intervention as possible on the part of a human user. In particular, kernel-based algorithms
+are generally formulated in terms of convex optimization problems, which have a single global
+optimum and thus do not require heuristic choices of learning rates, starting congurations or
+other free parameters. There are, of course, statistical model selection problems to be faced within
+the kernel approach; in particular, the choice of the kernel and the corresponding feature space are
+central choices that must generally be made by a human user. While this provides opportunities for
+prior knowledge to be brought to bear, it can also be dicult in practice to nd prior justication
+for the use of one kernel instead of another.
+It would be desirable to explore model selection
+methods that allow kernels to be chosen in a more automatic way based on data.
+
+It is important to observe that we do not necessarily need to choose a kernel function, specifying
+the inner product between the images of all possible data points when mapped from an input space
+X to an appropriate feature space F. Since kernel-based learning methods extract all information
+needed from inner products of training data points in F, the values of the kernel function at pairs
+which are not present are irrelevant. So, there is no need to learn a kernel function over the entire
+sample space to specify the embedding of a nite training data set via a kernel function mapping.
+Instead, it is sucient to specify a nite-dimensional kernel matrix (also known as a Gram matrix )
+that contains as its entries the inner products in F between all pairs of data points. Note also that
+it is possible to show that any symmetric positive semidenite matrix is a valid Gram matrix, based
+on an inner product in some Hilbert space. This suggests viewing the model selection problem in
+terms of Gram matrices rather than kernel functions.
+
+In this paper our main focus is transduction|the problem of completing the labeling of a
+partially labeled dataset. In other words, we are required to make predictions only at a nite set
+of points, which are specied a priori. Thus, instead of learning a function, we only need to learn a
+set of labels. There are many practical problems in which this formulation is natural|an example
+is the prediction of gene function, where the genes of interest are specied a priori, but the function
+of many of these genes is unknown.
+
+We will address this problem by learning a kernel matrix corresponding to the entire dataset, a
+matrix that optimizes a certain cost function that depends on the available labels. In other words,
+we use the available labels to learn a good embedding, and we apply it to both the labeled and
+the unlabeled data. The resulting kernel matrix can then be used in combination with any of a
+number of existing learning algorithms that use kernels. One example that we discuss in detail is
+the support vector machine (SVM), where our methods yield a new transduction method for SVMs
+that scales polynomially with the number of test points. Furthermore, this approach will oer us a
+method to optimize the 2-norm soft margin parameter for these SVM learning algorithms, solving
+an important open problem.
+
+All this can be done in full generality by using techniques from semidenite programming
+(SDP), a branch of convex optimization that deals with the optimization of convex functions over
+the convex cone of positive semidenite matrices, or convex subsets thereof. Any convex set of
+kernel matrices is a set of this kind. Furthermore, it turns out that many natural cost functions,
+motivated by error bounds, are convex in the kernel matrix.
+
+A second application of the ideas that we present here is to the problem of combining data from
+multiple sources. Specically, assume that each source is associated with a kernel function, such
+that a training set yields a set of kernel matrices. The tools that we develop in this paper make
+
+28
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+it possible to optimize over the coecients in a linear combination of such kernel matrices. These
+coecients can then be used to form linear combinations of kernel functions in the overall classier.
+Thus this approach allows us to combine possibly heterogeneous data sources, making use of the
+reduction of heterogeneous data types to the common framework of kernel matrices, and choosing
+coecients that emphasize those sources most useful in the classication decision.
+
+In Section 2, we recall the main ideas from kernel-based learning algorithms, and introduce a
+variety of criteria that can be used to assess the suitability of a kernel matrix: the hard margin, the
+1-norm and 2-norm soft margin, and the kernel alignment. Section 3 reviews the basic concepts of
+semidenite programming. In Section 4 we put these ideas together and consider the optimization
+of the various criteria over sets of kernel matrices. For a set of linear combinations of xed kernel
+matrices, these optimization problems reduce to SDP. If the linear coecients are constrained to
+be positive, they can be simplied even further, yielding a quadratically-constrained quadratic
+program, a special case of the SDP framework.
+If the linear combination contains the identity
+matrix, we obtain a convex method for optimizing the 2-norm soft margin parameter in support
+vector machines. Section 5 presents statistical error bounds that motivate one of our cost functions.
+Empirical results are reported in Section 6.
+
+Notation
+Vectors are represented in bold notation, e.g., v 2 Rn, and their scalar components in italic
+script, e.g., v1; v2; : : : ; vn. Matrices are represented in italic script, e.g., X 2 Rmn. For a square,
+symmetric matrix X, X  0 means that X is positive semidenite, while X  0 means that X is
+positive denite. For a vector v, the notations v  0 and v > 0 are understood componentwise.
+
+2. Kernel Methods
+
+Kernel-based learning algorithms (see, for example, Cristianini and Shawe-Taylor, 2000; Scholkopf
+and Smola, 2002; Shawe-Taylor and Cristianini, 2004) work by embedding the data into a Hilbert
+space, and searching for linear relations in such a space. The embedding is performed implicitly,
+by specifying the inner product between each pair of points rather than by giving their coordinates
+explicitly. This approach has several advantages, the most important deriving from the fact that
+the inner product in the embedding space can often be computed much more easily than the
+coordinates of the points themselves.
+
+Given an input set X , and an embedding space F, we consider a map ' : X ! F. Given two
+points xi 2 X and xj 2 X , the function that returns the inner product between their images in the
+space F is known as the kernel function.
+Denition 1 A kernel is a function k, such that k(x; z) = h'(x); '(z)i for all x; z 2 X , where '
+is a mapping from X to an (inner product) feature space F. A kernel matrix is a square matrix
+K 2 Rnn such that Kij = k(xi; xj) for some x1; : : : ; xn 2 X and some kernel function k.
+
+The kernel matrix is also known as the Gram matrix. It is a symmetric, positive semidenite
+i=1, it completely
+
+matrix, and since it species the inner products between all pairs of points fxign
+determines the relative positions of those points in the embedding space.
+
+Since in this paper we will consider a nite input set X , we can characterize kernel functions
+
+and matrices in the following simple way.
+
+Proposition 2 Every positive semidenite and symmetric matrix is a kernel matrix. Conversely,
+every kernel matrix is symmetric and positive semidenite.
+
+29
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+Notice that, if we have a kernel matrix, we do not need to know the kernel function, nor the
+implicitly dened map ', nor the coordinates of the points '(xi). We do not even need X to be a
+vector space; in fact in this paper it will be a generic nite set. We are guaranteed that the data are
+implicitly mapped to some Hilbert space by simply checking that the kernel matrix is symmetric
+and positive semidenite.
+
+The solutions sought by kernel-based algorithms such as the support vector machine (SVM) are
+
+ane functions in the feature space:
+
+f (x) = hw; '(x)i + b;
+
+for some weight vector w 2 F. The kernel can be exploited whenever the weight vector can be
+expressed as a linear combination of the training points, w = Pn
+i=1 i'(xi), implying that we can
+express f as
+
+n
+
+f (x) =
+
+ik(xi; x) + b:
+
+Xi=1
+
+For example, for binary classication, we can use a thresholded version of f (x), i.e., sign (f (x)), as
+a decision function to classify unlabeled data. If f (x) is positive, then we classify x as belonging
+to class +1; otherwise, we classify x as belonging to class 1. An important issue in applications
+is that of choosing a kernel k for a given learning task; intuitively, we wish to choose a kernel that
+induces the \right" metric in the input space.
+
+2.1 Criteria Used in Kernel Methods
+
+Kernel methods choose a function that is linear in the feature space by optimizing some criterion
+over the sample. This section describes several such criteria (see, for example, Cristianini and
+Shawe-Taylor, 2000; Scholkopf and Smola, 2002; Shawe-Taylor and Cristianini, 2004). All of these
+criteria can be considered as measures of separation of the labeled data. We rst consider the hard
+margin optimization problem.
+
+Denition 3 Hard Margin Given a labeled sample Sl = f(x1; y1); : : : ; (xn; yn)g, the hyperplane
+(w; b) that solves the optimization problem
+hw; wi
+yi(hw; '(xi)i + b)  1;
+
+min
+w;b
+subject to
+
+i = 1; : : : ; n;
+
+(1)
+
+realizes the maximal margin classier with geometric margin (cid:176) = 1=kwk2, assuming it exists.
+
+Geometrically, (cid:176) corresponds to the distance between the convex hulls (the smallest convex sets
+
+that contain the data in each class) of the two classes (Bennett and Bredensteiner, 2000).
+
+By transforming (1) into its corresponding Lagrangian dual problem, the solution is given by
+
+!(K) = 1=(cid:176)2
+
+= hw; wi
+= max
+
+
+
+2T e  T G(K) :   0; T y = 0;
+
+(2)
+
+where e is the n-vector of ones,  2 Rn, G(K) is dened by Gij(K) = [K]ijyiyj = k(xi; xj)yiyj,
+and   0 means i  0; i = 1; : : : ; n.
+The hard margin solution exists only when the labeled sample is linearly separable in feature
+space. For a non-linearly-separable labeled sample Sl, we can dene the soft margin. We consider
+the 1-norm and 2-norm soft margins.
+
+30
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+Denition 4 1-norm Soft Margin Given a labeled sample Sl = f(x1; y1); : : : ; (xn; yn)g, the
+hyperplane (w; b) that solves the optimization problem
+
+n
+
+min
+w;b;
+
+subject to
+
+i
+
+Xi=1
+
+hw; wi + C
+yi(hw; '(xi)i + b)  1  i;
+i  0;
+
+i = 1; : : : ; n
+
+(3)
+
+i = 1; : : : ; n
+
+realizes the 1-norm soft margin classier with geometric margin (cid:176) = 1=kwk2. This margin is also
+called the 1-norm soft margin.
+
+As for the hard margin, we can express the solution of (3) in a revealing way by considering the
+
+corresponding Lagrangian dual problem:
+
+n
+
+i;
+
+(4)
+
+!S1(K) = hw; wi + C
+
+Xi=1
+
+= max
+
+
+
+2T e  T G(K) : C    0; T y = 0:
+
+Denition 5 2-norm Soft Margin Given a labeled sample Sl = f(x1; y1); : : : ; (xn; yn)g, the
+hyperplane (w; b) that solves the optimization problem
+
+n
+
+min
+w;b;
+
+subject to
+
+2
+i
+
+Xi=1
+
+hw; wi + C
+yi(hw; '(xi)i + b)  1  i;
+i  0;
+
+i = 1; : : : ; n
+
+(5)
+
+i = 1; : : : ; n
+
+realizes the 2-norm soft margin classier with geometric margin (cid:176) = 1=kwk2. This margin is also
+called the 2-norm soft margin.
+
+Again, by considering the corresponding dual problem, the solution of (5) can be expressed as
+
+n
+
+2
+i;
+
+(6)
+
+!S2(K) = hw; wi + C
+
+Xi=1
+
+= max
+
+
+
+2T e  T (cid:181)G(K) +
+
+1
+C
+
+In  :   0; T y = 0:
+
+With a xed kernel, all of these criteria give upper bounds on misclassication probability (see,
+for example, Chapter 4 of Cristianini and Shawe-Taylor, 2000). Solving these optimization problems
+for a single kernel matrix is therefore a way of optimizing an upper bound on error probability.
+
+In this paper, we allow the kernel matrix to be chosen from a class of kernel matrices. Previous
+error bounds are not applicable in this case. However, as we will see in Section 5, the margin (cid:176)
+can be used to bound the performance of support vector machines for transduction, with a linearly
+parameterized class of kernels.
+
+We do not discuss further the merit of these dierent cost functions, deferring to the current
+literature on classication, where these cost functions are widely used with xed kernels. Our goal
+is to show that these cost functions can be optimized|with respect to the kernel matrix|in an
+SDP setting.
+
+31
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+Finally, we dene the alignment of two kernel matrices (Cristianini et al., 2001, 2002). Given
+an (unlabeled) sample S = fx1; : : : ; xng, we use the following (Frobenius) inner product between
+Gram matrices, hK1; K2iF = trace(K T
+Denition 6 Alignment The (empirical) alignment of a kernel k1 with a kernel k2 with respect
+to the sample S is the quantity
+
+1 K2) =Pn
+
+i;j=1 k1(xi; xj)k2(xi; xj).
+
+where Ki is the kernel matrix for the sample S using kernel ki.
+
+^A(S; k1; k2) =
+
+hK1; K2iF
+
+;
+
+phK1; K1iFhK2; K2iF
+
+This can also be viewed as the cosine of the angle between two bi-dimensional vectors K1 and
+K2, representing the Gram matrices. Notice that we do not need to know the labels for the sample
+S in order to dene the alignment of two kernels with respect to S. However, when the vector
+y of f1g labels for the sample is known, we can consider K2 = yyT |the optimal kernel since
+k2(xi; xj) = 1 if yi = yj and k2(xi; xj) = 1 if yi 6= yj. The alignment of a kernel k with k2 with
+respect to S can be considered as a quality measure for k:
+
+^A(S; K; yyT ) =
+
+hK; yyTiF
+
+phK; KiFhyyT ; yyTiF
+
+= K; yyTF
+nphK; KiF
+
+;
+
+(7)
+
+since yyT ; yyTF = n2.
+
+3. Semidenite Programming (SDP)
+
+In this section we review the basic denition of semidenite programming as well as some important
+concepts and key results. Details and proofs can be found in Boyd and Vandenberghe (2003).
+
+Semidenite programming (Nesterov and Nemirovsky, 1994; Vandenberghe and Boyd, 1996;
+Boyd and Vandenberghe, 2003) deals with the optimization of convex functions over the convex
+cone1 of symmetric, positive semidenite matrices
+
+P ='X 2 Rpp j X = X T ; X  0 ;
+
+or ane subsets of this cone. Given Proposition 2, P can be viewed as a search space for possible
+kernel matrices. This consideration leads to the key problem addressed in this paper|we wish to
+specify a convex cost function that will enable us to learn the optimal kernel matrix within P using
+semidenite programming.
+
+3.1 Denition of Semidenite Programming
+
+A linear matrix inequality, abbreviated LMI, is a constraint of the form
+
+F (u) := F0 + u1F1 + : : : + uqFq  0:
+
+Here, u is the vector of decision variables, and F0; : : : ; Fq are given symmetric p  p matrices.
+The notation F (u)  0 means that the symmetric matrix F is negative semidenite. Note that
+such a constraint is in general a nonlinear constraint; the term \linear" in the name LMI merely
+
+1. S (cid:181) Rd is a convex cone if and only if 8x; y 2 S and 8;   0, we have x + y 2 S.
+
+32
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+emphasizes that F is ane in u. Perhaps the most important feature of an LMI constraint is its
+convexity: the set of u that satisfy the LMI is a convex set.
+
+An LMI constraint can be seen as an innite set of scalar, ane constraints. Indeed, for a given
+u, F (u)  0 if and only if zT F (u)z  0 for every z; every constraint indexed by z is an ane
+inequality, in the ordinary sense, i.e., the left-hand side of the inequality is a scalar, composed of
+a linear term in u and a constant term. Alternatively, using a standard result from linear algebra,
+we may state the constraint as
+
+8Z 2 P : trace(F (u)Z)  0:
+
+(8)
+
+This can be seen by writing down the spectral decomposition of Z and using the fact that zT F (u)z 
+0 for every z.
+A semidenite program (SDP) is an optimization problem with a linear objective, and linear
+
+matrix inequality and ane equality constraints.
+
+Denition 7 A semidenite program is a problem of the form
+
+min
+
+u
+
+cT u
+
+subject to
+
+F j(u) = F j
+Au = b;
+
+0 + u1F j
+
+1 + : : : + uqF j
+
+q  0;
+
+(9)
+
+j = 1; : : : ; L
+
+where u 2 Rq is the vector of decision variables, c 2 Rq is the objective vector, and matrices
+F j
+i = (F j
+
+i )T 2 Rpp are given.
+
+Given the convexity of its LMI constraints, SDPs are convex optimization problems. The usefulness
+of the SDP formalism stems from two important facts. First, despite the seemingly very specialized
+form of SDPs, they arise in a host of applications; second, there exist interior-point algorithms to
+solve SDPs that have good theoretical and practical computational eciency (Vandenberghe and
+Boyd, 1996).
+
+One very useful tool to reduce a problem to an SDP is the so-called Schur complement lemma;
+
+it will be invoked repeatedly.
+
+Lemma 8 (Schur Complement Lemma) Consider the partitioned symmetric matrix
+
+X = X T =(cid:181) A B
+
+BT C  ;
+
+where A; C are square and symmetric. If det(A) 6= 0, we dene the Schur complement of A in X
+by the matrix S = C  BT A1B. The Schur Complement Lemma states that if A  0, then X  0
+if and only if S  0.
+
+To illustrate how this lemma can be used to cast a nonlinear convex optimization problem as
+
+an SDP, consider the following result:
+
+Lemma 9 The quadratically constrained quadratic program (QCQP)
+
+min
+
+u
+
+subject to
+
+f0(u)
+fi(u)  0;
+
+33
+
+i = 1; : : : ; M;
+
+(10)
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+with fi(u) , (Aiu + bi)T (Aiu + bi)  cT
+problem
+
+i u  di, is equivalent to the semidenite programming
+
+min
+u;t
+
+t
+
+(11)
+
+subject to
+
+I
+
+I
+
+(cid:181)
+(cid:181)
+
+(A0u + b0)T
+
+(Aiu + bi)T
+
+A0u + b0
+
+T u + d0 + t  0;
+i u + di  0;
+
+c0
+Aiu + bi
+cT
+
+i = 1; : : : ; M:
+
+This can be seen by rewriting the QCQP (10) as
+
+min
+u;t
+subject to
+
+t
+
+t  f0(u)  0;
+fi(u)  0;
+
+i = 1; : : : ; M:
+
+Note that for a xed and feasible u, t = f0 (u) is the optimal solution. The convex quadratic
+T u + d0)  (A0u + b0)T I 1(A0u + b0)  0 is now equivalent to the
+inequality t  f0(u) = (t + c0
+following LMI, using the Schur Complement Lemma 8:
+
+I
+
+(A0u + b0)T
+
+(cid:181)
+
+A0u + b0
+
+T u + d0 + t  0:
+
+c0
+
+Similar steps for the other quadratic inequality constraints nally yield (11), an SDP in standard
+form (9), equivalent to (10). This shows that a QCQP can be cast as an SDP. Of course, in practice
+a QCQP should not be solved using general-purpose SDP solvers, since the particular structure of
+the problem at hand can be eciently exploited. The above show that QCQPs, and in particular
+linear programming problems, belong to the SDP family.
+
+3.2 Duality
+
+An important principle in optimization|perhaps even the most important principle|is that of
+duality. To illustrate duality in the case of an SDP, we will rst review basic concepts in duality
+theory and then show how they can be extended to semidenite programming. In particular, duality
+will give insights into optimality conditions for the semidenite program.
+
+Consider an optimization problem with n variables and m scalar constraints:
+
+min
+
+u
+
+subject to
+
+f0(u)
+fi(u)  0;
+
+i = 1; : : : ; m;
+
+(12)
+
+where u 2 Rn. In the context of duality, problem (12) is called the primal problem; we denote its
+optimal value p. For now, we do not assume convexity.
+
+Denition 10 Lagrangian The Lagrangian L : Rn+m ! R corresponding to the minimization
+problem (12) is dened as
+
+L(u; ) = f0(u) + 1f1(u) + : : : + mfm(u):
+
+The i 2 R; i = 1; : : : ; m are called Lagrange multipliers or dual variables.
+
+34
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+One can now notice that
+
+h(u) = max
+
+if fi(u)  0; i = 1; : : : ; m
+
+0 L(u; ) = f0(u)
+
++1 otherwise:
+
+So, the function h(u) coincides with the objective f0(u) in regions where the constraints fi(u)  0,
+In other words, h acts as a
+i = 1; : : : ; m, are satised and h(u) = +1 in infeasible regions.
+\barrier" of the feasible set of the primal problem. Thus we can as well use h(u) as objective
+function and rewrite the original primal problem (12) as an unconstrained optimization problem:
+
+p = min
+u
+
+max
+0 L(u; ):
+
+(13)
+
+The notion of weak duality amounts to exchanging the \min" and \max" operators in the above
+formulation, resulting in a lower bound on the optimal value of the primal problem. Strong duality
+refers to the case when this exchange can be done without altering the value of the result: the
+lower bound is actually equal to the optimal value p. While weak duality always hold, even if
+the primal problem (13) is not convex, strong duality may not hold. However, for a large class of
+generic convex problems, strong duality holds.
+
+Lemma 11 Weak duality For all functions f0; f1; : : : ; fm in (12), not necessarily convex, we can
+exchange the max and the min and get a lower bound on p:
+
+d = max
+0
+
+min
+u L(u; )  min
+
+u
+
+max
+
+0 L(u; ) = p:
+
+The objective function of the maximization problem is now called the (Lagrange) dual function.
+Denition 12 (Lagrange) dual function The (Lagrange) dual function g : Rm ! R is dened
+as
+
+g() = min
+
+u L(u; )
+
+= min
+
+u
+
+f0(u) + 1f1(u) + : : : + mfm(u):
+
+(14)
+
+Furthermore g() is concave, even if the fi(u) are not convex.
+The concavity can easily be seen by considering rst that for a given u, L(u; ) is an ane function
+of  and hence is a concave function. Since g() is the pointwise minimum of such concave functions,
+it is concave.
+
+Denition 13 Lagrange dual problem The Lagrange dual problem is dened as
+
+d = max
+0
+
+g():
+
+Since g() is concave, this will always be a convex optimization problem, even if the primal is not.
+By weak duality, we always have d  p, even for non-convex problems. The value p  d is called
+the duality gap. For convex problems, we usually (although not always) have strong duality at the
+optimum, i.e.,
+
+d = p;
+
+which is also referred to as a zero duality gap. For convex problems, a sucient condition for zero
+duality gap is provided by Slaters condition:
+
+Lemma 14 Slaters condition If the primal problem (12) is convex and is strictly feasible,
+i.e., 9 u0 : fi(u0) < 0; i = 1; : : : ; m, then
+
+p = d:
+
+35
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+3.3 SDP Duality and Optimality Conditions
+
+Consider for simplicity the case of an SDP with a single LMI constraint, and no ane equalities:
+
+p = min
+u
+
+cT u subject to F (u) = F0 + u1F1 + : : : uqFq  0:
+
+(15)
+
+The general case of multiple LMI constraints and ane equalities can be handled by elimination
+of the latter and using block-diagonal matrices to represent the former as a single LMI.
+
+The classical Lagrange duality theory outlined in the previous section does not directly apply
+here, since we are not dealing with nitely many constraints in scalar form; as noted earlier, the
+LMI constraint involves an innite number of such constraints, of the form (8). One way to handle
+such constraints is to introduce a Lagrangian of the form
+
+L(u; Z) = cT u + trace(ZF (u));
+
+where the dual variable Z is now a symmetric matrix, of the same size as F (u). We can check that
+such a Lagrange function fullls the same role assigned to the function dened in Denition 10 for
+the case with scalar constraints. Indeed, if we dene h(u) = maxZ0 L(u; Z) then
+
+h(u) = max
+
+Z0 L(u; Z) = cT u if F (u)  0;
++1 otherwise.
+
+Thus, h(u) is a barrier for the primal SDP (15), that is, it coincides with the objective of (15) on
+its feasible set, and is innite otherwise. Notice that to the LMI constraint we now associate a
+multiplier matrix, which will be constrained to the positive semidenite cone.
+
+In the above, we made use of the fact that, for a given symmetric matrix F ,
+
+`(F ) := sup
+Z0
+
+trace(ZF )
+
+is +1 if F has a positive eigenvalue, and zero if F is negative semidenite. This property is obvious
+for diagonal matrices, since in that case the variable Z can be constrained to be diagonal without
+loss of generality. The general case follows from the fact that if F has the eigenvalue decomposition
+F = U U T , where  is a diagonal matrix containing the eigenvalues of F , and U is orthogonal,
+then trace(ZF ) = trace(Z 0), where Z 0 = U T ZU spans the positive semidenite cone whenever Z
+does.
+
+Using the above Lagrangian, one can cast the original problem (15) as an unconstrained opti-
+
+mization problem:
+
+p = min
+u
+
+max
+Z0 L(u; Z):
+
+By weak duality, we obtain a lower bound on p by exchanging the min and max:
+
+d = max
+Z0
+
+min
+u L(u; Z)  min
+
+u
+
+Z0 L(u; Z) = p:
+max
+
+The inner minimization problem is easily solved analytically, due to the special structure of the
+
+SDP. We obtain a closed form for the (Lagrange) dual function:
+
+q
+
+g(Z) = min
+
+u L(u; Z) = min
+
+u
+
+cT u + trace(ZF0) +
+
+ui trace(ZFi)
+
+Xi=1
+
+=  trace(ZF0)
+
+1
+
+36
+
+if ci = trace(ZFi); i = 1; : : : ; q
+otherwise:
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+The dual problem can be explicitly stated as follows:
+
+d = max
+Z0
+
+min
+u L(u; Z) = max
+
+Z
+
+trace(ZF0) subject to Z  0; ci = trace(ZFi); i = 1; : : : ; q: (16)
+
+We observe that the above problem is an SDP, with a single LMI constraint and q ane equalities
+in the matrix dual variable Z.
+
+While weak duality always holds, strong duality may not, even for SDPs. Not surprisingly, a
+Slater-type condition ensures strong duality. Precisely, if the primal SDP (15) is strictly feasible,
+that is, there exists a u0 such that F (u0) ` 0, then p = d. If, in addition, the dual problem is
+also strictly feasible, meaning that there exists a Z  0 such that ci = trace(ZFi), i = 1; : : : ; q,
+then both primal and dual optimal values are attained by some optimal pair (u; Z). In that case,
+we can characterize such optimal pairs as follows. In view of the equality constraints of the dual
+problem, the duality gap can be expressed as
+
+p  d = cT u  trace(Z F0)
+= trace(Z F (u)):
+
+A zero duality gap is equivalent to trace(Z F (u)) = 0, which in turn is equivalent to Z F (u) = O,
+where O denotes the zero matrix, since the product of a positive semidenite and a negative
+semidenite matrix has zero trace if and only if it is zero.
+
+To summarize, consider the SDP (15) and its Lagrange dual (16). If either problem is strictly
+feasible, then they share the same optimal value. If both problems are strictly feasible, then the
+optimal values of both problems are attained and coincide. In this case, a primal-dual pair (u; Z)
+is optimal if and only if
+
+F (u)  0;
+Z  0;
+ci = trace(Z Fi);
+ZF (u) = O:
+
+i = 1; : : : ; q;
+
+The above conditions represent the expression of the general Karush-Kuhn-Tucker (KKT) condi-
+tions in the semidenite programming setting. The rst three sets of conditions express that u
+and Z  are feasible for their respective problems; the last condition expresses a complementarity
+condition.
+
+For a pair of strictly feasible primal-dual SDPs, solving the primal minimization problem is
+equivalent to maximizing the dual problem and both can thus be considered simultaneously. Al-
+gorithms indeed make use of this relationship and use the duality gap as a stopping criterion. A
+general-purpose program such as SeDuMi (Sturm, 1999) handles those problems eciently. This
+code uses interior-point methods for SDP (Nesterov and Nemirovsky, 1994); these methods have
+a worst-case complexity of O(q2p2:5) for the general problem (15). In practice, problem structure
+can be exploited for great computational savings: e.g., when F (u) 2 Rpp consists of L diagonal
+blocks of size pi; i = 1; : : : ; L, these methods have a worst-case complexity of O(q2(PL
+i )p0:5)
+(Vandenberghe and Boyd, 1996).
+
+i=1 p2
+
+4. Algorithms for Learning Kernels
+
+We work in a transduction setting, where some of the data (the training set Sntr = f(x1; y1); : : : ; (xntr ; yntr )g)
+are labeled, and the remainder (the test set Tnt = fxntr+1; : : : ; xntr+ntg) are unlabeled, and the
+
+37
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+aim is to predict the labels of the test data. In this setting, optimizing the kernel corresponds to
+choosing a kernel matrix. This matrix has the form
+
+K =(cid:181) Ktr Ktr;t
+
+tr;t Kt  ;
+
+KT
+
+(17)
+
+where Kij = h'(xi); '(xj)i, i; j = 1; : : : ; ntr; ntr + 1; : : : ; ntr + nt. By optimizing a cost function
+over the \training-data block" Ktr, we want to learn the optimal mixed block Ktr;t and the optimal
+\test-data block" Kt.
+
+This implies that training and test-data blocks must somehow be entangled: tuning training-
+data entries in K (to optimize their embedding) should imply that test-data entries are automati-
+cally tuned in some way as well. This can be achieved by constraining the search space of possible
+kernel matrices: we control the capacity of the search space of possible kernel matrices in order to
+prevent overtting and achieve good generalization on test data.
+
+We rst consider a general optimization problem in which the kernel matrix K is restricted to
+a convex subset K of P, the positive semidenite cone. We then consider two specic examples.
+The rst is the set of positive semidenite matrices with bounded trace that can be expressed as a
+linear combination of kernel matrices from the set fK1; : : : ; Kmg. That is, K is the set of matrices
+K satisfying
+
+iKi;
+
+m
+
+K =
+
+Xi=1
+K  0;
+trace(K)  c:
+
+(18)
+
+In this case, the set K lies in the intersection of a low-dimensional linear subspace with the positive
+semidenite cone P. Geometrically this can be viewed as computing all embeddings (for every
+Ki), in disjoint feature spaces, and then weighting these. The set fK1; : : : ; Kmg could be a set of
+initial \guesses" of the kernel matrix, e.g., linear, Gaussian or polynomial kernels with dierent
+kernel parameter values. Instead of ne-tuning the kernel parameter for a given kernel using cross-
+validation, one can now evaluate the given kernel for a range of kernel parameters and then optimize
+the weights in the linear combination of the obtained kernel matrices. Alternatively, the Ki could
+be chosen as the rank-one matrices Ki = vivT
+i , with vi a subset of the eigenvectors of K0, an initial
+kernel matrix, or with vi some other set of orthogonal vectors. A practically important form is the
+case in which a diverse set of possibly good Gram matrices Ki (similarity measures/representations)
+has been constructed, e.g., using heterogeneous data sources. The challenge is to combine these
+measures into one optimal similarity measure (embedding), to be used for learning.
+
+The second example of a restricted set K of kernels is the set of positive semidenite matrices
+with bounded trace that can be expressed as a linear combination of kernel matrices from the set
+fK1; : : : ; Kmg, but with the parameters i constrained to be non-negative. That is, K is the set of
+matrices K satisfying
+
+m
+
+K =
+
+Xi=1
+i  0
+K  0;
+trace(K)  c:
+
+iKi;
+
+i 2 f1; : : : ; mg
+
+38
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+It has two advantages:
+This further constrains the class of functions that can be represented.
+we shall see that the corresponding optimization problem has signicantly reduced computational
+complexity, and it is more convenient for studying the statistical properties of a class of kernel
+matrices.
+
+As we will see in Section 5, we can estimate the performance of support vector machines for
+transduction using properties of the class K. As explained in Section 2, we can use a thresholded
+version of f (x), i.e., sign (f (x)), as a binary classication decision. Using this decision function,
+we will prove that the proportion of errors on the test data Tn (where, for convenience, we suppose
+that training and test data have the same size ntr = nt = n) is, with probability 1   (over the
+random draw of the training set Sn and test set Tn), bounded by
+
+1
+n
+
+n
+
+Xi=1
+
+maxf1  yif (xi); 0g +
+
+1
+
+pn4 +p2 log(1=) +sC(K)
+n(cid:176)2 ! ;
+
+(19)
+
+where (cid:176) is the 1-norm soft margin on the data and C(K) is a certain measure of the complexity
+of the kernel class K. For instance, for the class K of positive linear combinations dened above,
+C(K)  mc, where m is the number of kernel matrices in the combination and c is the bound on
+the trace. So, the proportion of errors on the test data is bounded by the average error on the
+training set and a complexity term, determined by the richness of the class K and the margin (cid:176).
+Good generalization can thus be expected if the error on the training set is small, while having a
+large margin and a class K that is not too rich.
+The next section presents the main optimization result of the paper: minimizing a generalized
+performance measure !C; (K) with respect to the kernel matrix K can be realized in a semidenite
+programming framework. Afterwards, we prove a second general result showing that minimizing
+!C; (K) with respect to a kernel matrix K, constrained to the linear subspace K = Pm
+i=1 iKi with
+  0, leads to a quadratically constrained quadratic programming (QCQP) problem. Maximizing
+the margin of a hard margin SVM with respect to K, as well as both soft margin cases can then
+be treated as specic instances of this general result and will be discussed in later sections.
+
+4.1 General Optimization Result
+
+In this section, we rst of all show that minimizing the generalized performance measure
+
+!C; (K) = max
+
+
+
+2T e  T (G(K) +  I) : C    0; T y = 0;
+
+(20)
+
+with   0, on the training data with respect to the kernel matrix K, in some convex subset K of
+positive semidenite matrices with trace equal to c,
+
+min
+K2K
+
+!C; (Ktr)
+
+s.t. trace(K) = c;
+
+(21)
+
+can be realized in a semidenite programming framework.
+
+We rst note a fundamental property of the generalized performance measure, a property that
+
+is crucial for the remainder of the paper.
+
+Proposition 15 The quantity
+
+!C; (K) = max
+
+
+
+2T e  T (G(K) +  I) : C    0; T y = 0;
+
+is convex in K.
+
+39
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+This is easily seen by considering rst that 2T e  T (G(K) +  I) is an ane function of K,
+and hence is a convex function as well. Secondly, we notice that !C; (K) is the pointwise maximum
+of such convex functions and is thus convex. The constraints C    0; T y = 0 are obviously
+convex.
+Problem (21) is now a convex optimization problem. The following theorem shows that, for a
+
+suitable choice of the set K, this problem can be cast as an SDP.
+Theorem 16 Given a labeled sample Sntr = f(x1; y1); : : : ; (xntr ; yntr )g with the set of labels denoted
+y 2 Rntr , the kernel matrix K 2 K that optimizes (21), with   0, can be found by solving the
+following convex optimization problem:
+
+min
+
+K;t;;;
+subject to
+
+t
+
+trace(K) = c;
+K 2 K;
+(cid:181) G(Ktr) +  Intr
+(e +    + y)T
+  0;
+  0:
+
+t  2CT e   0;
+e +    + y
+
+(22)
+
+Proof We begin by substituting !C; (Ktr), as dened in (20), into (21), which yields
+
+min
+K2K
+
+max
+
+
+
+2T e  T (G(Ktr) +  Intr ) : C    0; T y = 0; trace(K) = c;
+
+(23)
+
+with c a constant. Assume that Ktr  0, hence G(Ktr)  0 and G(Ktr) +  Intr  0 since   0 (the
+following can be extended to the general semidenite case). From Proposition 15, we know that
+!C; (Ktr) is convex in Ktr and thus in K. Given the convex constraints in (23), the optimization
+problem is thus certainly convex in K. We write this as
+
+min
+K2K;t
+
+t :
+
+2T e  T (G(Ktr) +  Intr );
+t  max
+
+C    0; T y = 0; trace(K) = c:
+
+(24)
+
+We now express the constraint t  max 2T e T (G(Ktr) +  Intr ) as an LMI using duality. In
+particular, duality will allow us to drop the minimization and the Schur complement lemma then
+yields an LMI.
+
+Dene the Lagrangian of the maximization problem (20) by
+
+L(; ; ; ) = 2T e  T (G(Ktr) +  Intr ) + 2 T  + 2yT  + 2T (Ce  );
+
+where  2 R and ;  2 Rntr . By duality, we have
+
+!C; (Ktr) = max
+
+
+
+min
+
+0;0; L(; ; ; ) = min
+
+0;0;
+
+max
+ L(; ; ; ):
+
+Since G(Ktr) +  Intr  0, at the optimum we have
+
+ = (G(Ktr) +  Intr )1(e +    + y);
+
+and we can form the dual problem
+
+!C; (Ktr) = min
+;;
+
+(e +    + y)T (G(Ktr) +  Intr )1(e +    + y) + 2CT e :   0;   0:
+
+40
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+This implies that for any t > 0, the constraint !C; (Ktr)  t holds if and only if there exist
+  0;   0 and  such that
+
+(e +    + y)T (G(Ktr) +  Intr )1(e +    + y) + 2CT e  t;
+
+or, equivalently (using the Schur complement lemma), such that
+e +    + y
+
+(cid:181) G(Ktr) +  Intr
+(e +    + y)T
+
+t  2CT e
+
+  0
+
+holds. Taking this into account, (24) can be expressed as
+
+min
+
+K;t;;;
+subject to
+
+t
+
+trace(K) = c;
+K 2 K;
+(cid:181) G(Ktr) +  Intr
+(e +    + y)T
+  0;
+  0;
+
+t  2CT e   0;
+e +    + y
+
+which yields (22). Notice that   0 , diag()  0, and is thus an LMI; similarly for   0.
+
+Notice that if K = fK  0g, this optimization problem is an SDP in the standard form (9). Of
+course, in that case there is no constraint to ensure entanglement of training and test-data blocks.
+Indeed, it is easy to see that the criterion would be optimized with a test matrix Kt = O.
+
+Consider the constraint K = spanfK1; : : : ; Kmg \ fK  0g. We obtain the following convex
+
+optimization problem:
+
+min
+K
+
+!C; (Ktr)
+
+(25)
+
+subject to
+
+trace(K) = c;
+K  0;
+Xi=1
+K =
+
+iKi;
+
+m
+
+which can be written in the standard form of a semidenite program, in a manner analogous to
+(22):
+
+min
+
+;t;;;
+
+t
+
+(26)
+
+subject to
+
+iKi! = c;
+
+m
+
+trace m
+Xi=1
+Xi=1
+iKi  0;
+(cid:181)G(Pm
+  0;
+  0:
+
+41
+
+i=1 iKi;tr) +  Intr e +    + y
+
+t  2CT e   0;
+
+(e +    + y)T
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+To solve this general optimization problem, one has to solve a semidenite programming prob-
+lem. General-purpose programs such as SeDuMi (Sturm, 1999) use interior-point methods to solve
+SDP problems (Nesterov and Nemirovsky, 1994). These methods are polynomial time. How-
+ever, applying the complexity results mentioned in Section 3.3 leads to a worst-case complexity
+
+O(m + ntr)2(n2 + n2
+positive linear combinations of kernel matrices fK1; : : : ; Kmg \ fK  0g:
+
+tr)(n + ntr)0:5, or roughly O(m + ntr)2n2:5, in this particular case.
+
+Consider a further restriction on the set of kernel matrices, where the matrices are restricted to
+
+K =
+
+m
+
+Xi=1
+
+iKi;
+
+  0:
+
+For this restricted linear subspace of the positive semidenite cone P, we can prove the following
+
+theorem:
+
+Theorem 17 Given a labeled sample Sntr = f(x1; y1); : : : ; (xntr ; yntr )g with the set of labels denoted
+y 2 Rntr , the kernel matrix K = Pm
+i=1 iKi that optimizes (21), with   0, under the additional
+constraint   0 can be found by solving the following convex optimization problem, and considering
+its dual solution:
+
+max
+;t
+
+subject to
+
+1
+ri
+
+2T e   T   ct
+T G(Ki;tr);
+t 
+T y = 0;
+C    0;
+
+i = 1; : : : ; m
+
+(27)
+
+where r 2 Rm with trace(Ki) = ri.
+Proof Solving problem (21) subject to K = Pm
+  0 yields
+
+i=1 iKi, with Ki  0, and the extra constraint
+
+min
+K
+
+max
+
+ : C0;T y=0
+subject to
+
+2T e  T (G(Ktr) +  Intr )
+trace(K) = c;
+K  0;
+Xi=1
+K =
+  0;
+
+iKi;
+
+m
+
+when !C; (Ktr) is expressed using (20). We can omit the second constraint, because this is implied
+by the last two constraints, if Ki  0. The problem then reduces to
+
+min
+
+
+max
+
+ : C0;T y=0
+
+subject to
+
+iKi;tr) +  Intr )
+
+m
+
+Xi=1
+
+2T e  T (G(
+T r = c;
+  0;
+
+42
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+where Ki;tr = Ki(1 : ntr; 1 : ntr). We can write this as
+
+min
+
+ : 0;T r=c
+
+max
+
+ : C0;T y=0
+
+2T e  T diag(y)(
+
+=
+
+=
+
+=
+
+min
+
+ : 0;T r=c
+
+max
+
+ : C0;T y=0
+
+2T e 
+
+min
+
+ : 0;T r=c
+
+max
+
+ : C0;T y=0
+
+2T e 
+
+max
+
+ : C0;T y=0
+
+min
+
+ : 0;T r=c
+
+2T e 
+
+m
+
+m
+
+Xi=1
+Xi=1
+Xi=1
+
+m
+
+m
+
+iKi;tr)diag(y) +  Intr! 
+Xi=1
+iT diag(y)Ki;trdiag(y)   T 
+
+iT G(Ki;tr)   T 
+
+iT G(Ki;tr)   T ;
+
+with G(Ki;tr) = diag(y)Ki;trdiag(y). The interchange of the order of the minimization and the
+maximization is justied (see, e.g., Boyd and Vandenberghe, 2003) because the objective is convex
+in  (it is linear in ) and concave in , because the minimization problem is strictly feasible in
+, and the maximization problem is strictly feasible in  (we can skip the case for all elements of
+y having the same sign, because we cannot even dene a margin in such a case). We thus obtain
+
+m
+
+ : C0;T y=0
+
+min
+
+max
+
+ : 0;T r=c
+
+Xi=1
+2T e 
+iT G(Ki;tr)   T 
+ : 0;T r=c m
+ : C0;T y=0"2T e   T  
+Xi=1
+ : C0;T y=02T e   T   max
+i (cid:181) c
+
+T G(Ki;tr) :
+
+max
+
+max
+
+max
+
+ri
+
+=
+
+=
+
+iT G(Ki;tr)!#
+
+Finally, this can be reformulated as
+
+max
+;t
+
+subject to
+
+1
+ri
+
+2T e   T   ct
+T G(Ki;tr);
+t 
+T y = 0;
+C    0;
+
+i = 1; : : : ; m
+
+which proves the theorem.
+
+This convex optimization problem, a QCQP more precisely, is a special instance of an SOCP
+(second-order cone programming problem), which is in turn a special form of SDP (Boyd and
+Vandenberghe, 2003). SOCPs can be solved eciently with programs such as SeDuMi (Sturm,
+1999) or Mosek (Andersen and Andersen, 2000). These codes use interior-point methods (Nesterov
+and Nemirovsky, 1994) which yield a worst-case complexity of O(mn3
+tr). This implies a major
+improvement compared to the worst-case complexity of a general SDP. Furthermore, the codes
+simultaneously solve the above problem and its dual form. They thus return optimal values for the
+dual variables as well|this allows us to obtain the optimal weights i, for i = 1; : : : ; m.
+
+43
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+4.2 Hard Margin
+
+In this section, we show how maximizing the margin of a hard margin SVM with respect to the
+kernel matrix can be realized in the semidenite programming framework derived in Theorem 16.
+Inspired by (19), let us try to nd the kernel matrix K in some convex subset K of positive
+semidenite matrices for which the corresponding embedding shows maximal margin on the training
+data, keeping the trace of K constant:
+
+min
+K2K
+
+!(Ktr)
+
+s.t. trace(K) = c:
+
+(28)
+
+Note that !(Ktr) = !1;0(Ktr). From Proposition 15, we then obtain the following important
+
+result:
+
+Corollary 18 The quantity
+
+!(K) = max
+
+
+
+2T e  T G(K) :   0; T y = 0;
+
+is convex in K.
+
+So, a fundamental property of the inverse margin is that it is convex in K. This is essential,
+since it allows us to optimize this quantity in a convex framework. The following theorem shows
+that, for a suitable choice of the set K, this convex optimization problem can be cast as an SDP.
+Theorem 19 Given a linearly separable labeled sample Sntr = f(x1; y1); : : : ; (xntr ; yntr )g with the
+set of labels denoted y 2 Rntr , the kernel matrix K 2 K that optimizes (28) can be found by solving
+the following problem:
+
+min
+K;t;;
+subject to
+
+t
+
+trace(K) = c;
+K 2 K;
+(cid:181) G(Ktr)
+(e +  + y)T
+  0:
+
+e +  + y
+
+t
+
+  0;
+
+(29)
+
+Proof Observe !(Ktr) = !1;0(Ktr). Apply Theorem 16 for C = 1 and  = 0.
+
+give a large margin on the test data: a test matrix Kt = O would optimize the criterion.
+
+If K = fK  0g, there is no constraint to ensure that a large margin on the training data will
+If we restrict the kernel matrix to a linear subspace K = spanfK1; : : : ; Kmg \ fK  0g, we
+
+obtain
+
+min
+K
+
+!(Ktr)
+
+(30)
+
+subject to
+
+trace(K) = c;
+K  0;
+Xi=1
+K =
+
+iKi;
+
+m
+
+44
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+which can be written in the standard form of a semidenite program, in a manner analogous to
+(29):
+
+min
+i;t;;
+
+t
+
+(31)
+
+subject to
+
+iKi! = c;
+
+m
+
+trace m
+Xi=1
+Xi=1
+iKi  0;
+(cid:181)G(Pm
+  0:
+
+i=1 iKi;tr) e +  + y
+
+(e +  + y)T
+
+t
+
+  0;
+
+Notice that the SDP approach is consistent with the bound in (19). The margin is optimized over
+the labeled data (via the use of Ki;tr), while the positive semideniteness and the trace constraint
+are imposed for the entire kernel matrix K (via the use of Ki). This leads to a general method
+for learning the kernel matrix with semidenite programming, when using a margin criterion for
+hard margin SVMs. Applying the complexity results mentioned in Section 3.3 leads to a worst-
+
+particular SDP.
+
+case complexity O(m + ntr)2n2:5 when using general-purpose interior-point methods to solve this
+
+Furthermore, this gives a new transduction method for hard margin SVMs. Whereas Vapniks
+original method for transduction scales exponentially in the number of test samples, the new SDP
+method has polynomial time complexity.
+
+Remark. For the specic case in which the Ki are rank-one matrices Ki = vivT
+i , with vi orthonor-
+mal (e.g., the normalized eigenvectors of an initial kernel matrix K0), the semidenite program
+reduces to a QCQP:
+
+max
+;t
+
+subject to
+
+i )2; i = 1; : : : ; m
+
+2T e  ct
+t  (vT
+T y = 0;
+  0;
+
+(32)
+
+with vi = diag(y) vi(1 : ntr).
+
+This can be seen by observing that, for Ki = vivT
+
+i=1 iKi 
+0 is equivalent to   0. So, we can apply Theorem 17, with  = 0 and C = 1, where
+
+i vj = ij, we have thatPm
+
+T G(Ki;tr)  = T diag(y) vi(1 : ntr) vi(1 : ntr)T diag(y)  = (vT
+
+i , with vT
+
+i )2.
+
+1
+ri
+
+4.3 Hard Margin with Kernel Matrices that are Positive Linear Combinations
+To learn a kernel matrix from this linear class K, one has to solve a semidenite programming
+problem: interior-point methods (Nesterov and Nemirovsky, 1994) are polynomial time, but have
+a worst-case complexity O(m + ntr)2n2:5 in this particular case.
+
+We now restrict K to the positive linear combinations of kernel matrices:
+
+K =
+
+m
+
+Xi=1
+
+iKi;
+
+  0:
+
+45
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+Assuming positive weights yields a smaller set of kernel matrices, because the weights need not
+be positive for K to be positive semidenite, even if the components Ki are positive semidenite.
+Moreover, the restriction has benecial computational eects: (1) the general SDP reduces to a
+QCQP, which can be solved with signicantly lower complexity O(mn3
+tr); (2) the constraint can
+result in improved numerical stability|it prevents the algorithm from using large weights with
+opposite sign that cancel. Finally, we shall see in Section 5 that the constraint also yields better
+estimates of the generalization performance of these algorithms.
+
+Theorem 20 Given a labeled sample Sntr = f(x1; y1); : : : ; (xntr ; yntr )g with the set of labels denoted
+y 2 Rntr , the kernel matrix K = Pm
+i=1 iKi that optimizes (21), with   0, under the additional
+constraint   0 can be found by solving the following convex optimization problem, and considering
+its dual solution:
+
+max
+;t
+
+subject to
+
+T G(Ki;tr);
+
+1
+ri
+
+2T e  ct
+t 
+T y = 0;
+  0:
+
+(33)
+
+i = 1; : : : ; m
+
+where r 2 Rm with trace(Ki) = ri.
+
+Proof Apply Theorem 17 for C = 1 and  = 0.
+
+Note once again that the optimal weights i;
+
+i = 1; : : : ; m, can be recovered from the primal-
+dual solution found by standard software such as SeDuMi (Sturm, 1999) or Mosek (Andersen and
+Andersen, 2000).
+
+4.4 1-Norm Soft Margin
+
+For the case of non-linearly separable data, we can consider the 1-norm soft margin cost function
+in (3). Training the SVM for a given kernel involves minimizing this quantity with respect to w; b,
+and , which yields the optimal value (4): obviously this minimum is a function of the particular
+choice of K, which is expressed explicitly in (4) as a dual problem. Let us now optimize this
+quantity with respect to the kernel matrix K, i.e., let us try to nd the kernel matrix K 2 K for
+which the corresponding embedding yields minimal !S1(Ktr), keeping the trace of K constant:
+
+min
+K2K
+
+!S1(Ktr)
+
+s.t. trace(K) = c:
+
+(34)
+
+This is again a convex optimization problem.
+
+Theorem 21 Given a labeled sample Sntr = f(x1; y1); : : : ; (xntr ; yntr )g with the set of labels denoted
+y 2 Rntr , the kernel matrix K 2 K that optimizes (34), can be found by solving the following convex
+
+46
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+optimization problem:
+
+min
+
+K;t;;;
+subject to
+
+(35)
+
+t
+
+G(Ktr)
+
+trace(K) = c;
+K 2 K;
+(cid:181)
+(e +    + y)T
+  0;
+  0:
+
+t  2CT e   0;
+e +    + y
+
+Proof Observe !S1(Ktr) = !C;0(Ktr). Apply Theorem 16 for  = 0.
+
+Again, if K = fK  0g, this is an SDP. Adding the additional constraint (18) that K is a linear
+
+combination of xed kernel matrices leads to the following SDP:
+
+min
+
+i;t;;;
+
+t
+
+(36)
+
+subject to
+
+m
+
+iKi! = c;
+
+trace m
+Xi=1
+Xi=1
+iKi  0;
+(cid:181) G(Pm
+i=1 iKi;tr)
+(e +    + y)T
+;   0:
+
+t  2CT e   0;
+e +    + y
+
+Remark. For the specic case in which the Ki are rank-one matrices Ki = vivT
+i , with vi or-
+thonormal (e.g., the normalized eigenvectors of an initial kernel matrix K0), the SDP reduces to a
+QCQP using Theorem 17, with  = 0, in a manner analogous to the hard margin case:
+
+max
+;t
+
+subject to
+
+i )2; i = 1; : : : ; m
+
+2T e  ct
+t  (vT
+T y = 0;
+C    0;
+
+(37)
+
+with vi = diag(y) vi(1 : ntr).
+
+Solving the original learning problem subject to the extra constraint   0 yields, after applying
+
+Theorem 17, with  = 0:
+
+(38)
+
+i = 1; : : : ; m
+
+max
+;t
+
+subject to
+
+T G(Ki;tr);
+
+1
+ri
+
+2T e  ct
+t 
+T y = 0;
+C    0:
+
+47
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+4.5 2-Norm Soft Margin
+
+For the case of non-linearly separable data, we can also consider the 2-norm soft margin cost
+function (5). Again, training for a given kernel will minimize this quantity with respect to w; b,
+and  and the minimum is a function of the particular choice of K, as expressed in (6) in dual
+form. Let us now optimize this quantity with respect to the kernel matrix K:
+
+min
+K2K
+
+!S2(Ktr)
+
+s.t. trace(K) = c:
+
+(39)
+
+This is again a convex optimization problem, and can be restated as follows.
+
+Theorem 22 Given a labeled sample Sntr = f(x1; y1); : : : ; (xntr ; yntr )g with the set of labels denoted
+y 2 Rntr , the kernel matrix K 2 K that optimizes (39) can be found by solving the following
+optimization problem:
+
+min
+K;t;;
+subject to
+
+t
+
+(40)
+
+trace(K) = c;
+K 2 K;
+(cid:181)G(Ktr) + 1
+  0:
+
+(e +  + y)T
+
+C Intr e +  + y
+
+t
+
+  0;
+
+Proof Observe !S2(Ktr) = !1; (Ktr). Apply Theorem 16 for C = 1.
+
+Again, if K = fK  0g, this is an SDP. Moreover, constraining K to be a linear combination
+
+of xed kernel matrices, we obtain
+
+min
+i;t;;
+
+t
+
+(41)
+
+subject to
+
+iKi! = c;
+
+m
+
+trace m
+Xi=1
+Xi=1
+iKi  0;
+G(Pm
+0
+@
+  0:
+
+i=1 iKi;tr) + 1
+
+C Intr e +  + y
+
+(e +  + y)T
+
+t
+
+1
+A  0;
+
+Also, when the Ki are rank-one matrices, Ki = vivT
+
+i , with vi orthonormal, we obtain a QCQP:
+
+max
+;t
+
+subject to
+
+T   ct
+
+(42)
+
+i )2; i = 1; : : : ; m
+
+1
+C
+
+2T e 
+t  (vT
+T y = 0;
+  0;
+
+48
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+and, nally, imposing the constraint   0 yields
+
+max
+;t
+
+subject to
+
+1
+C
+
+T   ct
+T G(Ki;tr);
+
+2T e 
+1
+t 
+ri
+T y = 0;
+  0;
+
+(43)
+
+i = 1; : : : ; m
+
+following a similar derivation as before: apply Theorem 17 with C = 1, and, for (42), observe that
+  0 is equivalent to Pm
+
+i=1 iKi  0 if Ki = vivT
+
+i and vT
+
+i vj = ij.
+
+4.6 Learning the 2-Norm Soft Margin Parameter  = 1=C
+
+This section shows how the 2-norm soft margin parameter of SVMs can be learned using SDP or
+QCQP. More details can be found in De Bie et al. (2003).
+
+In the previous section, we tried to nd the kernel matrix K 2 K for which the corresponding
+embedding yields minimal !S2(Ktr), keeping the trace of K constant. Since in the dual formulation
+(6) the identity matrix induced by the 2-norm formulation appears in exactly the same way as the
+other matrices Ki, we can treat it on the same basis and optimize its weight to obtain the optimal
+dual formulation, i.e., to minimize !S2(Ktr). Since this weight now happens to correspond to the
+parameter  = 1=C, optimizing it corresponds to learning the 2-norm soft margin parameter and
+thus has a signicant meaning.
+
+Since the parameter  = 1=C can be treated in the same way as the weights i, tuning it
+such that the quantity !S2(Ktr;  ) is minimized can be viewed as a method for choosing  . First
+of all, consider the dual formulation (6) and notice that !S2(Ktr;  ) is convex in  = 1=C (being
+the pointwise maximum of ane and thus convex functions in  ). Secondly, since  ! 1 leads
+to !S2(Ktr;  ) ! 0, we impose the constraint trace (K +  In) = c. This results in the following
+convex optimization problem:
+
+min
+
+K2K; 0
+
+!S2(Ktr;  )
+
+s.t. trace (K +  In) = c:
+
+According to Theorem 22, this can be restated as follows:
+
+min
+
+K;t;;;
+subject to
+
+t
+
+(44)
+
+trace (K +  In) = c;
+K 2 K;
+(cid:181)G(Ktr) +  Intr e +  + y
+;   0:
+
+(e +  + y)T
+
+t
+
+  0;
+
+49
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+Again, if K = fK  0g, this is an SDP. Imposing the additional constraint that K is a linear
+
+function of xed kernel matrices, we obtain the SDP
+
+min
+
+i;t;;;
+
+t
+
+(45)
+
+subject to
+
+iKi +  In! = c;
+
+m
+
+trace m
+Xi=1
+Xi=1
+iKi  0;
+G(Pm
+0
+@
+;   0;
+
+i=1 iKi;tr) +  Intr e +  + y
+
+(e +  + y)T
+
+t
+
+1
+A  0;
+
+and imposing the additional constraint that the Ki are rank-one matrices, we obtain a QCQP:
+
+max
+;t
+
+subject to
+
+i )2; i = 1; : : : ; m
+T 
+
+2T e  ct
+t  (vT
+1
+t 
+n
+T y = 0;
+  0;
+
+(46)
+
+with vi = diag(y) vi = diag(y) vi(1 : ntr). Finally, imposing the constraint that   0 yields the
+following:
+
+max
+;t
+
+subject to
+
+T G(Ki;tr);
+
+1
+ri
+1
+n
+
+2T e  ct
+t 
+t 
+T y = 0;
+  0;
+
+T 
+
+i = 1; : : : ; m
+
+(47)
+
+(48)
+
+which, as before, is a QCQP.
+
+Solving (47) corresponds to learning the kernel matrix as a positive linear combination of kernel
+matrices according to a 2-norm soft margin criterion and simultaneously learning the 2-norm soft
+margin parameter  = 1=C. Comparing (47) with (33), we can see that this reduces to learning an
+augmented kernel matrix K 0 as a positive linear combination of kernel matrices and the identity
+i=1 iKi +  In, using a hard margin criterion. However, there is an
+important dierence: when evaluating the resulting classier, the actual kernel matrix K is used,
+instead of the augmented K 0 (see, for example, Shawe-Taylor and Cristianini, 1999).
+
+matrix, K 0 = K +  In = Pm
+For m = 1, we notice that (45) directly reduces to (47) if K1  0. This corresponds to
+automatically tuning the parameter  = 1=C for a 2-norm soft margin SVM with kernel matrix
+K1. So, even when not learning the kernel matrix, this approach can be used to tune the 2-norm
+soft margin parameter  = 1=C automatically.
+
+50
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+4.7 Alignment
+
+In this section, we consider the problem of optimizing the alignment between a set of labels and
+a kernel matrix from some class K of positive semidenite kernel matrices. We show that, if K is
+a class of linear combinations of xed kernel matrices, this problem can be cast as an SDP. This
+result generalizes the approach presented in Cristianini et al. (2001, 2002).
+
+Theorem 23 The kernel matrix K 2 K which is maximally aligned with the set of labels y 2 Rntr
+can be found by solving the following optimization problem:
+
+max
+A;K
+subject to
+
+hKtr; yyTiF
+trace(A)  1
+(cid:181)A K T
+K In   0
+K 2 K;
+
+(49)
+
+where In is the identity matrix of dimension n.
+
+Proof We want to nd the kernel matrix K which is maximally aligned with the set of labels y:
+
+max
+
+K
+
+subject to
+
+^A(S; Ktr; yyT )
+K 2 K; trace(K) = 1:
+
+This is equivalent to the following optimization problem:
+
+max
+
+K
+
+subject to
+
+hKtr; yyTiF
+hK; KiF = 1
+K 2 K; trace(K) = 1:
+
+(50)
+
+To express this in the standard form (9) of a semidenite program, we need to express the quadratic
+equality constraint hK; KiF = 1 as an LMI. First, notice that (50) is equivalent to
+
+max
+
+K
+
+subject to
+
+hKtr; yyTiF
+hK; KiF  1
+K 2 K:
+
+(51)
+
+Indeed, we are maximizing an objective which is linear in the entries of K, so at the optimum
+K = K , the constraint hK; KiF = trace(K T K)  1 is achieved: hK ; KiF = 1. The quadratic
+inequality constraint in (51) is now equivalent to
+
+9A : K T K  A and trace(A)  1:
+
+Indeed, A  K T K  0 implies trace(A  K T K) = trace(A)  trace(K T K)  0 because of linearity
+of the trace. Using the Schur complement lemma, we can express A  K T K  0 as an LMI:
+
+A  K T K  0 ,(cid:181)A K T
+
+K In   0:
+
+51
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+We can thus rewrite the optimization problem (50) as
+
+max
+A;K
+subject to
+
+hKtr; yyTiF
+trace(A)  1
+(cid:181)A K T
+K In   0
+K 2 K;
+
+which corresponds to (49).
+
+Notice that, when K is the set of all positive semidenite matrices, this is an SDP (an inequality
+constraint corresponds to a one-dimensional LMI; consider the entries of the matrices A and K as
+the unknowns, corresponding to the ui in (9)). In that case, one solution of (49) is found by simply
+selecting Ktr = c
+
+n yyT , for which the alignment (7) is equal to one and thus maximized.
+
+Adding the additional constraint (18) that K is a linear combination of xed kernel matrices
+
+leads to
+
+max
+
+K
+
+subject to
+
+(52)
+
+Ktr; yyTF
+hK; KiF  1;
+K  0;
+Xi=1
+K =
+
+m
+
+iKi;
+
+which can be written in the standard form of a semidenite program, in a similar way as for (49):
+
+max
+A;i
+
+subject to
+
+iKi;tr; yyT+F
+Pm
+
+* m
+Xi=1
+trace(A)  1;
+(cid:181)
+Pm
+Xi=1
+iKi  0:
+
+i=1 iKi
+
+A
+
+m
+
+i=1 iKT
+i
+
+In
+
+(53)
+
+  0;
+
+Remark. For the specic case where the Ki are rank-one matrices Ki = vivT
+i , with vi orthonormal
+(e.g., the normalized eigenvectors of an initial kernel matrix K0), the semidenite program reduces
+to a QCQP (see Appendix A):
+
+m
+
+max
+
+i
+
+subject to
+
+m
+
+i y)2
+
+i(vT
+
+Xi=1
+Xi=1
+i  0; i = 1; : : : ; m
+
+2
+i  1
+
+52
+
+(54)
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+with vi = vi(1 : ntr). This corresponds exactly to the QCQP obtained as an illustration in
+Cristianini et al. (2002), which is thus entirely captured by the general SDP result obtained in this
+section.
+
+Solving the original learning problem (52) subject to the extra constraint   0 yields
+
+max
+
+K
+
+subject to
+
+Ktr; yyTF
+hK; KiF  1;
+K  0;
+Xi=1
+K =
+  0:
+
+m
+
+iKi;
+
+We can omit the second constraint, because this is implied by the last two constraints, if Ki  0.
+This reduces to
+
+max
+
+
+
+subject to
+
+iKi;tr; yyT+F
+jKj+
+
+iKi;
+
+m
+
+Xj=1
+
+* m
+Xi=1
+* m
+Xi=1
+  0;
+
+ 1;
+
+F
+
+where Ki;tr = Ki(1 : ntr; 1 : ntr). Expanding this further yields
+
+* m
+Xi=1
+
+iKi;tr; yyT+F
+
+=
+
+m
+
+Xi=1
+
+iKi;tr; yyTF
+
+= T q;
+
+* m
+Xi=1
+
+iKi;
+
+m
+
+Xj=1
+
+jKj+
+
+F
+
+=
+
+m
+
+Xi;j=1
+
+ij hKi; KjiF
+
+= T S
+
+(55)
+
+(56)
+
+with qi = Ki;tr; yyTF = trace(Ki;tryyT ) = trace(yT Ki;try) = yT Ki;try and Sij = hKi; KjiF ,
+where q 2 Rm; S 2 Rmm. We used the fact that trace(ABC) = trace(BCA) (if the products are
+well-dened). We obtain the following learning problem:
+
+max
+
+
+
+T q
+
+subject to
+
+T S  1;
+  0;
+
+which is a QCQP.
+
+4.8 Induction
+
+In previous sections we have considered the transduction setting, where it is assumed that the
+covariate vectors for both training (labeled) and test (unlabeled) data are known beforehand. While
+
+53
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+this setting captures many realistic learning problems, it is also of interest to consider possible
+extensions of our approach to the more general setting of induction, in which the covariates are
+known beforehand only for the training data.
+
+Consider the following situation. We learn the kernel matrix as a positive linear combination of
+normalized kernel matrices Ki. Those Ki are obtained through the evaluation of a kernel function or
+through a known procedure (e.g., a string-matching kernel), yielding Ki  0. So, K =Pm
+i=1 iKi 
+0. Normalization is done by replacing Ki(k; l) by Ki(k; l)=pKi(k; k)  Ki(l; l). In this case, the
+
+extension to an induction setting is elegant and simple.
+
+Let ntr be the number of training data points (all labeled). Consider the transduction problem
+for those ntr data points and one unknown test point, e.g., for a hard margin SVM. The optimal
+weights 
+i ;
+
+i = 1; : : : ; m are learned by solving (33):
+
+T G(Ki;tr);
+
+i = 1; : : : ; m
+
+(57)
+
+max
+;t
+
+subject to
+
+2T e  ct
+1
+t 
+T y = 0;
+  0:
+
+ntr + 1
+
+Even without knowing the test point and the entries of the Kis related to it (column and row
+ntr + 1), we know that K(ntr + 1; ntr + 1) = 1 because of the normalization. So, trace(Ki) = ntr + 1.
+This allows solving for the optimal weights 
+i = 1; : : : ; m and the optimal SVM parameters
+i ;
+j = 1; : : : ; ntr and b, without knowing the test point. When a test point becomes available,
+
+j ;
+we complete the Kis by computing their (ntr + 1)-th column and row (evaluate the kernel function
+or follow the procedure and normalize). Combining those Ki with weights 
+i yields the nal kernel
+matrix K, which can then be used to label the test point:
+
+y = sign(
+
+m
+
+Xi=1
+
+ntr
+
+Xj=1
+
+
+i jKi(xj; x)):
+
+Remark: The optimal weights are independent of the number of unknown test points that
+are considered in this setting. Consider the transduction problem (57) for l unknown test points
+instead of one unknown test point:
+
+~T G(Ki;tr) ~;
+
+i = 1; : : : ; m
+
+(58)
+
+max
+~;~t
+
+subject to
+
+1
+
+2 ~T e  c~t
+~t 
+ntr + l
+~T y = 0;
+~  0:
+
+ntr+1  and ~t = ntr+l
+
+i = 1; : : : ; m are the same.
+
+One can see that solving (58) is equivalent to solving (57) where the optimal values relate as
+~ = ntr+l
+
+ntr+1 t and where the optimal weights 
+i ;
+
+Tackling the induction problem in full generality remains a challenge for future work. Obviously,
+one could consider the transduction case with zero test points, yielding the induction case. If the
+weights i are constrained to be nonnegative and furthermore the matrices Ki are guaranteed to
+be positive semidenite, the weights can be reused at new test points. To deal with induction in
+a general SDP setting, one could solve a transduction problem for each new test point. For every
+
+54
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+test point, this leads to solving an SDP of dimension ntr + 1, which is computationally expensive.
+Clearly there is a need to explore recursive solutions to the SDP problem that allow the solution of
+the SDP of dimension ntr to be used in the solution of an SDP of dimension ntr + 1. Such solutions
+would of course also have immediate applications to on-line learning problems.
+
+5. Error Bounds for Transduction
+
+In the problem of transduction, we have access to the unlabeled test data, as well as the labeled
+training data, and the aim is to optimize accuracy in predicting the test data. We assume that the
+data are xed, and that the order is chosen randomly, yielding a random partition into a labeled
+training set and an unlabeled test set. For convenience, we suppose here that the training and
+test sets have the same size. Of course, if we can show a performance guarantee that holds with
+high probability over uniformly chosen training/test partitions of this kind, it also holds with high
+probability over an i.i.d. choice of the training and test data, since permuting an i.i.d. sample leaves
+the distribution unchanged.
+
+The following theorem gives an upper bound on the error of a kernel classier on the test data
+in terms of the average over the training data of a certain margin cost function, together with
+properties of the kernel matrix. We focus on the 1-norm soft margin classier, although our results
+extend in a straightforward way to other cases, including the 2-norm soft margin classier. The
+1-norm soft margin classier chooses a kernel classier f to minimize a weighted combination of a
+regularization term, kwk2, and the average over the training sample of the slack variables,
+
+i = max (1  yif (xi); 0) :
+
+We can view this regularized empirical criterion as the Lagrangian for the constrained minimization
+of
+
+1
+n
+
+n
+
+Xi=1
+
+i =
+
+1
+n
+
+n
+
+Xi=1
+
+max(1  yif (xi); 0)
+
+subject to the upper bound kwk2  1=(cid:176)2.
+Fix a sequence of 2n pairs (X1; Y1); : : : ; (X2n; Y2n) from XY. Let  : f1; : : : ; 2ng ! f1; : : : ; 2ng
+be a random permutation, chosen uniformly, and let (xi; yi) = (X(i); Y(i)). The rst half of this
+randomly ordered sequence is the training data Tn = ((x1; y1); : : : ; (xn; yn)), and the second half
+is the test data Sn = ((xn+1; yn+1); : : : ; (x2n; y2n)). For a function f : X ! R, the proportion of
+errors on the test data of a thresholded version of f can be written as
+
+er(f ) =
+
+1
+njfn + 1  i  2n : yif (xi)  0gj:
+
+We consider kernel classiers obtained by thresholding kernel expansions of the form
+
+f (x) = hw; '(x)i =
+
+ik(xi; x);
+
+2n
+
+Xi=1
+
+where w =P2n
+
+i=1 i'(xi) is chosen with bounded norm,
+
+kwk2 =
+
+2n
+
+Xi;j=1
+
+ijk(xi; xj) = T K 
+
+1
+(cid:176)2 ;
+
+and K is the 2n  2n kernel matrix with Kij = k(xi; xj).
+
+55
+
+(59)
+
+(60)
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+Let FK denote the class of functions on S of the form (59) satisfying (60), for some K 2 K,
+
+FK =(xj 7!
+
+2n
+
+Xi=1
+
+iKij : K 2 K; T K 
+
+1
+
+(cid:176)2) ;
+
+where K is a set of positive semidenite 2n  2n matrices. We also consider the class of kernel
+expansions obtained from certain linear combinations of a xed set fK1; : : : ; Kmg of kernel matrices:
+Dene the class FKc as
+
+and the class FK+
+
+c
+
+as
+
+K =
+
+Kc =8<
+:
+c =8<
+:
+
+K+
+
+m
+
+Xj=1
+
+jKj : K  0; j 2 R; trace(K)  c9=
+;
+
+;
+
+m
+
+Xj=1
+
+jKj : K  0; j  0; trace(K)  c9=
+;
+
+:
+
+Theorem 24 For every (cid:176) > 0, with probability at least 1  over the data (xi; yi) chosen as above,
+every function f 2 FK has er(f ) no more than
+
+1
+n
+
+n
+
+Xi=1
+
+maxf1  yif (xi); 0g +
+
+1
+
+pn4 +p2 log(1=) +sC(K)
+n(cid:176)2 ! ;
+
+where
+
+C(K) = E max
+
+K2K
+
+(cid:190)T K(cid:190);
+
+with the expectation over (cid:190) chosen uniformly from f1g2n.
+(cid:190)T K
+
+Furthermore,
+
+C(Kc) = cE max
+
+K2K
+
+(cid:190);
+
+trace(K)
+
+and this is always no more than cn, and
+
+C(K+
+
+c )  c min(cid:181)m; n max
+
+j
+
+j
+
+trace(Kj) ;
+
+where j is the largest eigenvalue of Kj.
+
+Notice that the test error is bounded by a sum of the average over the training data of a margin
+cost function plus a complexity penalty term that depends on the ratio between the trace of the
+kernel matrix and the squared margin parameter, (cid:176) 2. The kernel matrix here is the full matrix,
+combining both test and training data.
+
+The proof of the theorem is in Appendix B. The proof technique for the rst part of the
+theorem was introduced by Koltchinskii and Panchenko (2002), who used it to give error bounds
+for boosting algorithms.
+
+Although the theorem requires the margin parameter (cid:176) to be specied in advance, it is straight-
+forward to extend the result to give an error bound that holds with high probability over all values
+of (cid:176). In this case, the log(1=) in the bound would be replaced by log(1=) + j log(1=(cid:176))j and the
+
+56
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+constants would increase slightly. See, for example, Proposition 8 and its applications in the work
+of Bartlett (1998).
+
+The result is presented for the 1-norm soft margin classier, but the proof uses only two prop-
+erties of the cost function a 7! maxf1  a; 0g: that it is an upper bound on the indicator function
+for a  0, and that it satises a Lipschitz constraint on [0;1). These conditions are also satised
+by the cost function associated with the 2-norm soft margin classier, a 7! (maxf1  a; 0g)2, for
+example.
+B is easier to check than the bound
+on C(KB). The rst term in the minimum shows that the set of positive linear combinations of a
+small set of kernel matrices is not very complex. The second term shows that if, for each matrix in
+the set, the largest eigenvalue does not dominate the sum of the eigenvalues (the trace), then the
+set of positive linear combinations is not too complex, even if the set is large. In either case, the
+upper bound is linear in c, the upper bound on the trace of the combined kernel matrix.
+
+The bound on the complexity C(K+
+
+B) of the kernel class K+
+
+6. Empirical Results
+
+We rst present results on benchmark data sets, using kernels Ki that are derived from the same
+input vector. The goal here is to explore dierent possible representations of the same data source,
+and to choose a representation or combinations of representations that yield the best performance.
+We compare to the soft margin SVM with an RBF kernel, in which the hyperparameter is tuned
+via cross-validation. Note that in our framework there is no need for cross-validation to tune the
+corresponding kernel hyperparameters. Moreover, when using the 2-norm soft margin SVM, the
+methods are directly comparable, because the hyperparameter C is present in both cases.
+
+In the second section we explore the use of our framework to combine kernels that are built
+using data from heterogeneous sources. Here our main interest is in comparing the combined
+classier to the best individual classier. To the extent that the heterogeneous data sources provide
+complementary information, we might expect that the performance of the combined classier can
+dominate that of the best individual classier.
+
+6.1 Benchmark Data Sets
+
+We present results for hard margin and soft margin support vector machines. We use a kernel
+matrix K = P3
+i=1 iKi, where the Kis are initial \guesses" of the kernel matrix. We use a
+1 x2)d for K1, a Gaussian kernel function k2(x1; x2) =
+polynomial kernel function k1(x1; x2) = (1+xT
+exp(0:5(x1  x2)T (x1  x2)=(cid:190)) for K2 and a linear kernel function k3(x1; x2) = xT
+1 x2 for K3.
+Afterwards, all Ki are normalized. After evaluating the initial kernel matrices fKig3
+i=1, the weights
+fig3
+i=1 are optimized in a transduction setting according to a hard margin, a 1-norm soft margin
+and a 2-norm soft margin criterion, respectively; the semidenite programs (31), (36) and (41) are
+solved using the general-purpose optimization software SeDuMi (Sturm, 1999), leading to optimal
+i g3
+weights f
+i=1. Next, the weights fig3
+i=1 are constrained to be non-negative and optimized
+according to the same criteria, again in a transduction setting: the second order cone programs
+(33), (38) and (43) are solved using the general-purpose optimization software Mosek (Andersen
+and Andersen, 2000), leading to optimal weights f
+i=1. For positive weights, we also report
+results in which the 2-norm soft margin hyperparameter C is tuned according to (47).
+
+i;+g3
+
+Empirical results on standard benchmark datasets are summarized in Tables 1, 2 and 3.2 The
+Wisconsin breast cancer dataset contained 16 incomplete examples which were not used. The breast
+
+2. It is worth noting that the rst three columns of these columns are based on an inductive algorithm whereas
+the last two columns are based on a transductive algorithm. This may favor the kernel combinations in the last
+
+57
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+cancer, ionosphere and sonar data were obtained from the UCI repository. The heart data were
+obtained from STATLOG and normalized. Data for the 2-norm problem data were generated as
+specied by Breiman (1998). Each dataset was randomly partitioned into 80% training and 20%
+test sets. The reported results are the averages over 30 random partitions. The kernel parameters
+for K1 and K2 are given in Tables 1, 2 and 3 by d and (cid:190) respectively. For each of the kernel
+matrices, an SVM is trained using the training block Ktr and tested using the mixed block Ktr;t
+as dened in (17). The margin (cid:176) (for a hard margin criterion) and the optimal soft margin cost
+functions !
+S2 (for soft margin criteria) are reported for the initial kernel matrices Ki, as
+i;+Ki. Furthermore, the average test set accuracy (TSA),
+the average value for C and the average weights over the 30 partitions are listed. For comparison,
+the performance of the best soft margin SVM with an RBF (Gaussian) kernel is reported|the soft
+margin hyperparameter C and the kernel parameter (cid:190) for the Gaussian kernel were tuned using
+cross-validation over 30 random partitions of the training set.
+
+well as for the optimal Pi 
+
+i Ki andPi 
+
+S1 and !
+
+Note that not every Ki gives rise to a linearly separable embedding of the training data, in which
+i Ki and
+i;+Ki however, always allow the training of a hard margin SVM and its margin is indeed larger
+than the margin for each of the dierent components Ki|this is consistent with the SDP/QCQP
+i Ki and
+i;+Ki is smaller than its value for the individual Ki|again consistent with the SDP/QCQP
+optimizations. Notice that constraining the weights i to be positive results in slightly smaller
+margins and larger cost functions, as expected.
+
+case no hard margin classier can be found (indicated with a dash). The matrices Pi 
+Pi 
+optimization. For the soft margin criteria, the optimal value of the cost function for Pi 
+Pi 
+Furthermore, the number of test set errors for Pi 
+i;+Ki does often almost as well as Pi 
+Pi 
+Moreover, the performance of Pi 
+
+i;+Ki is in general comparable
+in magnitude to the best value achieved among the dierent components Ki. Also notice that
+i Ki, and sometimes even better: we can thus achieve
+a substantial reduction in computational complexity without a signicant loss of performance.
+i;+Ki is comparable with the best soft margin
+SVM with an RBF kernel. In making this comparison note that the RBF SVM requires tuning of
+the kernel parameter using cross-validation, while the kernel learning approach achieves a similar
+eect without cross-validation.3 Moreover, when using the 2-norm soft margin SVM with tuned
+hyperparameter C, we no longer need to do cross-validation for C. This leads to a smaller value of
+the optimal cost function !
+S2 (compared to the case SM2, with C = 1) and performs well on the
+test set, while oering the advantage of automatically adjusting C.
+
+i Ki and Pi 
+
+i Ki andPi 
+
+One might wonder why there is a dierence between the SDP and the QCQP approach for
+the 2-norm data, since both seem to nd positive weights i. However, it must be recalled that
+
+two columns and thus the results should be interpreted with caution. However, it is also worth noting that the
+transduction is a weak form of transduction that is based only on the norm of the test data point.
+
+3. The experiments were run on a 2GHz Windows XP machine. We used the programs SeDuMi to solve the SDP
+for kernel learning and Mosek to solve multiple QPs for cross-validated SVM and the QCQP for kernel learning
+with positive weights. The run time for the SDP is on the order of minutes (approximately 10 minutes for 300
+data points and 5 kernels), while the run time for the QP and QCQP is on the order of seconds (approximately 1
+second for 300 data points and 1 kernel, and approximately 3 seconds for 300 data points and 5 kernels). Thus, we
+see that kernel learning with positive weights, which requires only a QCQP solution, achieves an accuracy which is
+comparable to the full SDP approach at a fraction of the computational cost, and our tentative recommendation
+is that the QCQP approach is to be preferred. It is worth noting, however, that special-purpose implementations
+of SDPs that take advantage of the structure of the kernel learning problem may well yield signicant speed-ups,
+and the recommendation should be taken with caution. Finally, the QCQP approach also compares favorably in
+terms of run time to the multiple runs of a QP that are required for cross-validation, and should be considered
+a viable alternative to cross-validation, particularly given the high variance associated with cross-validation in
+small data sets.
+
+58
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+Heart
+HM
+
+SM1
+
+SM2
+
+(cid:176)
+TSA
+1=2=3
+!
+S1
+TSA
+C
+1=2=3
+!
+S2
+TSA
+C
+1=2=3
+
+SM2,C !
+S2
+
+TSA
+C
+1=2=3
+
+Sonar
+HM
+
+SM1
+
+SM2
+
+(cid:176)
+TSA
+1=2=3
+!
+S1
+TSA
+C
+1=2=3
+!
+S2
+TSA
+C
+1=2=3
+
+SM2,C !
+S2
+
+TSA
+C
+1=2=3
+
+K1
+
+K2
+
+K3
+
+d = 2
+0.0369
+
+(cid:190) = 0:5
+0.1221
+72.9 % 59.5 %
+0/3/0
+33.536
+
+3/0/0
+58.169
+
+0/0/3
+74.302
+79.3 % 59.5 % 84.3 %
+
+-
+-
+
+1
+
+1
+
+1
+
+3/0/0
+32.726
+
+0/0/3
+45.891
+78.1 % 59.0 % 84.3 %
+
+0/3/0
+25.386
+
+1
+
+1
+
+1
+
+0/3/0
+25.153
+
+3/0/0
+19.643
+
+0/0/3
+16.004
+81.3 % 59.6 % 84.7 %
+0.2880
+
+0.3378
+
+1.04/0/0
+
+d = 2
+0.0246
+
+1.18e+7
+0/3.99/0
+(cid:190) = 0:1
+0.1460
+
+i Ki
+
+Pi 
+
+0.1531
+84.8 %
+
+i;+Ki
+
+Pi 
+
+0.1528
+84.6 %
+
+-0.09/2.68/0.41
+
+0.01/2.60/0.39
+
+21.361
+84.8 %
+
+1
+
+21.446
+84.6 %
+
+1
+
+-0.09/2.68/0.41
+
+0.01/2.60/0.39
+
+15.988
+84.8 %
+
+1
+
+16.034
+84.6 %
+
+1
+
+-0.08/2.54/0.54
+
+0.01/2.47/0.53
+
+15.985
+84.6 %
+0.4365
+
+0/0/0.53
+
+0.01/0.80/0.53
+
+0.0021
+80.9 % 85.8 % 74.2 %
+0/0/3
+102.68
+78.1 % 85.6 % 73.3 %
+
+3/0/0
+87.657
+
+0/3/0
+23.288
+
+1
+
+1
+
+1
+
+3/0/0
+45.048
+
+0/0/3
+53.292
+79.1 % 85.2 % 76.7 %
+
+0/3/0
+15.893
+
+1
+
+1
+
+1
+
+0/3/0
+15.640
+
+3/0/0
+20.520
+
+0/0/3
+20.620
+60.9 % 84.6 % 51.0 %
+0.2510
+
+0.2591
+
+0.6087
+
+0.1517
+84.6 %
+
+-2.23/3.52/1.71
+
+21.637
+84.6 %
+
+1
+
+-2.20/3.52/1.69
+
+15.219
+84.5 %
+
+1
+
+-1.78/3.46/1.32
+
+0.1459
+85.8 %
+0/3/0
+23.289
+85.6 %
+
+1
+
+0/3/0
+15.893
+85.2 %
+
+1
+
+0/3/0
+15.640
+84.6 %
+0.6087
+
+0.14/0/0
+
+0/2.36/0
+
+0/0/0.02
+
+0/2.34/0
+
+best c/v RBF
+
+77.7 %
+
+83.9 %
+
+83.2 %
+
+83.2 %
+
+84.2 %
+
+84.2 %
+
+84.2 %
+
+84.2 %
+
+kernel matrices Pi 
+
+Table 1: SVMs trained and tested with the initial kernel matrices K1; K2; K3 and with the optimal
+i;+Ki. For hard margin SVMs (HM), the resulting
+margin (cid:176) is given|a dash meaning that no hard margin classier could be found; for soft
+margin SVMs (SM1 = 1-norm soft margin with C = 1, SM2 = 2-norm soft margin with
+C = 1 and SM2,C = 2-norm soft margin with auto tuning of C) the optimal value of the
+cost function !
+S2 is given. Furthermore, the test-set accuracy (TSA), the average
+
+i Ki and Pi 
+
+S1 or !
+
+weights and the average C-values are given. For c we used c = Pi trace(Ki) for HM,
+
+SM1 and SM2. The initial kernel matrices are evaluated after being multiplied by 3. This
+assures we can compare the dierent (cid:176) for HM, !
+S2 for SM2, since the
+resulting kernel matrix has a constant trace (thus, everything is on the same scale). For
+
+S1 for SM1 and !
+
+!
+S2 for SM2,C but also it allows comparing !
+
+SM2,C we use c =Pi trace(Ki) + trace(In). This not only allows comparing the dierent
+C = 1 for SM2, we have that tracePm
+C In is constant in both cases, so again,
+
+we are on the same scale). Finally, the column best c/v RBF reports the performance
+of the best soft margin SVM with RBF kernel, tuned using cross-validation.
+
+S2 between SM2 and SM2,C (since we choose
+
+i=1 iKi + 1
+
+the values in Table 3 are averages over 30 randomizations|for some randomizations the SDP has
+actually found negative weights, although the averages are positive.
+
+As a further example illustrating the (cid:176)exibility of the SDP framework, consider the following
+setup. Let fKig5
+i=1 be Gaussian kernels with (cid:190) = 0:01; 0:1; 1; 10; 100 respectively. Combining
+those optimally with i  0 for a 2-norm soft margin SVM, with tuning of C, yields the results
+
+59
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+Breast cancer
+HM
+
+SM1
+
+SM2
+
+(cid:176)
+TSA
+1=2=3
+!
+S1
+TSA
+C
+1=2=3
+!
+S2
+TSA
+C
+1=2=3
+
+SM2,C !
+S2
+
+TSA
+C
+1=2=3
+
+SM1
+
+Ionosphere
+(cid:176)
+HM
+TSA
+1=2=3
+!
+S1
+TSA
+C
+1=2=3
+!
+S2
+TSA
+C
+1=2=3
+
+SM2
+
+SM2,C !
+S2
+
+TSA
+C
+1=2=3
+
+2-norm
+HM
+
+SM1
+
+SM2
+
+(cid:176)
+TSA
+1=2=3
+!
+S1
+TSA
+C
+1=2=3
+!
+S2
+TSA
+C
+1=2=3
+
+SM2,C !
+S2
+
+TSA
+C
+1=2=3
+
+K1
+
+K2
+
+K3
+
+d = 2
+0.0036
+
+(cid:190) = 0:5
+0.1055
+92.9 % 89.0 %
+0/3/0
+44.913
+
+3/0/0
+77.012
+
+0/0/3
+170.26
+96.4 % 89.0 % 87.7 %
+
+-
+-
+
+1
+
+1
+
+1
+
+3/0/0
+43.138
+
+0/0/3
+102.51
+96.4 % 88.5 % 87.4 %
+
+0/3/0
+35.245
+
+1
+
+1
+
+1
+
+0/3/0
+33.685
+
+3/0/0
+27.682
+
+0/0/3
+41.023
+94.5 % 89.0 % 87.3 %
+0.3051
+
+0.3504
+
+0/0/0.72
+
+-
+-
+
+1.15/0/0
+
+d = 2
+0.0613
+
+1.48e+8
+0/3.99/0
+(cid:190) = 0:5
+0.1452
+91.2 % 92.0 %
+0/3/0
+23.233
+
+3/0/0
+30.786
+
+0/0/3
+52.312
+94.5 % 92.1 % 83.1 %
+
+1
+
+1
+
+1
+
+3/0/0
+18.533
+
+0/0/3
+31.662
+94.7 % 92.0 % 91.6 %
+
+0/3/0
+17.907
+
+1
+
+1
+
+1
+
+0/3/0
+17.623
+
+3/0/0
+14.558
+
+0/0/3
+18.975
+93.5 % 92.1 % 90.0 %
+0.3442
+
+0.4144
+
+5.8285
+
+1.59/0/0
+
+0/3.83/0
+
+0/0/1.09
+
+i Ki
+
+Pi 
+
+0.1369
+95.5 %
+
+i;+Ki
+
+Pi 
+
+0.1219
+94.4 %
+
+1.90/2.35/-1.25
+
+0.65/2.35/0
+
+26.694
+95.5 %
+
+1
+
+33.689
+94.4 %
+
+1
+
+1.90/2.35/-1.25
+
+0.65/2.35/0
+
+20.696
+95.4 %
+
+1
+
+21.811
+94.3 %
+
+1
+
+2.32/2.13/-1.46
+
+0.89/2.11/0
+
+25.267
+94.4 %
+6.77e+7
+
+0.87/3.13/0
+
+0.1623
+94.4 %
+
+0.1616
+94.4 %
+
+1.08/2.18/-0.26
+
+0.79/2.21/0
+
+18.117
+94.8 %
+
+1
+
+18.303
+94.5 %
+
+1
+
+1.23/2.07/-0.30
+
+0.90/2.10/0
+
+13.382
+94.5 %
+
+1
+
+13.542
+94.4 %
+
+1
+
+1.68/1.73/-0.41
+
+1.23/1.78/0
+
+13.5015
+94.6 %
+0.8839
+
+1.24/1.61/0
+
+Table 2: See the caption to Table 1 for explanation.
+
+K1
+
+K2
+
+K3
+
+d = 2
+0.1436
+
+(cid:190) = 0:1
+0.1072
+
+0.0509
+94.6 % 55.4 % 94.3 %
+0/0/3
+22.262
+95.0 % 55.4 % 95.7 %
+
+3/0/0
+23.835
+
+0/3/0
+43.509
+
+1
+
+1
+
+1
+
+3/0/0
+16.134
+
+0/0/3
+11.991
+95.9 % 55.4 % 95.6 %
+
+0/3/0
+32.631
+
+1
+
+1
+
+1
+
+0/3/0
+32.633
+
+3/0/0
+16.057
+
+0/0/3
+7.9880
+96.2 % 55.4 % 96.6 %
+0.3869
+
+0.8213
+
+0.5000
+0/2/0
+
+i Ki
+
+Pi 
+
+0.2170
+96.6 %
+
+i;+Ki
+
+Pi 
+
+0.2169
+96.6 %
+
+0.03/1.91/1.06
+
+0.06/1.88/1.06
+
+10.636
+96.6 %
+
+1
+
+10.641
+96.6 %
+
+1
+
+0.03/1.91/1.06
+
+0.06/1.88/1.06
+
+7.9780
+96.6 %
+
+1
+
+7.9808
+96.6 %
+
+1
+
+0.05/1.54/1.41
+
+0.08/1.51/1.41
+
+7.9808
+96.6 %
+0.8015
+
+2.78/0/0
+
+0/0/1.42
+
+0.08/1.25/1.41
+
+best c/v RBF
+
+96.1 %
+
+96.7 %
+
+96.8 %
+
+96.8 %
+
+93.9 %
+
+94.0 %
+
+94.2 %
+
+94.2 %
+
+best c/v RBF
+
+96.3 %
+
+97.5 %
+
+97.2 %
+
+97.2 %
+
+Table 3: See the caption to Table 1 for explanation.
+
+accuracies obtained forPi 
+
+in Table 4|averages over 30 randomizations in 80% training and 20% test sets. The test set
+i;+Ki are competitive with those for the best soft margin SVM with an
+RBF kernel, tuned using cross-validation. The average weights show that some kernels are selected
+and others are not. Eectively we obtain a data-based choice of smoothing parameter without
+recourse to cross-validation.
+
+60
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+1;+ 2;+ 3;+ 4;+ 5;+
+0.82
+
+0
+
+0
+
+Breast Cancer
+Ionosphere
+Heart
+Sonar
+2-norm
+
+0.85
+
+0
+0
+
+0.49
+
+0.85
+3.89
+3.93
+0.49
+
+3.24
+2.63
+0.06
+1.07
+
+0
+
+0.94
+0.68
+1.05
+
+0
+
+3.51
+
+0
+0
+0
+0
+
+C
+
+TSA SM2,C TSA best c/v RBF
+
+3.6e+08
+4.0e+06
+2.5e+05
+3.2e+07
+2.0386
+
+97.1 %
+94.5 %
+84.1 %
+84.8 %
+96.5 %
+
+96.8 %
+94.2 %
+83.2 %
+84.2 %
+97.2 %
+
+Table 4: The initial kernel matrices fKig5
+respectively. For c we used c =Pi trace(Ki)+trace(In). fi;+g5
+of the optimal kernel matrix Pi 
+
+i=1 are Gaussian kernels with (cid:190) = 0:01; 0:1; 1; 10; 100
+i=1 are the average weights
+i;+Ki for a 2-norm soft margin SVM with i  0 and
+tuning of C. The average C-value is given as well. The test set accuracies (TSA) of the
+optimal 2-norm soft margin SVM with tuning of C (SM2,C) and the best crossvalidation
+soft margin SVM with RBF kernel (best c/v RBF) are reported.
+
+i=1 ivivT
+
+kernel matrix K =PN
+
+In Cristianini et al. (2002) empirical results are given for optimization of the alignment using a
+i . The results show that optimizing the alignment indeed improves
+the generalization power of Parzen window classiers. As explained in Section 4.7, it turns out that
+in this particular case, the SDP in (53) reduces to exactly the quadratic program that is obtained
+in Cristianini et al. (2002) and thus those results also provide support for the general framework
+presented in the current paper.
+
+6.2 Combining Heterogeneous Data
+
+6.2.1 Reuters-21578 Data Set
+
+To explore the value of this approach for combining data from heterogeneous sources, we run
+experiments on the Reuters-21578 data set, using two dierent kernels. The rst kernel K1 is derived
+as a linear kernel from the \bag-of-words" representation of the dierent documents, capturing
+information about the frequency of terms in the dierent documents (Salton and McGill, 1983).
+K1 is centered and normalized. The second kernel K2 is constructed by extracting 500 concepts
+from documents via probabilistic latent semantic analysis (Cai and Hofmann, 2003). This kernel
+can be viewed as arising from a document-concept-term graphical model, with the concepts as
+hidden nodes. After inferring the conditional probabilities of the concepts, given a document, a
+linear kernel is applied to the vector of these probabilistic \concept memberships," representing each
+document. Also K2 is then centered and normalized. The concept-based document information
+contained in K2 is likely to be partly overlapping and partly complementary to the term-frequency
+information in K1. Although the \bag-of-words" and graphical model representation are clearly
+heterogeneous, they can both be cast into a homogeneous framework of kernel matrices, allowing
+the information that they convey to be combined according to K = 1K1 + 2K2.
+
+The Reuters-21578 dataset consists of Reuters newswire stories from 1987 (www.davidlewis.
+com/resources/testcollections/reuters21578/). After a preprocessing stage that includes
+tokenization and stop word removal, 37926 word types remained. We used the modied Apte
+(\ModApte") split to split the collection into 12902 used and 8676 unused documents. The 12902
+used documents consist of 9603 training documents and 3299 test documents. From the 9603
+training documents, we randomly select a 1000-document subset as training set for a soft margin
+support vector machine with C = 1. We train the SVM for the binary classication tasks of
+
+61
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+distinguishing documents about a certain topic versus those not about that topic. We restrict our
+attention to the topics that appear in the most documents (cf. Cai and Hofmann (2003); Huang
+(2003); Eyheramendy et al. (2003)); in particular, we focused on the top ve Reuters-21578 topics.
+After training the SVM on the randomly selected documents using either K1 or K2, the accuracy
+is tested on the 3299 test documents from the ModApte split. This is done 20 times, i.e., for 20
+randomly chosen 1000-document training sets. The average accuracies and standard errors are
+reported in Figure 1. After evaluating the performance of K1 and K2, the weights 1 and 2 are
+constrained to be non-zero and optimized (using only the training data) according to (38). The test
+set performance of the optimal combination is then evaluated and the average accuracy reported
+in Figure 1. The optimal weights, 
+1 and 
+2, do not vary greatly over the dierent topics, with
+averages of 1.37 for 
+1 and 0.63 for 
+2.
+
+We see that in four cases out of ve the optimal combination of kernels performs better than
+either of the individual kernels. This suggests that these kernels indeed provide complementary
+information for the classication decision, and that the SDP approach is able to nd a combination
+that exploits this complementarity.
+
+6.2.2 Protein Function Prediction
+
+Here we illustrate the SDP approach for fusing heterogeneous genomic data in order to predict
+protein function in yeast; see Lanckriet et al. (2004) for more details. The task is to predict
+functional classications associated with yeast proteins. We use as a gold standard the functional
+catalogue provided by the MIPS Comprehensive Yeast Genome Database (CYGD|mips.gsf.de/
+proj/yeast). The top-level categories in the functional hierarchy produce 13 classes, which contain
+3588 proteins; the remaining yeast proteins have uncertain function and are therefore not used in
+evaluating the classier. Because a given protein can belong to several functional classes, we cast
+the prediction problem as 13 binary classication tasks, one for each functional class. Using this
+setup, we follow the experimental paradigm of Deng et al. (2003).
+
+The primary input to the classication algorithm is a collection of kernel matrices representing
+
+dierent types of data:
+
+1. Amino acid sequences: this kernel incorporates information about the domain structure of
+each protein, by looking at the presence or absence in the protein of Pfam domains (pfam.
+wustl.edu). The corresponding kernel is simply the inner product between binary vectors
+describing the presence or absence of one Pfam domain. Afterwards, we also construct a
+richer kernel by replacing the binary scoring with log E-values using the HMMER software
+toolkit (hmmer.wustl.edu). Moreover, an additional kernel matrix is constructed by applying
+the Smith-Waterman (SW) pairwise sequence comparison algorithm (Smith and Waterman,
+1981) to the yeast protein sequences and applying the empirical kernel map (Tsuda, 1999).
+
+2. Protein-protein interactions: this type of data can be represented as a graph, with proteins as
+nodes and interactions as edges. Such interaction graph allows to establish similarities among
+proteins through the construction of a corresponding diusion kernel (Kondor and Laerty,
+2002).
+
+3. Genetic interactions: in a similar way, these interactions give rise to a diusion kernel.
+
+4. Protein complex data: co-participation in a protein complex can be seen as a weak sort of
+
+interaction, giving rise to a third diusion kernel.
+
+62
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+y
+c
+a
+r
+u
+c
+c
+a
+
+t
+e
+s
+
+t
+s
+e
+T
+
+99
+
+98
+
+97
+
+96
+
+95
+
+94
+
+93
+
+92
+
+EARN
+
+ACQ
+
+MONEYFX
+
+Category
+
+GRAIN
+
+CRUDE
+
+Figure 1: Classication performance for the top ve Reuters-21578 topics. The height of
+each bar is proportional to the average test set accuracy for a 1-norm soft margin SVM
+with C = 1. Black bars correspond to using only kernel matrix K1; grey bars correspond
+to using only kernel matrix K2, and white bars correspond to the optimal combination
+1K1+
+
+2K2. The kernel matrices K1 and K2 are derived from dierent types of data, i.e.,
+from the \bag-of-words" representation of documents and the concept-based graphical
+model representation (with 500 concepts) of documents respectively. For c we used
+c = trace(K1) + trace(K2) = 4000. The standard errors across the 20 experiments are
+approximately 0.1 or smaller; indeed, all of the depicted dierences between the optimal
+combination and the individual kernels are statistically signicant except for EARN.
+
+63
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+5. Expression data: two genes with similar expression proles are likely to have similar functions;
+accordingly, Deng et al. (2003) convert the expression matrix to a square binary interaction
+matrix in which a 1 indicates that the corresponding pair of expression proles exhibits a
+Pearson correlation greater than 0.8. This can be used to dene a diusion kernel. Also, a
+richer Gaussian kernel is dened directly on the expression proles.
+
+In order to compare the SDP/SVM approach to the Markov random eld (MRF) method of
+Deng et al. (2003), Lanckriet et al. (2004) perform two variants of the experiment: one in which
+the ve kernels are restricted to contain precisely the same binary information as used by the MRF
+method, and a second experiment in which the richer Pfam and expression kernels are used and the
+SW kernel is added. They show that a combined SVM classier trained with the SDP approach
+performs better than an SVM trained on any single type of data. Moreover it outperforms the
+MRF method designed for this data set. To illustrate the latter, Figure 2 presents the average
+ROC scores on the test set when performing ve-fold cross-validation three times.
+
+The gure shows that, for each of the 13 classications, the ROC score of the SDP/SVM
+method is better than that of the MRF method. Overall, the mean ROC improves from 0.715
+to 0.854. The improvement of the SDP/SVM method over the MRF method is consistent and
+statistically signicant across all 13 classes. An additional improvement, though not as large and
+only statistically signicant for nine of the 13 classes, is gained by using richer kernels and adding
+the SW kernel.
+
+7. Discussion
+
+In this paper we have presented a new method for learning a kernel matrix from data. Our
+approach makes use of semidenite programming (SDP) ideas. It is motivated by the fact that
+every symmetric, positive semidenite matrix can be viewed as a kernel matrix (corresponding to
+a certain embedding of a nite set of data), and the fact that SDP deals with the optimization of
+convex cost functions over the convex cone of positive semidenite matrices (or convex subsets of
+this cone). Thus convex optimization and machine learning concerns merge to provide a powerful
+methodology for learning the kernel matrix with SDP.
+
+We have focused on the transductive setting, where the labeled data are used to learn an
+embedding, which is then applied to the unlabeled part of the data. Based on a new generalization
+bound for transduction, we have shown how to impose convex constraints that eectively control
+the capacity of the search space of possible kernels and yield an ecient learning procedure that
+can be implemented by SDP. Furthermore, this approach leads to a convex method to learn the
+2-norm soft margin parameter in support vector machines, solving an important open problem.
+Promising empirical results are reported on standard benchmark datasets; these results show that
+the new approach provides a principled way to combine multiple kernels to yield a classier that is
+comparable with the best individual classier, and can perform better than any individual kernel.
+Performance is also comparable with a classier in which the kernel hyperparameter is tuned with
+cross-validation; our approach achieves the eect of this tuning without cross-validation.
+
+We have also shown how optimizing a linear combination of kernel matrices provides a novel
+method for fusing heterogeneous data sources. In this case, the empirical results show a signi-
+cant improvement of the classication performance for the optimal combination of kernels when
+compared to individual kernels.
+
+There are several challenges that need to be met in future research on SDP-based learning algo-
+rithms. First, it is clearly of interest to explore other convex quality measures for a kernel matrix,
+which may be appropriate for other learning algorithms. For example, in the setting of Gaussian
+
+64
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+1
+
+0.95
+
+0.9
+
+0.85
+
+0.8
+
+C
+O
+R
+
+0.75
+
+0.7
+
+0.65
+
+0.6
+
+0.55
+
+0.5
+
+1
+
+2
+
+3
+
+4
+
+5
+
+7
+
+6
+Function Class
+
+8
+
+9
+
+10
+
+11
+
+12
+
+13
+
+Figure 2: Classication performance for the 13 functional protein classes. The height of
+each bar is proportional to the ROC score. The standard error across the 13 experiments
+is usually 0.01 or smaller, so most of the depicted dierences are statistically signi-
+cant: between black and grey bars, all depicted dierences are statistically signicant,
+while nine of the 13 dierences between grey and white bars are statistically signicant.
+Black bars correspond to the MRF method of Deng et al.; grey bars correspond to the
+SDP/SVM method using ve kernels computed on binary data, and white bars corre-
+spond to the SDP/SVM using the enriched Pfam kernel and replacing the expression
+kernel with the SW kernel. See Lanckriet et al. (2004) for more details.
+
+65
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+processes, the relative entropy between the zero-mean Gaussian process prior P with covariance
+kernel K and the corresponding Gaussian process approximation Q to the true intractable posterior
+process depends on K as
+
+D[PjjQ] =
+
+1
+2
+
+log det K +
+
+1
+2
+
+traceyT Ky + d;
+
+where the constant d is independent of K. One can verify that D[PjjQ] is convex with respect to
+R = K 1 (see, e.g., Vandenberghe et al., 1998). Minimizing this measure with respect to R, and
+thus K, is motivated from PAC-Bayesian generalization error bounds for Gaussian processes (see,
+e.g., Seeger, 2002) and can be achieved by solving a so-called maximum-determinant problem (Van-
+denberghe et al., 1998)|an even more general framework that contains semidenite programming
+as a special case.
+
+Second, the investigation of other parameterizations of the kernel matrix is an important topic
+for further study. While the linear combination of kernels that we have studied here is likely to be
+useful in many practical problems|capturing a notion of combining Gram matrix \experts"|it
+is also worth considering other parameterizations as well. Any such parameterizations have to
+respect the constraint that the quality measure for the kernel matrix is convex with respect to the
+parameters of the proposed parameterization. One class of examples arises via the positive denite
+matrix completion problem (Vandenberghe et al., 1998). Here we are given a symmetric kernel
+matrix K that has some entries which are xed. The remaining entries|the parameters in this
+case|are to be chosen such that the resulting matrix is positive denite, while simultaneously a
+certain cost function is optimized, e.g., trace(SK) + log det K 1, where S is a given matrix. This
+specic case reduces to solving a maximum-determinant problem which is convex in the unknown
+entries of K, the parameters of the proposed parameterization.
+
+A third important area for future research consists in nding faster implementations of semidef-
+inite programming. As in the case of quadratic programming (Platt, 1999), it seems likely that
+special purpose methods can be developed to exploit the exchangeable nature of the learning prob-
+lem in classication and result in more ecient algorithms.
+
+Finally, by providing a general approach for combining heterogeneous data sources in the setting
+of kernel-based statistical learning algorithms, this line of research suggests an important role for
+kernel matrices as general building blocks of statistical models. Much as in the case of nite-
+dimensional sucient statistics, kernel matrices generally involve a signicant reduction of the
+data and represent the only aspects of the data that are used by subsequent algorithms. Moreover,
+given the panoply of methods that are available to accommodate not only the vectorial and matrix
+data that are familiar in classical statistical analysis, but also more exotic data types such as strings,
+trees and graphs, kernel matrices have an appealing universality. It is natural to envision libraries
+of kernel matrices in elds such as bioinformatics, computational vision, and information retrieval,
+in which multiple data sources abound. Such libraries would summarize the statistically-relevant
+features of primary data, and encapsulate domain specic knowledge. Tools such as the semidenite
+programming methods that we have presented here can be used to bring these multiple data sources
+together in novel ways to make predictions and decisions.
+
+Acknowledgements
+
+We acknowledge support from ONR MURI N00014-00-1-0637 and NSF grant IIS-9988642. Sincere
+thanks to Tijl De Bie for helpful conversations and suggestions, as well as to Lijuan Cai and Thomas
+Hofmann for providing the data for the Reuters-21578 experiments.
+
+66
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+Appendix A. Proof of Result (54)
+
+For the case Ki = vivT
+
+i , with vi orthonormal, the original learning problem (52) becomes
+
+max
+
+K
+
+subject to
+
+Expanding this further gives
+
+Ktr; yyTF
+hK; KiF  1;
+K  0;
+Xi=1
+K =
+
+m
+
+ivivT
+i :
+
+Ktr; yyTF = trace(K(1 : ntr; 1 : ntr)yyT )
+
+m
+
+= trace((
+
+ivi(1 : ntr)vi(1 : ntr)T )yyT )
+
+Xi=1
+
+=
+
+=
+
+m
+
+m
+
+Xi=1
+Xi=1
+
+itrace(vi vT
+
+i yyT )
+
+i(vT
+
+i y)2;
+
+hK; KiF = trace(K T K)
+= trace(KK)
+
+ivivT
+
+i )(
+
+m
+
+Xj=1
+
+jvjvT
+
+j ))
+
+ijvivT
+
+i vjvT
+j )
+
+= trace((
+
+= trace(
+
+= trace(
+
+m
+
+m
+
+m
+
+Xi=1
+Xi;j=1
+Xi=1
+
+m
+
+i vivT
+2
+i )
+
+i trace(vivT
+2
+i )
+
+2
+i trace(vT
+
+i vi)
+
+2
+i
+
+=
+
+=
+
+=
+
+m
+
+Xi=1
+Xi=1
+Xi=1
+
+m
+
+(61)
+
+(62)
+
+(63)
+
+with vi = vi(1 : ntr). We used the fact that trace(ABC) = trace(BCA) (if the products are well-
+dened) and that the vectors vi; i = 1; : : : ; n are orthonormal: vT
+i vj = ij. Furthermore, because
+
+i=1 ivivT
+
+i are the eigenvalues of K. This implies
+
+the vi are orthogonal, the i in K =Pm
+
+K  0 ,   0 , i  0;
+
+i = 1; : : : ; m:
+
+(64)
+
+67
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+Using (62), (63) and (64) in (61), we obtain the following optimization problem:
+
+m
+
+max
+
+i
+
+subject to
+
+i(vT
+
+i y)2
+
+m
+
+Xi=1
+Xi=1
+i  0;
+
+2
+i  1
+
+i = 1; : : : ; m;
+
+which yields the result (54).
+
+Appendix B. Proof of Theorem 24
+For a function g : X  Y ! R, dene
+
+^E1g(X; Y) =
+
+^E2g(X; Y) =
+
+1
+n
+
+1
+n
+
+n
+
+n
+
+Xi=1
+Xi=1
+
+g(xi; yi);
+
+g(xn+i; yn+i):
+
+Dene a margin cost function ` : R ! R+ as
+
+1
+1  a 0 < a  1;
+0
+
+if a  0,
+a > 1:
+
+`(a) =8<
+:
+
+Notice that in the 1-norm soft margin cost function, the slack variable i is a convex upper bound
+on `(yif (xi)) for the kernel classier f , that is,
+
+maxf1  a; 0g  `(a)  1 [a  0] ;
+
+where the last expression is the indicator function of a  0.
+(2002), and involves the following ve steps:
+
+The proof of the rst part is due to Koltchinskii and Panchenko Koltchinskii and Panchenko
+
+Step 1. For any class F of real functions dened on X ,
+
+sup
+f 2F
+
+er(f )  ^E1`(Y f (X))  sup
+
+f 2F
+
+^E2`(Y f (X))  ^E1`(Y f (X)):
+
+To see this, notice that er(f ) is the average over the test set of the indicator function of Y f (X)  0,
+and that `(Y f (X)) bounds this function.
+
+Step 2. For any class G of [0; 1]-valued functions,
+
+Prsup
+
+g2G
+
+^E2g  ^E1g  Esup
+
+g2G
+
+^E2g  ^E1g! + !  exp(cid:181)2n
+4  ;
+
+where the expectation is over the random permutation. This follows from McDiarmids inequality.
+To see this, we need to dene the random permutation  using a set of 2n independent random
+variables. To this end, choose 1; : : : ; 2n uniformly at random from the interval [0; 1]. These
+
+68
+
+Learning the Kernel Matrix with Semidefinite Programming
+
+are almost surely distinct. For j = 1; : : : ; 2n, dene (j) = jfi : i  jgj, that is, (j) is the
+position of j when the random variables are ordered by size. It is easy to see that, for any g,
+^E2g  ^E1g changes by no more than 2=n when one of the i changes. McDiarmids bounded
+dierence inequality (McDiarmid, 1989) implies the result.
+
+Step 3. For any class G of [0; 1]-valued functions,
+
+^E2g  ^E1g!  ^R2n(G) +
+
+4
+pn
+
+;
+
+g2G
+
+Esup
+nP2n
+
+1
+
+where ^R2n(G) = E supg2G
+i=1 (cid:190)ig(Xi; Yi); and the expectation is over the independent, uniform,
+f1g-valued random variables (cid:190)1; : : : ; (cid:190)2n. This result is essentially Lemma 3 of (Bartlett and
+Mendelson, 2002); that lemma contained a similar bound for i.i.d. data, but the same argument
+holds for xed data, randomly permuted.
+
+Step 4. If the class F of real-valued functions dened on X is closed under negations, ^R2n(` 
+F )  ^R2n(F ); where each f 2 F denes a g 2 `  F by g(x; y) = `(yf (x)). This bound is the
+contraction lemma of Ledoux and Talagrand (1991).
+Step 5. For the class FK of kernel expansions, notice (as in the proof of Lemma 26 of Bartlett
+
+and Mendelson (2002)) that
+
+^R2n(FK) =
+
+=
+
+=
+
+
+
+=
+
+2n
+
+1
+n
+
+1
+n
+
+E max
+f 2FK
+
+E max
+K2K
+
+(cid:190)if (Xi)
+
+Xi=1
+kwk1=(cid:176)hw;
+max
+
+1
+
+2n
+
+1
+n(cid:176)
+
+E max
+
+K2K(cid:176)(cid:176)(cid:176)(cid:176)(cid:176)
+Xi=1
+n(cid:176)qE max
+n(cid:176)pC(K);
+
+K2K
+
+1
+
+(cid:190)i'(Xi)i
+
+2n
+
+Xi=1
+(cid:190)i'(Xi)(cid:176)(cid:176)(cid:176)(cid:176)(cid:176)
+
+(cid:190)T K(cid:190)
+
+where (cid:190) = ((cid:190)1; : : : ; (cid:190)2n) is the vector of Rademacher random variables.
+
+Combining gives the rst part of the theorem. For the second part, consider
+
+C(Kc) = E max
+
+K2Kc
+
+(cid:190)T K(cid:190) = E max
+
+
+j(cid:190)T Kj(cid:190);
+
+m
+
+Xj=1
+
+where the max is over  = (1; : : : ; m) for which the matrix K = Pm
+tions K  0 and trace(K)  c. Now,
+
+j=1 jKj satises the condi-
+
+trace(K) =
+
+m
+
+Xj=1
+
+jtrace(Kj);
+
+and each trace in the sum is positive, so the supremum must be achieved for trace(K) = c. So we
+can write
+
+m
+
+C(Kc) = cE max
+
+K2Kc
+
+(cid:190)T
+
+Xj=1
+
+69
+
+K
+
+trace(K)
+
+(cid:190):
+
+Lanckriet, Cristianini, Bartlett, El Ghaoui and Jordan
+
+Notice that (cid:190)T K(cid:190) is no more than k(cid:190)k2 = n, where  is the maximum eigenvalue of K. Using
+  trace(K) = c shows that C(Kc)  cn.
+
+Finally, for K+
+
+c we have
+
+C(K+
+
+c ) = E max
+K2K+
+c
+
+(cid:190)T K(cid:190)
+
+m
+
+Xj=1
+
+c
+
+= E max
+
+j
+
+= E max
+
+j
+
+j(cid:190)T Kj(cid:190)
+
+(cid:190)T Kj(cid:190):
+
+trace(Kj)
+
+Since each term in the maximum is non-negative, we can replace it with a sum to show that
+
+C(K+
+
+c )  cE(cid:190)T 0
+@Xj
+
+= cm:
+
+Kj
+
+trace(Kj)1
+A (cid:190)
+
+Alternatively, we can write (cid:190)T Kj(cid:190)  jk(cid:190)k = jn, where j is the maximum eigenvalue of Kj.
+This shows that
+
+C(K+
+
+c )  cn max
+
+j
+
+:
+
+trace(Kj)
+
+j
+

@@ -1,0 +1,3104 @@
+Abstract
+
+The accuracy of k-nearest neighbor (kNN) classication depends signicantly on the metric used
+to compute distances between different examples. In this paper, we show how to learn a Maha-
+lanobis distance metric for kNN classication from labeled examples. The Mahalanobis metric
+can equivalently be viewed as a global linear transformation of the input space that precedes kNN
+classication using Euclidean distances. In our approach, the metric is trained with the goal that
+the k-nearest neighbors always belong to the same class while examples from different classes are
+separated by a large margin. As in support vector machines (SVMs), the margin criterion leads to a
+convex optimization based on the hinge loss. Unlike learning in SVMs, however, our approach re-
+quires no modication or extension for problems in multiway (as opposed to binary) classication.
+In our framework, the Mahalanobis distance metric is obtained as the solution to a semidenite
+program. On several data sets of varying size and difculty, we nd that metrics trained in this
+way lead to signicant improvements in kNN classication. Sometimes these results can be further
+improved by clustering the training examples and learning an individual metric within each cluster.
+We show how to learn and combine these local metrics in a globally integrated manner.
+Keywords: convex optimization, semi-denite programming, Mahalanobis distance, metric learn-
+ing, multi-class classication, support vector machines
+
+1. Introduction
+
+One of the oldest and simplest methods for pattern classication is the k-nearest neighbors (kNN)
+rule (Cover and Hart, 1967). The kNN rule classies each unlabeled example by the majority
+label of its k-nearest neighbors in the training set. Despite its simplicity, the kNN rule often yields
+competitive results and in certain domains, when cleverly combined with prior knowledge, it has
+signicantly advanced the state-of-the-art (Belongie et al., 2002; Simard et al., 1993).
+
+By the very nature of its decision rule, the performance of kNN classication depends crucially
+on the way that distances are computed between different examples. When no prior knowledge
+is available, most implementations of kNN compute simple Euclidean distances (assuming the ex-
+amples are represented as vector inputs). Unfortunately, Euclidean distances ignore any statistical
+
+c(cid:13)2009 Kilian Q. Weinberger and Lawrence Saul.
+
+WEINBERGER AND SAUL
+
+regularities that might be estimated from a large training set of labeled examples. Ideally, one would
+like to adapt the distance metric to the application at hand. Suppose, for example, that we are using
+kNN to classify images of faces by age and gender. It can hardly be optimal to use the same distance
+metric for age and gender classication, even if in both tasks, distances are computed between the
+same sets of extracted features (e.g., pixels, color histograms).
+
+Motivated by these issues, a number of researchers have demonstrated that kNN classication
+can be greatly improved by learning an appropriate distance metric from labeled examples (Chopra
+et al., 2005; Goldberger et al., 2005; Shalev-Shwartz et al., 2004; Shental et al., 2002). This is
+the so-called problem of distance metric learning. Recently, it has been shown that even a simple
+linear transformation of the input features can lead to signicant improvements in kNN classication
+(Goldberger et al., 2005; Shalev-Shwartz et al., 2004). Our work builds in a novel direction on the
+success of these previous approaches.
+
+In this paper, we show how to learn a Mahalanobis distance metric for kNN classication. The
+algorithm that we propose was described at a high level in earlier work (Weinberger et al., 2006)
+and later extended in terms of scalability and accuracy (Weinberger and Saul, 2008). Intuitively, the
+algorithm is based on the simple observation that the kNN decision rule will correctly classify an ex-
+ample if its k-nearest neighbors share the same label. The algorithm attempts to increase the number
+of training examples with this property by learning a linear transformation of the input space that
+precedes kNN classication using Euclidean distances. The linear transformation is derived by min-
+imizing a loss function that consists of two terms. The rst term penalizes large distances between
+examples in the same class that are desired as k-nearest neighbors, while the second term penalizes
+small distances between examples with non-matching labels. Minimizing these terms yields a linear
+transformation of the input space that increases the number of training examples whose k-nearest
+neighbors have matching labels. The Euclidean distances in the transformed space can equivalently
+be viewed as Mahalanobis distances in the original space. We exploit this equivalence to cast the
+problem of distance metric learning as a problem in convex optimization.
+
+Our approach is largely inspired by recent work on neighborhood component analysis (Gold-
+berger et al., 2005) and metric learning in energy-based models (Chopra et al., 2005). Despite
+similar goals, however, our method differs signicantly in the proposed optimization. We formulate
+the problem of distance metric learning as an instance of semidenite programming. Thus, the op-
+timization is convex, and its global minimum can be efciently computed. There have been other
+studies in distance metric learning based on eigenvalue problems (Shental et al., 2002; De Bie et al.,
+2003) and semidenite programming (Globerson and Roweis, 2006; Shalev-Shwartz et al., 2004;
+Xing et al., 2002). These previous approaches, however, essentially attempt to learn distance metrics
+that cluster together all similarly labeled inputs, even those that are not k-nearest neighbors. This
+objective is far more difcult to achieve than what we propose. Moreover, it does not leverage the
+full power of kNN classication, whose accuracy does not require that all similarly labeled inputs
+be tightly clustered.
+
+There are many parallels between our method and classication by support vector machines
+(SVMs)most notably, a convex objective function based on the hinge loss, and the potential to
+work in nonlinear feature spaces by using the kernel trick. In light of these parallels, we describe
+our approach as large margin nearest neighbor (LMNN) classication. Our framework can be
+viewed as the logical counterpart to SVMs in which kNN classication replaces linear classication.
+Our framework contrasts with classication by SVMs, however, in one intriguing respect: it
+requires no modication for multiclass problems. Extensions of SVMs to multiclass problems typi-
+
+208
+
+DISTANCE METRIC LEARNING
+
+cally involve combining the results of many binary classiers, or they require additional machinery
+that is elegant but non-trivial (Crammer and Singer, 2001). In both cases the training time scales at
+least linearly in the number of classes. By contrast, our framework has no explicit dependence on
+the number of classes.
+
+We also show how to extend our framework to learn multiple Mahalanobis metrics, each of
+them associated with a different class label and/or region of the input space. The multiple metrics
+are trained simultaneously by minimizing a single loss function. While the loss function couples
+metrics in different parts of the input space, the optimization remains an instance of semidenite
+programming. The globally integrated training of local distance metrics distinguishes our approach
+from earlier work on discriminant adaptive kNN classication (Hastie and Tibshirani, 1996)
+
+Our paper is organized as follows. Section 2 introduces the general problem of distance metric
+learning for kNN classication and reviews previous approaches that motivated our work. Section 3
+describes our model for LMNN classication and formulates the required optimization as an in-
+stance of semidenite programming. Section 4 presents experimental results on several data sets.
+Section 5 discusses several extensions to LMNN classication, including iterative re-estimation of
+target neighbors, locally adaptive Mahalanobis metrics in different parts of the input space, and
+kernelization of the basic algorithm. Section 6 describes faster implementations for training and
+testing in LMNN classication using ball trees. Section 7 concludes by summarizing our main con-
+tributions and sketching several directions of ongoing research. Finally, appendix A describes the
+special-purpose solver that we implemented for large scale problems in LMNN classication.
+
+2. Background
+
+In this section, we introduce the general problem of distance metric learning (section 2.1) and review
+a number of previously studied approaches. Broadly speaking, these approaches fall into three
+categories: eigenvector methods based on second-order statistics (section 2.2), convex optimizations
+over the space of positive semidenite matrices (section 2.3), and fully supervised algorithms that
+directly attempt to optimize kNN classication error (section 2.4) .
+
+2.1 Distance Metric Learning
+We begin by reviewing some basic terminology. A mapping D : X  X   +
+is called a metric if for all vectors ~xi,~x j,~xk  X , it satises the properties:
+
+0 over a vector space X
+
+1. D(~xi,~x j) + D(~x j,~xk)  D(~xi,~xk) (triangular inequality).
+2. D(~xi,~x j)  0 (non-negativity).
+3. D(~xi,~x j) = D(~x j,~xi) (symmetry).
+4. D(~xi,~x j) = 0  ~xi =~x j (distinguishability).
+
+Strictly speaking, if a mapping satises the rst three properties but not the fourth, it is called a
+pseudometric. However, to simplify the discussion in what follows, we will often refer to pseudo-
+metrics as metrics, pointing out the distinction only when necessary.
+
+We obtain a family of metrics over X by computing Euclidean distances after performing a
+
+linear transformation ~x = L~x. These metrics compute squared distances as:
+
+DL(~xi,~x j) = kL(~xi ~x j)k2
+2,
+
+209
+
+(1)
+
+WEINBERGER AND SAUL
+
+where the linear transformation in Eq. (1) is parameterized by the matrix L. It is simple to show
+that Eq. (1) denes a valid metric if L is full rank and a valid pseudometric otherwise.
+
+It is common to express squared distances under the metric in Eq. (1) in terms of the square
+
+matrix:
+
+M = LL.
+
+(2)
+
+Any matrix M formed in this way from a real-valued matrix L is guaranteed to be positive semide-
+nite (i.e., to have no negative eigenvalues). In terms of the matrix M, we denote squared distances by
+
+DM(~xi,~x j) = (~xi ~x j)M(~xi ~x j),
+
+(3)
+
+and we refer to pseudometrics of this form as Mahalanobis metrics. Originally, this term was
+used to describe the quadratic forms in Gaussian distributions, where the matrix M played the role
+of the inverse covariance matrix. Here we allow M to denote any positive semidenite matrix.
+The distances in Eq. (1) and Eq. (3) can be viewed as generalizations of Euclidean distances. In
+particular, Euclidean distances are recovered by setting M to be equal to the identity matrix.
+
+A Mahalanobis distance metric can be parameterized in terms of the matrix L or the matrix M.
+Note that the matrix L uniquely denes the matrix M, while the matrix M denes L up to rotation
+(which does not affect the computation of distances). This equivalence suggests two different ap-
+proaches to distance metric learning. In particular, we can either estimate a linear transformation L,
+or we can estimate a positive semidenite matrix M. Note that in the rst approach, the optimiza-
+tion is unconstrained, while in the second approach, it is important to enforce the constraint that
+the matrix M is positive semidenite. Though generally more complicated to solve a constrained
+optimization, this second approach has certain advantages that we explore in later sections.
+
+Many researchers have proposed ways to estimate Mahalanobis distance metrics for the purpose
+of computing distances in kNN classication. In particular, let {(~xi, yi)}n
+i=1 denote a training set of
+n labeled examples with inputs ~xi  
+d and discrete (but not necessarily binary) class labels yi 
+{1,2, . . . , C}. For kNN classication, one seeks a linear transformation such that nearest neighbors
+computed from the distances in Eq. (1) share the same class labels. We review several previous
+approaches to this problem in the following section.
+
+2.2 Eigenvector Methods
+
+Eigenvector methods have been widely used to discover informative linear transformations of the
+input space. As discussed in section 2.1, these linear transformations can be viewed as inducing a
+Mahalanobis distance metric. Popular eigenvector methods for linear preprocessing are principal
+component analysis, linear discriminant analysis, and relevant component analysis. These methods
+differ in the way that they use labeled or unlabeled data to derive linear transformations of the input
+space. These methods can also be kernelized to work in a nonlinear feature space (Muller et al.,
+2001; Scholkopf et al., 1998; Tsang et al., 2005), though we do not discuss such formulations here.
+
+2.2.1 PRINCIPAL COMPONENT ANALYSIS
+
+We briey review principal component analysis (PCA) (Jolliffe, 1986) in the context of distance
+metric learning. Essentially, PCA computes the linear transformation ~xi  L~xi that projects the
+training inputs {~xi}n
+i=1 into a variance-maximizing subspace. The variance of the projected inputs
+
+210
+
+DISTANCE METRIC LEARNING
+
+can be written in terms of the covariance matrix:
+
+C =
+
+1
+n
+
+n(cid:229)
+
+i=1
+
+(~xi ~)(~xi ~),
+
+where~ = 1
+i~xi denotes the sample mean. The linear transformation L is chosen to maximize the
+n
+variance of the projected inputs, subject to the constraint that L denes a projection matrix. In terms
+of the input covariance matrix, the required optimization is given by:
+
+max
+
+L
+
+Tr(LCL) subject to: LL = I.
+
+(4)
+
+The optimization in Eq. (4) has a closed-form solution; the standard convention equates the rows
+of L with the leading eigenvectors of the covariance matrix. If L is a rectangular matrix, the linear
+transformation projects the inputs into a lower dimensional subspace. If L is a square matrix, then
+the transformation does not reduce the dimensionality, but this solution still serves to rotate and
+re-order the input coordinates by their respective variances.
+
+Note that PCA operates in an unsupervised setting without using the class labels of training
+inputs to derive informative linear projections. Nevertheless, PCA still has certain useful properties
+as a form of linear preprocessing for kNN classication. For example, PCA can be used for de-
+noising: projecting out the components of the bottom eigenvectors often reduces kNN error rate.
+PCA can also be used to accelerate neighbor nearest computations in large data sets. The linear
+preprocessing from PCA can signicantly reduce the amount of computation either by explicitly
+reducing the dimensionality of the inputs, or simply by re-ordering the input coordinates in terms
+of their variance (as discussed further in section 6).
+
+2.2.2 LINEAR DISCRIMINANT ANALYSIS
+
+We briey review linear discriminant analysis (LDA) (Fisher, 1936) in the context of distance metric
+learning. Let W
+c denote the set of indices of examples in the cth class (with yi = c). Essentially,
+LDA computes the linear projection ~xi  L~xi that maximizes the amount of between-class variance
+relative to the amount of within-class variance. These variances are computed from the between-
+class and within-class covariance matrices, dened by:
+
+Cb =
+
+Cw =
+
+1
+C
+
+1
+n
+
+C(cid:229)
+
+c=1
+
+~c~c ,
+
+C(cid:229)
+
+c=1
+
+iW
+
+c
+
+(~xi ~c)(~xi ~c),
+
+(5)
+
+where~c denotes the sample mean of the cth class; we also assume that the data is globally centered.
+The linear transformation L is chosen to maximize the ratio of between-class to within-class vari-
+ance, subject to the constraint that L denes a projection matrix. In terms of the above covariance
+matrices, the required optimization is given by:
+
+max
+
+L
+
+Tr(cid:18) LCbL
+
+LCwL(cid:19) subject to: LL = I.
+
+(6)
+
+The optimization in Eq. (6) has a closed-form solution; the standard convention equates the rows
+of L with the leading eigenvectors of C1
+
+w Cb.
+
+211
+
+(cid:229)
+(cid:229)
+WEINBERGER AND SAUL
+
+LDA is widely used as a form of linear preprocessing for pattern classication. Unlike PCA,
+LDA operates in a supervised setting and uses the class labels of the inputs to derive informative
+linear projections. Note that the between-class covariance matrix Cb in Eq. (5) has at most rank C ,
+where C is the number of classes. Thus, up to C linear projections can be extracted from the
+eigenvalue problem in LDA. Because these projections are based on second-order statistics, they
+work well to separate classes whose conditional densities are multivariate Gaussian. When this
+assumption does not hold, however, LDA may extract spurious features that are not well suited to
+kNN classication.
+
+2.2.3 RELEVANT COMPONENT ANALYSIS
+
+Finally, we briey review relevant component analysis (RCA) (Shental et al., 2002; Bar-Hillel et al.,
+2006) in the context of distance metric learning. RCA is intermediate between PCA and LDA
+in its use of labeled data. Specically, RCA makes use of so-called chunklet information, or
+subclass membership assignments. A chunklet is essentially a subset of a class. Inputs in the same
+chunklet belong to the same class, but inputs in different chunklets do not necessarily belong to
+different classes. Essentially, RCA computes the linear projection ~xi  L~xi that whitens the data
+with respect to the averaged within-chunklet covariance matrix. In particular, let W
+ denote the
+set of indices of examples in the th chunklet, and let ~ denote the mean of these examples. The
+averaged within-chunklet covariance matrix is given by:
+
+Cw =
+
+1
+n
+
+L(cid:229)
+
+l=1
+
+iW
+
+l
+
+(~xi ~l)(~xi ~l).
+
+RCA uses the linear transformation~xi  L~xi with L = C1/2
+. This transformation acts to normalize
+the within-chunklet variance. An unintended side effect of this transformation may be to amplify
+noisy directions in the data. Thus, it is recommended to de-noise the data by PCA before computing
+the within-chunklet covariance matrix.
+
+w
+
+2.3 Convex Optimization
+
+Recall that the goal of distance metric learning can be stated in two ways: to learn a linear trans-
+formation ~xi  L~xi or, equivalently, to learn a Mahalanobis metric M = LL. It is possible to
+formulate certain types of distance metric learning as convex optimizations over the cone of pos-
+itive semidenite matrices M. In this section, we review two previous approaches based on this
+idea.
+
+2.3.1 MAHALANOBIS METRIC FOR CLUSTERING
+
+A convex objective function for distance metric learning was rst proposed by Xing et al. (2002).
+The goal of this work was to learn a Mahalanobis metric for clustering (MMC) with side-information.
+MMC shares a similar goal as LDA: namely, to minimize the distances between similarly labeled in-
+puts while maximizing the distances between differently labeled inputs. MMC differs from LDA in
+its formulation of distance metric learning as an convex optimization problem. In particular, whereas
+LDA solves the eigenvalue problem in Eq. (6) to compute the linear transformation L, MMC solves
+a convex optimization over the matrix M = LL that directly represents the Mahalanobix metric
+itself.
+
+212
+
+(cid:229)
+DISTANCE METRIC LEARNING
+
+To state the optimization for MMC, it is helpful to introduce further notation. From the class
+labels yi, we dene the n n binary association matrix with elements yi j = 1 if yi = y j and yi j = 0
+otherwise. In terms of this notation, MMC attempts to maximize the distances between pairs of
+inputs with different labels (yi j = 0), while constraining the sum over squared distances of pairs of
+similarly labeled inputs (yi j = 1). In particular, MMC solves the following optimization:
+
+Maximize (cid:229)
+
+i j(1 yi j)pDM(~xi,~x j) subject to:
+(1) (cid:229)
+i j yi jDM(~xi,~x j)  1
+(2) M (cid:23) 0.
+
+The rst constraint is required to make the problem feasible and bounded; the second constraint
+enforces that M is a positive semidenite matrix. The overall optimization is convex. The square
+root in the objective function ensures that MMC leads to generally different results than LDA.
+
+MMC was designed to improve the performance of iterative clustering algorithms such as k-
+means. In these algorithms, clusters are generally modeled as normal or unimodal distributions.
+MMC builds on this assumption by attempting to minimize distances between all pairs of similarly
+labeled inputs; this objective is only sensible for unimodal clusters. For this reason, however, MMC
+is not especially appropriate as a form of distance metric learning for kNN classication. One of the
+major strengths of kNN classication is its non-parametric framework. Thus a different objective
+for distance metric learning is needed to preserve this strength of kNN classicationnamely, that
+it does not implicitly make parametric (or other limiting) assumptions about the input distributions.
+
+2.3.2 ONLINE LEARNING OF MAHALANOBIS DISTANCES
+
+Convex optimizations over the cone of positive semidenite matrices have also been proposed for
+perceptron-like approaches to distance metric learning. The Pseudometric Online Learning Algo-
+rithm (POLA) (Shalev-Shwartz et al., 2004) combines ideas from convex optimization and large
+margin classication. Like LDA and MMC, POLA attempts to learn a metric that shrinks distances
+between similarly labeled inputs and expands distances between differently labeled inputs. POLA
+differs from LDA and MMC, however, in explicitly encouraging a nite margin that separates dif-
+ferently labeled inputs. POLA was also conceived in an online setting.
+
+The online version of POLA works as follows. At time t, the learning environment presents a
+tuple (~xt,~xt, yt), where the binary label yt indicates whether the two inputs ~xt and ~xt belong to the
+same (yt = 1) or different (yt =1) classes. From streaming tuples of this form, POLA attempts to
+learn a Mahalanobis metric M and a scalar threshold b such that similarly labeled inputs are at most
+a distance of b 1 apart, while differently labeled inputs are at least a distance of b + 1 apart. These
+constraints can be expressed by the single inequality:
+
+ythb(cid:0)~xt ~xt(cid:1)M(cid:0)~xt ~xt(cid:1)i  1.
+
+(7)
+
+The distance metric M and threshold b are updated after each tuple (~ut,~vt, yt) to correct any violation
+of this inequality. In particular, the update computes a positive semidenite matrix M that satises
+(7). The required optimization can be performed by an alternating projection algorithm, similar to
+the one described in appendix A. The algorithm extends naturally to problems with more than two
+classes.
+
+213
+
+WEINBERGER AND SAUL
+
+POLA can also be implemented on a data set of xed size. In this setting, pairs of inputs are
+repeatedly processed until no pair violates its margin constraints by more than some constant b > 0.
+Moreover, as in perceptron learning, the number of iterations over the data set can be bounded above
+(Shalev-Shwartz et al., 2004).
+
+In many ways, POLA exhibits the same strengths and weaknesses as MMC. Both algorithms
+are based on convex optimizations that do not have spurious local minima. On the other hand,
+both algorithms make implicit assumptions about the distributions of inputs and class labels. The
+margin constraints enforced by POLA are designed to learn a distance metric under which all pairs
+of similarly labeled inputs are closer than all pairs of differently labeled inputs. This type of learning
+may often be unrealizable, however, even in situations where kNN classication is able to succeed.
+For this reason, a different framework is required to learn distance metrics for kNN classication.
+
+2.4 Neighborhood Component Analysis
+
+Recently, Goldberger et al. (2005) considered how to learn a Mahalnobis distance metric especially
+for kNN classication. They proposed a novel supervised learning algorithm known as Neigh-
+borhood Component Analysis (NCA). The algorithm computes the expected leave-one-out clas-
+sication error from a stochastic variant of kNN classication. The stochastic classier uses a
+Mahalanobis distance metric parameterized by the linear transformation ~x  L~x in Eqs. (13). The
+algorithm attempts to estimate the linear transformation L that minimizes the expected classication
+error when distances are computed in this way.
+
+The stochastic classier in NCA is used to label queries by the majority vote of nearby training
+examples, but not necessarily the k nearest neighbors. In particular, for each query, the reference
+examples in the training set are drawn from a softmax probability distribution that favors nearby
+examples over faraway ones. The probability of drawing ~x j as a reference example for ~xi is given
+by:
+
+pi j =( exp(kLxiLx jk2)
+
+k6=i exp (kLxiLxkk2)
+
+0
+
+if i 6= j
+if i = j.
+
+(8)
+
+Note that there is no free parameter k for the number of nearest neighbors in this stochastic classier.
+Instead, the scale of L determines the size of neighborhoods from which nearby training examples
+are sampled. On average, though, this sampling procedure yields similar results as a deterministic
+kNN classier (for some value of k) with the same Mahalanobis distance metric.
+
+Under the softmax sampling scheme in Eq. (8), it is simple to compute the expected leave-one-
+out classication error on the training examples. As in section 2.3.1, we dene the nn binary
+matrix with elements yi j = 1 if yi = y j and yi j = 0 otherwise. The expected error computes the
+fraction of training examples that are (on average) misclassied:
+
+e NCA = 1
+
+1
+n
+
+i j
+
+pi jyi j.
+
+(9)
+
+The error in Eq. (9) is a continuous, differentiable function of the linear transformation L used to
+compute Mahalanobis distances in Eq. (8).
+
+Note that the differentiability of Eq. (9) depends on the stochastic neighborhood assignment
+of the NCA decision rule. By contrast, the leave-one-out error of a deterministic kNN classier is
+neither continuous nor differentiable in the parameters of the distance metric. For distance metric
+
+214
+
+(cid:229)
+(cid:229)
+DISTANCE METRIC LEARNING
+
+learning, the differentiability of Eq. (9) is a key advantage of stochastic neighborhood assignment,
+making it possible to minimize this error measure by gradient descent. It would be much more
+difcult to minimize the leave-one-out error of its deterministic counterpart.
+
+The objective function for NCA differs in one important respect from other algorithms reviewed
+in this section. Though continuous and differentiable with respect to the parameters of the distance
+metric, Eq. (9) is not convex, nor can it be minimized using eigenvector methods. Thus, the op-
+timization in NCA can suffer from spurious local minima. In practice, the results of the learning
+algorithm depend on the initialization of the distance metric.
+
+The linear transformation in NCA can also be used to project the inputs into a lower dimensional
+Euclidean space. Eqs. (89) remain valid when L is a rectangular as opposed to square matrix.
+Lower dimensional projections learned by NCA can be used to visualize class structure and/or to
+accelerate kNN search.
+
+Recently, Globerson and Roweis (2006) proposed a related model known as Metric Learning
+by Collapsing Classes (MLCC). The goal of MLCC is to nd a distance metric that (like LDA)
+shrinks the within-class variance while maintaining the separation between different classes. MLCC
+uses a similar rule as NCA for stochastic classication, so as to yield a differentiable objective
+function. Compared to NCA, MLCC has both advantages and disadvantages for distance metric
+learning. The main advantage is that distance metric learning in MLCC can be formulated as a
+convex optimization over the space of positive semidenite matrices. The main disadvantage is
+that MLCC implicitly assumes that the examples in each class have a unimodal distribution. In
+this sense, MLCC shares the same basic strengths and weaknesses of the methods described in
+section 2.3.
+
+3. Model
+
+The model we propose for distance metric learning builds on the algorithms reviewed in section 2.
+In common with all of them, we attempt to learn a Mahalanobis distance metric of the form in
+Eqs. (13). Other key aspects of our model build on the particular strengths of individual ap-
+proaches. As in MMC (see section 2.3.1), we formulate the parameter estimation in our model
+as a convex optimization over the space of positive semidenite matrices. As in POLA (see sec-
+tion 2.3.2), we attempt to maximize the margin by which the model correctly classies labeled
+examples in the training set. Finally, as in NCA (see section 2.4), our model was conceived specif-
+ically to learn a Mahalanobis distance metric that improves the accuracy of kNN classication.
+Indeed, the three essential ingredients of our model are (i) its convex loss function, (ii) its goal
+of margin maximization, and (iii) the constraints on the distance metric imposed by accurate kNN
+classication.
+
+3.1 Intuition and Terminology
+
+Our model is based on two simple intuitions (and idealizations) for robust kNN classication: rst,
+that each training input ~xi should share the same label yi as its k nearest neighbors; second, that
+training inputs with different labels should be widely separated. We attempt to learn a linear trans-
+formation of the input space such that the training inputs satisfy these properties. In fact, these
+objectives are neatly balanced by two competing terms in our models loss function. Specically,
+one term penalizes large distances between nearby inputs with the same label, while the other term
+
+215
+
+WEINBERGER AND SAUL
+
+penalizes small distances between inputs with different labels. To make precise these relative no-
+tions of large and small, however, we rst need to introduce some new terminology.
+
+Learning in our framework requires auxiliary information beyond the label yi of each input ~xi in
+the training set. Recall that the goal of learning is to estimate a distance metric under which each
+input ~xi has k nearest neighbors that share its same label yi. We facilitate this goal by identifying
+target neighbors for each input ~xi at the outset of learning. The target neighbors of ~xi are those that
+we desire to be closest to ~xi; in particular, we attempt to learn a linear transformation of the input
+space such that the resulting nearest neighbors of ~xi are indeed its target neighbors. We emphasize
+that target neighbors are xed a priori and do not change during the learning process. This step
+signicantly simplies the learning process by specifying a priori which similarly labeled inputs to
+cluster together. In many applications, there may be prior knowledge or auxiliary information (e.g.,
+a similarity graph) that naturally identies target neighbors. In the absence of prior knowledge, the
+simplest prescription is to compute the k nearest neighbors with the same class label, as determined
+by Euclidean distance. This was done for all the experiments in this paper. We use the notation j  i
+to indicate that input~x j is a target neighbor of input~xi. Note that this relation is not symmetric: j  i
+does not imply i   j.
+
+For kNN classication to succeed, the target neighbors of each input ~xi should be closer than all
+differently labeled inputs. In particular, for each input ~xi, we can imagine the target neighbors as
+establishing a perimeter that differently labeled inputs should not invade. We refer to the differently
+labeled inputs in the training set that invade this perimeter as impostors; the goal of learning (roughly
+speaking) is to minimize the number of impostors.
+
+In fact, to increase the robustness of kNN classication, we adopt an even more stringent goal
+for learningnamely to maintain a large (nite) distance between impostors and the perimeters
+established by target neighbors. By maintaining a margin of safety around the kNN decision bound-
+aries, we ensure that the model is robust to small amounts of noise in the training inputs. This
+robustness criterion also gives rise to the name of our approach: large margin nearest neighbor
+(LMNN) classication.
+
+In mathematical terms, impostors are dened by a simple inequality. For an input~xi with label yi
+
+and target neighbor ~x j, an impostor is any input ~xl with label ~yl 6=~yi such that
+
+kL(~xi ~xl)k2  kL(~xi ~x j)k2 + 1.
+
+(10)
+
+In other words, an impostor ~xl is any differently labeled input that invades the perimeter plus unit
+margin dened by any target neighbor ~x j of the input ~xi.
+
+Figure 1 illustrates the main idea behind LMNN classication. Before learning, a training input
+has both target neighbors and impostors in its local neighborhood. During learning, the impostors
+are pushed outside the perimeter established by the target neighbors. After learning, there exists
+a nite margin between the perimeter and the impostors. The gure shows the idealized scenario
+where kNN classication errors in the original input space are corrected by learning an appropriate
+linear transformation.
+
+3.2 Loss Function
+
+With the intuition and terminology from the previous section, we can now construct a loss function
+for LMNN classication. The loss function consists of two terms, one which acts to pull target
+neighbors closer together, and another which acts to push differently labeled examples further apart.
+
+216
+
+DISTANCE METRIC LEARNING
+
+BEFORE
+
+local neighborhood
+
+AFTER
+
+margin
+
+(cid:2)xi(cid:2)xi
+
+(cid:127)xl
+
+(cid:127)xj
+
+impostors
+
+Class 1
+
+Class 2
+
+Class 3
+
+pull
+
+push
+
+margin
+
+(cid:127)xj
+
+(cid:2)xi(cid:2)xi
+
+(cid:127)xl
+
+target neighbors
+
+impostors
+
+target neighbors
+
+Figure 1: Schematic illustration of one inputs neighborhood before training (left) versus after train-
+ing (right). The distance metric is optimized so that: (i) its k=3 target neighbors lie within
+a smaller radius after training; (ii) differently labeled inputs lie outside this smaller radius
+by some nite margin. Arrows indicate the gradients on distances arising from different
+terms in the cost function.
+
+These two terms have competing effects, since the rst is reduced by shrinking the distances between
+examples while the second is generally reduced by magnifying them. We discuss each term in turn.
+The rst term in the loss function penalizes large distances between each input and its target
+neighbors. In terms of the linear transformation L of the input space, the sum of these squared
+distances is given by:
+
+e pull(L) = (cid:229)
+
+j ikL(~xi~x j)k2.
+
+(11)
+
+The gradient of this term generates a pulling force that attracts target neighbors in the linearly
+transformed input space. It is important that Eq. (11) only penalizes large distances between inputs
+and their target neighbors; in particular, it does not penalize large distances between all similarly
+labeled inputs. We purposefully do not penalize the latter because accurate kNN classication does
+not require that all similarly labeled inputs be tightly clustered. Our approach is distinguished
+in this way from many previous approaches to distance metric learning; see section 2. By only
+penalizing large distances between neighbors, we build models that leverage the full power of kNN
+classication.
+
+The second term in the loss function penalizes small distances between differently labeled exam-
+ples. In particular, the term penalizes violations of the inequality in Eq. (10). To simplify notation,
+we introduce a new indicator variable yil = 1 if and only if yi = yl, and yil = 0 otherwise. In terms of
+this notation, the second term of the loss function e push is given by:
+
+e push(L) = (cid:229)
+
+i, j i
+
+l
+
+(1 yil)(cid:2)1 +kL(~xi~x j)k2kL(~xi~xl)k2(cid:3)+
+
+(12)
+
+where the term [z]+ = max(z,0) denotes the standard hinge loss. The hinge loss monitors the in-
+equality in Eq. (10). If the inequality does not hold (i.e., the input ~xl lies a safe distance away from
+~xi), then its hinge loss has a negative argument and makes no contribution to the overall loss func-
+
+217
+
+(cid:229)
+WEINBERGER AND SAUL
+
+tion. The (sub-)gradient of Eq. (12) generates a pushing force that repels imposters away from the
+perimeter established by each examples k nearest (similarly labeled) neighbors; see Fig. 1.
+
+The choice of unit margin is an arbitrary convention that sets the scale for the linear transforma-
+tion L (which enters every other term in the loss function). If a margin c > 0 was enforced instead
+of the unit margin, the loss function would be minimized by the same linear transformation up to an
+overall scale factor c.
+
+Finally, we combine the two terms e pull(L) and e push(L) into a single loss function for distance
+metric learning. The two terms can have competing effectsto attract target neighbors on one hand,
+to repel impostors on the other. A weighting parameter   [0,1] balances these goals:
+
+e (L) = (1)e pull(L) + e push(L).
+
+(13)
+
+Generally, the parameter  can be tuned via cross validation, though in our experience, the results
+from minimizing the loss function in Eq. (13) did not depend sensitively on the value of . In
+practice, the value  = 0.5 worked well.
+
+The competing terms in Eq. (13) are analogous to those in the loss function for learning in SVMs
+(Scholkopf and Smola, 2002). In both loss functions, one term penalizes the norm of the parame-
+ter vector (i.e., the weight vector of the maximum margin hyperplane, or the linear transformation
+in the distance metric), while the other incurs the hinge loss. Just as the hinge loss in SVMs is only
+triggered by examples near the decision boundary, the hinge loss in Eq. (13) is only triggered by
+differently labeled examples that invade each others neighborhoods. Both loss functions in SVMs
+and LMNN can be rewritten to depend on the input vectors only through their inner products. Work-
+ing with the inner product matrix directly allows the application of the kernel trick; see section 5.3.
+Finally, as in SVMs, we can formulate the minimization of the loss function in Eq. (13) as a convex
+optimization. This last point will be developed further in section 3.4.
+
+Our framework for distance metric learning provides an alternative to the earlier approach of
+NCA (Goldberger et al., 2005) described in section 2.4. We briey compare the two approaches at
+a high level. Both LMNN and NCA are designed to learn a Mahalanobis distance metric over the
+input space that improves kNN classication at test time. Though test examples are not available
+during training, the learning algorithms for LMNN and NCA are based on training in simulated
+test conditions. Neither approach directly minimizes the leave-one-out error1 for kNN classication
+over the training set. The leave-one-out error is a piecewise constant but non-smooth function of the
+linear transformation L, making it difcult to minimize directly. NCA uses stochastic neighborhood
+assignment to construct a smooth loss function, thus circumventing this problem. LMNN uses the
+hinge loss to construct an upper bound on the leave-one-out error for kNN classication; this up-
+per bound is continuous and similarly well behaved for standard gradient-based methods. In NCA,
+it is not necessary to select a xed number k of target neighbors in advance of the optimization.
+Because the objective function for NCA is not convex, however, the initial conditions for the Maha-
+lanobis metric implicitly favor the preservation of certain neighborhoods over others. By contrast,
+in LMNN, the target neighborhoods must be explicitly specied. A potential advantage of LMNN
+is that the required optimization can be formulated as an instance of semidenite programming.
+
+218
+
+DISTANCE METRIC LEARNING
+
+MCC
+
+RCA
+
+LDA
+
+LMNN
+
+NCA
+
+3-NN Test Error:
+
+Input
+LMNN
+RCA
+NCA
+MCC
+LDA
+
+6.9%
+3.7%
+27.6%
+3.3%
+18.3%
+49.0%
+
+Figure 2: A toy data set for distance metric learning, with n = 2000 data points sampled from
+a bi-modal distribution. Within each mode, examples from two classes are distributed
+in alternating vertical stripes. The gure shows the dominant axis extracted by several
+different algorithms for distance metric learning. Only NCA and LMNN reduce the 1-NN
+classication error on this data set; the other algorithms actually increase the error by
+focusing on global versus local distances.
+
+3.3 Local Versus Global Distances
+
+We emphasize that the loss function for LMNN classication only penalizes large distances between
+target neighbors as opposed to all examples in the same class. The toy data set in Fig. 2 illustrates
+the potential advantages of this approach. The data was generated by sampling n=2000 data points
+from two classes in a zebra striped pattern; additionally, the data for each class was generated in two
+sets of stripes displaced by a large horizontal offset. As a result, this data set has the property that
+within-class variance is much larger in the horizontal direction than the vertical direction; however,
+local class membership is much more reliably predicted by examples that are nearby in the vertical
+direction.
+
+Algorithms such as LMNN and NCA perform very differently on this data set than algorithms
+such as LDA, RCA, and MCC. In particular, LMNN and NCA adapt to the local striped structure
+in the data set and learn distance metrics that signicantly reduce the kNN error rate. By contrast,
+LDA, RCA, and MCC attempt to shrink distances between all examples in the same class and
+actually increase the kNN error rate as a result. Though this data set is especially contrived, it
+illustrates in general the problems posed by classes with multimodal support. Such classes violate a
+basic assumption behind metric learning algorithms that attempt to shrink global distances between
+all similarly labeled examples.
+
+1. This is the number of training examples that would have been mislabeled by kNN classication if their label was in
+
+fact unknown.
+
+219
+
+e (M) = (1 ) (cid:229)
+
+DM(~xi,~x j) + (cid:229)
+
+WEINBERGER AND SAUL
+
+3.4 Convex Optimization
+
+The loss function in Eq. (13) is not convex in the matrix elements of the linear transformation L.
+To minimize this loss function, one straightforward approach is gradient descent in the elements
+of L. However, such an approach is prone to being trapped in local minima. The results of this
+form of gradient descent will depend in general on the initial estimates for L. Thus they may not be
+reproducible across different problems and applications.
+
+We can overcome these difculties by reformulating the optimization of Eq. (13) as an instance
+of semidenite programming (Boyd and Vandenberghe, 2004). A semidenite program (SDP) is
+a linear program that incorporates an additional constraint on a symmetric matrix whose elements
+are linear in the unknown variables. This additional constraint requires the matrix to be positive
+semidenite, or in other words, to only have nonnegative eigenvalues. This matrix constraint is
+nonlinear but convex, so that the overall optimization remains convex. There exist provably efcient
+algorithms to solve SDPs (with polynomial time convergence guarantees).
+
+We begin by reformulating Eq. (13) as an optimization over positive semidenite matrices.
+Specically, as described in Eq. (2), we work in terms of the new variable M = LL. With this
+change of variable, we can rewrite the squared distances that appear in the loss function using
+Eq. (3). Recall that DM(~xi,~x j) denotes the squared distance with respect to the Mahalanobis met-
+ric M. As shown in section 2.1, this distance is equivalent to the Euclidean distance after the
+mapping ~xi  L~xi. Substituting Eq. (3) into Eq. (13), we obtain the loss function:
+
+i, j i
+
+l
+
+i, j i
+
+(1 yil) [1 + DM(~xi,~x j)DM(~xi,~xl)]+ .
+
+(14)
+With this substitution, the loss function is now expressed over positive semidenite matrices M (cid:23) 0,
+as opposed to real-valued matrices L. Note that the constraint M (cid:23) 0 must be added to the opti-
+mization to ensure that we learn a well-dened pseudometric.
+The loss function in Eq. (14) is a piecewise linear, convex function of the elements in the matrix
+M. In particular, the rst term in the loss function (penalizing large distances between target neigh-
+bors) is linear in the elements of M, while the second term (penalizing impostors) is derived from
+the convex hinge loss. To formulate the optimization of Eq. (14) as an SDP, however, we need to
+convert it into a more standard form.
+
+An SDP is obtained by introducing slack variables which mimic the effect of the hinge loss. In
+particular, we introduce nonnegative slack variables {x
+i jl} for all triplets of target neighbors ( j   i)
+and impostors~xl. The slack variable x
+i jl0 is used to measure the amount by which the large margin
+inequality in Eq. (10) is violated. Using the slack variables to monitor these margin violations, we
+obtain the SDP:
+
+i, j i(~xi ~x j)M(~xi ~x j) + (cid:229)
+
+Minimize (1 )(cid:229)
+(1) (~xi ~xl)M(~xi ~xl) (~xi ~x j)M(~xi ~x j)  1 x
+(2) x
+i jl  0
+(3) M (cid:23) 0.
+
+i, j i,l(1 yil)x
+
+i jl
+
+i jl subject to:
+
+While SDPs in this form can be solved by standard solver packages, general-purpose solvers
+tend to scale poorly in the number of constraints. For this work, we implemented our own special-
+i jl} never attain positive values.
+i jl} are sparse because most inputs ~xi and ~xl are well separated relative to the
+
+purpose solver, exploiting the fact that most of the slack variables {x
+The slack variables {x
+
+220
+
+(cid:229)
+DISTANCE METRIC LEARNING
+
+distance between ~xi and any of its target neighbors ~x j. Such triplets do not incur a positive hinge
+loss, resulting in very few active constraints in the SDP. Thus, a great speedup can be achieved
+by solving an SDP that only monitors a fraction of the margin constraints, then using the resulting
+solution as a starting point for the actual SDP of interest.
+
+Our solver was based on a combination of sub-gradient descent in both the matrices L and M,
+the latter used mainly to verify that we had reached the global minimum. We projected updates in M
+back onto the positive semidenite cone after each step. Alternating projection algorithms provably
+converge (Vandenberghe and Boyd, 1996), and in this case our implementation2 worked much faster
+than generic solvers. For a more detailed description of the solver please see appendix A.
+
+3.5 Energy Based Classication
+
+The matrix M that minimizes the loss function in Eq. (14) can be used as a Mahalanobis distance
+metric for kNN classication. However, it is also possible to use the loss function directly as a
+so-called energy-based classier. This use is inspired by previous work on energy-based models
+(Chopra et al., 2005).
+
+Energy-based classication of a test example is done by considering it as an extra training ex-
+ample and computing the loss function in Eq. (14) for every possible label yt. In particular, for a test
+example~xt with hypothetical label yt, we locate k (similarly labeled) target neighbors (as determined
+by Euclidean distance to~xt or other a priori considerations) and then compute both terms in Eq. (14)
+given the already estimated Mahalanobis metric M. For the rst term, we accumulate the squared
+distances to the k target neighbors of ~xt. For the second term, we accumulate the hinge loss over
+all impostors (i.e., differently labeled examples) that invade the perimeter around ~xt as determined
+by its target neighbors; we also accumulate the hinge loss for differently labeled examples whose
+perimeters are invaded by ~xt. Finally, the test example is classied by the hypothetical label that
+minimizes the combination of these terms:
+
+yt = argminyt((1) (cid:229)
++  (cid:229)
+
+j t
+
+i, j i
+
+(1ytl) [1+DM(~xt,~x j)DM(~xt,~xl)]+
+
+DM(~xt,~x j) +  (cid:229)
+(1yit) [1+DM(~xi,~x j)DM(~xi,~xt)]+) .
+
+j t,l
+
+(15)
+
+Note that the relation j  t in this criterion depends on the value of yt. As shown in Fig. 3, energy-
+based classication with this assignment rule generally leads to further improvements in test error
+rates. Often these improvements are signicantly beyond those already achieved by adopting the
+Mahalanobis distance metric M for kNN classication.
+
+4. Results
+
+We evaluated LMNN classication on nine data sets of varying size and difculty. Some of these
+data sets were derived from collections of images, speech, and text, yielding very high dimensional
+inputs.
+In these cases, we used PCA to reduce the dimensionality of the inputs before training
+LMNN classiers. Pre-processing the inputs with PCA helped to reduce computation time and
+avoid overtting. Table 1 compares the different data sets in detail.
+
+2. A matlab implementation is currently available at http://www.weinbergerweb.net/Downloads/LMNN.html.
+
+221
+
+WEINBERGER AND SAUL
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
+#
+
+!
+
+!
+
+ 
+
+#
+
+#
+
+#
+
+#!
+
+ 
+
+ 
+
+
+
+!
+
+$
+
+
+
+"
+
+"
+
+
+
+
+
+
+
+"
+
+!
+
+
+
+!
+
+#
+
+
+
+
+
+"
+
+$
+
+"
+
+
+
+
+
+
+
+
+
+
+
+$
+
+ 
+
+#
+
+#
+
+
+
+
+
+
+
+
+
+
+	
+
+	
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Figure 3: Training and test results on the ve largest data sets, preprocessed in different ways, and
+using different variants of kNN classication. We compared principal component analysis
+(pca), linear discriminant analysis (lda), relevant component analysis (rca), large margin
+nearest neighbor classication (lmnn), lmnn with multiple passes (mp-lmnn), lmnn with
+multiple metrics (mm-lmnn), multi-class support vector machines (svm), lmnn classica-
+tion with the energy based decision rule (lmnn (energy)). All variations of lmnn, rca and
+lda were applied after pre-processing with pca for general noise reduction. See text and
+Table 1 for details. The lmnn results consistently outperform pca and lda. The multiple
+metrics version of lmnn (mm-lmnn) is comparable with multiclass svm on most data sets
+(with 20news and yaleFaces as only exceptions).
+
+Experimental results were obtained by averaging over multiple runs on randomly generated
+70/30 splits of each data set. This procedure was followed with two exceptions: no averaging was
+done for the Isolet and MNIST data sets, which have pre-dened training/test splits. For all exper-
+iments reported in this paper, the number of target neighbors k was set to k = 3, and the weighting
+parameter  in Eqs. (14-15) was set to  =0.5. Though we experimented with different settings, the
+results from LMNN classication appeared fairly insensitive to the values of these parameters.
+
+The main results on the ve largest data sets are shown in Fig. 3. (See Table 1 for a complete
+listing of results, including those for various extensions of LMNN classication described in sec-
+tion 5.) All training error rates reported are leave-one-out estimates. To break ties among different
+
+222
+
+DISTANCE METRIC LEARNING
+
+classes from the kNN decision rule, we repeatedly reduced the neighborhood size, ultimately clas-
+sifying (if necessary) by just the k = 1 nearest neighbor. We begin by reporting overall trends, then
+discuss the results on individual data sets in more detail.
+
+The rst general trend is that LMNN classication using Mahalanobis distances consistently
+improves on kNN classication using Euclidean distances. In general, the Mahalanobis metrics
+learned by semidenite programming led to signicant improvements in kNN classication, both in
+training and testing.
+
+A second general trend is that the energy-based decision rule described in section 3.5 leads
+to further improvements over the (already improved) results from kNN classication using Maha-
+lanobis distances. In particular, better performance was observed on most of the large data sets. The
+results are shown in Fig. 3.
+
+A third general trend is that LMNN classication works better with PCA than LDA when
+some form of dimensionality reduction is required for preprocessing. Table 1 shows the results of
+LMNN classication on inputs whose dimensionality was reduced by LDA. While pre-processing
+by LDA helps on some data sets (e.g., wine, yale faces), it generally leads to worse results than pre-
+processing by PCA. On some data sets, moreover, it leads to drastically worse results (e.g., olivetti
+faces, MNIST). Consequently we used PCA as a pre-processing step for all subsequent experiments
+throughout this paper.
+
+A fourth general trend is that LMNN classication yields larger improvements on larger data
+sets. Though we do not have a formal analysis that accounts for this observation, we can provide
+the following intuitive explanation. One crucial aspect of the optimization in LMNN classication
+is the choice of the target neighbors. In all of our experiments, we chose the target neighbors based
+on Euclidean distance in the input space (after dimensionality reduction by PCA or LDA). This
+choice was a simple heuristic used in the absence of prior knowledge. However, the quality of this
+choice presumably depends on the sample density of the data set. In particular, as the sample density
+increases, we suspect that more reliable discriminative signals can be learned from target neighbors
+chosen in this way. The experimental results bear this out.
+
+Finally, we compare our results to those of competing methods. We take multi-class SVMs
+(Crammer and Singer, 2001) as providing a fair representation of the state-of-the-art. On each data
+set (except MNIST), we trained multi-class SVMs using linear, polynomial and RBF kernels and
+chose the best kernel with cross validation. On MNIST, we used a non-homogeneous polynomial
+kernel of degree four, which gave us our best results, as also reported in LeCun et al. (1995). The
+results of the energy-based LMNN classier are very close to those of state-of-the-art multi-class
+SVMs: better on some data sets, worse on others. However, consistent improvement over multi-
+class SVMs was obtained by a multiple-metric variant of LMNN, discussed in section 5.2. This
+multi-metric extension outperformed SVMs on three of the ve large data sets; see Fig. 3. On the
+only data set with a large performance difference, 20-newsgroups, the multi-class SVMs beneted
+from training in the original d = 20000 dimensional input space, whereas the LMNN classiers
+were trained only on the inputs leading d = 200 principal components. Based on these results, in
+section 7, we suggest some applications that seem particularly well suited to LMNN classication,
+though poorly suited to SVMs. These are applications with moderate input dimensionality, but large
+numbers of classes.
+
+To compare with previous work, we also evaluated RCA (Shental et al., 2002), LDA (Fisher,
+1936) and NCA (Goldberger et al., 2005) on the same data sets. For NCA and RCA, we used the
+code provided by the authors; however, the NCA code ran out of memory on the larger data sets.
+
+223
+
+WEINBERGER AND SAUL
+
+Table 1 shows the results of all algorithms on small and larger data sets. LMNN outperforms these
+other methods for distance metric learning on the four largest data sets. In terms of running times,
+RCA is by far the fastest method (since its projections can be computed in closed form), while
+NCA is the slowest, mainly due to the O(n2) normalization of its softmax probability distributions.
+Although the optimization in LMNN naively scales as O(n2), in practice it can be accelerated by
+various efciency measures: Appendix A discusses our semidenite programming solver in detail.
+We did also include the results of MCC (Xing et al., 2002); however, the code provided by the
+authors could only handle a few of the small data sets. As shown in Table 1, on those data sets it
+resulted in classication rates generally higher than NCA.
+
+The results of experiments on particular data sets provide additional insight into the performance
+of LMNN classication versus competing methods. We give a more detailed overview of these
+experiments in what follows.
+
+4.1 Small Data Sets with Few Classes
+
+The wine, iris, and bal data sets are small in size, with less than 500 training examples. Each of these
+data sets has three classes. The data sets are available from the UCI Machine Learning Repository.3
+On data sets of this size, a distance metric can be learned in a matter of seconds. The results in
+Table 1 were averaged over 100 experiments with different random 70/30 splits of each data set.
+
+On these data sets, LMNN classication improves on kNN classication with a Euclidean dis-
+tance metric. These results could potentially be improved further with better measures against
+overtting (such as regularization). Table 1 also compares the results from LMNN classication to
+other competing methods. Here, the results are somewhat variable; compared to NCA, RCA, LDA,
+and multiclass SVMs, LMNN fares better in some cases, worse in others. We mainly report these
+results to facilitate direct comparisons with previously published work. However, the small size of
+these data sets makes it difcult to assess the signicance of these results. Moreover, these data sets
+do not represent the regime in which we expect LMNN classication to be most useful.
+
+4.2 Face Recognition
+The Olivetti face recognition data set4 contains 400 grayscale images of 40 subjects in 10 differ-
+ent poses. We downsampled the images to 38  31 pixels and used PCA to further reduce the
+dimensionality, projecting the images into the subspace spanned by the rst 200 eigenfaces (Turk
+and Pentland, 1991). Training and test sets were created by randomly sampling 7 images of each
+subject for training and 3 images for testing. The task involved 40-way classicationessentially,
+recognizing a face from an unseen pose. Table 1 shows the improvements due to LMNN classi-
+cation. Fig. 4 illustrates the improvements more graphically by showing how the k = 3 nearest
+neighbors change as a result of learning a Mahalanobis metric. (Although the algorithm operated
+on downsampled, projected images, for clarity the gure shows the original images.)
+
+The (extended) Yale face data set contains n = 2414 frontal images of 38 subjects. For each
+(A few subjects are
+subject, there are 64 images taken under extreme illumination conditions.
+represented with fewer images.) As for the Olivetti data set, we preprocessed the images by down-
+sampling and projecting them onto their leading 200 principal components. To reduce the impact of
+the very high variance in illumination, we followed the standard practice of discarding the leading 5
+
+3. Available at http://www.ics.uci.edu/$\sim$mlearn/MLRepository.html.
+4. Available at http://www.uk.research.att.com/facedatabase.html.
+
+224
+
+DISTANCE METRIC LEARNING
+
+eigenvectors. Results from LMNN classication were averaged over 10 runs of 70/30 splits. Each
+split was obtained by randomly selecting 45 images of each subject for training and 19 images for
+testing. This protocol ensured that the training examples were evenly distributed across the rela-
+tively large number of classes. To guard against overtting, we employed a validation set consisting
+of 30% of the training data and stopped the training early when the lowest classication error on the
+validation set was reached. On this data set, Fig. 3 shows that the LMNN metric outperforms the
+Euclidean metric and even improves on multiclass SVMs. (Particularly effective on this data set,
+though, is the simple strategy of LDA.)
+
+Test Image:
+
+Correct class member that
+
+became one of the 3-NN
+
+under the learned
+
+Mahalanobis metric.
+
+Impostor under Euclidean
+
+3-NN, that was moved out of
+the neighborhood under the
+learned Mahalanobis metric.
+
+Figure 4: Test images from the Olivetti face recognition data set (top row). The middle row shows
+images from the same class that were among the 3-NN under the learned Mahalanobis
+metric (after training) but not among the original 3-NN under the Euclidean metric (before
+training). The bottom row shows impostors under the Euclidean metric that were no
+longer inside the local neighborhoods under the Mahalanobis metric.
+
+4.3 Spoken Letter Recognition
+
+The Isolet data set from the UCI Machine Learning Repository contains 6238 examples and 26
+classes corresponding to letters of the alphabet. We reduced the input dimensionality (originally at
+617) by projecting the data onto its leading 172 principal componentsenough to account for 95%
+of its total variance. On this data set, Dietterich and Bakiri report test error rates of 4.2% using
+nonlinear backpropagation networks with 26 output units (one per class) and 3.3% using nonlinear
+backpropagation networks with a 30-bit error correcting code (Dietterich and Bakiri, 1995). LMNN
+with energy-based classication obtains a test error rate of 3.4%.
+
+4.4 Letter Recognition
+
+The letter recognition data set was also taken from the UCI Machine Learning Repository. It con-
+tains randomly distorted images of the 26 letters in the English alphabet in 20 different fonts. The
+features consist of 16 attributes, such as height, width, correlations of axes and others.5 It is inter-
+
+5. Full details on the data set can be found at http://www.ics.uci.edu/$\sim$mlearn/databases/
+
+letter-recognition/letter-recognition.names.
+
+225
+
+WEINBERGER AND SAUL
+
+esting that LMNN with energy-based classication signicantly outperforms other variants of kNN
+classication on this data set.
+
+Test Image:
+Test Image:
+
+Test image:
+
+Nearest neighbor
+Nearest neighbor
+
+Nearest neighbor
+after training:
+after training:
+after training:
+
+Nearest neighbor
+Nearest neighbor
+Nearest neighbor
+before training:
+before training:
+before training:
+
+Test Image:
+Test Image:
+Test image:
+
+Nearest neighbor
+Nearest neighbor
+
+Nearest neighbor
+after training:
+after training:
+after training:
+
+Nearest neighbor
+Nearest neighbor
+Nearest neighbor
+before training:
+before training:
+before training:
+
+Figure 5: Images from the MNIST data set, along with nearest neighbors before and after training.
+
+4.5 Text Categorization
+
+The 20-newsgroups data set consists of posted articles from 20 newsgroups, with roughly 1000
+articles per newsgroup. We used the 18828-version of the data set6 in which cross-postings are
+removed and some headers stripped out. The data set was tokenized using the rainbow package
+(McCallum, 1996). Each article was initially represented by a word-count vector for the 20,000 most
+common words in the vocabulary. These word-count vectors were then reduced in dimensionality
+by projecting them onto their leading 200 principal components. The results in Fig. 3 were obtained
+by averaging over 10 runs with 70/30 splits for training and test data. The best result for LMMN
+on this data set improved signicantly over kNN classication using Euclidean distances and PCA
+(with 14.98% versus 48.57% and 18.22% test error rates). LMNN was outperformed by multiclass
+SVM (Crammer and Singer, 2001), which obtained a 8.0% test error rate using a linear kernel and
+20000 dimensional inputs.7
+
+4.6 Handwritten Digit Recognition
+The MNIST data set of handwritten digits8 has been extensively benchmarked (LeCun et al., 1995).
+We deskewed the original 2828 grayscale images, then reduced their dimensionality by projecting
+them onto their leading 164 principal components (enough to capture 95% of the datas overall
+
+6. Available at http://people.csail.mit.edu/jrennie/20Newsgroups/.
+7. Results vary from previous work (Weinberger et al., 2006) due to different pre-processing.
+8. Available at http://yann.lecun.com/exdb/mnist/.
+
+226
+
+DISTANCE METRIC LEARNING
+
+Benchmark test error rates
+
+letters 20news
+20000
+
+mnist
+70000
+
+784
+164
+
+60000
+10000
+
+10
+1
+0
+
+2.12
+2.43
+6.16
+5.93
+N/A
+N/A
+
+1.72
+6.16
+1.37
+1.69
+1.18
+
+16
+16
+
+14000
+6000
+
+26
+10
+0
+
+4.68
+4.68
+4.63
+4.34
+N/A
+N/A
+
+3.60
+3.61
+2.67
+2.80
+3.06
+
+18827
+20000
+
+200
+
+13179
+5648
+
+20
+10
+0
+
+48.57
+18.22
+16.15
+16.06
+
+N/A
+N/A
+
+14.98
+16.98
+22.09
+13.83
+12.82
+
+isolet
+7797
+617
+172
+6238
+1559
+
+26
+1
+0
+
+8.98
+8.60
+5.90
+5.71
+N/A
+N/A
+
+4.36
+5.84
+3.40
+4.30
+4.04
+
+yFaces
+
+2414
+8064
+300
+1690
+724
+38
+10
+30
+
+29.19
+10.79
+4.80
+4.83
+N/A
+N/A
+
+5.90
+5.08
+10.11
+5.52
+4.05
+
+bal
+
+535
+
+4
+
+4
+
+375
+
+161
+
+3
+
+100
+
+0
+
+18.33
+
+18.33
+
+10.82
+
+12.31
+
+15.66
+
+5.33
+
+11.16
+
+10.84
+
+9.14
+
+5.86
+
+10.72
+
+oFaces wine
+
+400
+
+200
+
+200
+
+280
+
+120
+
+40
+
+100
+
+30
+
+6.03
+
+2.80
+
+10.01
+
+10.02
+
+15.91
+
+2.60
+
+3.28
+
+40.72
+
+3.16
+
+4.83
+
+3.11
+
+152
+
+13
+
+13
+
+106
+
+46
+
+3
+
+100
+
+0
+
+25.00
+
+25.00
+
+2.17
+
+2.28
+
+30.96
+
+28.67
+
+8.72
+
+2.11
+
+7.67
+
+7.59
+
+8.72
+
+iris
+
+128
+
+4
+
+4
+
+90
+
+38
+
+3
+
+100
+
+30
+
+4.87
+
+4.87
+
+4.00
+
+3.71
+
+3.55
+
+4.32
+
+4.37
+
+3.79
+
+3.68
+
+4.26
+
+4.66
+
+3h 25m
+8h 43m
+540037
+305114
+
+2m
+14m
+
+70m
+74m
+
+135715
+18588
+
+676482
+101803
+
+20m
+84m
+64396
+135832
+
+8m
+14m
+86994
+30135
+
+6s
+
+8s
+
+41522
+
+31717
+
+66s
+
+149s
+
+3843
+
+70
+
+14s
+
+16s
+
+10194
+
+748
+
+2s
+
+5s
+
+574
+
+1548
+
+statistics
+# inputs
+# features
+# reduced dimensions
+# training examples
+# testing examples
+# classes
+# of train/test splits
+% validation
+
+kNN
+Euclidean
+PCA
+LDA
+RCA
+MCC
+NCA
+
+LMNN
+PCA
+LDA
+LMNN (energy)
+LMNN (multiple passes)
+LMNN (multiple metrics)
+
+solver statistics
+CPU time (1M)
+CPU time (MM)
+# active constraints (1M)
+# active constraints (MM)
+
+multiclass SVM
+
+1.20
+
+3.21
+
+8.04
+
+3.40
+
+15.22
+
+1.92
+
+1.90
+
+22.24
+
+3.45
+
+larger data sets
+
+smaller data sets
+
+Table 1: Results and statistics from all experiments. The data sets are sorted by largest to small-
+est from left to right. The table shows data statistics and error rates from different vari-
+ants of LMNN training (single-pass, multi-pass, multi-metric), testing (kNN decision rule,
+energy-based classication), and preprocessing (PCA, LDA). Results from RCA, NCA
+and multiclass support vector machines (SVMs) are also provided for comparison. See
+section 5 for discussion of multi-pass and multi-metric LMNN training.
+
+227
+
+WEINBERGER AND SAUL
+
+
+
+"
+
+
+
+&"
+
+&
+
+%"
+
+%
+
+$"
+
+$
+
+#"
+
+#
+
+relative classication error with multiple runs of LMNN
+
+&%
+
+&$
+
+!
+
+&
+
+$%
+
+$ 
+
+$
+
+&&
+
+standard LMNN
+
+&!
+
+%&
+
+
+
+
+
+
+
+
+
+
+
+#
+
+!
+
+
+ 
+
+$
+
+$
+
+r
+o
+r
+r
+e
+
+
+
+n
+o
+
+i
+t
+
+i
+
+a
+c
+
+s
+s
+a
+c
+
+
+l
+
+e
+v
+i
+t
+
+l
+
+a
+e
+r
+
+Figure 6: The relative change of the 3-NN classication error after multiple runs of LMNN over a
+
+single run of LMNN.
+
+variance). Energy-based LMNN classication yielded a test error rate at 1.4%, cutting the baseline
+kNN error rate by over one-third. Other comparable benchmarks (LeCun et al., 1995) (not exploiting
+additional prior knowledge) include multilayer neural nets at 1.6% and SVMs at 1.2%. Fig. 5
+shows some digits whose nearest neighbor changed as a result of learning, from a mismatch using
+Euclidean distances to a match using Mahalanobis distances. Table 1 reveals that the LMNN error
+can be further reduced by learning a different distance metric for each digit class. This is discussed
+further in section 5.2.
+
+5. Extensions
+
+In this section, we investigate four extensions designed to improve LMNN classication. Section 5.1
+examines the impact of multiple consecutive applications of LMNN on one data set. Section 5.2
+shows how to learn multiple (locally linear) metrics instead of a single global metric. Section 5.3
+discusses how to kernelize the algorithm for LMNN classication and reviews complementary
+work by Torresani and Lee (2007). Finally, section 5.4 investigates the use of LMNN as a method
+for supervised dimensionality reduction.
+
+5.1 Multi-pass LMNN
+
+One potential weakness of LMNN is that target neighbors must be a priori specied. In the ab-
+sence of prior knowledge, a default choice is to use Euclidean distances to determine target nearest
+neighbors. While the target nearest neighbors are xed during learning, however, the actual nearest
+neighbors may change as a result of the linear transformation of the input space. These changes
+suggest an iterative approach, in which the Mahalanobis distances learned in one application (or
+pass) of LMNN are used to determine the target nearest neighbors in a subsequent run of the al-
+gorithm. More formally, let Lp be the transformation matrix obtained from the pth pass of LMNN.
+For the (p+1)th pass, we can assign target neighbors using the Euclidean distance metric after the
+linear transformation ~xi  LpLp1...L1L0~xi (with L0 = I).
+To evaluate this approach, we performed multiple passes of LMNN on all the data sets from
+Table 1. The parameter k was set to k = 3. Figure 6 shows the relative improvements in kNN classi-
+
+228
+
+DISTANCE METRIC LEARNING
+
+1 Metric:
+
+1-nn error: 100%
+
+2 Metrics:
+
+1-nn error: 21%
+
+3 Metrics:
+
+1-nn error: 0%
+
+Figure 7: A synthetic data set to illustrate the potential of multiple metrics. The data set consists
+of inputs sampled from two concentric circles, each of which denes a different class
+membership. LMNN training was used to estimate one global metric, as well as multiple
+local metrics. Left: a single linear metric cannot model the non-linear decision boundary.
+The leave-one-out (LOO) error is 100%. Middle: if the data set is divided into two
+clusters (by k-means), and a local metric learned within each cluster, the error rate drops
+drastically. Right: the use of three metrics reduces the LOO-error on the training set to
+zero. The principal directions of individual distance metrics are indicated by arrows.
+
+cation error rates on the ve largest data sets. (Here, a value of one indicates that multiple passes
+of LMNN did not change the error rate, while a value less than one indicates an improvement.)
+On these data sets, multiple passes of LMMN were generally helpful, sometimes signicantly im-
+proving the results. On smaller data sets, though, the multi-pass strategy seemed prone to overt.
+Table 1 shows the absolute results on all data sets from multiple passes of LMNN (indicated by
+MP-LMNN).
+
+A better strategy for choosing target neighbors remains an open question. This aspect of LMNN
+classication differs signicantly from NCA, which does not require the choice of target neighbors.
+In fact, NCA also determines the effective neighborhood size as part of its optimization. On the
+other hand, the optimization in NCA is not convex; as such, the initial conditions implicitly specify
+a basin of attraction that determines the nal result. In LMNN classication, the target neighbors
+are xed in order to obtain a convex optimization. This trade-off is reminiscent of other convex
+relaxations of computationally hard problems in machine learning.
+
+5.2 Multi-metric LMNN
+
+On some data sets, a global linear transformation of the input space may not be sufciently powerful
+to improve kNN classication. Figure 7 shows an example of a synthetic data set for which a single
+metric is not sufcient. The data set consists of inputs sampled from two concentric circles, each
+of which denes a different class membership. Global linear transformations cannot improve the
+accuracy of kNN classication of this data set. In general, highly nonlinear multiclass decision
+boundaries may not be well modeled by a single Mahalanobis distance metric.
+
+229
+
+WEINBERGER AND SAUL
+
+In these situations, one useful extension of LMNN is to learn multiple locally linear transforma-
+tions instead of a single global linear transformation. In this section, we show how to learn different
+Mahalanobis distance metrics for different examples in the input space. The idea of learning locally
+linear distance metrics for kNN classication is at least a decade old (Hastie and Tibshirani, 1996).
+It has also been explored more recently in the context of metric learning for semi-supervised clus-
+tering (Bilenko et al., 2004). The novelty of our approach lies in learning these metrics specically
+to maximize the margin of correct kNN classication. As a rst step, we partition the training data
+into disjoint clusters using k-means, spectral clustering (Shi and Malik, 2000), or label information.
+(In our experience, the latter seems to work best.) We then learn a Mahalanobis distance metric for
+each cluster. While the training procedure couples the distance metrics in different clusters, the op-
+timization remains a convex problem in semidenite programming. The globally integrated training
+of local distance metrics also distinguishes our approach from earlier work (Hastie and Tibshirani,
+1996).
+
+Before developing this idea more formally, we rst illustrate its potential in a toy setting
+namely, on the data set in Fig. 7. For this data set, LMNN training was used to estimate one global
+metric, as well as multiple local metrics (as described below). Cluster boundaries in the input space
+were determined by the k-means algorithm. We measured the leave-one-out (LOO) training error
+(with k = 1 nearest neighbors) after learning one, two and three metrics. With one metric, the error
+was 100%; with two metrics, it dropped to 21%; nally, with three metrics, it vanished altogether.
+The gure illustrates how the multiple metrics adapt to the local structure of the class decision
+boundaries.
+
+In order to learn different Mahalanobis metrics in different parts of the input space, we minimize
+a variation of the objective function in Eq. (14). We denote the different metrics by M1, . . . ,Mc,
+where c is the number of clusters. If we partition the training examples by their class labels, then
+c also coincides with the number of classes; this was done for the remaining experiments in this
+section. In this case, as the cluster that contains ~xi is indexed by its label yi, we can refer to its
+metric as Myi. We further dene the cluster-dependent distance between two vectors ~xi and ~x j as:
+
+D(~xi,~x j) = (~xi ~x j)My j (~xi ~x j).
+
+(16)
+
+Note that this cluster-dependent measure of distance D(~xi,~x j) is not symmetric with respect to its
+input arguments. In a slight abuse of terminology, however, we will continue to refer to Eq. (16)
+as a distance metric; the symmetry is not required for its use in kNN classication. To learn these
+metrics from data, we solve a modied version of the original SDP:
+
+Minimize (1 )(cid:229)
+subject to:
+
+i jl  0
+
+i, j i(~xi ~x j)My j (~xi ~x j) + (cid:229)
+
+j i,l(1 yil)x
+(1) (~xi ~xl)Myl (~xi ~xl) (~xi ~x j)My j (~xi ~x j)  1 x
+(2) x
+(3) Mi (cid:23) 0 for i = 1, . . . , c.
+
+i jl
+
+i jl
+
+Note that all the matrices Mi are learned simultaneously by solving a single SDP. This ap-
+proach ensures the consistency of distance computations in different clusters: for example, the
+distance from a test example to training examples with different labels. The integrated learning
+of different metrics is necessary to calibrate these distances on the same scale; if the metrics were
+
+230
+
+DISTANCE METRIC LEARNING
+
+learned independently, then the distances computed by different metrics could not be meaningfully
+comparedobviously, a crucial requirement for kNN classication.
+
+zeros
+
+ones
+
+twos
+
+fours
+
+Figure 8: Multiple local distance metrics learned for a data set consisting of handwritten digits four,
+
+two, one and zero.
+
+Fig. 8 illustrates the multiple metrics learned from an image data set of four different hand-
+written digits: zero, one, four, and two. The plot shows the rst two principal components of the
+data. Only these principal components were used in training in order to yield an easily visualized
+solution. The solution can be visualized by illustrating the metrics as ellipsoids centered at the class
+means. The ellipsoids show the effect on a unit circle of each local linear transformation learned by
+LMNN. The line inside each ellipsoid indicates its principal axis.
+
+We experimented with this multi-metric version of LMNN on all of the data sets from section 4.
+To avoid overtting, we held out 30% of each data sets training examples and used them as a
+validation set. We learned one metric per class. To speed up training, we initialized the multi-metric
+optimization by setting each class-dependent metric to the solution from LMNN classication with
+a single global distance metric. Table 1 reports the error rates and other results from all these
+experiments (under MM-LMNN). The training times for MM-LMNN include the time required
+to compute the initial metric settings from the optimization in Eq. (14).
+
+Fig. 9 shows the relative improvement in 3-NN classication error rates from multi-metric
+LMNN over standard LMNN on the ve largest data sets. The multiple metrics variant improves
+over standard LMNN on every data set. The best result occurs on the MNIST handwritten digits
+data set, where MM-LMNN obtained a 1.18% kNN classication error rate, slightly outperform-
+ing multi-class SVMs. However, the improvement from multi-metric LMNN is not as consistently
+observed when the energy-based decision rule is used for classication.
+
+231
+
+WEINBERGER AND SAUL
+
+
+
+$
+
+"
+
+!
+
+
+
+
+
+relative classication error with multiple metrics
+
+
+
+	
+
+
+
+
+	
+
+
+
+
+
+standard LMNN
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"
+
+!
+
+
+ 
+
+#
+
+#
+
+r
+o
+r
+r
+e
+
+
+
+n
+o
+
+i
+t
+
+i
+
+a
+c
+
+s
+s
+a
+c
+
+
+l
+
+e
+v
+i
+t
+
+l
+
+a
+e
+r
+
+Figure 9: Relative improvement in kNN classication error rates using multiple metrics over error
+
+rates using a single metric.
+
+5.3 Kernel Version
+
+LMNN can also be extended by using kernel methods (Scholkopf and Smola, 2002) to work in
+a nonlinear feature space, as opposed to the original input space. The idea of learning a kernel
+matrix has been explored in other contexts (Kwok and Tsang, 2003; Lanckriet et al., 2004; Varma
+and Ray, 2007), particularly large margin classication by support vector machines. This idea for
+LMNN has been investigated in detail by Torresani and Lee (2007). The kernel trick is used to
+map the inputs ~xi into higher (possibly innite) dimensional feature vectors F (~xi). To avoid the
+computational cost of working directly with these feature vectors, they are only accessed through
+their inner products, which are pre-computed and stored in the kernel matrix:
+
+Ki j = F (~xi)F (~x j).
+
+Note how in Eq. (14), the inputs ~xi are only accessed in terms of the distances in Eq. (3). Torresani
+lm AlmF (~xl)F (~xm), where the
+and Lee (2007) considered Mahalanobis metrics of the form M = (cid:229)
+matrix A is constrained to be positive semidenite. They showed that the gradient of Eq. (14) with
+respect to the matrix A can be written entirely in terms of the elements of the kernel matrix. Thus,
+a kernelized version of LMNN can be implemented efciently in the same way as kernel PCA
+(Scholkopf et al., 1998), without ever working directly in the high dimensional feature space.
+
+Torresani and Lee (2007) show that the kernelized version of LMNN can lead to signicant
+further improvements, but at the cost of increased computation. The increased computation is due
+to the size of the matrix that must be learned in this setting: the matrix A has O(n2) elements instead
+of O(d2). (However, the kernel version could require less computation in applications where n < d.)
+More details on the kernelized version of LMNN can be found in their paper.
+
+5.4 Dimensionality Reduction
+
+Often it is useful to generate low dimensional representations of high dimensional data. These rep-
+resentations can be used to visualize the data and/or to accelerate algorithms whose time complexity
+
+232
+
+DISTANCE METRIC LEARNING
+
+scales with the input dimensionality. In section 6, for example, we will investigate how to accel-
+erate the kNN search in LMNN classication by mapping the training data into a low dimensional
+subspace.
+
+Low dimensional representations of inputs can be derived from the linear transformation ~xi 
+L~xi in LMNN classication. This can be done in two ways. The rst way is to project the trans-
+formed inputs onto their leading principal components. Note that if the inputs are whitened prior to
+optimizing Eq. (13), then these principal components are given simply by the leading eigenvectors
+of the square matrix L. Another way to derive low dimensional representations is to build this goal
+explicitly into the optimization for LMNN classication. In particular, we can attempt to minimize
+Eq. (13) with respect to L (rather than with respect to M = LL) and constrain L to be rectangular
+of size r  d, where r is the desired output dimensionality (presumed to be much smaller than the
+input dimensionality, d). The optimization in terms of L is not convex, but in practice (Torresani and
+Lee, 2007), it does not appear to suffer from very poor local minima. In the following section, we
+use and compare both these methods to build efcient tree data structures for LMNN classication.
+
+6. Metric Trees
+
+One inherent disadvantage of kNN search is its relatively high computational complexity at test
+time. The simplest brute-force way to locate a test examples nearest neighbors is to compute its
+distance to all the training examples. Such a nave implementation has a test time-complexity of
+O(nd), where n is the number of training examples, and d is the input dimensionality.
+
+One way to accelerate kNN search is to rotate the input space such that the coordinate axes are
+aligned with the datas principal components. Such a rotation sorts the input coordinates by de-
+creasing variance; see Section 2.2.1. This ordering can be used to prune unnecessary computations
+in kNN search. In particular, for any test example, a nearest neighbor query consists of computing
+the distance to each training example and comparing this distance to the k closest examples already
+located. The distance computation to a particular training example can be aborted upon determin-
+ing that it lies further away than the k closest examples already located. When the coordinate axes
+are aligned with the principal components, this determination can often be made after examining
+just a few of the leading, load-bearing dimensions. We have used this optimization in our baseline
+implementation of kNN search.
+
+Generally there are two major approaches to gain additional speed-ups. The rst approach is
+to reduce the input dimensionality d. The Johnson-Lindenstrauss Lemma (Dasgupta and Gupta,
+1999) states that n points can be mapped into a space of dimensionality O( log(n)
+e 2 ) such that the
+distances between any two points changes only by a factor of (1 e ). Thus we can often reduce
+
+the dimensionality of the input data without distorting the nearest neighbor relations. (Note also
+that for kNN classication, we may tolerate inexact nearest neighbor computations if they do not
+lead to signicant errors in classication.) The second approach to speed up kNN search is to build
+a sophisticated tree-based data structure for storing training examples. Such a data structure can
+reduce the nearest neighbor test time complexity in practice to O(d log n) (Beygelzimer et al., 2006).
+This latter method works best for low dimensional data. Fig. 10 compares a baseline implementation
+of kNN search versus one based on ball trees (Liu et al., 2005; Omohundro, 1987). Note how the
+speed-up from the ball trees is magnied by dimensionality reduction of the inputs.
+
+233
+
+WEINBERGER AND SAUL
+
+3-NN Classification with Ball Tree Data Structure
+
+p
+u
+d
+e
+e
+p
+S
+
+e
+v
+i
+t
+a
+l
+e
+R
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Dimensionality
+
+Figure 10: Relative speed-up for 3NN classication obtained from different orthogonal projections
+of MNIST handwritten digits onto their leading principal components. For these exper-
+iments, the d = 784 dimensional inputs from the raw images were projected onto the
+number of principal components shown on the x-axis. The gure compares the speed-
+ups when ball trees are used (blue) versus when ball trees are not used (red) in the lower
+dimensional space. Note how the gains from ball trees diminish with increasing dimen-
+sionality. All the NN computations in these experiments were accelerated by aligning
+the coordinate axes along principal components, as described in section 6.
+
+In this section, we explore the use of ball trees for LMNN classication and dimensionality re-
+duction. We nd that ball trees can be used for both faster training and testing of LMNN classiers.
+
+6.1 Review of Ball Trees
+
+Several authors have proposed tree-based data structures to speed up kNN search. Examples are
+kd-trees (Friedman et al., 1977), ball trees (Liu et al., 2005; Omohundro, 1987) and cover-trees
+(Beygelzimer et al., 2006). All these data structures exploit the same idea: to partition the input
+space data into hierarchically nested bounding regions. The bounding regions are set up to guarantee
+that the distance from a test example to a training example inside the bounding region is at least as
+large as the distance from the test examples to the regions boundary. Thus, for each test example,
+the training examples inside the bounding region can be ruled out as k nearest neighbors if k training
+examples have already been found that are closer than the regions boundary.
+In this case, the
+kNN search can proceed without explicitly computing the distances to training examples in the
+bounding region. This pruning of distance computations often leads to a signicant speedup in
+kNN computation time.
+
+We experimented with ball trees (Liu et al., 2005), in which the bounding regions are hyper-
+spheres. Fig. 11 illustrates the basic idea behind ball trees.
+If a set S of training examples is
+encapsulated inside a ball with center ~c and radius r, such that ~x  S : k~x~ck  r, then for any
+test example ~xt we can bound the distance to any training example inside the ball by the following
+expression:
+
+Ball trees exploit this inequality to build a hierarchical data structure. The data structure is based
+
+~xi  S k~xt ~xik  max(k~xt ~ck2  r,0).
+
+(17)
+
+234
+
+DISTANCE METRIC LEARNING
+
+(cid:127)xj
+
+(cid:127)(cid:127)xt  (cid:127)xj(cid:127)
+
+(cid:127)xt
+
+(cid:127)c
+
+(cid:127)xi
+
+r
+
+(cid:127)(cid:127)xt  (cid:127)c(cid:127)  r
+
+(cid:127)(cid:127)xt  (cid:127)xi(cid:127)
+
+Figure 11: The basic idea behind ball trees: for any training example~xi inside the ball we can bound
+the distance k~xt ~xik2 from below using (17). If another training example ~x j outsider
+the ball is already known to be closer than this bound to the test example ~xt, then the
+training examples inside the ball can be ruled out as nearest neighbors.
+
+on recursively splitting the training examples into two disjoint sets. The sets are encapsulated by
+hyperspheres (or balls) which may be partially overlapping. The training examples are recursively
+divided into smaller and smaller sets until no leaf set contains more than some predened number
+of examples.
+
+From this hierarchical data structure, the k-nearest neighbors of a test example can be found by
+a standard depth-rst tree-based search. Recall that each node in the tree has an associated hyper-
+sphere that encloses the training examples stored by its descendants. The kNN search proceeds by
+traversing the tree and computing a test examples distance to the center of each nodes hypersphere.
+The tree is traversed by greedily descending sub-trees in order of this distance. Before descending
+a subtree, however, Eq. (17) is checked to determine whether training examples in the subtree lie
+further away than the currently estimated k-nearest neighbors. If this is true, the sub-tree is pruned
+from the search without further computation. When a leaf node is reached, all the training examples
+at the leaf node are compared to the currently estimated k-nearest neighbors, and the estimates are
+updated as necessary. Note that ball trees support exact queries for kNN search.
+
+As pointed out earlier, and as illustrated by Fig. 10, ball trees yield the largest gains in kNN
+search time for low dimensional data. When the data is high dimensional, the search is plagued
+by the so-called curse of dimensionality (Indyk and Motwani, 1998). In particular, the distances
+between high dimensional points tend to be more uniform, thereby reducing the opportunities for
+pruning subtrees in the depth-rst search.
+
+6.2 Ball Trees for LMNN Training
+
+The most computationally intensive part of LMNN training is computing the gradient of the penalty
+for margin violations in Eq. (12). The gradient computation requires a search over all pairs of
+differently labeled examples to determine if any of them are impostors (see section 3.1) that incur
+margin violations. The solver described in appendix A reduces the number of these searches by
+maintaining an active list of previous margin violations. Nevertheless, this search scales O(n2d),
+which is very computationally intensive for large data sets.
+
+Ball trees can be used to further speed up the search for impostors. Recall how impostors were
+dened in section 3.1. For any training example ~xi, and for any similarly labeled example ~x j that
+
+235
+
+WEINBERGER AND SAUL
+
+
+
+
+
+
+
+	
+
+	
+
+		
+
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+Figure 12: The relative speed-up obtained using ball trees to search for margin violations. The
+speed-up was measured on the MNIST data set of handwritten digits, with inputs of
+varying dimensionality derived from PCA. Note how the gains from ball trees diminish
+with increasing input dimensionality.
+
+is one of its target k-nearest neighbors (with j   i), the impostors consist of all differently labeled
+examples ~xl (with yil = 0) that satisfy Eq. (10). Ball trees can be used to search for all training
+examples that meet this criterion. As in their use for kNN search, many subtrees in the depth-rst
+search for impostors can be pruned: if for some ball the lower bound distances between examples
+is already greater than the right hand side of Eq. (10), then all the examples stored in the subtree
+can be ruled out as impostors. Note that for each training example ~xi, we only need to search for
+impostors among other training examples ~xl that have a different class label (with yil = 0). Thus,
+we build one ball tree data structure per class and perform a separate search for impostors in each
+class.
+
+Fig. 12 shows the relative speed-up when ball trees are used to search for margin violations
+in LMNN classication. The gure shows results from experiments with the MNIST images of
+handwritten digits. For these experiments, the images were projected into subspaces of varying
+dimensionality using PCA. The gains from ball trees in this context are signicant, though not as
+dramatic as those in Fig. 10 for simple kNN search. The lesser gains for LMNN classication can be
+attributed to the minimum enforced margin of unit distance, which sometimes causes a high number
+of sub-trees to be traversed. This effect is controlled by the relative magnitude of the unit margin; it
+can be partially offset by scaling the input data by a constant factor before training.
+
+6.3 Ball Trees for LMNN Testing
+
+Ball trees can also be used to accelerate kNN search at test time. We have observed earlier, though,
+that the speed-up from ball trees diminishes quickly as the input dimensionality increases; see
+Fig. 10. If very fast kNN classication using ball trees is desired on a large data set, then often
+it is necessary to work with a lower dimensional representation of the training examples.
+
+The most commonly used methods for dimensionality reduction in ball trees are random pro-
+jections and PCA. Neither of these methods, however, is especially geared to preserve the accuracy
+of kNN classication. There is an inherent trade-off between dimensionality reduction and nearest
+
+236
+
+DISTANCE METRIC LEARNING
+
+3-NN classification after dimensionality reduction
+
+15x
+
+9x
+
+6x
+
+5x
+
+4x
+
+3x
+
+3x
+
+3x
+
+2.38
+
+2.09
+
+1.76
+
+1.82
+
+1.79
+
+15
+
+20
+
+25
+
+30
+Input Dimensionality
+
+35
+
+1.8
+
+40
+
+1.81
+
+1.84
+
+45
+
+50
+
+4
+
+3.5
+
+3
+
+2.5
+
+2
+
+1.5
+
+ball tree
+speedup
+
+pca
+
+lmnn (sq)
+
+lmnn (rec)
+
+baseline
+
+(2.33)
+
+
+
+
+
+%
+n
+i
+
+r
+o
+r
+r
+E
+n
+o
+i
+t
+a
+c
+i
+f
+i
+s
+s
+a
+l
+C
+
+Figure 13: Graph of kNN classication error (with k = 3) on different low dimensional representa-
+tions of the MNIST data set; see text for details. The speed-up from ball-trees is shown
+at the top of the graph.
+
+neighbor preservation. Nearest neighbor relationships can change when the training examples are
+projected into a lower dimensional space, resulting in signicantly worse kNN classication.
+
+In this section, we explore how the distance metric learned for LMNN classication can be used
+for more effective dimensionality reduction in ball trees. In section 5.4, we described two different
+ways to derive low dimensional representations for LMNN classication. The rst computed a
+low-rank approximation to the (generally full rank) matrix L; the second directly learned a low-
+rank rectangular matrix L by optimizing the non-convex loss function in Eq. (13). For shorthand,
+we refer to these approaches for dimensionality reduction as LMNN-S and LMNN-R, denoting
+whether a square (S) or rectangular (R) matrix is learned to minimize the LMNN cost function.
+Fig. 13 shows the results of kNN classication from both these methods on the MNIST data set of
+handwritten digits. For these experiments, the raw MNIST images (of size 28 28) were projected
+onto their 350 leading principal components before any training for LMNN classication. Also
+shown in the gure are the results from further dimensionality reduction using PCA, as well as
+the baseline kNN error rate in the original (high dimensional) input space. The square matrix in
+LMNN-S was of size 350 350, and for dimensionality reduction, the data was projected onto the
+r leading eigenvectors of linear transformation L. The rectangular matrix in LMNN-R was of size
+r 350, where r varied from 15 to 50. The speed-up from ball trees is shown at the top of the graph.
+The amount of speed-up depends signicantly on the amount of dimensionality reduction, but very
+little on the particular method of dimensionality reduction.
+
+The results show that LMNN can be used effectively for dimensionality reduction. For example,
+LMNN-R achieves a kNN test error rate of 2.38% in 15 dimensions, only slightly higher than the
+baseline error rate of 2.33% in the original input space. In this space, moreover, ball trees yield a
+15x speedup over baseline kNN search. In 25 dimensions, the LMNN-R error rate drops further to
+1.76% while still yielding a 5.7x speed-up. Of the three methods compared in Fig. 13, LMNN-R is
+the most effective. In fact, though working in many fewer dimensions, LMNN-R obtains results very
+close to the best results reported in section 4. It is interesting that LMNN-R outperforms LMNN-S,
+though (as expected) their results converge as the rectangular matrix in LMNN-R becomes more
+
+237
+
+WEINBERGER AND SAUL
+
+square. These results show that aggressive dimensionality reduction can be combined with highly
+accurate kNN classication.
+
+7. Discussion
+
+In this paper, we have introduced a new framework for large margin nearest neighbor (LMNN)
+classication. From labeled training examples, we have shown how to learn a Mahalanobis dis-
+tance metric for kNN classication. The required optimization was formulated as an instance of
+semidenite programming. Our framework makes no parametric assumptions about the structure or
+distribution of the data and scales naturally to problems with large number of classes. On multiple
+data sets, we have demonstrated that we can signicantly improve the accuracy of kNN classica-
+tion by learning a metric in this way. We have also shown that an alternative energy-based decision
+rule typically leads to further improvements over traditional kNN classication.
+
+Beyond the basic framework for LMNN classication, we described several useful and comple-
+mentary extensions. These included: iterative re-estimation of target neighbor assignments, globally
+integrated learning of multiple locally linear metrics, kernel methods for LMNN classication, low-
+rank distance metrics for dimensionality reduction, and ball trees for more efcient gradient com-
+putations (in training) and kNN search (in testing). These extensions can be adapted and combined
+to meet the demands of particular applications. For example, to build a highly accurate classier
+without regard to the actual computation at test time, our results suggest to train multiple locally
+linear metrics. At the other extreme, to build a kNN classier that is as fast as possible at test time,
+our results suggest to combine low-rank distance metrics with ball trees.
+
+Taken as a whole, our results demonstrate the promise and widespread applicability of LMNN
+classication. Perhaps the greatest promise lies in problems with very large numbers of classes, such
+as face and identity recognition. The number of classes in these problems can be in the hundreds,
+thousands, or more. Nearest neighbor methods handle this regime more transparently than other
+leading methods, such as SVMs. The ideas behind LMNN classication have also been extended by
+others in various ways (Torresani and Lee, 2007; Kumar et al., 2007). In the appendix, we describe
+a simple solver that scales well to problems with tens of thousands of examples. A MATLAB
+implementation of the algorithm is also freely available with this paper.
+
+Future work will concentrate on several open problems. The improved performance with mul-
+tiple metrics suggests that LMNN classication could benet from even more adaptive transfor-
+mations of the input space.
+It would also be useful to study LMMN classication in the semi-
+supervised, transductive setting, where only a few labeled inputs are available for training but the
+unlabeled test set is known in advance. Finally, for many real-world applications in computer vision
+and information retrieval, the data sets can be much larger than the ones we have studied. For very
+large data sets, our current implementation for LMNN does not scale as well as simpler eigenvector
+methods such as PCA, LDA, and RCA. It remains an interesting challenge to scale LMNN to even
+larger data sets with millions or more training examples.
+
+238
+
+DISTANCE METRIC LEARNING
+
+Acknowledgments
+
+We especially thank John C. Blitzer for his many suggestions to improve the algorithm and his
+generous help with various data sets. We also thank Koby Crammer for many useful comments and
+suggestions. This work was supported by NSF Award 0238323.
+
+Appendix A. Solver
+
+We implemented our own special-purpose solver for large-scale problems in LMNN classication.
+Our solver was designed to exploit the particular structure of the cost function in Eq. (13). The solver
+iteratively re-estimates the Mahalanobis distance metric as it attempts to minimize the cost function
+for LMNN classication. The amount of computation is minimized by careful book-keeping from
+one iteration to the next. The speed-ups from these optimizations enabled us to work comfortably
+on data sets with up to n =60,000 training examples.
+
+Our solver implements an iterative sub-gradient projection method to optimize Eq. (14) in terms
+of the positive semidenite matrix M. We refer to the Mahalanobis distance metric at the tth iteration
+as Mt and to its squared Mahalanobis distance in Eq. (3) as Dt. At each iteration, the optimization
+takes a step along the sub-gradient to reduce the loss function and then projects Mt onto the feasible
+set. In our case, the feasible set is the cone of all positive semidenite matrices S+. The following
+sections derive the gradient and describe the projection onto S+.
+
+It is worth emphasizing that although we can phrase the optimization of Eq. (14) as a semidef-
+inite program (by introducing nonnegative slack variables to model the hinge loss), in practice our
+large-scale solver works directly to minimize Eq. (14). The hinge losses that appear in this loss
+function are not differentiable at all points. Nevertheless, because the loss function is convex, we
+can compute its sub-gradient and use standard hill-climbing algorithms to nd its minimum.
+It
+has been shown that such sub-gradient methods converge to the correct solution, provided that the
+gradient step-size is sufciently small (Boyd and Vandenberghe, 2004).
+
+A.1 Gradient Computation
+
+The gradient computation can be done most efciently by careful book-keeping from one iteration
+to the next. As simplifying notation, let Ci j =(~xi~x j)(~xi~x j). It is straightforward to express the
+distances, as dened in Eq. (3), in terms of this notation. In particular, at the tth iteration, we have
+Dt(~xi,~x j) = tr(MtCi j). Consequently, we can rewrite the loss function in Eq. (14) as:
+
+e (Mt) = (1 ) (cid:229)
+
+i, j i
+
+tr(MtCi j) +  (cid:229)
+
+j i,l
+
+(1 yil) [1 + tr(MtCi j)tr(MtCil)]+
+
+(18)
+
+Note that Eq. (18) is piecewise linear with respect to Mt. Let us dene a set of triples N t, such that
+(i, j, l)  N t if and only if the indices (i, j, l) trigger the hinge loss in the second part of Eq. (18).
+With this denition, we can write the gradient Gt of e (Mt) as:
+
+Gt =
+
+Mt
+
+= (1 ) (cid:229)
+
+i, j i
+
+Ci j + 
+
+(Ci j  Cil) .
+
+(i, j,l)N t
+
+Computing the gradient requires computing the outer products in Ci j; it thus scales quadratically in
+the input dimensionality. As the set Nt is potentially very large, a nave computation of the gradient
+
+239
+
+
+e
+(cid:229)
+WEINBERGER AND SAUL
+
+would be extremely expensive. However, we can exploit the fact that the gradient contribution from
+each active triplet (i, j, l) does not depend on the degree of its margin violation. Thus, the changes
+in the gradient from one iteration to the next are determined entirely by the differences between
+the sets Nt and Nt+1. We can use this fact to derive an extremely efcient update that relates the
+gradient Gt+1 at iteration t + 1 from the gradient Gt at iteration t. The update simply subtracts
+the contributions from triples that are no longer active and adds the contributions of those that just
+became active:
+
+Gt+1 = Gt   (cid:229)
+
+(Ci j  Cil) +  (cid:229)
+
+(i, j,l)NtNt+1
+
+(i, j,l)Nt+1Nt
+
+(Ci j  Cil) .
+
+(19)
+
+For small gradient step sizes, the set Nt changes very little from one iteration to the next. In this
+case, computing the right hand side of Eq. (19) is extremely fast.
+
+To accelerate the solver even further, we adopt an active set method. Note that computing the
+set Nt at each iteration requires checking every triplet (i, j, l) with j   i for a potential margin
+violation. This computation scales as O(nd2 + kn2d), making it impractical for large data sets. To
+avoid this computational burden, we exploit the fact that the great majority of triples do not incur
+margin violations: in particular, for each training example, only a very small fraction of differently
+labeled examples typically lie nearby in the input space. Consequently, a useful approximation is to
+check only a subset of likely triples for margin violations per gradient computation. We initialize
+the training procedure by checking all triples and maintaining an active list of those with margin
+violations; however, a full re-check is only made every 10-20 iterations, depending on uctuations
+of the set Nt. For intermediate iterations, we only check for margin violations from among those
+active triples accumulated over previous iterations. When the optimization converges, we verify that
+the working set Nt does contain all active triples that incur margin violations. This nal check is
+needed to ensure convergence to the correct minimum. If the check is not satised, the optimization
+restarts with the newly expanded active set.
+
+A.2 Projection
+
+The minimization of Eq. (18) must enforce the constraint that the matrix Mt remains positive semi-
+denite. To enforce this constraint, we project Mt onto the cone of all positive semidenite matrices
+S+ after each gradient step. This projection is computed from the diagonalization of Mt. Let
+Mt = VD V denote the eigendecomposition of Mt, where V is the orthonormal matrix of eigen-
+vectors and D
+is the diagonal matrix of corresponding eigenvalues. We can further decompose
+D = D +D +, where D + =max(D
+,0) con-
+tains all the negative eigenvalues. The projection of Mt onto the cone of positive semidenite
+matrices is given by:
+
+,0) contains all the positive eigenvalues and D  =min(D
+
+PS (Mt) =VD +V.
+
+(20)
+
+The projection effectively truncates any negative eigenvalues from the gradient step, setting them
+equal to zero.
+
+A.3 Algorithm
+
+Our gradient projection algorithm combined the update rules for the gradient in Eq. (19) and the
+projection in Eq. (20). A simplied pseudo-code implementation is shown in Algorithm 1. We
+denote the gradient step-size by a > 0. In practice, it worked best to start with a small value of
+
+240
+
+DISTANCE METRIC LEARNING
+
+. Then, at each iteration, we increased a by a factor of 1.01 if the loss function decreased and
+decreased a by a factor of 0.5 if the loss function increased.
+
+if mod(t, someconstant) = 0  (almost converged){we used someconstant=10} then
+
+else
+
+i, j i Ci j{Initialize gradient}
+
+Algorithm 1 A simple gradient projection pseudo-code implementation.
+1: M0 := I {Initialize with the identity matrix}
+2: t :=0{Initialize counter}
+3: N (0), N0 := {}{Initialize active sets}
+4: G0 := (1 )(cid:229)
+5: while (not converged) do
+6:
+7:
+8:
+9:
+10:
+11:
+12:
+
+compute Nt+1 exactly
+N (t+1) := N (t)  Nt+1{Update active set}
+compute Nt+1  Nt+1  N (t){ Only search active set}
+N (t+1) := N (t) {Keep active set untouched}
+(i, j,l)NtNt+1 (Ci j  Cil) + (cid:229)
+
+end if
+
+13: Gt+1 := Gt  (cid:229)
+14: Mt+1 := PS (Mt  a Gt+1){Take gradient step and project onto SDP cone}
+15:
+16: end while
+17: Output Mt
+
+(i, j,l)Nt+1Nt (Ci j  Cil)
+
+t := t + 1
+

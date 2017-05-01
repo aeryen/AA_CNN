@@ -1,0 +1,736 @@
+Abstract
+
+Inexpensive RGB-D cameras that give an RGB image together with depth data
+have become widely available. In this paper, we use this data to build 3D point
+clouds of full indoor scenes such as an ofce and address the task of semantic la-
+beling of these 3D point clouds. We propose a graphical model that captures var-
+ious features and contextual relations, including the local visual appearance and
+shape cues, object co-occurence relationships and geometric relationships. With a
+large number of object classes and relations, the models parsimony becomes im-
+portant and we address that by using multiple types of edge potentials. The model
+admits efcient approximate inference, and we train it using a maximum-margin
+learning approach. In our experiments over a total of 52 3D scenes of homes and
+ofces (composed from about 550 views, having 2495 segments labeled with 27
+object classes), we get a performance of 84.06% in labeling 17 object classes for
+ofces, and 73.38% in labeling 17 object classes for home scenes. Finally, we
+applied these algorithms successfully on a mobile robot for the task of nding
+objects in large cluttered rooms.1
+
+Introduction
+
+1
+Inexpensive RGB-D sensors that augment an RGB image with depth data have recently become
+widely available. At the same time, years of research on SLAM (Simultaneous Localization and
+Mapping) now make it possible to reliably merge multiple RGB-D images into a single point cloud,
+easily providing an approximate 3D model of a complete indoor scene (e.g., a room). In this paper,
+we explore how this move from part-of-scene 2D images to full-scene 3D point clouds can improve
+the richness of models for object labeling.
+In the past, a signicant amount of work has been done in semantic labeling of 2D images. However,
+a lot of valuable information about the shape and geometric layout of objects is lost when a 2D
+image is formed from the corresponding 3D world. A classier that has access to a full 3D model,
+can access important geometric properties in addition to the local shape and appearance of an object.
+For example, many objects occur in characteristic relative geometric congurations (e.g., a monitor
+is almost always on a table), and many objects consist of visually distinct parts that occur in a
+certain relative conguration. More generally, a 3D model makes it easy to reason about a variety
+of properties, which are based on 3D distances, volume and local convexity.
+Some recent works attempt to rst infer the geometric layout from 2D images for improving the
+object detection [12, 14, 28]. However, such a geometric layout is not accurate enough to give
+signicant improvement. Other recent work [35] considers labeling a scene using a single 3D view
+(i.e., a 2.5D representation). In our work, we rst use SLAM in order to compose multiple views
+from a Microsoft Kinect RGB-D sensor together into one 3D point cloud, providing each RGB
+pixel with an absolute 3D location in the scene. We then (over-)segment the scene and predict
+semantic labels for each segment (see Fig. 1). We predict not only coarse classes like in [1, 35] (i.e.,
+
+1This work was rst presented at [16].
+ indicates equal contribution.
+
+1
+
+Figure 1: Ofce scene (top) and Home (bottom) scene with the corresponding label coloring above the images.
+The left-most is the original point cloud, the middle is the ground truth labeling and the right most is the point
+cloud with predicted labels.
+wall, ground, ceiling, building), but also label individual objects (e.g., printer, keyboard, mouse).
+Furthermore, we model rich relational information beyond an associative coupling of labels [1].
+In this paper, we propose and evaluate the rst model and learning algorithm for scene understand-
+ing that exploits rich relational information derived from the full-scene 3D point cloud for object
+labeling.
+In particular, we propose a graphical model that naturally captures the geometric re-
+lationships of a 3D scene. Each 3D segment is associated with a node, and pairwise potentials
+model the relationships between segments (e.g., co-planarity, convexity, visual similarity, object
+co-occurrences and proximity). The model admits efcient approximate inference [25], and we
+show that it can be trained using a maximum-margin approach [7, 31, 34] that globally minimizes
+an upper bound on the training loss. We model both associative and non-associative coupling of
+labels. With a large number of object classes, the models parsimony becomes important. Some
+features are better indicators of label similarity, while other features are better indicators of non-
+associative relations such as geometric arrangement (e.g., on-top-of, in-front-of ). We therefore in-
+troduce parsimony in the model by using appropriate clique potentials rather than using general
+clique potentials. Our model is highly exible and our software is available as a ROS package at:
+http://pr.cs.cornell.edu/sceneunderstanding
+To empirically evaluate our model and algorithms, we perform several experiments over a total of
+52 scenes of two types: ofces and homes. These scenes were built from about 550 views from
+the Kinect sensor, and they are also available for public use. We consider labeling each segment
+(from a total of about 50 segments per scene) into 27 classes (17 for ofces and 17 for homes,
+with 7 classes in common). Our experiments show that our method, which captures several local
+cues and contextual properties, achieves an overall performance of 84.06% on ofce scenes and
+73.38% on home scenes. We also consider the problem of labeling 3D segments with multiple
+attributes meaningful to robotics context (such as small objects that can be manipulated, furniture,
+etc.). Finally, we successfully applied these algorithms on mobile robots for the task of nding
+objects in cluttered ofce scenes.
+2 Related Work
+There is a huge body of work in the area of scene understanding and object recognition from 2D im-
+ages. Previous works focus on several different aspects: designing good local features such as HOG
+(histogram-of-gradients) [5] and bag of words [4], and designing good global (context) features such
+as GIST features [33]. However, these approaches do not consider the relative arrangement of the
+parts of the object or of multiple objects with respect to each other. A number of works propose
+models that explicitly capture the relations between different parts of the object e.g., Pedro et al.s
+part-based models [6], and between different objects in 2D images [13, 14]. However, a lot of valu-
+able information about the shape and geometric layout of objects is lost when a 2D image is formed
+from the corresponding 3D world. In some recent works, 3D layout or depths have been used for
+improving object detection (e.g., [11, 12, 14, 20, 21, 22, 27, 28]). Here a rough 3D scene geometry
+(e.g., main surfaces in the scene) is inferred from a single 2D image or a stereo video stream, respec-
+tively. However, the estimated geometry is not accurate enough to give signicant improvements.
+With 3D data, we can more precisely determine the shape, size and geometric orientation of the
+objects, and several other properties and therefore capture much stronger context.
+The recent availability of synchronized videos of both color and depth obtained from RGB-D
+(Kinect-style) depth cameras, shifted the focus to making use of both visual as well as shape features
+for object detection [9, 18, 19, 24, 26] and 3D segmentation (e.g., [3]). These methods demonstrate
+
+2
+
+that augmenting visual features with 3D information can enhance object detection in cluttered, real-
+world environments. However, these works do not make use of the contextual relationships between
+various objects which have been shown to be useful for tasks such as object detection and scene
+understanding in 2D images. Our goal is to perform semantic labeling of indoor scenes by modeling
+and learning several contextual relationships.
+There is also some recent work in labeling outdoor scenes obtained from LIDAR data into a few ge-
+ometric classes (e.g., ground, building, trees, vegetation, etc.). [8, 30] capture context by designing
+node features and [36] do so by stacking layers of classiers; however these methods do not model
+the correlation between the labels. Some of these works model some contextual relationships in the
+learning model itself. For example, [1, 23] use associative Markov networks in order to favor similar
+labels for nodes in the cliques. However, many relative features between objects are not associative
+in nature. For example, the relationship on top of does not hold in between two ground segments,
+i.e., a ground segment cannot be on top of another ground segment. Therefore, using an associa-
+tive Markov network is very restrictive for our problem. All of these works [1, 23, 29, 30, 36] were
+designed for outdoor scenes with LIDAR data (without RGB values) and therefore would not apply
+directly to RGB-D data in indoor environments. Furthermore, these methods only consider very few
+geometric classes (between three to ve classes) in outdoor environments, whereas we consider a
+large number of object classes for labeling the indoor RGB-D data.
+The most related work to ours is [35], where they label the planar patches in a point-cloud of an
+indoor scene with four geometric labels (walls, oors, ceilings, clutter). They use a CRF to model
+geometrical relationships such as orthogonal, parallel, adjacent, and coplanar. The learning method
+for estimating the parameters was based on maximizing the pseudo-likelihood resulting in a sub-
+optimal learning algorithm. In comparison, our basic representation is a 3D segment (as compared
+to planar patches) and we consider a much larger number of classes (beyond just the geometric
+classes). We also capture a much richer set of relationships between pairs of objects, and use a
+principled max-margin learning method to learn the parameters of our model.
+3 Approach
+We now outline our approach, including the model, its inference methods, and the learning algo-
+rithm. Our input is multiple Kinect RGB-D images of a scene (i.e., a room) stitched into a single 3D
+point cloud using RGBDSLAM.2 Each such point cloud is then over-segmented based on smooth-
+ness (i.e., difference in the local surface normals) and continuity of surfaces (i.e., distance between
+the points). These segments are the atomic units in our model. Our goal is to label each of them.
+Before getting into the technical details of the model, the following outlines the properties we aim
+to capture in our model:
+Visual appearance. The reasonable success of object detection in 2D images shows that visual
+appearance is a good indicator for labeling scenes. We therefore model the local color, texture,
+gradients of intensities, etc. for predicting the labels. In addition, we also model the property that if
+nearby segments are similar in visual appearance, they are more likely to belong to the same object.
+Local shape and geometry. Objects have characteristic shapesfor example, a table is horizontal,
+a monitor is vertical, a keyboard is uneven, and a sofa is usually smoothly curved. Furthermore,
+parts of an object often form a convex shape. We compute 3D shape features to capture this.
+Geometrical context. Many sets of objects occur in characteristic relative geometric congurations.
+For example, a monitor is always on-top-of a table, chairs are usually found near tables, a keyboard
+is in-front-of a monitor. This means that our model needs to capture non-associative relationships
+(i.e., that neighboring segments differ in their labels in specic patterns).
+Note the examples given above are just illustrative. For any particular practical application, there
+will likely be other properties that could also be included. As demonstrated in the following section,
+our model is exible enough to include a wide range of features.
+3.1 Model Formulation
+We model the three-dimensional structure of a scene using a model isomorphic to a Markov Ran-
+dom Field with log-linear node and pairwise edge potentials. Given a segmented point cloud
+x = (x1, ..., xN ) consisting of segments xi, we aim to predict a labeling y = (y1, ..., yN ) for
+i ),
+the segments. Each segment label yi is itself a vector of K binary class labels yi = (y1
+i , ..., yK
+with each yk
+i  {0, 1} indicating whether a segment i is a member of class k. Note that multiple yk
+i
+can be 1 for each segment (e.g., a segment can be both a chair and a movable object). We use
+
+2http://openslam.org/rgbdslam.html
+
+3
+
+Figure 2: Illustration of a few features. (Left) Features N11 and E9. Segment i is infront of segment j if
+(Middle) Two connected segment i and j are form a convex shape if (ri  rj). ni  0 and
+rhi < rhj.
+(rj  ri). nj  0. (Right) Illustrating feature E8.
+
+such multi-labelings in our attribute experiments where each segment can have multiple attributes,
+but not in segment labeling experiments where each segment can have only one label).
+For a segmented point cloud x, the prediction y is computed as the argmax of a discriminant function
+fw(x, y) that is parameterized by a vector of weights w.
+
+y = argmax
+
+y
+
+fw(x, y)
+
+(1)
+
+The discriminant function captures the dependencies between segment labels as dened by an undi-
+rected graph (V,E) of vertices V = {1, ..., N} and edges E  V  V. We describe in Section 3.2
+how this graph is derived from the spatial proximity of the segments. Given (V,E), we dene the fol-
+lowing discriminant function based on individual segment features n(i) and edge features t(i, j)
+as further described below.
+
+(2)
+
+fw(y, x) =(cid:88)iV
+
+K(cid:88)k=1
+
+yk
+
+n  n(i)(cid:3) + (cid:88)(i,j)E (cid:88)TtT (cid:88)(l,k)Tt
+i (cid:2)wk
+
+yl
+iyk
+
+j(cid:2)wlk
+
+t
+
+ t(i, j)(cid:3)
+
+The node feature map n(i) describes segment i through a vector of features, and there is one
+weight vector for each of the K classes. Examples of such features are the ones capturing local
+visual appearance, shape and geometry. The edge feature maps t(i, j) describe the relationship
+between segments i and j. Examples of edge features are the ones capturing similarity in visual
+appearance and geometric context.3 There may be multiple types t of edge feature maps t(i, j),
+and each type has a graph over the K classes with edges Tt. If Tt contains an edge between classes
+is used to model the dependencies between
+l and k, then this feature map and a weight vector wlk
+t
+classes l and k. If the edge is not present in Tt, then t(i, j) is not used.
+We say that a type t of edge features is modeled by an associative edge potential if Tt = {(k, k)|k =
+1..K}. And it is modeled by an non-associative edge potential if Tt = {(l, k)|l, k = 1..K}.
+Finally, it is modeled by an object-associative edge potential if Tt = {(l, k)|object,
+l, k 
+parts(object)}.
+Parsimonious model.
+In our experiments we distinguished between two types of edge feature
+mapsobject-associative features oa(i, j) used between classes that are parts of the same object
+(e.g., chair base, chair back and chair back rest), and non-associative features na(i, j) that
+are used between any pair of classes. Examples of features in the object-associative feature map
+oa(i, j) include similarity in appearance, co-planarity, and convexityi.e., features that indicate
+whether two adjacent segments belong to the same class or object. A key reason for distinguishing
+between object-associative and non-associate features is parsimony of the model. In this parsimo-
+nious model (referred to as svm mrf parsimon), we model object associative features using object-
+associative edge potentials and non-associative features as non-associative edge potentials. As not
+all edge features are non-associative, we avoid learning weight vectors for relationships which do
+not exist. Note that |Tna| >> |Toa| since, in practice, the number of parts of an objects is much
+less than K. Due to this, the model we learn with both type of edge features will have much lesser
+number of parameters compared to a model learnt with all edge features as non-associative features.
+3.2 Features
+Table 1 summarizes the features used in our experiments. i0, i1 and i2 are the 3 eigen-values
+of the scatter matrix computed from the points of segment i in decreasing order. ci is the centroid
+of segment i. ri is the ray vector to the centroid of segment i from the position camera in which
+it was captured. rhi is the projection of ri on horizontal plane. ni is the unit normal of segment i
+which points towards the camera (ri.ni < 0). The node features n(i) consist of visual appearance
+features based on histogram of HSV values and the histogram of gradients (HOG), as well as local
+shape and geometry features that capture properties such as how planar a segment is, its absolute
+
+3Even though it is not represented in the notation, note that both the node feature map n(i) and the edge
+
+feature maps t(i, j) can compute their features based on the full x, not just xi and xj.
+
+4
+
+Nodefeaturesforsegmenti.DescriptionCountVisualAppearance48N1.HistogramofHSVcolorvalues14N2.AverageHSVcolorvalues3N3.AverageofHOGfeaturesoftheblocksinim-agespannedbythepointsofasegment31LocalShapeandGeometry8N4.linearness(i0-i1),planarness(i1-i2)2N5.Scatter:i01N6.Verticalcomponentofthenormal:niz1N7.Verticalpositionofcentroid:ciz1N8.Vert.andHor.extentofboundingbox2N9.Dist.fromthesceneboundary(Fig.2)1Edgefeaturesfor(segmenti,segmentj).DescriptionCountVisualAppearance(associative)3E1.DifferenceofavgHSVcolorvalues3LocalShapeandGeometry(associative)2E2.Coplanarityandconvexity(Fig.2)2Geometriccontext(non-associative)6E3.Horizontaldistanceb/wcentroids.1E4.VerticalDisplacementb/wcentroids:(cizcjz)1E5.Anglebetweennormals(Dotproduct):ninj1E6.Diff.inanglewithvert.:cos1(niz)-cos1(njz)1E8.Dist.betweenclosestpoints:minusi,vsjd(u,v)(Fig.2)1E8.rel.positionfromcamera(infrontof/behind).(Fig.2)1Table1:Nodeandedgefeatures.locationaboveground,anditsshape.Somefeaturescapturespatiallocationofanobjectinthescene(e.g.,N9).Weconnecttwosegments(nodes)iandjbyanedgeifthereexistsapointinsegmentiandapointinsegmentjwhicharelessthancontextrangedistanceapart.Thiscapturestheclosestdistancebetweentwosegments(ascomparedtocentroiddistancebetweenthesegments)westudytheeffectofcontextrangemoreinSection4.Theedgefeaturest(i,j)(Table1-right)consistofassociativefeatures(E1-E2)basedonvisualappearanceandlocalshape,aswellasnon-associativefeatures(E3-E8)thatcapturethetendenciesoftwoobjectstooccurincertaincongurations.Notethatourfeaturesareinsensitivetohorizontaltranslationandrotationofthecamera.However,ourfeaturesplacealotofemphasisontheverticaldirectionbecausegravityinuencestheshapeandrelativepositionsofobjectstoalargeextent.ijcamrhidbidbjrhj3.2.1ComputingPredictionsSolvingtheargmaxinEq.(1)forthediscriminantfunctioninEq.(2)isNPhard.However,itsequivalentformulationasthefollowingmixed-integerprogramhasalinearrelaxationwithseveraldesirableproperties.y=argmaxymaxziVKk=1ykiwknn(i)+(i,j)ETtT(l,k)Ttzlkijwlktt(i,j)(3)i,j,l,k:zlkijyli,zlkijykj,yli+ykjzlkij+1,zlkij,yli{0,1}(4)Notethattheproductsyliykjhavebeenreplacedbyauxiliaryvariableszlkij.Relaxingthevariableszlkijandylitotheinterval[0,1]leadstoalinearprogramthatcanbeshowntoalwayshavehalf-integralsolutions(i.e.ylionlytakevalues{0,0.5,1}atthesolution)[10].Furthermore,thisrelaxationcanalsobesolvedasaquadraticpseudo-Booleanoptimizationproblemusingagraph-cutmethod[25],whichisordersofmagnitudefasterthanusingageneralpurposeLPsolver(i.e.,10secforlabelingatypicalsceneinourexperiments).Therefore,werefertothesolutionofthisrelaxationasycut.TherelaxationsolutionycuthasaninterestingpropertycalledPersistence[2,10].Persistencesaysthatanysegmentforwhichthevalueofyliisintegralinycut(i.e.doesnottakevalue0.5)islabeledjustlikeitwouldbeintheoptimalmixed-integersolution.5Nodefeaturesforsegmenti.DescriptionCountVisualAppearance48N1.HistogramofHSVcolorvalues14N2.AverageHSVcolorvalues3N3.AverageofHOGfeaturesoftheblocksinim-agespannedbythepointsofasegment31LocalShapeandGeometry8N4.linearness(i0-i1),planarness(i1-i2)2N5.Scatter:i01N6.Verticalcomponentofthenormal:niz1N7.Verticalpositionofcentroid:ciz1N8.Vert.andHor.extentofboundingbox2N9.Dist.fromthesceneboundary(Fig.2)1Edgefeaturesfor(segmenti,segmentj).DescriptionCountVisualAppearance(associative)3E1.DifferenceofavgHSVcolorvalues3LocalShapeandGeometry(associative)2E2.Coplanarityandconvexity(Fig.2)2Geometriccontext(non-associative)6E3.Horizontaldistanceb/wcentroids.1E4.VerticalDisplacementb/wcentroids:(cizcjz)1E5.Anglebetweennormals(Dotproduct):ninj1E6.Diff.inanglewithvert.:cos1(niz)-cos1(njz)1E8.Dist.betweenclosestpoints:minusi,vsjd(u,v)(Fig.2)1E8.rel.positionfromcamera(infrontof/behind).(Fig.2)1Table1:Nodeandedgefeatures.locationaboveground,anditsshape.Somefeaturescapturespatiallocationofanobjectinthescene(e.g.,N9).Weconnecttwosegments(nodes)iandjbyanedgeifthereexistsapointinsegmentiandapointinsegmentjwhicharelessthancontextrangedistanceapart.Thiscapturestheclosestdistancebetweentwosegments(ascomparedtocentroiddistancebetweenthesegments)westudytheeffectofcontextrangemoreinSection4.Theedgefeaturest(i,j)(Table1-right)consistofassociativefeatures(E1-E2)basedonvisualappearanceandlocalshape,aswellasnon-associativefeatures(E3-E8)thatcapturethetendenciesoftwoobjectstooccurincertaincongurations.Notethatourfeaturesareinsensitivetohorizontaltranslationandrotationofthecamera.However,ourfeaturesplacealotofemphasisontheverticaldirectionbecausegravityinuencestheshapeandrelativepositionsofobjectstoalargeextent.camrirjninj3.2.1ComputingPredictionsSolvingtheargmaxinEq.(1)forthediscriminantfunctioninEq.(2)isNPhard.However,itsequivalentformulationasthefollowingmixed-integerprogramhasalinearrelaxationwithseveraldesirableproperties.y=argmaxymaxziVKk=1ykiwknn(i)+(i,j)ETtT(l,k)Ttzlkijwlktt(i,j)(3)i,j,l,k:zlkijyli,zlkijykj,yli+ykjzlkij+1,zlkij,yli{0,1}(4)Notethattheproductsyliykjhavebeenreplacedbyauxiliaryvariableszlkij.Relaxingthevariableszlkijandylitotheinterval[0,1]leadstoalinearprogramthatcanbeshowntoalwayshavehalf-integralsolutions(i.e.ylionlytakevalues{0,0.5,1}atthesolution)[10].Furthermore,thisrelaxationcanalsobesolvedasaquadraticpseudo-Booleanoptimizationproblemusingagraph-cutmethod[25],whichisordersofmagnitudefasterthanusingageneralpurposeLPsolver(i.e.,10secforlabelingatypicalsceneinourexperiments).Therefore,werefertothesolutionofthisrelaxationasycut.TherelaxationsolutionycuthasaninterestingpropertycalledPersistence[2,10].Persistencesaysthatanysegmentforwhichthevalueofyliisintegralinycut(i.e.doesnottakevalue0.5)islabeledjustlikeitwouldbeintheoptimalmixed-integersolution.Sinceeverysegmentinourexperimentsisinexactlyoneclass,wealsoconsiderthelinearrelaxationfromabovewiththeadditionalconstrainti:Kj=1yji=1.Thisproblemcannolongerbesolvedviagraphcutsandisnothalf-integral.WerefertoitssolutionasyLP.ComputingyLPfora5Nodefeaturesforsegmenti.DescriptionCountVisualAppearance48N1.HistogramofHSVcolorvalues14N2.AverageHSVcolorvalues3N3.AverageofHOGfeaturesoftheblocksinim-agespannedbythepointsofasegment31LocalShapeandGeometry8N4.linearness(i0-i1),planarness(i1-i2)2N5.Scatter:i01N6.Verticalcomponentofthenormal:niz1N7.Verticalpositionofcentroid:ciz1N8.Vert.andHor.extentofboundingbox2N9.Dist.fromthesceneboundary(Fig.2)1Edgefeaturesfor(segmenti,segmentj).DescriptionCountVisualAppearance(associative)3E1.DifferenceofavgHSVcolorvalues3LocalShapeandGeometry(associative)2E2.Coplanarityandconvexity(Fig.2)2Geometriccontext(non-associative)6E3.Horizontaldistanceb/wcentroids.1E4.VerticalDisplacementb/wcentroids:(cizcjz)1E5.Anglebetweennormals(Dotproduct):ninj1E6.Diff.inanglewithvert.:cos1(niz)-cos1(njz)1E8.Dist.betweenclosestpoints:minusi,vsjd(u,v)(Fig.2)1E8.rel.positionfromcamera(infrontof/behind).(Fig.2)1Table1:Nodeandedgefeatures.locationaboveground,anditsshape.Somefeaturescapturespatiallocationofanobjectinthescene(e.g.,N9).Weconnecttwosegments(nodes)iandjbyanedgeifthereexistsapointinsegmentiandapointinsegmentjwhicharelessthancontextrangedistanceapart.Thiscapturestheclosestdistancebetweentwosegments(ascomparedtocentroiddistancebetweenthesegments)westudytheeffectofcontextrangemoreinSection4.Theedgefeaturest(i,j)(Table1-right)consistofassociativefeatures(E1-E2)basedonvisualappearanceandlocalshape,aswellasnon-associativefeatures(E3-E8)thatcapturethetendenciesoftwoobjectstooccurincertaincongurations.Notethatourfeaturesareinsensitivetohorizontaltranslationandrotationofthecamera.However,ourfeaturesplacealotofemphasisontheverticaldirectionbecausegravityinuencestheshapeandrelativepositionsofobjectstoalargeextent.idminijj3.2.1ComputingPredictionsSolvingtheargmaxinEq.(1)forthediscriminantfunctioninEq.(2)isNPhard.However,itsequivalentformulationasthefollowingmixed-integerprogramhasalinearrelaxationwithseveraldesirableproperties.y=argmaxymaxziVKk=1ykiwknn(i)+(i,j)ETtT(l,k)Ttzlkijwlktt(i,j)(3)i,j,l,k:zlkijyli,zlkijykj,yli+ykjzlkij+1,zlkij,yli{0,1}(4)Notethattheproductsyliykjhavebeenreplacedbyauxiliaryvariableszlkij.Relaxingthevariableszlkijandylitotheinterval[0,1]leadstoalinearprogramthatcanbeshowntoalwayshavehalf-integralsolutions(i.e.ylionlytakevalues{0,0.5,1}atthesolution)[10].Furthermore,thisrelaxationcanalsobesolvedasaquadraticpseudo-Booleanoptimizationproblemusingagraph-cutmethod[25],whichisordersofmagnitudefasterthanusingageneralpurposeLPsolver(i.e.,10secforlabelingatypicalsceneinourexperiments).Therefore,werefertothesolutionofthisrelaxationasycut.TherelaxationsolutionycuthasaninterestingpropertycalledPersistence[2,10].Persistencesaysthatanysegmentforwhichthevalueofyliisintegralinycut(i.e.doesnottakevalue0.5)islabeledjustlikeitwouldbeintheoptimalmixed-integersolution.Sinceeverysegmentinourexperimentsisinexactlyoneclass,wealsoconsiderthelinearrelaxationfromabovewiththeadditionalconstrainti:Kj=1yji=1.Thisproblemcannolongerbesolvedviagraphcutsandisnothalf-integral.WerefertoitssolutionasyLP.ComputingyLPforascenetakes11minutesonaverage4.Finally,wecanalsocomputetheexactmixedintegersolutionincludingtheadditionalconstrainti:Kj=1yji=1usingageneral-purposeMIPsolver4.Wesetatimelimitof30minutesfortheMIPsolver.Thistakes18minutesonaverageforascene.AllruntimesareforsingleCPUimplementationsusing17classes.4http://www.tnley.net/software/pyglpk/readme.html5Node features for segment i.
+
+Description
+Visual Appearance
+N1. Histogram of HSV color values
+N2. Average HSV color values
+N3. Average of HOG features of the blocks in im-
+age spanned by the points of a segment
+Local Shape and Geometry
+N4. linearness (i0 - i1), planarness (i1 - i2)
+N5. Scatter: i0
+N6. Vertical component of the normal: niz
+N7. Vertical position of centroid: ciz
+N8. Vert. and Hor. extent of bounding box
+N9. Dist. from the scene boundary (Fig. 2)
+
+Count
+
+48
+14
+3
+31
+
+8
+2
+1
+1
+1
+2
+1
+
+Edge features for (segment i, segment j).
+
+Description
+Visual Appearance (associative)
+E1. Difference of avg HSV color values
+Local Shape and Geometry (associative)
+E2. Coplanarity and convexity (Fig. 2)
+Geometric context (non-associative)
+E3. Horizontal distance b/w centroids.
+E4. Vertical Displacement b/w centroids: (ciz  cjz)
+E5. Angle between normals (Dot product): ni  nj
+E6. Diff. in angle with vert.: cos1(niz) - cos1(njz)
+E8.
+between
+points:
+minusi,vsj d(u, v) (Fig. 2)
+E8. rel. position from camera (in front of/behind). (Fig. 2)
+
+closest
+
+Dist.
+
+Count
+
+3
+3
+2
+2
+6
+1
+1
+1
+1
+1
+
+1
+
+Table 1: Node and edge features.
+
+location above ground, and its shape. Some features capture spatial location of an object in the scene
+(e.g., N9).
+We connect two segments (nodes) i and j by an edge if there exists a point in segment i and a point
+in segment j which are less than context range distance apart. This captures the closest distance
+between two segments (as compared to centroid distance between the segments)we study the
+effect of context range more in Section 4. The edge features t(i, j) (Table 1-right) consist of
+associative features (E1-E2) based on visual appearance and local shape, as well as non-associative
+features (E3-E8) that capture the tendencies of two objects to occur in certain congurations.
+Note that our features are insensitive to horizontal translation and rotation of the camera. However,
+our features place a lot of emphasis on the vertical direction because gravity inuences the shape
+and relative positions of objects to a large extent.
+3.2.1 Computing Predictions
+Solving the argmax in Eq. (1) for the discriminant function in Eq. (2) is NP hard. However, its
+equivalent formulation as the following mixed-integer program has a linear relaxation with several
+desirable properties.
+
+y
+
+yk
+
+(3)
+
+zlk
+
+ij(cid:2)wlk
+
+t
+
+zlk
+ij , yl
+
+y = argmax
+
+ t(i, j)(cid:3)
+
+max
+
+K(cid:88)k=1
+z (cid:88)iV
+ij  yl
+i, j, l, k : zlk
+i,
+j have been replaced by auxiliary variables zlk
+
+n  n(i)(cid:3) +(cid:88)(i,j)E (cid:88)TtT (cid:88)(l,k)Tt
+i (cid:2)wk
+zlk
+ij  yk
+j ,
+
+j  zlk
+
+yl
+i + yk
+
+ij + 1,
+
+iyk
+
+i  {0, 1}
+
+(4)
+ij . Relaxing the variables zlk
+Note that the products yl
+ij
+i to the interval [0, 1] leads to a linear program that can be shown to always have half-integral
+and yl
+solutions (i.e. yl
+i only take values {0, 0.5, 1} at the solution) [10]. Furthermore, this relaxation can
+also be solved as a quadratic pseudo-Boolean optimization problem using a graph-cut method [25],
+which is orders of magnitude faster than using a general purpose LP solver (i.e., 10 sec for labeling
+a typical scene in our experiments). Therefore, we refer to the solution of this relaxation as ycut.
+The relaxation solution ycut has an interesting property called Persistence [2, 10]. Persistence says
+that any segment for which the value of yl
+i is integral in ycut (i.e. does not take value 0.5) is labeled
+just like it would be in the optimal mixed-integer solution.
+Since every segment in our experiments is in exactly one class, we also consider the linear relaxation
+i = 1. This problem can no longer be solved
+via graph cuts and is not half-integral. We refer to its solution as yLP . Computing yLP for a
+scene takes 11 minutes on average4. Finally, we can also compute the exact mixed integer solution
+i = 1 using a general-purpose MIP solver4. We set
+a time limit of 30 minutes for the MIP solver. This takes 18 minutes on average for a scene. All
+runtimes are for single CPU implementations using 17 classes.
+When using this algorithm in practice on new scenes (e.g., during our robotic experiments), objects
+other than the 27 objects we modeled might be present (e.g., coffee-mugs). So we relax the constraint
+i  1. This increases precision greatly at the cost of some drop in
+
+from above with the additional constraint i :(cid:80)K
+including the additional constraint i :(cid:80)K
+
+recall. Also, this relaxed MIP takes lesser time to solve.
+3.2.2 Learning Algorithm
+We take a large-margin approach to learning the parameter vector w of Eq. (2) from labeled training
+examples (x1, y1), ..., (xn, yn) [31, 32, 34]. Compared to Conditional Random Field training [17]
+
+i = 1 to i :(cid:80)K
+
+i :(cid:80)K
+
+j=1 yj
+
+j=1 yj
+
+j=1 yj
+
+j=1 yj
+
+4http://www.tnley.net/software/pyglpk/readme.html
+
+5
+
+using maximum likelihood, this has the advantage that the partition function normalizing Eq. (2)
+does not need to be computed, and that the training problem can be formulated as a convex program
+for which efcient algorithms exist.
+Our method optimizes a regularized upper bound on the training error
+
+R(h) =
+
+1
+n
+
+n(cid:88)j=1
+
+(yj, yj),
+
+(5)
+
+n(cid:88)i=1
+
+where yj is the optimal solution of Eq. (1) and (y, y) = (cid:80)N
+
+i  yk
+i |. To simplify
+notation, note that Eq. (3) can be equivalently written as wT (x, y) by appropriately stacking the
+ij is consistent with
+wk
+Eq. (4) given y. Training can then be formulated as the following convex quadratic program [15]:
+
+i=1(cid:80)K
+
+k=1 |yk
+
+n and wlk
+t
+
+into w and the yk
+
+i n(k) and zlk
+
+ij t(l, k) into (x, y), where each zlk
+
+min
+w,
+
+s.t.
+
+1
+2
+
+wT w + C
+
+y1, ..., yn  {0, 0.5, 1}NK :
+
+1
+n
+
+wT
+
+(6)
+
+[(xi, yi)  (xi, yi)]  (yi, yi)  
+
+While the number of constraints in this quadratic program is exponential in n, N, and K, it can
+nevertheless be solved efciently using the cutting-plane algorithm for training structural SVMs
+[15]. The algorithm maintains a working set of constraints, and it can be shown to provide an -
+accurate solution after adding at most O(R2C/) constraints (ignoring log terms). The algorithm
+merely need access to an efcient method for computing
+
+yi = argmax
+
+y{0,0.5,1}NK(cid:2)wT (xi, y) + (yi, y)(cid:3) .
+
+(7)
+
+Due to the structure of (., .), this problem is identical to the relaxed prediction problem in Eqs. (3)-
+(4) and can be solved efciently using graph cuts.
+Since our training problem is an overgenerating formulation as dened in [7], the value of  at the
+solution is an upper bound on the training error in Eq. (5). Furthermore, [7] observed empirically
+that the relaxed prediction ycut after training w via Eq. (6) is typically largely integral, meaning
+that most labels yk
+i of the relaxed solution are the same as the optimal mixed-integer solution due to
+persistence. We made the same observation in our experiments as well.
+4 Experiments
+4.1 Data
+We consider labeling object segments in full 3D scene (as compared to 2.5D data from a single
+view). For this purpose, we collected data of 24 ofce and 28 home scenes (composed from about
+550 views). Each scene was reconstructed from about 8-9 RGB-D views from a Kinect sensor and
+contains about one million colored points.
+We rst over-segment the 3D scene (as described earlier) to obtain the atomic units of our rep-
+resentation. For training, we manually labeled the segments, and we selected the labels which
+were present in a minimum of 5 scenes in the dataset. Specically, the ofce labels are: {wall,
+oor, tableTop, tableDrawer, tableLeg, chairBackRest, chairBase, chairBack, monitor, printerFront,
+printerSide keyboard, cpuTop, cpuFront, cpuSide, book, paper }, and the home labels are: {wall,
+oor, tableTop, tableDrawer, tableLeg, chairBackRest, chairBase, sofaBase, sofaArm, sofaBack-
+Rest, bed, bedSide, quilt, pillow, shelfRack, laptop, book }. This gave us a total of 1108 labeled
+segments in the ofce scenes and 1387 segments in the home scenes. Often one object may be di-
+vided into multiple segments because of over-segmentation. We have made this data available at:
+http://pr.cs.cornell.edu/sceneunderstanding/data/data.php.
+4.2 Results
+Table 2 shows the results, performed using 4-fold cross-validation and averaging performance across
+the folds for the models trained separately on home and ofce datasets. We use both the macro and
+micro averaging to aggregate precision and recall over various classes. Since our algorithm can
+only predict one label for each segment, micro precision and recall are same as the percentage of
+correctly classied segments. Macro precision and recall are respectively the averages of precision
+and recall for all classes. The optimal C value is determined separately for each of the algorithms
+by cross-validation.
+Figure 1 shows the original point cloud, ground-truth and predicted labels for one ofce (top) and
+one home scene (bottom). We see that on majority of the classes we are able to predict the correct
+
+6
+
+Table 2: Learning experiment statistics. The table shows average micro precision/recall, and average macro
+precision and recall for home and ofce scenes.
+
+Home Scenes
+
+macro
+
+micro
+P/R Precision Recall
+29.38
+5.88
+14.50
+38.00
+36.52
+56.25
+34.73
+56.50
+43.62
+69.13
+62.50
+38.34
+53.62
+72.38
+73.38
+54.80
+
+29.38
+15.03
+35.90
+37.18
+47.84
+44.65
+57.82
+56.81
+
+features
+None
+Image Only
+Shape Only
+Image+Shape
+Image+Shape & context
+Image+Shape & context
+Image+Shape & context
+Image+Shape & context
+
+algorithm
+max class
+svm node only
+svm node only
+svm node only
+single frames
+svm mrf assoc
+svm mrf nonassoc
+svm mrf parsimon
+
+Ofce Scenes
+
+macro
+
+micro
+P/R Precision Recall
+26.23
+5.88
+31.67
+46.67
+60.88
+75.36
+66.23
+77.97
+68.12
+84.32
+75.94
+61.79
+70.07
+81.45
+84.06
+72.64
+
+26.23
+35.73
+64.56
+69.44
+77.84
+63.89
+76.79
+80.52
+
+label. It makes mistakes in some cases and these usually tend to be reasonable, such as a pillow
+getting confused with the bed, and table-top getting confused with the shelf-rack.
+One of our goals is to study the effect of various factors, and therefore we compared different
+versions of the algorithms with various settings. We discuss them in the following.
+Do Image and Point-Cloud Features Capture Complimentary Information? The RGB-D data
+contains both image and depth information, and enables us to compute a wide variety of features.
+In this experiment, we compare the two kinds of features: Image (RGB) and Shape (Point Cloud)
+features. To show the effect of the features independent of the effect of context, we only use the
+node potentials from our model, referred to as svm node only in Table 2. The svm node only model
+is equivalent to the multi-class SVM formulation [15]. Table 2 shows that Shape features are more
+effective compared to the Image, and the combination works better on both precision and recall.
+This indicates that the two types of features offer complementary information and their combination
+is better for our classication task.
+How Important is Context? Using our svm mrf parsimon model as described in Section 3.1,
+we show signicant improvements in the performance over using svm node only model on both
+datasets.
+In ofce scenes, the micro precision increased by 6.09% over the best svm node only
+model that does not use any context. In home scenes the increase is much higher, 16.88%.
+The type of contextual relations we capture depend on the type of edge potentials we model. To
+study this, we compared our method with models using only associative or only non-associative
+edge potentials referred to as svm mrf assoc and svm mrf nonassoc respectively. We observed that
+modeling all edge features using associative potentials is poor compared to our full model. In fact,
+using only associative potentials showed a drop in performance compared to svm node only model
+on the ofce dataset. This indicates it is important to capture the relations between regions having
+different labels. Our svm mrf nonassoc model does so, by modeling all edge features using non-
+associative potentials, which can favor or disfavor labels of different classes for nearby segments. It
+gives higher precision and recall compared to svm node only and svm mrf assoc. This shows that
+modeling using non-associative potentials is a better choice for our labeling problem.
+However, not all the edge features are non-associative in nature, modeling them using only non-
+associative potentials could be an overkill (each non-associative feature adds K 2 more parameters
+to be learnt). Therefore using our svm mrf parsimon model to model these relations achieves higher
+performance in both datasets.
+How Large should the Context Range be? Context rela-
+tionships of different objects can be meaningful for different
+spatial distances. This range may vary depending on the en-
+vironment as well. For example, in an ofce, keyboard and
+monitor go together, but they may have little relation with a
+sofa that is slightly farther away. In a house, sofa and table
+may go together even if they are farther away.
+In order to study this, we compared our svm mrf parsimon
+with varying context range for determining the neighborhood
+(see Figure 3 for average micro precision vs range plot). Note
+that the context range is determined from the boundary of one
+segment to the boundary of the other, and hence it is somewhat independent of the size of the object.
+We note that increasing the context range increases the performance to some level, and then it drops
+slightly. We attribute this to the fact that increasing the context range can connect irrelevant objects
+
+Figure 3: Effect of context range on
+precision (=recall here).
+
+7
+
+with an edge, and with limited training data, spurious relationships may be learned. We observe that
+the optimal context range for ofce scenes is around 0.3 meters and 0.6 meters for home scenes.
+How does a Full 3D Model Compare to a 2.5D Model? In Table 2, we compare the performance of
+our full model with a model that was trained and tested on single views of the same scenes. During
+the comparison, the training folds were consistent with other experiments, however the segmentation
+of the point clouds was different (because each point cloud is from a single view). This makes the
+micro precision values meaningless because the distribution of labels is not same for the two cases.
+In particular, many large object in scenes (e.g., wall, ground) get split up into multiple segments in
+single views. We observed that the macro precision and recall are higher when multiple views are
+combined to form the scene. We attribute the improvement in macro precision and recall to the fact
+that larger scenes have more context, and models are more complete because of multiple views.
+What is the effect of the inference method? The results for svm mrf algorithms Table 2 were
+generated using the MIP solver. We observed that the MIP solver is typically 2-3% more accurate
+than the LP solver. The graph-cut algorithm however, gives a higher precision and lower recall on
+both datasets. For example, on ofce data, the graphcut inference for our svm mrf parsimon gave
+a micro precision of 90.25 and micro recall of 61.74. Here, the micro precision and recall are not
+same as some of the segments might not get any label. Since it is orders of magnitude faster, it is
+ideal for realtime robotic applications.
+4.3 Robotic experiments
+The ability to label segments is very useful for robotics
+applications, for example, in detecting objects (so that
+a robot can nd/retrieve an object on request) or for
+other robotic tasks. We therefore performed two relevant
+robotic experiments.
+Attribute Learning:
+In some robotic tasks, such as
+robotic grasping, it is not important to know the exact
+object category, but just knowing a few attributes of an
+object may be useful. For example, if a robot has to clean
+a oor, it would help if it knows which objects it can move
+and which it cannot. If it has to place an object, it should
+place them on horizontal surfaces, preferably where hu-
+mans do not sit. With this motivation we have designed 8 attributes, each for the home and ofce
+scenes, giving a total of 10 unique attributes in total, comprised of: wall, oor, at-horizontal-
+surfaces, furniture, fabric, heavy, seating-areas, small-objects, table-top-objects, electronics. Note
+that each segment in the point cloud can have multiple attributes and therefore we can learn these
+attributes using our model which naturally allows multiple labels per segment. We compute the
+precision and recall over the attributes by counting how many attributes were correctly inferred. In
+home scenes we obtained a precision of 83.12% and 70.03% recall, and in the ofce scenes we
+obtain 87.92% precision and 71.93% recall.
+Object Detection: We nally use our algorithm on two mobile robots, mounted with Kinects, for
+completing the goal of nding objects such as a keyboard in cluttered ofce scenes. The following
+video shows our robot successfully nding a keyboard in an ofce: http://pr.cs.cornell.
+edu/sceneunderstanding/
+
+Figure 4: Cornells POLAR robot using our
+classier for detecting a keyboard in a clut-
+tered room.
+
+In conclusion, we have proposed and evaluated the rst model and learning algorithm for scene un-
+derstanding that exploits rich relational information from the full-scene 3D point cloud. We applied
+this technique to object labeling problem, and studied affects of various factors on a large dataset.
+Our robotic application shows that such inexpensive RGB-D sensors can be extremely useful for
+scene understanding for robots. This research was funded in part by NSF Award IIS-0713483.
+

@@ -1,0 +1,858 @@
+Abstract
+
+A great deal of research has focused on al-
+gorithms for learning features from unla-
+beled data. Indeed, much progress has been
+made on benchmark datasets like NORB and
+CIFAR by employing increasingly complex
+unsupervised learning algorithms and deep
+models. In this paper, however, we show that
+several simple factors, such as the number of
+hidden nodes in the model, may be more im-
+portant to achieving high performance than
+the learning algorithm or the depth of the
+model. Specically, we will apply several o-
+the-shelf feature learning algorithms (sparse
+auto-encoders, sparse RBMs, K-means clus-
+tering, and Gaussian mixtures) to CIFAR,
+NORB, and STL datasets using only single-
+layer networks. We then present a detailed
+analysis of the eect of changes in the model
+setup: the receptive eld size, number of hid-
+den nodes (features), the step-size (stride)
+between extracted features, and the eect
+of whitening. Our results show that large
+numbers of hidden nodes and dense fea-
+ture extraction are critical to achieving high
+performanceso critical, in fact, that when
+these parameters are pushed to their limits,
+we achieve state-of-the-art performance on
+both CIFAR-10 and NORB using only a sin-
+gle layer of features. More surprisingly, our
+best performance is based on K-means clus-
+tering, which is extremely fast, has no hyper-
+parameters to tune beyond the model struc-
+ture itself, and is very easy to implement. De-
+spite the simplicity of our system, we achieve
+accuracy beyond all previously published re-
+sults on the CIFAR-10 and NORB datasets
+(79.6% and 97.2% respectively).
+
+Appearing in Proceedings of the 14th International Con-
+ference on Articial Intelligence and Statistics (AISTATS)
+2011, Fort Lauderdale, FL, USA. Volume 15 of JMLR:
+W&CP 15. Copyright 2011 by the authors.
+
+Introduction
+
+1
+Much recent work in machine learning has focused on
+learning good feature representations from unlabeled
+input data for higher-level tasks such as classication.
+Current solutions typically learn multi-level represen-
+tations by greedily pre-training several layers of fea-
+tures, one layer at a time, using an unsupervised learn-
+ing algorithm [11, 8, 18]. For each of these layers a
+number of design parameters are chosen: the number
+of features to learn, the locations where these features
+will be computed, and how to encode the inputs and
+outputs of the system. In this paper we study the ef-
+fect of these choices on single-layer networks trained by
+several feature learning methods. Our results demon-
+strate that several key ingredients, orthogonal to the
+learning algorithm itself, can have a large impact on
+performance: whitening,
+large numbers of features,
+and dense feature extraction can all be major advan-
+tages. Even with very simple algorithms and a sin-
+gle layer of features, it is possible to achieve state-of-
+the-art performance by focusing eort on these choices
+rather than on the learning system itself.
+A major drawback of many feature learning systems
+is their complexity and expense.
+In addition, many
+algorithms require careful selection of multiple hyper-
+parameters like learning rates, momentum, sparsity
+penalties, weight decay, and so on that must be cho-
+sen through cross-validation, thus increasing running
+times dramatically. Though it is true that recently in-
+troduced algorithms have consistently shown improve-
+ments on benchmark datasets like NORB [16] and
+CIFAR-10 [13], there are several other factors that af-
+fect the nal performance of a feature learning sys-
+tem. Specically, there are many meta-parameters
+dening the network architecture, such as the recep-
+tive eld size and number of hidden nodes (features).
+In practice, these parameters are often determined by
+computational constraints. For instance, we might use
+the largest number of features possible considering the
+running time of the algorithm.
+In this paper, how-
+ever, we pursue an alternative strategy: we employ
+very simple learning algorithms and then more care-
+
+215An Analysis of Single-Layer Networks in Unsupervised Feature Learning
+
+fully choose the network parameters in search of higher
+performance.
+If (as is often the case) larger repre-
+sentations perform better, then we can leverage the
+speed and simplicity of these learning algorithms to
+use larger representations.
+To this end, we will begin in Section 3 by describing
+a simple feature learning framework that incorporates
+an unsupervised learning algorithm as a black box
+module within. For this black box, we have im-
+plemented several o-the-shelf unsupervised learning
+algorithms: sparse auto-encoders, sparse RBMs, K-
+means clustering, and Gaussian mixture models. We
+then analyze the performance impact of several dif-
+ferent elements in the feature learning framework, in-
+cluding: (i) whitening, which is a common pre-process
+in deep learning work, (ii) number of features trained,
+(iii) step-size (stride) between extracted features, and
+(iv) receptive eld size.
+It will turn out that whitening, large numbers of fea-
+tures, and small stride lead to uniformly better perfor-
+mance regardless of the choice of unsupervised learning
+algorithm. On the one hand, these results are some-
+what unsurprising. For instance, it is widely held that
+highly over-complete feature representations tend to
+give better performance than smaller-sized represen-
+tations [32], and similarly with small strides between
+features [21]. However, the main contribution of our
+work is demonstrating that these considerations may,
+in fact, be critical to the success of feature learning
+algorithmspotentially more important even than the
+choice of unsupervised learning algorithm. Indeed, it
+will be shown that when we push these parameters to
+their limits that we can achieve state-of-the-art perfor-
+mance, outperforming many other more complex algo-
+rithms on the same task. Quite surprisingly, our best
+results are achieved using K-means clustering, an algo-
+rithm that has been used extensively in computer vi-
+sion, but that has not been widely adopted for deep
+feature learning. Specically, we achieve the test accu-
+racies of 79.6% on CIFAR-10 and 97.2% on NORB
+better than all previously published results.
+We will start by reviewing related work on feature
+learning, then move on to describe a general feature
+learning framework that we will use for evaluation in
+Section 3. We then present experimental analysis and
+results on CIFAR-10 [13] as well as NORB [16] in Sec-
+tion 4.
+
+2 Related work
+
+Since the introduction of unsupervised pre-training [8],
+many new schemes for stacking layers of
+features
+to build deep representations have been proposed.
+Most have focused on creating new training algo-
+rithms to build single-layer models that are composed
+to build deeper structures. Among the algorithms
+
+considered in the literature are sparse-coding [22, 17,
+32], RBMs [8, 13], sparse RBMs [18], sparse auto-
+encoders [7, 25], denoising auto-encoders [30], fac-
+tored [24] and mean-covariance [23] RBMs, as well as
+many others [19, 33]. Thus, amongst the many com-
+ponents of feature learning architectures, the unsuper-
+vised learning module appears to be the most heavily
+scrutinized.
+Some work, however, has considered the impact of
+other choices in these feature learning systems, es-
+pecially the choice of network architecture.
+Jarret
+et al. [11], for instance, have considered the impact
+of changes to the pooling strategies frequently em-
+ployed between layers of features, as well as dierent
+forms of normalization and rectication between lay-
+ers. Similarly, Boureau et al. have considered the im-
+pact of coding strategies and dierent types of pooling,
+both in practice [3] and in theory [4]. Our work fol-
+lows in this vein, but considers instead the structure of
+single-layer networksbefore pooling, and orthogonal
+to the choice of algorithm or coding scheme.
+Many common threads from the computer vision lit-
+erature also relate to our work and to feature learning
+more broadly. For instance, we will use the K-means
+clustering algorithm as an alternative unsupervised
+learning module. K-means has been used less widely
+in deep learning work but has enjoyed wide adoption
+in computer vision for building codebooks of visual
+words [5, 6, 15, 31], which are used to dene higher-
+level image features. This method has also been ap-
+plied recursively to build multiple layers of features [1].
+The eects of pooling and choice of activation func-
+tion or coding scheme have similarly been studied for
+these models [15, 28, 21]. Van Gemert et al., for in-
+stance, demonstrate that soft activation functions
+(kernels) tend to work better than the hard assign-
+ment typically used with visual words models.
+This paper will compare results along some of the same
+axes as these prior works (e.g., we will consider both
+hard and soft activation functions), but our conclu-
+sions dier somewhat: While we conrm that some
+feature-learning schemes are better than others, we
+also show that the dierences can often be outweighed
+by other factors, such as the number of features. Thus,
+even though more complex learning schemes may im-
+prove performance slightly, these advantages can be
+overcome by fast, simple learning algorithms that are
+able to handle larger networks.
+
+3 Unsupervised feature learning
+
+framework
+
+In this section, we describe a common framework used
+for feature learning. For concreteness, we will focus
+on the application of these algorithms to learning fea-
+tures from images, though our approach is applicable
+
+216Adam Coates, Honglak Lee, Andrew Y. Ng
+
+to other forms of data as well. The framework we use
+involves several stages and is similar to those employed
+in computer vision [5, 15, 31, 28, 1], as well as other
+feature learning work [16, 19, 3].
+At a high-level, our system performs the following
+steps to learn a feature representation:
+
+1. Extract random patches from unlabeled training
+
+images.
+
+2. Apply a pre-processing stage to the patches.
+
+3. Learn a feature-mapping using an unsupervised
+
+learning algorithm.
+
+Given the learned feature mapping and a set of labeled
+training images we can then perform feature extraction
+and classication:
+
+1. Extract features from equally spaced sub-patches
+
+covering the input image.
+
+2. Pool features together over regions of the input
+
+image to reduce the number of feature values.
+
+3. Train a linear classier to predict the labels given
+
+the feature vectors.
+
+We will now describe the components of this pipeline
+and its parameters in more detail.
+
+3.1 Feature Learning
+As mentioned above, the system begins by extract-
+ing random sub-patches from unlabeled input images.
+Each patch has dimension w-by-w and has d channels,1
+with w referred to as the receptive eld size. Each
+w-by-w patch can be represented as a vector in RN of
+pixel intensity values, with N = w  w  d. We then
+construct a dataset of m randomly sampled patches,
+X = {x(1), ..., x(m)}, where x(i)  RN . Given this
+dataset, we apply the pre-processing and unsupervised
+learning steps.
+
+3.1.1 Pre-processing
+
+It is common practice to perform several simple nor-
+malization steps before attempting to generate fea-
+tures from data. In this work, we assume that every
+patch x(i) is normalized by subtracting the mean and
+dividing by the standard deviation of its elements. For
+visual data, this corresponds to local brightness and
+contrast normalization.
+After normalizing each input vector, the entire dataset
+X may optionally be whitened [10]. While this process
+
+1For example,
+
+if the input image is represented in
+
+(R,G,B) colors, then it has three channels.
+
+is commonly used in deep learning work (e.g., [24]) it is
+less frequently employed in computer vision. We will
+present experimental results obtained both with and
+without whitening to determine whether this compo-
+nent is generally necessary.
+
+3.1.2 Unsupervised learning
+
+After pre-processing, an unsupervised learning algo-
+rithm is used to discover features from the unlabeled
+data. For our purposes, we will view an unsupervised
+learning algorithm as a black box that takes the
+dataset X and outputs a function f : RN  RK that
+maps an input vector x(i) to a new feature vector of
+K features, where K is a parameter of the algorithm.
+We denote the kth feature as fk. In this work, we will
+use several dierent unsupervised learning methods2 in
+this role: (i) sparse auto-encoders, (ii) sparse RBMs,
+(iii) K-means clustering, and (iv) Gaussian mixtures.
+We briey summarize how these algorithms are em-
+ployed in our system.
+
+1. Sparse auto-encoder: We train an auto-
+encoder with K hidden nodes using back-
+propagation to minimize squared reconstruction
+error with an additional penalty term that en-
+courages the units to maintain a low average ac-
+tivation [18, 7]. The algorithm outputs weights
+W  RKN and biases b  RK such that the
+feature mapping f is dened by:
+
+f(x) = g(W x + b),
+
+(1)
+where g(z) = 1/(1 + exp(z)) is the logistic
+sigmoid function, applied component-wise to the
+vector z.
+There are several hyper-parameters used by the
+training algorithm (e.g., weight decay, and target
+activation). These parameters were chosen using
+cross-validation for each choice of the receptive
+eld size, w.3
+
+2. Sparse restricted Boltzmann machine: The
+restricted Boltzmann machine (RBM) is an undi-
+rected graphical model with K binary hidden
+variables. Sparse RBMs can be trained using
+the contrastive divergence approximation [9] with
+the same type of sparsity penalty as the auto-
+encoders. The training also produces weights
+
+2These algorithms were chosen since they can scale up
+straight-forwardly to the problem sizes considered in our
+experiments.
+
+3Ideally, we would perform this cross-validation for ev-
+ery choice of parameters, but the expense is prohibitive for
+the number of experiments we perform here. This is a ma-
+jor advantage of the K-means algorithm, which requires no
+such procedure.
+
+217An Analysis of Single-Layer Networks in Unsupervised Feature Learning
+
+W and biases b, and we can use the same fea-
+ture mapping as the auto-encoder (as in Equa-
+tion (1))thus, these algorithms dier primarily
+in their training method. Also as above, the nec-
+essary hyper-parameters are determined by cross-
+validation for each receptive eld size.
+
+3. K-means clustering: We apply K-means clus-
+tering to learn K centroids c(k) from the input
+data. Given the learned centroids c(k), we con-
+sider two choices for the feature mapping f. The
+rst is the standard 1-of-K, hard-assignment cod-
+ing scheme:
+
+fk(x) =
+
+1 if k = arg minj ||c(j)  x||2
+0 otherwise.
+
+2
+
+(2)
+
+(
+
+This is a (maximally) sparse representation that
+has been used frequently in computer vision [5].
+It has been noted, however, that this may be too
+terse [28]. Thus our second choice of feature map-
+ping is a non-linear mapping that attempts to be
+softer than the above encoding while also keep-
+ing some sparsity:
+
+fk(x) = max{0, (z)  zk}
+
+(3)
+where zk = ||xc(k)||2 and (z) is the mean of the
+elements of z. This activation function outputs
+0 for any feature fk where the distance to the
+centroid c(k) is above average. In practice, this
+means that roughly half of the features will be set
+to 0. This can be thought of as a very simple form
+of competition between features.
+We refer to these in our results as K-means
+(hard) and K-means (triangle) respectively.
+
+4. Gaussian mixtures: Gaussian mixture models
+(GMMs) represent the density of input data as a
+mixture of K Gaussian distributions and is widely
+used for clustering. GMMs can be trained using
+the Expectation-Maximization (EM) algorithm as
+in [1]. We run a single iteration of K-means to ini-
+tialize the mixture model.4 The feature mapping
+f maps each input to the posterior membership
+probabilities:
+
+fk(x) =
+
+1
+
+(cid:18)
+
+
+
+(2)d/2|k|1/2
+exp
+
+1
+2
+
+(x  c(k))>1
+
+(cid:19)
+k (x  c(k))
+
+where k is a diagonal covariance and k are the
+cluster prior probabilities learned by the EM al-
+gorithm.
+
+4When K-means is run to convergence we have found
+that the mixture model does not learn features substan-
+tially dierent from the K-means result.
+
+3.2 Feature Extraction and Classication
+The above steps, for a particular choice of unsuper-
+vised learning algorithm, yield a function f that trans-
+forms an input patch x  RN to a new representation
+y = f(x)  RK. Using this feature extractor, we now
+apply it to our (labeled) training images for classica-
+tion.
+
+3.2.1 Convolutional extraction
+Using the learned feature extractor f : RN  RK,
+given any w-by-w image patch, we can now compute
+a representation y  RK for that patch. We can thus
+dene a (single layer) representation of the entire im-
+age by applying the function f to many sub-patches.
+Specically, given an image of n-by-n pixels (with d
+channels), we dene a (n  w + 1)-by-(n  w + 1)
+representation (with K channels), by computing the
+representation y for each w-by-w subpatch of the
+input image. More formally, we will let y(ij) be the K-
+dimensional representation extracted from location i, j
+of the input image. For computational eciency, we
+may also step our w-by-w feature extractor across
+the image with some step-size (or stride) s greater
+than 1. This is illustrated in Figure 1.
+
+3.2.2 Classication
+
+Before classication,
+it is standard practice to re-
+duce the dimensionality of the image representation
+by pooling. For a stride of s = 1, our feature mapping
+produces a (nw +1)-by-(nw +1)-by-K representa-
+tion. We can reduce this by summing up over local re-
+gions of the y(ij)s extracted as above. This procedure
+is commonly used (in many variations) in computer
+vision [15] as well as deep feature learning [11].
+In our system, we use a very simple form of pooling.
+Specically, we split the y(ij)s into four equal-sized
+quadrants, and compute the sum of the y(ij)s in each.
+This yields a reduced (K-dimensional) representation
+of each quadrant, for a total of 4K features that we
+use for classication.
+Given these pooled (4K-dimensional) feature vectors
+for each training image and a label, we apply standard
+linear classication algorithms. In our experiments we
+use (L2) SVM classication. The regularization pa-
+rameter is determined by cross-validation.
+
+4 Experiments and Analysis
+The above framework includes a number of parameters
+that can be changed: (i) whether to use whitening
+or not, (ii) the number of features K, (iii) the stride
+s, and (iv) receptive eld size w. In this section, we
+present our experimental results on the impact of these
+parameters on performance. First, we will evaluate
+the eects of these parameters using cross-validation
+
+218Adam Coates, Honglak Lee, Andrew Y. Ng
+
+Figure 1: Illustration showing feature extraction using a w-by-w receptive eld and stride s. We rst extract
+w-by-w patches separated by s pixels each, then map them to K-dimensional feature vectors to form a new
+image representation. These vectors are then pooled over 4 quadrants of the image to form a feature vector for
+classication. (For clarity we have drawn the leftmost gure with a stride greater than w, but in practice the
+stride is almost always smaller than w.)
+
+on the CIFAR-10 training set. We will then report the
+results achieved on both CIFAR-10 and NORB test
+sets using each unsupervised learning algorithm and
+the parameter settings that our analysis suggests is
+best overall (i.e., in our nal results, we use the same
+settings for all algorithms).5
+Our basic testing procedure is as follows. For each un-
+supervised learning algorithm in Section 3.1.2, we will
+train a single-layer of features using either whitened
+data or raw data and a choice of the parameters K, s,
+and w. We then train a linear classier as described
+in Section 3.2.2, then test the classier on a holdout
+set (for our main analysis) or the test set (for our nal
+results).
+
+4.1 Visualization
+
+Before we present classication results, we rst show
+visualizations of the learned feature representations.
+The bases (or centroids) learned by sparse autoen-
+coders, sparse RBMs, K-means, and Gaussian mix-
+ture models are shown in Figure 2 for 8 pixel recep-
+tive elds.
+It is well-known that autoencoders and
+RBMs yield localized lters that resemble Gabor l-
+ters and we can see this in our results both when us-
+ing whitened data and, to a lesser extent, raw data.
+However, these visualizations also show that similar
+results can be achieved using clustering algorithms.
+In particular, while clustering raw data leads to cen-
+troids consistent with those in [6] and [29], we see that
+clustering whitened data yields sharply localized lters
+that are very similar to those learned by the other al-
+gorithms. Thus, it appears that such features are easy
+to learn with clustering methods (without any param-
+eter tweaking) as a result of whitening.
+
+5To clarify: The parameters used in our nal evaluation
+are those that achieved the best (average) cross-validation
+performance across all models: whitening, 1 pixel stride, 6
+pixel receptive eld, and 1600 features.
+
+Figure 3: Eect of whitening and number of bases (or
+centroids).
+
+4.2 Eect of whitening
+We now move on to our characterization of perfor-
+mance on various axes of parameters, starting with the
+eect of whitening6, which visibly changes the learned
+bases (or centroids) as seen in Figure 2. Figure 3 shows
+the performance for all of our algorithms as a function
+of the number of features (which we will discuss in the
+next section) both with and without whitening. These
+experiments used a stride of 1 pixel and 6 pixel recep-
+tive eld.
+For sparse autoencoders and RBMs, the eect of
+whitening is somewhat ambiguous. When using only
+100 features, there is a signicant benet of whiten-
+ing for sparse RBMs, but this advantage disappears
+with larger numbers of features. For the clustering
+algorithms, however, we see that whitening is a cru-
+cial pre-process since the clustering algorithms cannot
+handle the correlations in the data.7
+
+6In our experiments, we use Zero-phase whitening [2]
+7Our GMM implementation uses diagonal covariances
+
+2191002004008001200160050556065707580# FeaturesCrossValidation Accuracy (%)Performance for Raw and Whitened Inputs   kmeans (tri) raw kmeans (hard) raw gmm raw autoencoder raw rbm raw kmeans (tri) white kmeans (hard) white gmm white autoencoder white rbm white1002004008001200160050556065707580An Analysis of Single-Layer Networks in Unsupervised Feature Learning
+
+(a) K-means (with and without whitening)
+
+(b) GMM (with and without whitening)
+
+(c) Sparse Autoencoder (with and without whitening)
+
+(d) Sparse RBM (with and without whitening)
+
+Figure 2: Randomly selected bases (or centroids) trained on CIFAR-10 images using dierent learning algorithms.
+Best viewed in color.
+
+Figure 4: Eect of stride.
+
+Clustering algorithms have been applied successfully
+to raw pixel inputs in the past [6, 29] but these appli-
+cations did not use whitened input data. Our results
+suggest that improved performance might be obtained
+by incorporating whitening.
+
+4.3 Number of features
+Our experiments considered feature representations
+with 100, 200, 400, 800, 1200, and 1600 learned fea-
+tures.8 Figure 3 clearly shows the eect of increasing
+
+and K-means uses Euclidean distance.
+
+8We found that training Gaussian mixture models with
+more than 800 components was often dicult and always
+extremely slow. Thus we only ran this algorithm with up
+to 800 components.
+
+Figure 5: Eect of receptive eld size.
+
+the number of learned features: all algorithms gen-
+erally achieved higher performance by learning more
+features as expected.
+Surprisingly, K-means clustering coupled with the tri-
+angle activation function and whitening achieves the
+highest performance. This is particularly notable since
+K-means requires no tuning whatsoever, unlike the
+sparse auto-encoder and sparse RBMs which require
+us to choose several hyper-parameters for best results.
+
+4.4 Eect of stride
+
+The stride s used in our framework is the spacing
+between patches where feature values will be extracted
+(see Figure 1). Frequently, learning systems will use
+
+2201248404550556065707580Stride between extracted features (pixels)CrossValidation Accuracy (%)Performance vs. Feature Stride   kmeans (tri) kmeans (hard) autoencoder rbm404550556065707580681260626466687072747678Receptive field size (pixels)CrossValidation Accuracy (%)Performance vs. Receptive Field Size   kmeans (tri) kmeans (hard) autoencoder rbm60626466687072747678Adam Coates, Honglak Lee, Andrew Y. Ng
+
+a stride s > 1 because computing the feature map-
+ping is very expensive. For instance, sparse coding
+requires us to solve an optimization problem for each
+such patch, which may be prohibitive for a stride of 1.
+It is reasonable to ask, then, how much this compro-
+mise costs in terms of performance for the algorithms
+we consider (which all have the property that their
+feature mapping can be computed extremely quickly).
+In this experiment, we xed the number of features
+(1600) and receptive eld size (6 pixels), and vary the
+stride over 1, 2, 4, and 8 pixels. The results are shown
+in Figure 4. (We do not report results with GMMs,
+since training models of this size was impractical.)
+The plot shows a clear downward trend in performance
+with increasing step size as expected. However, the
+magnitude of the change is striking: for even a stride
+of s = 2, we suer a loss of 3% or more accuracy,
+and for s = 4 we lose at least 5%. These dierences
+can be signicant in comparison to the choice of algo-
+rithm. For instance, a sparse RBM with stride of 2
+performed comparably to the simple hard-assignment
+K-means scheme using a stride of 1one of the sim-
+plest possible algorithms we could have chosen for un-
+supervised learning (and certainly much simpler than
+a sparse RBM).
+
+4.5 Eect of receptive eld size
+
+Finally, we also evaluated the eect of receptive eld
+size. Given a scalable algorithm,
+its possible that
+leveraging it to learn larger receptive elds could al-
+low us to recognize more complex features that cover
+a larger region of the image. On the other hand, this
+increases the dimensionality of the space that the al-
+gorithm must cover and may require us to learn more
+features or use more data. As a result, given the same
+amount of data and using the same number of features,
+it is not clear whether this is a worthwhile investment.
+In this experiment, we tested receptive eld sizes of
+6, 8, and 12 pixels. For other parameters, we used
+whitening, stride of 1 pixel, and 1600 bases (or cen-
+troids).
+The summary results are shown in Figure 5. Overall,
+the 6 pixel receptive eld worked best. Meanwhile, 12
+pixel receptive elds were similar or worse than 6 or
+8 pixels. Thus, if we have computational resource to
+spare, our results suggest that it is better to spend it on
+reducing stride and expanding the number of learned
+features.
+Unfortunately, unlike for the other parameters, the re-
+ceptive eld size does appear to require cross valida-
+tion in order to make an informed choice. Our ex-
+periments do suggest, though, that even very small
+receptive elds can work well (with pooling) and are
+worth considering. This is especially important if re-
+ducing the input size allows us to use a smaller stride
+
+Table 1: Test recognition accuracy on CIFAR-10
+Algorithm
+Accuracy
+Raw pixels (reported in [13])
+3-Way Factored RBM (3 layers) [24]
+Mean-covariance RBM (3 layers) [23]
+Improved Local Coord. Coding [33]
+Conv. Deep Belief Net (2 layers) [14]
+Sparse auto-encoder
+Sparse RBM
+K-means (Hard)
+K-means (Triangle)
+K-means (Triangle, 4000 features)
+
+37.3%
+65.3%
+71.0%
+74.5%
+78.9%
+73.4%
+72.4%
+68.6%
+77.9%
+79.6%
+
+Table 2: Test recognition accuracy (and error) for
+NORB (normalized-uniform)
+
+Algorithm
+Conv. Neural Network [16]
+Deep Boltzmann Machine [26]
+Deep Belief Network [20]
+(Best result of [11])
+Deep neural network [27]
+Sparse auto-encoder
+Sparse RBM
+K-means (Hard)
+K-means (Triangle)
+K-means (Triangle, 4000 features)
+
+Accuracy (error)
+
+93.4% (6.6%)
+92.8% (7.2%)
+95.0% (5.0%)
+94.4% (5.6%)
+
+96.9% (3.1%)
+96.2% (3.8%)
+96.9% (3.1%)
+97.0% (3.0%)
+
+97.13% (2.87%)
+
+97.21% (2.79%)
+
+or more features which both have large positive impact
+on results.
+
+4.6 Final classication results
+
+We have shown that whitening, a stride of 1 pixel,
+a 6 pixel receptive eld, and a large number of fea-
+tures works best on average across all algorithms for
+CIFAR-10. Using these parameters we ran our full
+pipeline on the entire CIFAR-10 training set, trained
+a SVM classier and tested on the standard CIFAR-10
+test set. Our nal test results on the CIFAR-10 data
+set with these settings are reported in Table 1 along
+with results from other publications. Quite surpris-
+ingly, the K-means (triangle) algorithm attains very
+high performance (77.9%) with 1600 features. Based
+on this success, we sought to improve the results fur-
+ther simply by increasing the number of features to
+4000. Using these features, our test accuracy increased
+to 79.6%.
+Based on our analysis here, we have also run each of
+these algorithms on the NORB normalized uniform
+dataset. We use all of the same parameters as for
+CIFAR-10, including the 6 pixel receptive eld size.
+The results are summarized in Table 2. Here, all of
+the algorithms achieve very high performance. Again,
+K-means with the triangle activation achieves the
+highest performance. When using 4000 features as for
+
+221An Analysis of Single-Layer Networks in Unsupervised Feature Learning
+
+Table 3: Test recognition accuracy on STL-10
+Accuracy
+
+Algorithm
+Raw pixels
+K-means (Triangle 1600 features)
+
+31.8% (0.62%)
+51.5% (1.73%)
+
+CIFAR, we achieve 97.21% accuracy. We note, how-
+ever, that the other results are very similar regardless
+of the algorithm used. This suggests that the main
+source of performance here is from our choice of net-
+work structure, not from the particular choice of un-
+supervised learning algorithm.
+Finally, we also ran our system on the new STL-10
+dataset9. This dataset uses higher resolution (96x96)
+images, but allows many fewer training examples (100
+per class), while providing a large unlabeled train-
+ing setthus forcing algorithms to rely heavily on ac-
+quired prior knowledge of image statistics. We applied
+the same system as used for CIFAR on downsampled
+versions of the STL images (32x32 pixels).
+In this
+case, the performance is much lower than on the com-
+parable CIFAR dataset on account of the small la-
+beled datasets: 51.5% (1.73%) (compared to 31.8%
+(0.62%) for raw pixels). This suggests that the
+method proposed here is strongest when we have large
+labeled training sets as with NORB and CIFAR.
+
+5 Discussion
+Our results above may seem inexplicable considering
+the simplicity of the systemit is not clear, on rst
+inspection, exactly what in our experiments allows us
+to achieve such high performance compared to prior
+work. We believe that the main explanation for the
+performance gain is, in fact, our choice of network pa-
+rameters since almost all of the algorithms performed
+favorably relative to previous results.
+Each of the network parameters (feature count, stride
+and receptive eld size) weve tested potentially con-
+fers a signicant benet on performance. For instance,
+large numbers of features (regardless of how theyre
+trained) gives us many non-linear projections of the
+data. Unlike simple linear projections, which have lim-
+ited representational power, it is well-known that us-
+ing extremely large numbers of non-linear projections
+can make data closer to linearly separable and thus
+easier to classify. Hence, larger numbers of features
+may be uniformly benecial, regardless of the training
+algorithm.
+The dramatic impact of changes to the stride parame-
+ter may be partly explained by the work of Boureau [4].
+By setting the stride small, a larger number of sam-
+ples are incorporated into each pooling area which was
+shown both theoretically and empirically to improve
+results.
+It is also likely that high-frequency features
+
+9http://cs.stanford.edu/acoates/stl10
+
+(edges) are more accurately identied using a dense
+sampling.
+Finally, the receptive eld size, which we chose by
+cross-validation appears to be important as well.
+It
+appears that large receptive elds result in a space
+that is simply too large to cover eectively with a
+small number of nonlinear features. For instance, be-
+cause our features often include shifted copies of edges,
+increasing the receptive eld size also increases the
+amount of redundancy we can expect in our lters.
+This caveat might be ameliorated by training convo-
+lutionally [19, 16, 12]. Note that small receptive elds
+might also increase the number of samples used in
+pooling and thus have a small eect similar to using a
+smaller stride.
+
+6 Conclusion
+In this paper we have conducted extensive experiments
+on the CIFAR-10 dataset using multiple unsupervised
+feature learning algorithms to characterize the eect
+of various parameters on classication performance.
+While conrming the basic nding that more features
+and dense extraction are useful, we have shown more
+importantly that these elements can, in fact, be as im-
+portant as the unsupervised learning algorithm itself.
+Surprisingly, we have shown that even the K-means
+clustering algorithman extremely simple learning al-
+gorithm with no parameters to tuneis able to achieve
+state-of-the-art performance on both CIFAR-10 and
+NORB datasets when used with the network parame-
+ters that we have identied in this work. Weve also
+shown more generally that smaller stride and larger
+numbers of features yield monotonically improving
+performance, which suggests that while more complex
+algorithms may have greater representational power,
+simple but fast algorithms can be highly competitive.
+

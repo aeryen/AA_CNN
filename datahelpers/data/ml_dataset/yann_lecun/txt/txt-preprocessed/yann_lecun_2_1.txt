@@ -1,0 +1,1102 @@
+Abstract
+
+Several
+
+recently-proposed architectures
+
+for high-
+performance object recognition are composed of two main
+stages: a feature extraction stage that extracts locally-
+invariant
+feature vectors from regularly spaced image
+patches, and a somewhat generic supervised classier.
+The rst stage is often composed of three main modules:
+(1) a bank of lters (often oriented edge detectors); (2)
+a non-linear transform, such as a point-wise squashing
+functions, quantization, or normalization; (3) a spatial
+pooling operation which combines the outputs of similar
+lters over neighboring regions. We propose a method
+that automatically learns such feature extractors in an
+unsupervised fashion by simultaneously learning the lters
+and the pooling units that combine multiple lter outputs
+together. The method automatically generates topographic
+maps of similar lters that extract features of orientations,
+scales, and positions. These similar lters are pooled
+together, producing locally-invariant outputs. The learned
+feature descriptors give comparable results as SIFT on
+image recognition tasks for which SIFT is well suited, and
+better results than SIFT on tasks for which SIFT is less well
+suited.
+
+1. Introduction
+
+A crucially important component of every recognition
+system is the feature extractor. Much of the recent propos-
+als for object recognition systems are based on feature de-
+scriptors extracted from local patches placed at regularly-
+spaced grid-points on the image [13, 11, 25, 18, 22]. The
+most successful and most commonly-used descriptors such
+as SIFT and HoG [15, 3] are designed to be invariant (or ro-
+bust) to minor transformations of the input, such as transla-
+tions, rotations, and other afne transforms and distortions.
+The present paper proposes a new method to automatically
+learn locally-invariant feature descriptors from data in an
+unsupervised manner. While good descriptors have been
+devised for grayscale image recognition, the design of good
+
+1
+
+descriptors for other types of input data is a complex task.
+The ability to learn the features would allow us to auto-
+matically construct good descriptors for new image types
+(e.g. multispectral images, range images), and for other in-
+put modalities (e.g. audio, sonar).
+
+Most existing local descriptors are based on a simple ar-
+chitecture: the patch is convolved with a lter bank (often
+consisting of oriented edge detectors), the outputs of which
+are rectied and often normalized and quantized. Then, the
+outputs of each lter are spatially pooled using a simple ad-
+dition or a max operator, so as to build local bags of fea-
+tures. The pooling operation makes the descriptor robust to
+minor changes in the position of individual features. This
+architecture is somewhat similar (and inspired by) the most
+commonly accepted model of early areas of the mammalian
+primary visual cortex: simple cells detect oriented edges at
+various locations and scales (playing the same role as the
+lter bank). Highly-active simple cells inhibit other cells
+at neighboring locations and orientations (similarly to lo-
+cal normalization and/or quantization), while complex cells
+spatially pool the rectied outputs of complex cells, so as
+to create a local invariance to small shifts (like the pooling
+operation) [7, 25, 21]. The method proposed here simulta-
+neously learns the lters and the pooling function, so that
+lters that re on similar image patches end up in the same
+pool. As a result, similar patches will produce similar de-
+scriptors.
+
+The problem of learning low-level image features has
+become a topic of growing interest in recent years. Sev-
+eral authors have proposed unsupervised methods to learn
+image descriptors based on sparse/overcomplete decompo-
+sition [19, 14, 23], but none had explicit provision for local
+invariance. Supervised learning methods have long been
+used in conjunction with Convolutional Networks to learn
+low-level, locally invariant features that are tuned to the task
+at hand [12, 13], but these methods require large numbers
+of labeled samples. A number of different proposals have
+appeared for unsupervised learning of locally-invariant de-
+scriptors, which also use sparsity criteria [7, 20, 8, 22].
+
+Our aim is to learn the lter bank stage and the pooling
+
+978-1-4244-3991-1/09/$25.00 2009 IEEE
+
+1605
+
+stage simultaneously, in such a way the lters that belong to
+the same pool extract similar features. Rather than learning
+descriptors that are merely invariant to small shift (a prop-
+erty that can easily be built by hand), our goal is to learn
+descriptors that are also invariant to other types of transfor-
+mations, such as rotations and certain distortions. Our solu-
+tion is to pre-wire (before learning) which lters outputs are
+pooled together, and to let the underlying lters learn their
+coefcients. The main idea, inspired by [8], is to minimize
+a sparsity criterion on the pooling units. As a result, lters
+that are pooled together end up extracting similar features.
+Several authors have proposed methods to learn pooled
+features in the context of computational models of the mam-
+malian primary visual cortex. The idea relies on impos-
+ing sparsication criteria on small groups of lter out-
+puts [10, 6, 8], which can be related to the Group Lasso
+method for regularization [27]. When the lters that are
+pooled together are organized in a regular array (1D or 2D),
+the lters form topographic maps in which nearby lters ex-
+tract similar features [20, 7], with patterns similar to what
+is found in the visual cortex.
+
+To the best of our knowledge, the present work is the
+rst time a trainable topographically-organized feature map
+is used for extracting locally invariant image descriptors
+for image recognition. The following sections describe the
+training procedure, and compare the descriptors thereby ob-
+tained with a number of standard descriptors such as SIFT.
+The experiments compare recognition accuracies on Cal-
+tech 101, MNIST and Tiny Images datasets using various
+recognition architectures fed with various descriptors.
+
+2. Algorithm
+
+It is well established that sparse coding algorithms ap-
+plied to natural images learn basis functions that are lo-
+calized oriented edges and resemble the receptive elds
+of simple cells in area V1 of the mammalian visual cor-
+tex [19]. These methods produce feature representation that
+are sparse, but not invariant. If the input pattern is slightly
+distorted, the representation may change drastically. More-
+over, these features represent information about local tex-
+ture, and hence, are rather inefcient when used to pre-
+process whole images because they do not exploit the re-
+dundancy in adjacent image patches. Finally, most sparse
+coding algorithms [19, 14, 17, 24, 4] have found limited ap-
+plications in vision due to the high computational cost of
+the iterative optimization required to compute the feature
+descriptor.
+
+In this paper, we introduce an algorithm, named In-
+variant Predictive Sparse Decomposition (IPSD), that: (1)
+learns features that are invariant to small variations inherent
+in the data, and (2) produces more efcient representations
+because they can be compact and directly computed using
+a feed-forward function, without requiring the use of any
+
+iterative optimization procedure.
+
+2.1. Learning an Over(cid:173)complete Dictionary of Basis
+
+Functions
+
+Sparse coding algorithms represent an input signal x 
+Rm using a linear combination of basis functions that are
+columns of the dictionary matrix D  Rmn, using co-
+efcients z  Rn, with n > m. Since the linear system is
+under-determined, a sparsity constraint is added that prefers
+most of the coefcients to be zero for any given input. Many
+sparse coding algorithms have been proposed in the liter-
+ature and in this work we focus on the following convex
+formulation:
+
+L = min
+
+1
+2
+
+||x  Dz||2
+
+2 + Xi
+
+|zi|
+
+(1)
+
+This particular formulation has been extensively stud-
+ied [19, 4, 2, 14, 17, 24, 16, 9], and it has also been extended
+to the case when the dictionary D is learned, thus adapting
+to the statistics of the input. The basic idea is to minimize
+the same objective of Eqn. 1 alternatively over coefcients
+z for a given dictionary D, and then over D for a given set
+of z. Note that each column of D is required to be unit 2
+norm (or bounded norm) in order to avoid trivial solutions
+that are due to the ambiguity of the linear reconstruction
+(for instance, the objective can be decreased by respectively
+dividing and multiplying z and D by a constant factor).
+
+2.2. Modeling Invariant Representations
+
+Although the sparse coding algorithm outlined above can
+learn representations that are sparse, they are not invariant:
+a small change in the input signal x may result in a large
+change in the coefcients z [24]. We now describe how the
+sparsity term in Eqn. 1 can be modied to create coefcients
+that are invariant to perturbations in the input signal.
+
+The overall idea [8] is to arrange the zs into a 2D map
+(or some other topology) and then pool the squared coef-
+cients of z across overlapping windows. Then, the square of
+the the lter outputs within each sub-window are summed,
+and its square root is computed. More formally, let the
+map of z contain K overlapping neighborhoods Pi. Within
+each neighborhood i, we sum the squared coefcients zj
+(weighted by a xed Gaussian weighting function centered
+in the neighborhood) and then take the square root. This
+j , where wj are the
+Gaussian weights. The overall sparsity penalty is the sum
+i=1 vi. Figure 1(a) il-
+lustrates this scheme. Thus, the overall objective function is
+now:
+
+gives the activation vi = qPjPi
+of each neighborhoods activation:PK
+Xi=1sXjPi
+
+wjz 2
+j
+
+(2)
+
+wjz 2
+
+K
+
+LI =
+
+||x  Dz||2
+
+2 + 
+
+1
+2
+
+1606
+
+Overlapping
+
+Neighborhoods
+P1P1
+
+Pi
+
+vi =
+
+{
+
+Pi
+
+wj z 2
+j
+
+j  P i
+
+Overall Sparsity
+
+term:
+
+K
+
+ vi
+
+i=1
+
+Gaussian
+Window
+wj
+
+Map of
+
+z
+
+(a)
+
+K
+
+ vi
+
+i=1
+Sparsity
+
+||.||
+
+2
+
+2
+
+z
+
+F(x;W)
+
+Predictor
+
+Dz
+
+Dictionary
+
+x
+
+||.||2
+2
+
+PK
+
+(b)
+
+Figure 1. (a): The structure of the block-sparsity term which en-
+courages the basis functions in D to form a topographic map. See
+text for details. (b): Overall architecture of the loss function, as
+dened in Eqn. 4. In the generative model, we seek a feature vec-
+tor z that simultaneously approximate the input x via a dictionary
+of basis functions D and also minimize a sparsity term. Since per-
+forming the inference at run-time is slow, we train a prediction
+function F (x; W ) (dashed lines) that directly predicts the optimal
+z from the input x. At run-time we use only the prediction function
+to quickly compute z from x, from which the invariant features vi
+can computed.
+
+The modied sparsity term has a number of subtle effects
+on the nature of z that are not immediately obvious:
+
+ The square root in the sum over i encourages sparse
+activations across neighborhoods since a few large ac-
+tivations will have lower overall cost than many small
+ones.
+
+ Within each neighborhood i, the coefcients zj are en-
+couraged to be similar to one another due to the z 2
+j term
+(which prefers many small coefcients to a few large
+ones). This has the effect of encouraging similar basis
+functions in D to be spatially close in the 2D map.
+
+ As the neighborhoods overlap, these basis functions
+will smoothly vary across the map, so that the coef-
+cients zj in any given neighborhood i will be similar.
+
+ If the size of the pooling regions is reduced to a single
+z element, then the sparsity term is equivalent to that
+of Eqn. 1.
+
+The modied sparsity term means that by minimizing
+the loss function LI in Eqn. 2 with respect to both the co-
+efcients z and the dictionary D, the system learns a set of
+basis functions in D that are laid out in a topographic map
+on the 2D grid.
+
+Since the nearby basis functions in the topographic map
+are similar, the coefcients zj will be similar for a given in-
+put x. This also means that if this input is perturbed slightly
+then the pooled response within a given neighborhood will
+be minimally affected, since a decrease in the response of
+one lter will be offset by an increased response in a nearby
+one. Hence, we can obtain a locally robust representation
+
+by taking the pooled activations vi as features, rather than z
+as is traditionally done.
+
+Since invariant representations encode similar patterns
+with the same representation, they can be made more com-
+pact. Put another way, this means that the dimensionality
+of v can be made lower than the dimensionality of z with-
+out loss of useful information. This has the triple benet of
+requiring less computation to extract the features from an
+image, requiring less memory to store them, and requiring
+less computation to exploit them.
+
+The 2D map over z uses circular boundary conditions to
+ensure that the pooling wraps smoothly around at the edges
+of the map.
+
+2.3. Code Prediction
+
+The model proposed above is generative, thus at test-
+time for each input region x, we will have to perform infer-
+ence by minimizing the energy function LI of Eqn. 2 with
+respect to z. However, this will be impractically slow for
+real-time applications where we wish to extract thousands
+of descriptors per image. We therefore propose to train a
+non-linear regressor that directly maps input patches x into
+sparse representations z, from which the invariant features
+vi can easily be computed. At test-time we only need to
+present x to the regression function which operates in feed-
+forward fashion to produce z. No iterative optimization is
+needed.
+
+For
+
+the
+
+regressor, we
+
+consider
+
+the
+
+following
+
+parametrized function:
+
+F (x; W ) = F (x; g, M, b) = g tanh(M x + b)
+
+(3)
+
+where M  Rmn is a lter matrix, b  Rm is a vector
+of biases, tanh is the hyperbolic tangent non-linearity, and
+g  Rmm is a diagonal matrix of gain coefcients allow-
+ing the outputs of F to compensate for the scaling of the
+input and the limited range of the hyperbolic tangent non-
+linearity. For convenience, W is used to collectively denote
+the parameters of the predictor, W = {g, M, b}.
+
+During training, the goal is to make the prediction of the
+regressor, F (x; W ) as close as possible to the optimal set
+of coefcients: z = arg minz LI in Eqn. (2). This opti-
+mization can be carried out separately after the problem in
+Eqn. (2) has been solved. However, training becomes much
+faster by jointly optimizing the W and the set of basis func-
+tions D all together. This is achieved by adding another
+term to the loss function in Eqn. (2), which forces the rep-
+resentation z to be as close as possible to the feed-forward
+prediction F (x; W ):
+
+LIP = kx  Dzk2
+
+2 + 
+
+K
+
+Xi=1sXjPi
+
+wjz 2
+
+j + kz  F (x; W )k2
+
+2
+
+(4)
+
+1607
+
+The overall structure of this loss function is depicted in
+Fig. 1(b).
+
+2.4. Learning
+
+The goal of learning is to nd the optimal value of the ba-
+sis functions D, as well as the value of the parameters in the
+regressor W , thus minimizing LIP in Eqn. 4. Learning pro-
+ceeds by an on-line block coordinate gradient descent algo-
+rithm, alternating the following two steps for each training
+sample x.
+
+1. Keeping the parameters W and D constant, minimize
+LIP of Eqn. (4) with respect to z, starting from the
+initial value provided by the regressor F (x; W ).
+
+2. Using the optimal value of the coefcients z provided
+by the previous step, update the parameters W and D
+by one step of stochastic gradient descent. The update
+is: U  U   LIP
+U , where U collectively denotes
+{W, D} and  is the step size. The columns of D are
+then re-scaled to unit norm.
+
+We set  = 1 for all experiments. We found that training the
+set of basis functions D rst, then subsequently training the
+regressor, yields similar performance in terms of recogni-
+tion accuracy. However, when the regressor is trained after-
+wards, the approximate representation is usually less sparse
+and the overall training time is considerably longer.
+
+2.5. Evaluation
+
+Once the parameters are learned, computing the invariant
+representation v can be performed by a simple feed-forward
+propagation through the regressor F (x; W ), and then prop-
+
+agating z into v through vi = qPjPi
+
+j . Note that
+no reconstruction of x using the set of basis functions D
+is necessary any longer. An example of this feed forward
+recognition architecture is given in Fig. 6.
+
+wjz 2
+
+The addition of this feed-forward module for predicting
+z, and hence, v is crucial to speeding up the run-time per-
+formance, since no optimization needs to be run after train-
+ing. Experiments reported in a technical report on the non-
+invariant version of Predictive Sparse Decomposition [9]
+show that the z produced by this approximate representa-
+tion gives a slightly superior recognition accuracy to the z
+produced by optimizing of LI .
+
+Finally, other families of regressor functions were tested
+(using different kinds of thresholding non-linearities), but
+the one chosen here achieves similar performance while
+having the advantage of being very simple. In fact the l-
+ters M learned by the prediction function closely match the
+basis functions D used for reconstruction during training,
+having the same topographic layout.
+
+Figure 2. Topographic map of feature detectors learned from nat-
+ural image patches of size 12x12 pixels by optimizing LIP a in
+Eqn. 4. There are 400 lters that are organized in 6x6 neighbor-
+hoods. Adjacent neighborhoods overlap by 4 pixels both horizon-
+tally and vertically. Notice the smooth variation within a given
+neighborhood and also the circular boundary conditions.
+
+16
+
+12
+
+8
+
+4
+
+0.125
+
+0.25
+
+4
+
+8
+
+12
+
+16
+
+Figure 3. Analysis of learned lters by tting Gabor functions,
+each dot corresponding to a feature. Left: Center location of tted
+Gabor. Right: Polar map showing the joint distribution of orienta-
+tion (azimuthally) and frequency (radially) of Gabor t.
+
+3. Experiments
+
+In the following section, before exploring the properties
+of the invariant features obtained, we rst study the topo-
+graphic map produced by our training scheme. First, we
+make an empirical evaluation of the invariance achieved by
+these representations under translations and rotations of the
+input image. Second, we assess the discriminative power of
+these invariant representations on recognition tasks in three
+different domains: (i) generic object categories using the
+Caltech 101 dataset; (ii) generic object categories from a
+dataset of very low resolution images and (iii) classication
+
+1608
+
+Figure 4. Examples from the tiny images. We use grayscale images
+in our experiments.
+
+of handwriting digits using the MNIST dataset. In these ex-
+periments we compare IPSD s learned representations with
+the SIFT descriptor [15] that is considered a state-of-the-
+art descriptor in computer vision. Finally, we examine the
+computational cost of computing IPSD features on an im-
+age.
+
+3.1. Learning the Topographic Map
+
+Fig. 2 shows a typical topographic map learned by the
+proposed method from natural image patches. Each tile
+shows a lter in D corresponding to a particular zi. In the
+example shown, the input images are patches of size 12x12
+pixels, and there are 400 basis functions, and hence, 400
+units zi arranged in a 20x20 lattice. The neighborhoods
+over which the squared activities of zis are pooled are 6x6
+windows, and they overlap by 4 in both the vertical and the
+horizontal direction. The properties of these lters are ana-
+lyzed by tting Gabor functions and are shown in Fig. 3.
+
+By varying the way in which the neighborhoods are
+pooled, we can change the properties of the map. Larger
+neighborhoods make the lters in each pool increasingly
+similar. A larger overlap between windows makes the lters
+vary more smoothly across different pools. A large sparsity
+value  makes the feature detectors learn less localized pat-
+terns that look like those produced by k-means clustering
+because the input has to be reconstructed using a small num-
+ber of basis functions. On the other hand, a small sparsity
+value makes the feature detectors look like non-localized
+random lters because any random overcomplete basis set
+can produce good reconstructions (effectively, the rst term
+in the loss of Eqn. 4 dominates).
+
+The map in Fig. 2 has been produced with an intermedi-
+ate sparsity level of  = 3. The chosen parameter setting in-
+duces the learning algorithm to produce a smooth map with
+mostly localized edge detectors in different positions, ori-
+entations, and scales. These feature detectors are nicely or-
+ganized in such a way that neighboring units encode similar
+patterns. A unit vi, that connects to the sum of the squares of
+units zj in a pool is invariant because these units represent
+similar features, and small distortions applied to the input,
+while slightly changing the zjs within a pool, are likely to
+leave the corresponding vi unaffected.
+
+While the sparsity level, the size of the pooling windows
+and their overlap should be set by cross-validation, in prac-
+tice we found that their exact values do not signicantly
+
+rotation 0 degrees
+
+rotation 25 degrees
+
+1.5
+
+1
+
+0.5
+
+E
+S
+M
+
+d
+e
+z
+
+i
+l
+
+a
+m
+r
+o
+N
+
+0
+0
+
+4
+
+8
+
+12
+
+horizontal shift
+
+1.2
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+E
+S
+M
+
+d
+e
+z
+
+i
+l
+
+a
+m
+r
+o
+N
+
+
+
+SIFT non rot. inv.
+SIFT
+Our alg. non inv.
+Our alg. inv.
+
+16
+
+
+
+0.2
+0
+
+4
+
+8
+
+horizontal shift
+
+12
+
+16
+
+Figure 5. Mean squared error (MSE) between the representation
+of a patch and its transformed version. On the left panel, the trans-
+formed patch is horizontally shifted. On the right panel, the trans-
+formed patch is rst rotated by 25 degrees and then horizontally
+shifted. The curves are an average over 100 patches randomly
+picked from natural images. Since the patches are 16x16 pixels
+in size, a shift of 16 pixels generates a transformed patch that
+is quite uncorrelated to the original patch. Hence, the MSE has
+been normalized so that the MSE at 16 pixels is the same for all
+methods. This allows us to directly compare different feature ex-
+traction algorithms: non-orientation invariant SIFT, SIFT, IPSD
+trained to produce non-invariant representations (i.e. pools have
+size 1x1) [9], and IPSD trained to produce invariant representa-
+tions. All algorithms produce a feature vector with 128 dimen-
+sions. IPSD produces representations that are more invariant to
+transformations than the other approaches.
+
+affect the kind of features learned. In other words, the al-
+gorithm is quite robust to the choice of these parameters,
+probably because of the many constraints enforced during
+learning.
+
+3.2. Analyzing Invariance to Transformations
+
+In this experiment we study the invariance properties
+of the learned representation under simple transformations.
+We have generated a dataset of 16x16 natural image patches
+under different translations and rotations. Each patch is pre-
+sented to the predictor function that produces a 128 dimen-
+sional descriptor (chosen to be the same size as SIFT) com-
+posed of vs. A representation can be considered locally in-
+variant if it does not change signicantly under small trans-
+formations of the input.
+Indeed, this is what we observe
+in Fig. 5. We compare the mean squared difference be-
+tween the descriptor of the reference patch and the descrip-
+tor of the transformed version, averaged over many different
+image patches. The gure compares proposed descriptor
+against SIFT with a varying horizontal shift for 0 and 25
+degrees initial rotation. Very similar results are found for
+vertical shifts and other rotation angles.
+
+On the left panel, we can see that the mean squared error
+(MSE) between the representation of the original patch and
+its transformation increases linearly as we increase the hor-
+izontal shift. The MSE of IPSD representation is generally
+
+1609
+
+
+
+
+
+Figure 6. Diagram of the recognition system, which is composed
+of an invariant feature extractor that has been trained unsuper-
+vised, followed by a supervised linear SVM classier. The fea-
+ture extractor process the input image through a set of lter banks,
+where the lters are organized in a two dimensional topographic
+map. The map denes pools of similar feature detectors whose ac-
+tivations are rst non-linearly transformed by a hyperbolic tangent
+non-linearity, and then, multiplied by a gain. Invariant representa-
+tions are found by taking the square root of the sum of the squares
+of those units that belong to the same pool. The output of the fea-
+ture extractor is a set of feature maps that can be fed as input to
+the classier. The lter banks and the set of gains is learned by the
+algorithm. Recognition is very fast, because it consists of a direct
+forward propagation through the system.
+
+lower than the MSE produced by features that are computed
+using SIFT, a non-rotation invariant version of SIFT, and
+a non-invariant representation produced by the proposed
+method (that was trained with pools of size 1x1) [9]. A sim-
+ilar behavior is found when the patch is not only shifted, but
+also rotated. When the shift is small, SIFT has lower MSE,
+but as soon as the translation becomes large enough that
+the input pattern falls in a different internal sub-window,
+the MSE increases considerably. Instead learned represen-
+tations using IPSD seem to be quite robust to shifts, with an
+overall lower area under the curve. Note also that traditional
+sparse coding algorithms are prone to produce unstable rep-
+resentations under small distortions of the input. Because
+each input has to be encoded with a small number of basis
+functions, and because the basis functions are highly tuned
+in orientation and location, a small change in the input can
+produce drastic changes in the representation. This problem
+is partly alleviated by our approximate inference procedure
+that uses a smooth predictor function. However, this experi-
+ment shows that this representations is fairly unstable under
+small distortions, when compared to the invariant represen-
+tations produced by IPSD and SIFT.
+
+3.3. Generic Object Recognition
+
+We now use IPSD invariant features for object classi-
+cation on the Caltech 101 dataset [5] of 102 generic object
+categories including background class. We use 30 training
+images per class and up to 30 test images per class. The
+images are randomly picked, and pre-processed in the fol-
+
+lowing way: converted to gray-scale and down-sampled in
+such a way that the longest side is 151 pixels and then lo-
+cally normalized and zero padded to 143x143 pixels. The
+local normalization takes a 3x3 neighborhood around each
+pixel, subtracts the local mean, then divides the by the local
+standard deviation if it is greater than the standard deviation
+of the image. The latter step is a form of divisive normal-
+ization, proposed to model the contrast normalization in the
+retina [21].
+
+We have trained IPSD on 50,000 16x16 patches ran-
+domly extracted from the pre-processed images. The topo-
+graphic map used has size 32x16, with the pooling neigh-
+borhoods being 6x6 and an overlap of 4 coefcients be-
+tween neighborhoods. Hence, there are a total of 512 units
+that are used in 128 pools to produce a 128-dimensional
+representation that can be compared to SIFT. After training
+IPSD in an unsupervised way, we use the predictor function
+to infer the representation of one whole image by: (i) run-
+ning the predictor function on 16x16 patches spaced by 4
+pixels to produce 128 maps of features of size 32x32; (ii)
+the feature maps are locally normalized (neighborhood of
+5x5) and low-pass ltered with a boxcar lter (5x5) to avoid
+aliasing; (iii) the maps are then projected along the leading
+3060 principal components (equal to the number of train-
+ing samples), and (iv) a supervised linear SVM1 is trained
+to recognize the object in each corresponding image. The
+overall scheme is shown in Fig. 6.
+
+Table 1 reports the recognition results for this experi-
+ment. With a linear classier similar to [21], IPSD features
+outperform SIFT and the model proposed by Serre and Pog-
+gio [25]. However, if rotation invariance is removed from
+SIFT its performance becomes comparable to IPSD .
+
+We have also experimented with the more sophisticated
+Spatial Pyramid Matching (SPM) Kernel SVM classier of
+Lazebnik et al. [11].
+In this experiment, we again used
+the same IPSD architecture on 16x16 patches spaced by
+3 pixels to produce 42x42x128 dimensional feature maps,
+followed by local normalization over a 9x9 neighborhood,
+yielding 128 dimensional features over a uniform 34x34
+grid. Using SPM, IPSD features achieve 59.6% average
+accuracy per class. By decreasing the stepping stride to 1
+pixel, thereby producing 120x120 feature maps, IPSD fea-
+tures achieve 65.5% accuracy as shown in Table 1. This
+is comparable to Lazebniks 64.6% accuracy on Caltech-
+101 (without background class) [11]. For comparison, our
+re-implementation of Lazebniks SIFT feature extractor,
+stepped by 4 pixels to produce 34x34 maps, yielded 65%
+average recognition rate.
+
+With 128 invariant features, each descriptor takes around
+4ms to compute from a 16x16 patch. Note that the evalua-
+tion time of each region is a linear function of the number
+
+1We
+
+used
+
+LIBSVM
+http://www.csie.ntu.edu.tw/ cjlin/libsvm
+
+have
+
+package
+
+available
+
+at
+
+1610
+
+Method
+
+Av. Accuracy/Class (%)
+
+Performance on Tiny Images Dataset
+
+local norm55 + boxcar55 + PCA3060 + linear SVM
+IPSD (24x24)
+SIFT (24x24) (non rot. inv.)
+SIFT (24x24) (rot. inv.)
+Serre et al. features [25]
+
+50.9
+51.2
+45.2
+47.1
+
+local norm99 + Spatial Pyramid Match Kernel SVM
+SIFT [11]
+IPSD (34x34)
+IPSD (56x56)
+IPSD (120x120)
+
+64.6
+59.6
+62.6
+65.5
+
+Table 1. Recognition accuracy on Caltech 101 dataset using a va-
+riety of different feature representations and two different classi-
+ers. The PCA + linear SVM classier is similar to [21], while the
+Spatial Pyramid Matching Kernel SVM classier is that of [11].
+IPSD is used to extract features with three different sampling step
+sizes over an input image to produce 34x34, 56x56 and 120x120
+feature maps, where each feature is 128 dimensional to be compa-
+rable to SIFT. Local normalization is not applied on SIFT features
+when used with Spatial Pyramid Match Kernel SVM.
+
+)
+
+%
+
+(
+
+y
+c
+a
+r
+u
+c
+c
+A
+n
+o
+
+
+
+i
+t
+i
+
+n
+g
+o
+c
+e
+R
+
+52
+
+50
+
+48
+
+46
+
+44
+
+42
+
+40
+0
+
+20
+
+40
+100
+Number of Invariant Units
+
+60
+
+80
+
+120
+
+140
+
+Figure 7. The gure shows the recognition accuracy on Caltech
+101 dataset as a function of the number of invariant units. Note
+that the performance improvement between 64 and 128 units is
+below 2%, suggesting that for certain applications the more com-
+pact descriptor might be preferable.
+
+of features, thus this time can be further reduced if the num-
+ber of features is reduced. Fig. 7 shows how the recognition
+performance varies as the number of features is decreased.
+
+3.4. Tiny Images classication
+
+IPSD was compared to SIFT on another recognition task
+using the tiny images dataset [26]. This dataset was chosen
+as its extreme low-resolution provides a different setting to
+the Caltech 101 images. For simplicity, we selected 5 ani-
+mal nouns (abyssinian cat, angel shark, apatura iris (a type
+of buttery), bilby (a type of marsupial), may beetle) and
+manually labeled 200 examples of each. 160 images of each
+class were used for training, with the remaining 40 held out
+for testing. All images are converted to grayscale. Both
+IPSD with 128 pooled units and SIFT were used to extract
+features over 16x16 regions, spaced every 4 pixels over the
+32x32 images. The resulting 5 by 5 by 128 dimensional
+feature maps are used with a linear SVM. IPSD features
+achieve 54% and SIFT features achieve a comparable 53%.
+
+Method
+IPSD (5x5)
+SIFT (5x5) (non rot. inv.)
+
+Accuracy (%)
+
+54
+53
+
+Performance on MNIST Dataset
+
+Method
+IPSD (5x5)
+SIFT (5x5) (non rot. inv.)
+
+Error Rate (%)
+
+1.0
+1.5
+
+Table 2. Results of recognition error rate on Tiny Images and
+MNIST datasets. In both setups, a 128 dimensional feature vector
+is obtained using either IPSD or SIFT over a regularly spaced 5x5
+grid and afterwards a linear SVM is used for classication. For
+comparison purposes it is worth mentioning that a Gaussian SVM
+trained on MNIST images without any preprocessing achieves
+1.4% error rate.
+
+3.5. Handwriting Recognition
+
+We use a very similar architecture to that used in the ex-
+periments above to train on the handwritten digits of the
+MNIST dataset [1]. This is a dataset of quasi-binary hand-
+written digits with 60,000 images in the training set, and
+10,000 images in the test set. The algorithm was trained us-
+ing 16x16 windows extracted from the original 28x28 pixel
+images. For recognition, 128-dimensional feature vectors
+were extracted at 25 locations regularly spaced over a 5x5
+grid. A linear SVM trained on these features yields an er-
+ror rate of 1.0%. When 25 SIFT feature vectors are used
+instead of IPSD features, the error rate increases to 1.5%.
+This demonstrates that, while SIFT seems well suited to
+natural images, IPSD produces features that can adept to
+the task at hand.
+In a similar experiment, a single 128-
+dimensional feature vector was extracted using IPSD and
+SIFT, and fed to a linear SVM. The error rate was 5.6% for
+IPSD , and 6.4% for SIFT.
+
+4. Summary and Future Work
+
+We presented an architecture and a learning algorithm
+that can learn locally-invariant feature descriptors. The ar-
+chitecture uses a bank of non-linear lters whose outputs
+are organized in a topographic fashion, followed by a pool-
+ing layer that imposes a sparsity criterion on blocks of l-
+ter outputs located within small regions of the topographic
+map. As a result of learning, lters that are pooled together
+extract similar features, which results in spontaneous invari-
+ance of the pooled outputs to small distortions of the input.
+During training, the output of the non-linear lter bank is
+fed to a linear decoder that reconstructs the input patch. The
+lters and the linear decoder are simultaneously trained to
+minimize the reconstruction error, together with a sparsity
+criterion computed as the sum of the pooling units. After
+training, the linear decoder is discarded, and the pooling
+unit outputs are used as the invariant feature descriptor of
+the input patch. Computing the descriptor for a patch is very
+
+1611
+
+fast and simple: it merely involves multiplying the patch by
+a ltering matrix, applying a scaled tanh function to the re-
+sults, and computing the square root of Gaussian-weighted
+sum-of-squares of lter outputs within each pool window.
+
+Image classication experiments show that the descrip-
+tors thereby obtained give comparable performance to SIFT
+descriptors on tasks for which SIFT was specically de-
+signed (such as Caltech 101), and better performance on
+tasks for which SIFT is not particularly well suited (MNIST,
+and Tiny Images).
+
+While other models have learned locally invariant de-
+scriptors by explicitly building shift invariance using spa-
+tial pooling, our proposal is more general: it can learn local
+invariances to other transformations than just translations.
+Our results also show spontaneous local invariance to rota-
+tion. To our knowledge, this is the rst time such invariant
+feature descriptors have been learned and tested in an image
+recognition context with competitive recognition rates.
+
+A long-term goal of this work is to provide a general tool
+for learning feature descriptors in an unsupervised manner.
+Future work will involve stacking multiple stage of such
+feature extractors so as to learn multi-level hierarchies of
+increasingly global and invariant features.
+
+5. Acknowledgments
+
+We thank Karol Gregor, Y-Lan Boureau, Eero Simon-
+celli, and members of the CIfAR program Neural Computa-
+tion and Adaptive Perception for helpful discussions. This
+work was supported in part by ONR grant N00014-07-1-
+0535, NSF grant EFRI-0835878, and NSF IIS-0535166.
+

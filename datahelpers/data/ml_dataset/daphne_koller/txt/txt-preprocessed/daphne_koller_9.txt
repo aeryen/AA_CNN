@@ -1,0 +1,1103 @@
+Abstract
+
+We address the problem of segmenting 3D scan data
+into objects or object classes. Our segmentation framework
+is based on a subclass of Markov Random Fields (MRFs)
+which support efcient graph-cut inference. The MRF mod-
+els incorporate a large set of diverse features and enforce
+the preference that adjacent scan points have the same clas-
+sication label. We use a recently proposed maximum-
+margin framework to discriminatively train the model from
+a set of labeled scans; as a result we automatically learn
+the relative importance of the features for the segmentation
+task. Performing graph-cut inference in the trained MRF
+can then be used to segment new scenes very efciently. We
+test our approach on three large-scale datasets produced by
+different kinds of 3D sensors, showing its applicability to
+both outdoor and indoor environments containing diverse
+objects.
+
+1. Introduction
+
+Range scanners have become standard equipment in mo-
+bile robotics, making the task of 3D scan segmentation one
+of increasing practical relevance. Given the set of points
+(or surfaces) in 3D acquired by a range scanner, the goal
+of segmentation is to attribute the acquired points to a set
+of candidate objects or object classes. The segmentation
+capability is essential for scene understanding, and can be
+utilized for scan registration and robot localization.
+
+Much work in vision has been devoted to the problem of
+segmenting and identifying objects in 2D image data. The
+3D problem is easier in some ways, as it circumvents the
+ambiguities induced by the 3D-to-2D projection, but is also
+harder because it lacks color cues, and deals with data which
+is often noisy and sparse. The 3D scan segmentation prob-
+lem has been addressed primarily in the context of detect-
+
+ing known rigid objects for which reliable features can be
+extracted (e.g., [11, 5]). The more difcult task of segment-
+ing out object classes or deformable objects from 3D scans
+requires the ability to handle previously unseen object in-
+stances or congurations. This is still an open problem in
+computer vision, where many approaches assume that the
+scans have been already segmented into objects [10, 6].
+
+An object segmentation algorithm should possess sev-
+eral important properties. First, it should be able to take ad-
+vantage of several qualitatively different kinds of features.
+For example, trees may require very different features from
+cars, and ground can be detected simply based on a height
+feature. As the number of features grows, it becomes impor-
+tant to learn how to trade them off automatically. Second,
+some points can lie in generic-looking or sparsely sampled
+regions, but we should be able to infer their label by enforc-
+ing spatial contiguity, exploiting the fact that adjacent points
+in the scans tend to have similar labels. Third, the algorithm
+should adapt to the particular 3D scanner used, since differ-
+ent scanners produce qualitatively different inputs. This is
+particularly relevant, because real-world scans can violate
+standard assumptions made in synthetic data used to evalu-
+ate segmentation algorithms (e.g., [5, 10]).
+
+In this paper we present a learning-based approach for
+scene segmentation, which satises all of the properties de-
+scribed above. Our approach utilizes a Markov random eld
+(MRF) over scan points in a scene to label each point with
+one of some set of class labels; these labels can include dif-
+ferent object types as well as background. We also assume
+that, in our dataset, adjacent points in space are connected
+by links. These links can be provided either by the scanner
+(when it produces 3D meshes), or introduced by connect-
+ing neighboring points in the scan. The MRF uses a set of
+pre-specied features of scan points (e.g., spin images [11]
+or height of the point) to provide evidence on their likely la-
+bels. The links are used to relate the labels of nearby points,
+
+1
+
+thereby imposing a preference for spatial contiguity of the
+labels; the strength of these links can also depend on fea-
+tures (e.g., distance between the linked points). We use a
+subclass of MRFs that allow effective inference using graph
+cuts [13], yet can enforce our spatial contiguity preference.
+Our algorithm consists of a learning phase and a seg-
+mentation phase. In the learning phase, we are provided a
+set of scenes acquired by a 3D scanner. The scene points
+are labeled with an appropriate class or object label. The
+goal of the learning algorithm is to nd a good set of fea-
+ture weights. We use a maximum-margin learning approach
+which nds the optimal tradeoff between the node and edge
+features, which induce the MRF-based segmentation algo-
+rithm to match the training set labels [21]. This learning
+procedure nds the globally optimal (or nearly optimal)
+weights and can be implemented efciently.
+
+In the segmentation phase, we need to classify the points
+of a new scene. We compute the relevant point and edge
+features, and run the graph-cut algorithm with the weights
+provided by the learning phase. The inference procedure
+performs joint classication of the scan points while en-
+forcing spatial contiguity. The algorithm is very efcient,
+scaling to scenes involving millions of points. It produces
+the optimal solution for binary classication problems and
+a solution within a fraction of the optimal for multi-class
+problems [12].
+
+We demonstrate the approach on two real-world datasets
+and one computer-simulated dataset. These data sets span
+both indoor and outdoor scenes, and a diverse set of object
+classes. They were acquired using different scanners, and
+have very different properties. We show that our algorithm
+performs well for all three data sets, illustrating its applica-
+bility in a broad range of settings, requiring different feature
+sets. Our results demonstrate the ability of our algorithm to
+del with signicant occlusion and scanner noise.
+
+2. Previous work
+
+The problem of segmenting and classifying objects in 2D
+scenes is arguably the core problem in machine vision, and
+has received considerable attention. The existing work on
+the problem in the context of 3D scan data can largely be
+classied into three groups.
+
+The rst class of methods detects known objects in
+the scene. Such approaches center on computing ef-
+cient descriptors of the object shape at selected surface
+points [11, 7, 5]. However, they usually require that the
+descriptor parameters are specied by hand. Detection
+often involves inefcient nearest-neighbor search in high-
+dimensional space. While most approaches address detec-
+tion of rigid objects, detection of nonrigid objects has also
+been demonstrated [18].
+
+Another line of work performs classication of 3D
+
+shapes. Some methods (particularly those used for retrieval
+of 3D models from large databases) use global shape de-
+scriptors [6, 17], which require that a complete surface
+model of the query object is available. Objects can also
+be classied by looking at salient parts of the object surface
+[10, 19]. All mentioned approaches assume that the surface
+has already been pre-segmented from the scene.
+
+Another set of approaches segment 3D scans into a set
+of predened parametric shapes. Han et al. [9] present a
+method based for segmenting 3D images into 5 parametric
+models such as planar, conic and B-spline surfaces. Unlike
+their approach, ours is aimed at learning to segment the data
+directly into objects or classes of objects. The parameters of
+our model are trained on examples containing the objects,
+while Han et al. assume a pre-specied generative model.
+
+Our segmentation approach is most closely related to
+work in vision applying conditional random elds (CRFs)
+to 2D images. Discriminative models such as CRFs [15]
+are a natural way to model correlations between classi-
+cation labels Y given a scan X as input. CRFs directly
+model the conditional distribution P (Y j X).
+In classi-
+cation tasks, CRFs have been shown to produce results
+superior to generative approaches which expend efforts to
+model the potentially more complicated joint distribution
+P (X; Y) [15]. Very recently, CRFs have been applied
+for image segmentation. Kumar et al. [14] train CRFs us-
+ing a pseudo-likelihood approximation to the distribution
+P (Y j X) since estimating the true conditional distribu-
+tion is intractable. Unlike their work, we optimize a dif-
+ferent objective called the margin, based on support vec-
+tor machines [3]. Our learning formulation provides an ex-
+act and tractable optimization algorithm, as well as formal
+guarantees for binary classication problems. Unlike their
+work, our approach can also handle multi-class problems in
+a straightforward manner. In a very recent work, Torralba et
+al. [23] propose boosting random elds for image segmen-
+tation, combining ideas from boosting and CRFs. Similar
+to our approach, they optimize the classication margin.
+However, their implementation is specic to 2D image data,
+which poses very different challenges than 3D scans.
+
+3. Markov Random Fields
+
+We restrict our attention to Markov networks (or random
+elds) over discrete variables Y = fY1; : : : ; YN g, where
+each variable corresponds to the label of a point in the 3D
+scan and has K possible values: Yi 2 f1; : : : ; Kg. An
+assignment of values to Y is denoted by y. A Markov net-
+work for Y denes a joint distribution over f1; : : : ; KgN,
+dened by an undirected graph (V; E) over the nodes cor-
+responding to the variables. In our task, the variables cor-
+respond to the scan points in the scene, and their values to
+their label, which can include different object types as well
+
+2
+
+SVM
+
+Voted-SVM
+
+AMN
+
+a) Robot and campus map
+
+b) Segmentation Results
+
+Figure 1. a) The robot and a portion of a 3D scan range map of Stanford University. b) Scan seg-
+mentation results obtained with SVM, Voted-SVM and AMN predictions. (Color legend: buildings/red,
+trees/green, shrubs/blue, ground/gray).
+
+as background. For simplicity of exposition, we focus our
+discussion to pairwise Markov networks, where nodes and
+edges are associated with potentials (cid:30)i(Yi) and (cid:30)ij (Yi; Yj),
+ij 2 E (i < j). In our task, edges are associated with links
+between points in the scan, corresponding to physical prox-
+imity; these edges serve to correlate the labels of nearby
+points. A node potential (cid:30)i(Yi) species a non-negative
+number for each value of the variable Yi. Similarly, an
+edge potential species non-negative number for each pair
+of values of Yi; Yj. Intuitively, a node potentials encodes a
+points individual preference for different labels, whereas
+the edge potentials encode the interactions between labels
+of related points. The joint distribution specied by the net-
+work is
+
+Y
+
+(cid:30)i(yi) Y
+
+i=1
+
+ij2E
+
+(cid:30)ij(yi; yj);
+
+N
+
+P(cid:30)(y) =
+
+1
+Z
+
+i; y0
+
+j).
+
+0 QN
+
+i=1 (cid:30)i(y0
+
+where Z is the partition function given by Z =
+The maximum a-
+Py
+posteriori (MAP) inference problem in a Markov network
+is to nd arg maxy P(cid:30)(y).
+
+i) Qij2E (cid:30)ij (y0
+
+We further restrict our attention to an important sub-
+class of networks, called associative Markov networks
+(AMNs) [21] that allow effective inference using graph-
+cuts [8, 13].
+These associative potentials generalize the
+Potts model [16], rewarding instantiations where adjacent
+nodes have the same label. Specically, we require that
+ij (cid:21) 1, and (cid:30)ij (k; l) = 1; 8k 6= l.
+(cid:30)ij (k; k) = (cid:21)k
+We formulate the node and edge potentials in terms of
+
+ij, where (cid:21)k
+
+the features of the objects xi 2 IRdn and features of the re-
+lationships between them xij 2 IRde. In 3D range data, the
+xi might be the spin image or spatial occupancy histograms
+of a point i, while the xij might include the distance be-
+tween points i and j, the dot-product of their normals, etc.
+The simplest model of dependence of the potentials on the
+features is log-linear combination:
+n (cid:1) xi
+and log (cid:30)ij (k; k) = wk
+e are label-
+specic row vectors of node and edge parameters, of size dn
+and de, respectively. Note that this formulation assumes that
+all of the nodes in the network share the same set of weights,
+and similarly all of the edges share the same weights. Stat-
+ing the AMN restrictions in terms of the parameters w, we
+e (cid:1) xij (cid:21) 0. To ensure that wk
+require that wk
+e (cid:1) xij (cid:21) 0, we
+e (cid:21) 0.
+simply assume that xij (cid:21) 0, and constrain wk
+
+e (cid:1) xij, where wk
+
+log (cid:30)i(k) = wk
+
+n and wk
+
+The MAP problem for AMNs can be solved efciently
+using a min-cut algorithm.
+In the case of binary labels
+(K = 2), the min-cut procedure is guaranteed to return
+the optimal MAP. For K > 2, the MAP problem is NP-
+hard, but a procedure proposed by Boykov et al. [1], which
+augments the min-cut algorithm with an iterative procedure
+called alpha-expansion, guarantees a factor 2 approxima-
+tion of the optimal solution.
+
+An alternative approach to solving the MAP inference
+problem is based on formulating the problem as an inte-
+ger program, and then using a linear programming relax-
+ation [2, 12]. This approach is slower in practice than the
+iterated min-cut approach, but has the same performance
+guarantees [21]. Importantly for our purposes, it forms the
+
+3
+
+basis for our learning procedure.
+
+We represent an assignment y as a set of K (cid:1)N indicators
+i g, where yk
+i = I(yi = k). With these denitions, the
+
+fyk
+log of conditional probability log Pw(y j x) is given by:
+N
+
+K
+
+K
+
+X
+
+X
+
+(wk
+
+n (cid:1) xi)yk
+
+i + X
+
+X
+
+(wk
+
+e (cid:1) xij )yk
+
+i yk
+
+j (cid:0) log Zw(x):
+
+k=1
+
+k=1
+
+ij2E
+
+i=1
+Note that the partition function Zw(x) above depends on
+the parameters w and input features x, but not on the labels
+yis. Hence the MAP objective is quadratic in y.
+
+e; : : : ; wK
+
+n; : : : ; wK
+
+For compactness of notation, we dene the node and
+n ) and we =
+edge weight vectors wn = (w1
+e ), and let w = (wn; we) be a vector of all the
+(w1
+weights, of size d = K(dn + de). Also, we dene the node
+i ; : : :)> and
+and edge labels vectors, yn = (: : : ; y1
+j , and the
+ij ; : : :)>, where yk
+i yk
+ye = (: : : ; y1
+vector of all labels y = (yn; ye) of size L = K(N + jEj).
+Finally, we dene an appropriate d (cid:2) L matrix X such that
+
+i ; : : : ; yK
+ij = yk
+
+ij ; : : : ; yK
+
+log Pw(y j x) = wXy (cid:0) log Zw(x):
+
+The matrix X contains the node feature vectors xi and edge
+feature vectors xij repeated multiple times (for each label
+k), and padded with zeros appropriately.
+
+The linear programming formulation of the MAP prob-
+
+lem for these networks can be written as:
+
+max
+
+N
+
+K
+
+X
+
+X
+
+i=1
+
+k=1
+
+(wk
+
+n (cid:1) xi)yk
+
+i + X
+
+K
+
+X
+
+ij2E
+
+k=1
+
+(wk
+
+e (cid:1) xij )yk
+
+ij
+
+(1)
+
+s:t:
+
+i (cid:21) 0; 8i; k; X
+yk
+
+yk
+i = 1; 8i;
+
+yk
+ij (cid:20) yk
+i ;
+
+k
+yk
+ij (cid:20) yk
+j ;
+
+8ij 2 E; k:
+
+i yk
+ij (cid:20) yk
+
+i by vari-
+Note that we substitute the quadratic terms yk
+i and
+ij by using two linear constraints yk
+ables yk
+i . This works because the coefcient wk
+e (cid:1) xij is
+yk
+ij (cid:20) yk
+non-negative and we are maximizing the objective function.
+i ) at the optimum, which is equiv-
+Hence yk
+alent to yk
+j 2 f0; 1g. In the binary case,
+i ; yk
+the linear program Eq. (1) is guaranteed to produce an in-
+teger solution (optimal assignment) when a unique solution
+exists [21]. For K > 2, the LP may produce fractional so-
+lutions which are guaranteed to be within at most a factor
+of 2 of the optimal.
+
+ij = min(yk
+ij = yk
+i yk
+
+i ; yk
+j if yk
+
+4. Maximum margin estimation
+
+We now consider the problem of training the weights
+w of a Markov network given a labeled training instance
+(x; ^y). For simplicity of exposition, we assume that we
+have only a single training instance; the extension to the
+case of multiple instances is entirely straightforward. Note
+that, in our setting, a single training instance is not a single
+point, but an entire scene that contains tens of thousands of
+points.
+
+4
+
+The standard approach of learning a conditional model
+w given (x; ^y) is to maximize the log Pw(^y j x), with
+an additional regularization term, which is usually taken to
+be the squared-norm of the weights w [15]. An alterna-
+tive method, recently proposed by Taskar et al. [22], is to
+maximize the margin of condence in the true label assign-
+ment ^y over any other assignment y 6= ^y. They show that
+the margin-maximization criterion provides signicant im-
+provements in accuracy over a range of problems. It also al-
+lows high-dimensional feature spaces to be utilized by using
+the kernel trick, as in support vector machines. The maxi-
+mum margin Markov network (M3N) framework forms the
+basis for our work, so we begin by reviewing this approach.
+As in support vector machines, the goal in an M3N is to
+maximize our condence in the true labels ^y relative to any
+other possible joint labeling y. Specically, we dene the
+gain of the true labels ^y over another joint labeling y as:
+
+log Pw(^y j x) (cid:0) log Pw(y j x) = wX(^y (cid:0) y):
+
+In M3Ns, the desired gain depends on the number of mis-
+classied labels in y, (^y; y), by scaling linearly with it:
+
+max (cid:13) s:t: wX(^y (cid:0) y) (cid:21) (cid:13)(^y; y);
+
+jjwjj2 (cid:20) 1:
+
+Note that the number of incorrect node labels (^y; y) can
+n yn. (Whenever ^yi and yi agree
+also be written as N (cid:0) ^y>
+i = 1, adding
+on some label k, we have that ^yk
+1 to ^y>
+n yn.) By dividing through by (cid:13) and adding a slack
+variable for non-separable data, we obtain a quadratic pro-
+gram (QP) with exponentially many constraints:
+
+i = 1 and yk
+
+min
+
+s:t:
+
+jjwjj2 + C(cid:24)
+
+1
+2
+wX(^y (cid:0) y) (cid:21) N (cid:0) ^y>
+
+n yn (cid:0) (cid:24); 8y 2 Y:
+
+(2)
+
+This QP has a constraint for every possible joint assign-
+ment y to the Markov network variables, resulting in an
+exponentially-sized QP.
+
+As our rst step, we replace the exponential set of linear
+constraints in the max-margin QP of Eq. (2) with the single
+equivalent non-linear constraint:
+
+wX^y (cid:0) N + (cid:24) (cid:21) max
+y2Y
+
+wXy (cid:0) ^y>
+
+n yn:
+
+(3)
+
+This non-linear constraint essentially requires that we nd
+the assignment y to the network variables which has the
+highest probability relative to the parameterization wX (cid:0)
+n . Thus, optimizing the max-margin QP contains the
+^y>
+MAP inference task as a component.
+
+The LP relaxation of Eq. (1) provides us with precisely
+the necessary building block to provide an effective solu-
+tion for Eq. (3). The MAP problem is precisely the max
+subproblem in this QP. In the case of AMNs, this max sub-
+problem can be replaced with the LP of Eq. (1). In effect,
+we are replacing the exponential constraint set  one which
+includes a constraint for every discrete y, with an innite
+
+constraint set  one which includes a constraint for every
+continuous vector y in Y 0 = fy : yk
+i =
+1; yk
+
+ij (cid:20) yk
+After substituting the (dual of the) MAP LP into Eq. (3)
+
+i g; as dened in Eq. (1).
+
+i (cid:21) 0; Pk yk
+
+ij (cid:20) yk
+
+i ; yk
+
+and some algebraic manipulation (see [21]), we obtain:
+
+min
+
+jjwjj2 + C(cid:24)
+
+(4)
+
+1
+2
+
+s:t:
+
+wX^y (cid:0) N + (cid:24) (cid:21)
+
+N
+
+X
+
+i=1
+
+(cid:11)i; we (cid:21) 0;
+
+(cid:11)i (cid:0) X
+
+ij;ji2E
+
+(cid:11)k
+ij (cid:21) wk
+
+n (cid:1) xi (cid:0) ^yk
+
+i ; 8i; k;
+
+ji (cid:21) wk
+
+(cid:11)k
+ij + (cid:11)k
+
+ji (cid:21) 0; 8ij 2 E; k:
+Above, we also added the constraint we (cid:21) 0 to ensure pos-
+itivity of the edge log-potentials.
+
+e (cid:1) xij ;
+
+(cid:11)k
+ij ; (cid:11)k
+
+For K = 2, the MAP LP is exact, so that Eq. (4) learns
+exact max-margin weights for Markov networks of arbi-
+trary topology. For K > 2, the linear relaxation leads
+to a strengthening of the constraints on w by potentially
+adding constraints corresponding to fractional assignments
+y. Thus, the optimal choice w; (cid:24) for the original QP may no
+longer be feasible, leading to a different choice of weights.
+However, as our experiments show, these weights tend to do
+well in practice.
+
+The dual of Eq. (4) is given by:
+K
+
+K
+
+N
+
+max
+
+X
+
+X
+
+i=1
+
+k=1
+
+(1 (cid:0) ^yk
+
+i )(cid:22)k
+
+i (cid:0)
+
+1
+2
+
+X
+
+k=1
+
+N
+
+X
+
+i=1
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+xi(C ^yk
+
+i (cid:0) (cid:22)k
+i )
+
+(cid:0)
+
+1
+2
+
+K
+
+X
+
+k=1
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:21)k + X
+
+ij2E
+
+xij (C ^yk
+
+ij (cid:0) (cid:22)k
+
+ij )
+
+2
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+s:t: (cid:22)k
+
+i (cid:21) 0; 8i; k; X
+
+(cid:22)k
+
+i = C; 8i;
+
+k
+
+ij (cid:21) 0;
+
+(cid:22)k
+(cid:21)k (cid:21) 0; 8k:
+
+(cid:22)k
+ij (cid:20) (cid:22)k
+
+i ; (cid:22)k
+
+ij (cid:20) (cid:22)k
+j ;
+
+8ij 2 E; k;
+
+The primal and dual solution are related by:
+
+N
+
+wk
+
+n =
+
+X
+
+i=1
+
+xi(C ^yk
+
+i (cid:0) (cid:22)k
+
+i );
+
+wk
+
+e = (cid:21)k + X
+
+ij2E
+
+xij (C ^yk
+
+ij (cid:0) (cid:22)k
+
+ij ):
+
+5. Experimental results
+
+We validated our scan segmentation algorithm by ex-
+perimenting on two real-world and one synthetic datasets,
+which differed in both the type of 3D scanner used, and
+the types of objects present in the scene. We describe each
+set of experiments separately below. We compare the per-
+formance of our method to that of support vector machines
+(SVMs), a state-of-the-art classication method known
+to work well in high-dimensional spaces. The webpage
+http://ai.stanford.edu/drago/Projects/Detector/
+contains additional results, including a y-through movie.
+
+tasks.
+
+Terrain classication. Terrain classication is useful for
+autonomous mobile robots in tasks such as path plan-
+target detection, and as a pre-processing step for
+ning,
+other perceptual
+The Stanford Segbot Project
+(http://robots.stanford.edu/) has provided us with a
+laser range campus map collected by a robot equipped with
+a SICK2 laser scanner (see Fig. 1). The robot drove around
+a campus environment and acquired around 35 million scan
+readings. Each reading was a point in 3D space, represented
+by its coordinates in an absolute frame of reference, which
+was fairly noisy due to sensor noise and localization errors.
+Our task is to classify the laser range points into four
+classes: ground, building, tree, and shrubbery. Classifying
+ground points is trivial given their absolute z-coordinate;
+we do it by thresholding the z coordinate at a value close
+to 0. After this, we are left with approximately 20 million
+non-ground points. Each point is represented simply as a
+location in an absolute 3D coordinate system. The features
+we use require pre-processing to infer properties of the lo-
+cal neighborhood of a point, such as how planar the neigh-
+borhood is, or how much of the neighbors are close to the
+ground. We use features that are invariant to rotation in the
+x-y plane, as well as the density of the range scan, since
+scans tend to be sparser in regions farther from the robot.
+
+Our rst type of feature is based on the principal plane
+around each point. To compute it, we sample 100 points in
+a cube of radius 0:5 meters. We run PCA on these points
+to get the plane, spanned by the rst two principal compo-
+nents. We then partition the cube into 3 (cid:2) 3 (cid:2) 3 bins around
+the point, oriented with respect to the principal plane, and
+compute the percentage of points lying in the various sub-
+cubes. These percentages capture the local distribution well
+and are especially useful in nding planes. Our second type
+of feature is based on a column around each point. We take
+a cylinder of radius 0:25 meters, which extends vertically
+to include all the points in a column. We then compute
+what percentage of the points lie in various segments of this
+column (e.g., between 2m and 2.5m). Finally, we also use
+an indicator feature of whether a point lies within 2m of
+the ground. This feature is especially useful in classifying
+shrubbery.
+
+2
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+
+(5)
+
+(6)
+
+One important consequence of these relationships is that the
+node parameters are all support vector expansions. Thus,
+the terms in the constraints of the form wnx can all be ex-
+panded in terms of dot products x>
+i xi; similarly, the objec-
+tive (jjwjj2) can be expanded similarly. Therefore, we can
+use kernels K(xi; xj) to dene node parameters. Unfortu-
+nately, the positivity constraint on the edge potentials, and
+the resulting (cid:21)k dual variable in the expansion of the edge
+weight, prevent the edge parameters from being kernelized
+in a similar way.
+
+5
+
+a) Training instance
+
+b) AMN
+
+c) SVM
+
+d) AMN with edges ignored
+
+e)
+
+f )
+
+g)
+
+h)
+
+Figure 2. Segmentation results on the puppet dataset. a) Training set instance b) AMN segmentation
+result c) SVM segmentation result d) Result obtained by using the node weights learned by the AMN,
+and ignoring the MRF edges e) - h) Segmentation results on other testing set instances.
+(Color
+legend: head/green, torso/dark blue, limbs/red, background/gray).
+
+For training we select roughly 30 thousand points that
+represent the classes well: a segment of a wall, a tree,
+some bushes. We considered three different models: SVM,
+Voted-SVM and AMNs. All methods use the same set of
+features, augmented with a quadratic kernel.
+
+The rst model
+
+is a multi-class SVM. This model
+(Fig. 1(b), right panel) achieves reasonable performance in
+many places, but fails to enforce local consistency of the
+classication predictions. For example arches on buildings
+and other less planar regions are consistently confused for
+trees, even though they are surrounded entirely by build-
+ings. We improved upon the SVM by smoothing its predic-
+tions using voting. For each point we took its local neigh-
+borhood and assigned the point the label of the majority of
+its 100 neighbors. The Voted-SVM model (Fig. 1(b), mid-
+dle panel) performs slightly better than SVM, yet it still fails
+in areas like arches of buildings where the SVM classier
+has a locally consistent wrong prediction.
+
+The nal model is a pairwise AMN. Each point is con-
+nected to 6 of its neighbors: 3 of them are sampled ran-
+domly from the local neighborhood in a sphere of radius
+0:5m, and the other 3 are sampled at random from the ver-
+tical cylinder column of radius 0:25m. It is important to en-
+sure vertical consistency since the SVM classier is wrong
+in areas that are higher off the ground (due to the decrease
+in point density) or because objects tend to look different
+as we vary their z-coordinate (for example, tree trunks and
+tree crowns look different). While we experimented with
+a variety of edge features, we found that even using only a
+constant feature performs well.
+
+We trained the AMN model using CPLEX to solve the
+quadratic program; the training took about an hour on a Pen-
+tium 3 desktop. For inference, we used min-cut combined
+with the alpha-expansion algorithm of Boykov et al. de-
+scribed above [1]. We split up the dataset into 16 square (in
+the xy-plane) regions, the largest of which contains around
+3:5 million points. The implementation is largely domi-
+nated by I/O time, with the actual min-cut taking less than
+a minute even for the largest segment.
+
+We can see that the predictions of the AMN (Fig. 1 b),
+left panel) are much smoother: for example building arches
+and tree trunks are predicted correctly. We hand-labeled
+around 180 thousand points of the test set and computed
+accuracies of the predictions (excluding ground, which was
+classied by pre-processing). The differences are dramatic:
+SVM: 68%, Voted-SVM: 73% and AMN: 93%.
+
+Segmentation of articulated objects. We also tested our
+scan segmentation algorithm on a challenging dataset of
+cluttered scenes containing articulated wooden puppets.
+The dataset was acquired by a scanning system based on
+temporal stereo [4]. The system consists of two cameras and
+a projector, and outputs a triangulated surface only in the ar-
+eas that are visible to all three devices simultaneously. The
+dataset contains eleven different single-view scans of three
+puppets of different sizes and in different positions. It also
+contains clutter and occluding objects such as rope, sticks
+and rings. Each scan has around 225; 000 points, which we
+subsampled to around 7; 000 with standard software. Our
+goal was to segment the scenes into 4 classes  puppet
+
+6
+
+AMN
+
+SVM
+
+a)
+
+b)
+
+c)
+
+d)
+
+Figure 3. Segmentation of vehicles (cars, trucks, suvs) from the background in synthetic range
+scans from the Princeton dataset. The AMN performs reasonably well on most of the testing scenes,
+as demonstrated in scenes a), b), and c). However, it sometimes fails to detect the vehicles in
+challenging scenes such as d). (Color legend: vehicles/green, background/pink).
+
+head, limbs, torso and background. Five of the scenes
+comprise our training set, and the rest are kept for testing.
+A sample scan from the training set is shown in Fig. 2a.
+
+To segment articulated objects, it is desirable to have an
+approach which is independent of global orientation alto-
+gether, and which discriminates based on shape alone. We
+used spin-images [11] as local point features. We computed
+spin-images of size 10 (cid:2) 5 bins at two different resolutions.
+We scaled the spin-image values, and performed PCA to
+obtain 45 principal components, which comprised our point
+features. We use the surface links output by the scanner
+as edges in the MRF. Again, we experimented with several
+different edge features, but we got the best performance by
+using a constant feature for each edge.
+
+Because of clutter and occlusion in the scenes, our AMN
+framework achieves the best generalization performance
+when we keep the scope of the spin-images rather small
+(comparable to the size of the puppets head). Our scan
+segmentation algorithm performed very well by classify-
+ing 94.4% of the testing set points accurately, translating
+into 83.9% recall and 86.8% precision on the task of de-
+tecting puppet parts versus background. Overall, our results
+(see Fig. 2eh) show that AMNs can detect puppet parts
+with a fairly high degree of accuracy, even under occlusion
+and clutter. The main source of classication error was the
+small puppet, which appears only in the testing set.
+
+By comparison, the SVM method applied to the same
+point features performs remarkably poorly (see Fig. 2c).
+The classication accuracy on the testing set is 87.16%, but
+that is because that the majority of points are classied as
+
+background; indeed, overall the SVM approach achieves
+93% precision but only 18.6% recall on the task of seg-
+menting puppet parts against background. The poor per-
+formance is caused by the relatively small spin-image size
+which makes the algorithm more robust under clutter and
+occlusion, but at the same time makes it hard to discrimi-
+nate between locally similar shapes. The dataset has signif-
+icant shape ambiguity, as it is very easy to confuse sticks for
+limbs, and the torso for parts of the computer mouse appear-
+ing in the testing set. We tried to obtain a fairer comparison
+by changing the spin-image size to accommodate the SVM
+algorithm. The results were still signicantly worse.
+
+To understand the reason underlying the superior per-
+formance of the AMN, we ran a at classier with node
+weights trained for the AMN model. The result, shown
+in Fig. 2d, suggests that our algorithm has an additional de-
+gree of exibility  it can commit a lot of errors locally, but
+rely on the edge structure to eliminate the errors in the nal
+result. This result demonstrates that our approach would be
+superior to a strategy which trains the edge and the node
+parameters separately.
+
+Princeton benchmark. The nal test of our system was
+performed using a set of articially generated scenes, which
+contain different types of vehicles, trees, houses, and the
+ground. Models of the objects in these scenes were ob-
+tained from the Princeton Shape Benchmark [20], and were
+combined in various ways to construct the training and test
+scenes. From these, a set of synthetic range scans were gen-
+erated by placing a virtual sensor inside the scene. We cor-
+
+7
+
+rupted the sensor readings with additive white noise. We
+then triangulated the resulting point cloud, and subsampled
+it down to our desired resolution.
+
+We trained both the SVM and the AMN approaches to
+distinguish vehicles from other objects and background. We
+used exactly the same node and edge features as in the pup-
+pet dataset, with the spin image size appropriately adjusted.
+The results, shown in Fig. 3, demonstrate again that our
+method outperforms the SVM method. In general, the AMN
+method labels most of the points on the vehicles correctly.
+Occasionally, the AMN method labels a at part of a vehi-
+cle as background, because in this area, the features are in-
+distinguishable from a wall, and the edge potentials are not
+strong enough to overcome this (see Fig. 3a). There are also
+cases in which the AMN method fails, as in Fig. 3d where
+we fail to detect the two cars under dense foliage. By com-
+parison, the SVM method is only able to label vehicle parts
+with signicant curvature, as at areas are locally to similar
+to background. The AMN method thus provides a signi-
+cant gain, producing a 93.76% overall accuracy, compared
+to only 82.23% for the SVM approach.
+
+6. Conclusions
+
+We present an MRF-based method for detection and seg-
+mentation of complex objects and object classes from 3D
+range data. Our approach has a number of attractive the-
+oretical and practical properties. By constraining the class
+of MRFs to be solvable by graph-cuts, our models are ef-
+ciently learned using a compact quadratic program, and at
+run-time, scale up to tens of millions of points and multiple
+object classes. The proposed learning formulation effec-
+tively and directly learns to exploit a large set of complex
+surface and volumetric features, while balancing the spatial
+coherence modeled by the MRF.
+
+There are several interesting directions in which our
+work can be extended, that address the main limitation of
+our work: its reliance on local features to distinguish ob-
+jects. First, as our formulation is based on the max-margin
+framework underlying SVMs, we can easily incorporate
+kernels in order to further boost the expressive power of
+the models. We are currently developing appropriate spa-
+tial kernels. More importantly, our method relies heavily
+on the existence of distinguishing local surface features of
+objects. Since we do not model object parts and spatial
+relations between them, our method is effective at differ-
+entiating between mostly homogeneous objects (for exam-
+ple, trees, buildings, limbs), which do not have many parts
+that look similar locally. For example, it would be dif-
+cult to differentiate between car types, such as sedan vs.
+coup, which look alike except for the rear door/trunk. The
+challenge of incorporating the object/part hierarchy into the
+learning framework is a subject of our future work.
+
+8
+

@@ -1,0 +1,955 @@
+Abstract
+
+We show how to use complementary priors to
+eliminate the explaining away effects that make
+inference difcult
+in densely-connected belief
+nets that have many hidden layers. Using com-
+plementary priors, we derive a fast, greedy algo-
+rithm that can learn deep, directed belief networks
+one layer at a time, provided the top two lay-
+ers form an undirected associative memory. The
+fast, greedy algorithm is used to initialize a slower
+learning procedure that ne-tunes the weights us-
+ing a contrastive version of the wake-sleep algo-
+rithm. After ne-tuning, a network with three
+hidden layers forms a very good generative model
+of the joint distribution of handwritten digit im-
+ages and their labels. This generative model gives
+better digit classication than the best discrimi-
+native learning algorithms. The low-dimensional
+manifolds on which the digits lie are modelled by
+long ravines in the free-energy landscape of the
+top-level associative memory and it is easy to ex-
+plore these ravines by using the directed connec-
+tions to display what the associative memory has
+in mind.
+
+1 Introduction
+
+Learning is difcult in densely-connected, directed belief nets
+that have many hidden layers because it is difcult to infer the
+conditional distribution of the hidden activities when given a
+data vector. Variational methods use simple approximations
+to the true conditional distribution, but the approximations
+may be poor, especially at the deepest hidden layer where
+the prior assumes independence. Also, variational learning
+still requires all of the parameters to be learned together and
+makes the learning time scale poorly as the number of param-
+eters increases.
+
+We describe a model in which the top two hidden layers
+form an undirected associative memory (see gure 1) and the
+
+(cid:3)To appear in Neural Computation 2006
+
+remaining hidden layers form a directed acyclic graph that
+converts the representations in the associative memory into
+observable variables such as the pixels of an image. This hy-
+brid model has some attractive features:
+
+1. There is a fast, greedy learning algorithm that can nd
+a fairly good set of parameters quickly, even in deep
+networks with millions of parameters and many hidden
+layers.
+
+2. The learning algorithm is unsupervised but can be ap-
+plied to labeled data by learning a model that generates
+both the label and the data.
+
+3. There is a ne-tuning algorithm that learns an excel-
+lent generative model which outperforms discrimina-
+tive methods on the MNIST database of hand-written
+digits.
+
+4. The generative model makes it easy to interpret the dis-
+
+tributed representations in the deep hidden layers.
+
+5. The inference required for forming a percept is both fast
+
+and accurate.
+
+6. The learning algorithm is local:
+
+adjustments to a
+synapse strength depend only on the states of the pre-
+synaptic and post-synaptic neuron.
+
+7. The communication is simple: neurons only need to
+
+communicate their stochastic binary states.
+
+Section 2 introduces the idea of a complementary prior
+which exactly cancels the explaining away phenomenon
+that makes inference difcult in directed models. An exam-
+ple of a directed belief network with complementary priors
+is presented. Section 3 shows the equivalence between re-
+stricted Boltzmann machines and innite directed networks
+with tied weights.
+
+Section 4 introduces a fast, greedy learning algorithm
+for constructing multi-layer directed networks one layer at
+a time. Using a variational bound it shows that as each new
+layer is added, the overall generative model improves. The
+greedy algorithm bears some resemblance to boosting in its
+repeated use of the same weak learner, but instead of re-
+weighting each data-vector to ensure that the next step learns
+something new, it re-represents it. The weak learner that
+
+2000 top-level units
+
+10 label units
+
+500 units
+
+This could be the
+top level of
+another sensory
+pathway
+
+500 units
+
+28 x 28
+pixel
+image
+
+Figure 1: The network used to model the joint distribution
+of digit images and digit labels. In this paper, each training
+case consists of an image and an explicit class label, but work
+in progress has shown that the same learning algorithm can
+be used if the labels are replaced by a multilayer pathway
+whose inputs are spectrograms from multiple different speak-
+ers saying isolated digits. The network then learns to generate
+pairs that consist of an image and a spectrogram of the same
+digit class.
+
+is used to construct deep directed nets is itself an undirected
+graphical model.
+
+Section 5 shows how the weights produced by the fast
+greedy algorithm can be ne-tuned using the up-down al-
+gorithm. This is a contrastive version of the wake-sleep al-
+gorithm Hinton et al. (1995) that does not suffer from the
+mode-averaging problems that can cause the wake-sleep al-
+gorithm to learn poor recognition weights.
+
+Section 6 shows the pattern recognition performance of
+a network with three hidden layers and about 1.7 million
+weights on the MNIST set of handwritten digits. When no
+knowledge of geometry is provided and there is no special
+preprocessing, the generalization performance of the network
+is 1.25% errors on the 10; 000 digit ofcial test set. This beats
+the 1.5% achieved by the best back-propagation nets when
+they are not hand-crafted for this particular application. It is
+also slightly better than the 1.4% errors reported by Decoste
+and Schoelkopf (2002) for support vector machines on the
+same task.
+
+Finally, section 7 shows what happens in the mind of the
+network when it is running without being constrained by vi-
+sual input. The network has a full generative model, so it is
+easy to look into its mind  we simply generate an image from
+its high-level representations.
+
+Throughout the paper, we will consider nets composed of
+
+Figure 2: A simple logistic belief net containing two inde-
+pendent, rare causes that become highly anti-correlated when
+we observe the house jumping. The bias of (cid:0)10 on the earth-
+quake node means that, in the absence of any observation, this
+node is e10 times more likely to be off than on. If the earth-
+quake node is on and the truck node is off, the jump node has
+a total input of 0 which means that it has an even chance of
+being on. This is a much better explanation of the observation
+that the house jumped than the odds of e(cid:0)20 which apply if
+neither of the hidden causes is active. But it is wasteful to turn
+on both hidden causes to explain the observation because the
+probability of them both happening is e(cid:0)10 (cid:2) e(cid:0)10 = e(cid:0)20.
+When the earthquake node is turned on it explains away the
+evidence for the truck node.
+
+stochastic binary variables but the ideas can be generalized to
+other models in which the log probability of a variable is an
+additive function of the states of its directly-connected neigh-
+bours (see Appendix A for details).
+
+2 Complementary priors
+
+The phenomenon of explaining away (illustrated in gure 2)
+makes inference difcult in directed belief nets. In densely
+connected networks, the posterior distribution over the hid-
+den variables is intractable except in a few special cases such
+as mixture models or linear models with additive Gaussian
+noise. Markov Chain Monte Carlo methods (Neal, 1992) can
+be used to sample from the posterior, but they are typically
+very time consuming. Variational methods (Neal and Hinton,
+1998) approximate the true posterior with a more tractable
+distribution and they can be used to improve a lower bound on
+the log probability of the training data. It is comforting that
+learning is guaranteed to improve a variational bound even
+when the inference of the hidden states is done incorrectly,
+but it would be much better to nd a way of eliminating ex-
+plaining away altogether, even in models whose hidden vari-
+ables have highly correlated effects on the visible variables.
+It is widely assumed that this is impossible.
+
+A logistic belief net (Neal, 1992) is composed of stochas-
+tic binary units. When the net is used to generate data, the
+
+probability of turning on unit i is a logistic function of the
+states of its immediate ancestors, j, and of the weights, wij,
+on the directed connections from the ancestors:
+
+p(si = 1) =
+
+1
+
+1 + exp((cid:0)bi (cid:0) Pj sjwij)
+
+(1)
+
+where bi is the bias of unit i.
+If a logistic belief net only
+has one hidden layer, the prior distribution over the hidden
+variables is factorial because their binary states are chosen
+independently when the model is used to generate data. The
+non-independence in the posterior distribution is created by
+the likelihood term coming from the data. Perhaps we could
+eliminate explaining away in the rst hidden layer by using
+extra hidden layers to create a complementary prior that
+has exactly the opposite correlations to those in the likeli-
+hood term. Then, when the likelihood term is multiplied by
+the prior, we will get a posterior that is exactly factorial. It is
+not at all obvious that complementary priors exist, but gure 3
+shows a simple example of an innite logistic belief net with
+tied weights in which the priors are complementary at every
+hidden layer (see Appendix A for a more general treatment of
+the conditions under which complementary priors exist). The
+use of tied weights to construct complementary priors may
+seem like a mere trick for making directed models equiva-
+lent to undirected ones. As we shall see, however, it leads
+to a novel and very efcient learning algorithm that works
+by progressively untying the weights in each layer from the
+weights in higher layers.
+
+2.1 An innite directed model with tied weights
+
+We can generate data from the innite directed net in g-
+ure 3 by starting with a random conguration at an innitely
+deep hidden layer1 and then performing a top-down ances-
+tral pass in which the binary state of each variable in a layer
+is chosen from the Bernoulli distribution determined by the
+top-down input coming from its active parents in the layer
+above. In this respect, it is just like any other directed acyclic
+belief net. Unlike other directed nets, however, we can sam-
+ple from the true posterior distribution over all of the hidden
+layers by starting with a data vector on the visible units and
+then using the transposed weight matrices to infer the fac-
+torial distributions over each hidden layer in turn. At each
+hidden layer we sample from the factorial posterior before
+computing the factorial posterior for the layer above2. Ap-
+pendix A shows that this procedure gives unbiased samples
+because the complementary prior at each layer ensures that
+the posterior distribution really is factorial.
+
+Since we can sample from the true posterior, we can com-
+pute the derivatives of the log probability of the data. Let
+
+1The generation process converges to the stationary distribution
+of the Markov Chain, so we need to start at a layer that is deep
+compared with the time it takes for the chain to reach equilibrium.
+2This is exactly the same as the inference procedure used in the
+wake-sleep algorithm (Hinton et al., 1995) for the models described
+in this paper no variational approximation is required because the
+inference procedure gives unbiased samples.
+
+us start by computing the derivative for a generative weight,
+ij , from a unit j in layer H0 to unit i in layer V0 (see gure
+w00
+3). In a logistic belief net, the maximum likelihood learning
+rule for a single data-vector, v0, is:
+
+@ log p(v0)
+
+@w00
+ij
+
+=<h0
+
+j (v0
+
+i (cid:0) ^v0
+
+i )>
+
+(2)
+
+where < (cid:1)> denotes an average over the sampled states and
+i is the probability that unit i would be turned on if the visi-
+^v0
+ble vector was stochastically reconstructed from the sampled
+hidden states. Computing the posterior distribution over the
+second hidden layer, V1, from the sampled binary states in the
+rst hidden layer, H0, is exactly the same process as recon-
+structing the data, so v1
+i is a sample from a Bernoulli random
+variable with probability ^v0
+i . The learning rule can therefore
+be written as:
+
+@ log p(v0)
+
+@w00
+ij
+
+=<h0
+
+j (v0
+
+i (cid:0) v1
+
+i )>
+
+(3)
+
+i on h0
+
+j is unproblematic in the deriva-
+The dependence of v1
+tion of Eq. 3 from Eq. 2 because ^v0
+i is an expectation that is
+conditional on h0
+j . Since the weights are replicated, the full
+derivative for a generative weight is obtained by summing the
+derivatives of the generative weights between all pairs of lay-
+ers:
+
+@ log p(v0)
+
+@wij
+
+= <h0
+
+j (v0
+
+i (cid:0) v1
+
+i )>
+
++ <v1
+
+i (h0
++ <h1
+
+j (cid:0) h1
+j (v1
+
+j )>
+i (cid:0) v2
++:::
+
+i )>
+
+(4)
+
+All of the vertically aligned terms cancel leaving the Boltz-
+
+mann machine learning rule of Eq. 5.
+
+3 Restricted Boltzmann machines and
+
+contrastive divergence learning
+
+It may not be immediately obvious that the innite directed
+net in gure 3 is equivalent to a Restricted Boltzmann Ma-
+chine (RBM). An RBM has a single layer of hidden units
+which are not connected to each other and have undirected,
+symmetrical connections to a layer of visible units. To gen-
+erate data from an RBM, we can start with a random state
+in one of the layers and then perform alternating Gibbs sam-
+pling: All of the units in one layer are updated in parallel
+given the current states of the units in the other layer and this
+is repeated until the system is sampling from its equilibrium
+distribution. Notice that this is exactly the same process as
+generating data from the innite belief net with tied weights.
+To perform maximum likelihood learning in an RBM, we can
+use the difference between two correlations. For each weight,
+wij, between a visible unit i and a hidden unit, j we measure
+j > when a datavector is clamped on
+the correlation < v0
+
+i h0
+
+TW
+
+W
+
+TW
+
+W
+
+TW
+
+etc.
+
+V2
+
+2
+
+iv
+
+W
+
+TW
+
+H1
+
+1
+
+jh
+
+W
+
+TW
+
+W
+
+V1
+
+1
+
+iv
+
+H0
+
+0
+
+jh
+
+V0
+
+0
+
+iv
+
+Figure 3: An innite logistic belief net with tied weights. The
+downward arrows represent the generative model. The up-
+ward arrows are not part of the model. They represent the
+parameters that are used to infer samples from the posterior
+distribution at each hidden layer of the net when a datavector
+is clamped on V0.
+
+the visible units and the hidden states are sampled from their
+conditional distribution, which is factorial. Then, using al-
+ternating Gibbs sampling, we run the Markov chain shown in
+gure 4 until it reaches its stationary distribution and measure
+the correlation <v1
+j >. The gradient of the log probability
+of the training data is then
+
+i h1
+
+@ log p(v0)
+
+@wij
+
+=<v0
+
+i h0
+
+j> (cid:0) <v1
+
+i h1
+
+j >
+
+(5)
+
+This learning rule is the same as the maximum likelihood
+learning rule for the innite logistic belief net with tied
+weights, and each step of Gibbs sampling corresponds to
+computing the exact posterior distribution in a layer of the
+innite logistic belief net.
+
+Maximizing the log probability of the data is exactly
+the same as minimizing the Kullback-Leibler divergence,
+(cid:18) ), between the distribution of the data, P 0, and
+KL(P 0jjP 1
+the equilibrium distribution dened by the model, P 1
+In
+(cid:18) .
+contrastive divergence learning (Hinton, 2002), we only run
+the Markov chain for n full steps3 before measuring the sec-
+ond correlation. This is equivalent to ignoring the derivatives
+3Each full step consists of updating h given v then updating v
+
+given h.
+
+t = 0                 t = 1
+
+t = 2
+
+t = infinity
+
+j
+
+j
+
+j
+
+j
+
+<
+
+i hv
+
+00
+j
+
+>
+
+<
+
+
+
+i hv
+
+
+j
+
+>
+
+i
+
+
+
+i
+
+
+
+i
+
+i
+
+
+
+t = infinity
+
+Figure 4: This depicts a Markov chain that uses alternating
+Gibbs sampling. In one full step of Gibbs sampling, the hid-
+den units in the top layer are all updated in parallel by apply-
+ing Eq. 1 to the inputs received from the the current states
+of the visible units in the bottom layer, then the visible units
+are all updated in parallel given the current hidden states. The
+chain is initialized by setting the binary states of the visible
+units to be the same as a data-vector. The correlations in the
+activities of a visible and a hidden unit are measured after the
+rst update of the hidden units and again at the end of the
+chain. The difference of these two correlations provides the
+learning signal for updating the weight on the connection.
+
+that come from the higher layers of the innite net. The sum
+of all these ignored derivatives is the derivative of the log
+probability of the posterior distribution in layer Vn, which
+is also the derivative of the Kullback-Leibler divergence be-
+tween the posterior distribution in layer Vn, P n
+(cid:18) , and the equi-
+librium distribution dened by the model. So contrastive di-
+vergence learning minimizes the difference of two Kullback-
+Leibler divergences:
+
+KL(P 0jjP 1
+
+(cid:18) ) (cid:0) KL(P n
+
+(cid:18) jjP 1
+(cid:18) )
+
+(6)
+
+Ignoring sampling noise, this difference is never negative
+because Gibbs sampling is used to produce P n
+(cid:18) from P 0 and
+Gibbs sampling always reduces the Kullback-Leibler diver-
+gence with the equilibrium distribution. It is important to no-
+(cid:18) depends on the current model parameters and
+tice that P n
+(cid:18) changes as the parameters change is
+the way in which P n
+being ignored by contrastive divergence learning. This prob-
+lem does not arise with P 0 because the training data does not
+depend on the parameters. An empirical investigation of the
+relationship between the maximum likelihood and the con-
+trastive divergence learning rules can be found in Carreira-
+Perpinan and Hinton (2005).
+
+Contrastive divergence learning in a restricted Boltzmann
+machine is efcient enough to be practical (Mayraz and Hin-
+ton, 2001). Variations that use real-valued units and differ-
+ent sampling schemes are described in Teh et al. (2003) and
+have been quite successful for modeling the formation of to-
+pographic maps (Welling et al., 2003), for denoising natural
+images (Roth and Black, 2005) or images of biological cells
+(Ning et al., 2005). Marks and Movellan (2001) describe a
+way of using contrastive divergence to perform factor analy-
+sis and Welling et al. (2005) show that a network with logistic,
+binary visible units and linear, Gaussian hidden units can be
+used for rapid document retrieval. However, it appears that
+
+the efciency has been bought at a high price: When applied
+in the obvious way, contrastive divergence learning fails for
+deep, multilayer networks with different weights at each layer
+because these networks take far too long even to reach condi-
+tional equilibrium with a clamped data-vector. We now show
+that the equivalence between RBMs and innite directed nets
+with tied weights suggests an efcient learning algorithm for
+multilayer networks in which the weights are not tied.
+
+4 A greedy learning algorithm for
+
+transforming representations
+
+An efcient way to learn a complicated model is to combine
+a set of simpler models that are learned sequentially. To force
+each model in the sequence to learn something different from
+the previous models, the data is modied in some way after
+each model has been learned.
+In boosting (Freund, 1995),
+each model in the sequence is trained on re-weighted data that
+emphasizes the cases that the preceding models got wrong. In
+one version of principal components analysis, the variance in
+a modeled direction is removed thus forcing the next modeled
+direction to lie in the orthogonal subspace (Sanger, 1989).
+In projection pursuit (Friedman and Stuetzle, 1981), the data
+is transformed by nonlinearly distorting one direction in the
+data-space to remove all non-Gaussianity in that direction.
+The idea behind our greedy algorithm is to allow each model
+in the sequence to receive a different representation of the
+data. The model performs a non-linear transformation on its
+input vectors and produces as output the vectors that will be
+used as input for the next model in the sequence.
+
+Figure 5 shows a multilayer generative model in which the
+top two layers interact via undirected connections and all of
+the other connections are directed. The undirected connec-
+tions at the top are equivalent to having innitely many higher
+layers with tied weights. There are no intra-layer connections
+and, to simplify the analysis, all layers have the same number
+of units. It is possible to learn sensible (though not optimal)
+values for the parameters W0 by assuming that the parame-
+ters between higher layers will be used to construct a comple-
+mentary prior for W0. This is equivalent to assuming that all
+of the weight matrices are constrained to be equal. The task
+of learning W0 under this assumption reduces to the task of
+learning an RBM and although this is still difcult, good ap-
+proximate solutions can be found rapidly by minimizing con-
+trastive divergence. Once W0 has been learned, the data can
+be mapped through WT
+0 to create higher-level data at the
+rst hidden layer.
+
+If the RBM is a perfect model of the original data, the
+higher-level data will already be modeled perfectly by the
+higher-level weight matrices. Generally, however, the RBM
+will not be able to model the original data perfectly and we
+can make the generative model better using the following
+greedy algorithm:
+
+1. Learn W0 assuming all the weight matrices are tied.
+2. Freeze W0 and commit ourselves to using WT
+
+0 to infer
+
+Figure 5: A hybrid network. The top two layers have undi-
+rected connections and form an associative memory. The lay-
+ers below have directed, top-down, generative connections
+that can be used to map a state of the associative memory
+to an image. There are also directed, bottom-up, recognition
+connections that are used to infer a factorial representation in
+one layer from the binary activities in the layer below. In the
+greedy initial learning the recognition connections are tied to
+the generative connections.
+
+factorial approximate posterior distributions over the
+states of the variables in the rst hidden layer, even if
+subsequent changes in higher level weights mean that
+this inference method is no longer correct.
+
+3. Keeping all the higher weight matrices tied to each
+other, but untied from W0, learn an RBM model of the
+0 to
+higher-level data that was produced by using WT
+transform the original data.
+
+If this greedy algorithm changes the higher-level weight
+matrices, it is guaranteed to improve the generative model.
+As shown in (Neal and Hinton, 1998), the negative log prob-
+ability of a single data-vector, v0, under the multilayer gen-
+erative model is bounded by a variational free energy which
+is the expected energy under the approximating distribution,
+Q(h0jv0), minus the entropy of that distribution. For a di-
+rected model, the energy of the conguration v0; h0 is
+given by:
+
+E(v0; h0) = (cid:0)(cid:2)log p(h0) + log p(v0jh0)(cid:3)
+
+(7)
+
+So the bound is:
+log p(v0) (cid:21) X
+all h0
+(cid:0) X
+all h0
+
+Q(h0jv0)(cid:2)log p(h0) + log p(v0jh0)(cid:3)
+
+Q(h0jv0) log Q(h0jv0)
+
+(8)
+
+where h0 is a binary conguration of the units in the rst hid-
+den layer, p(h0) is the prior probability of h0 under the cur-
+rent model (which is dened by the weights above H0) and
+Q((cid:1)jv0) is any probability distribution over the binary con-
+gurations in the rst hidden layer. The bound becomes an
+equality if and only if Q((cid:1)jv0) is the true posterior distribu-
+tion.
+
+When all of the weight matrices are tied together, the fac-
+0 to a
+torial distribution over H0 produced by applying WT
+data-vector is the true posterior distribution, so at step 2 of
+the greedy algorithm log p(v0) is equal to the bound. Step
+2 freezes both Q((cid:1)jv0) and p(v0jh0) and with these terms
+xed, the derivative of the bound is the same as the derivative
+of
+
+Q(h0jv0) log p(h0)
+
+(9)
+
+X
+all h0
+
+So maximizing the bound w.r.t. the weights in the higher lay-
+ers is exactly equivalent to maximizing the log probability of
+a dataset in which h0 occurs with probability Q(h0jv0). If
+the bound becomes tighter, it is possible for log p(v0) to fall
+even though the lower bound on it increases, but log p(v0)
+can never fall below its value at step 2 of the greedy algo-
+rithm because the bound is tight at this point and the bound
+always increases.
+
+The greedy algorithm can clearly be applied recursively,
+so if we use the full maximum likelihood Boltzmann machine
+learning algorithm to learn each set of tied weights and then
+we untie the bottom layer of the set from the weights above,
+we can learn the weights one layer at a time with a guar-
+antee4 that we will never decrease the log probability of the
+data under the full generative model. In practice, we replace
+maximum likelihood Boltzmann machine learning algorithm
+by contrastive divergence learning because it works well and
+is much faster. The use of contrastive divergence voids the
+guarantee, but it is still reassuring to know that extra layers
+are guaranteed to improve imperfect models if we learn each
+layer with sufcient patience.
+
+To guarantee that the generative model is improved by
+greedily learning more layers, it is convenient to consider
+models in which all layers are the same size so that the higher-
+level weights can be initialized to the values learned before
+they are untied from the weights in the layer below. The same
+greedy algorithm, however, can be applied even when the lay-
+ers are different sizes.
+
+5 Back-Fitting with the up-down algorithm
+
+Learning the weight matrices one layer at a time is efcient
+but not optimal. Once the weights in higher layers have been
+learned, neither the weights nor the simple inference proce-
+dure are optimal for the lower layers. The sub-optimality pro-
+duced by greedy learning is relatively innocuous for super-
+vised methods like boosting. Labels are often scarce and each
+
+4The guarantee is on the expected change in the log probability.
+
+label may only provide a few bits of constraint on the parame-
+ters, so over-tting is typically more of a problem than under-
+tting. Going back and retting the earlier models may, there-
+fore, cause more harm than good. Unsupervised methods,
+however, can use very large unlabeled datasets and each case
+may be very high-dimensional thus providing many bits of
+constraint on a generative model. Under-tting is then a se-
+rious problem which can be alleviated by a subsequent stage
+of back-tting in which the weights that were learned rst are
+revised to t in better with the weights that were learned later.
+
+After greedily learning good initial values for the weights
+in every layer, we untie the recognition weights that are
+used for inference from the generative weights that de-
+ne the model, but retain the restriction that the posterior in
+each layer must be approximated by a factorial distribution in
+which the variables within a layer are conditionally indepen-
+dent given the values of the variables in the layer below. A
+variant of the wake-sleep algorithm described in Hinton et al.
+(1995) can then be used to allow the higher-level weights to
+inuence the lower level ones. In the up-pass, the recog-
+nition weights are used in a bottom-up pass that stochasti-
+cally picks a state for every hidden variable. The generative
+weights on the directed connections are then adjusted using
+the maximum likelihood learning rule in Eq. 25. The weights
+on the undirected connections at the top level are learned as
+before by tting the top-level RBM to the posterior distribu-
+tion of the penultimate layer.
+
+The down-pass starts with a state of the top-level asso-
+ciative memory and uses the top-down generative connections
+to stochastically activate each lower layer in turn. During
+the down-pass, the top-level undirected connections and the
+generative directed connections are not changed. Only the
+bottom-up recognition weights are modied. This is equiva-
+lent to the sleep phase of the wake-sleep algorithm if the as-
+sociative memory is allowed to settle to its equilibrium distri-
+bution before initiating the down-pass. But if the associative
+memory is initialized by an up-pass and then only allowed to
+run for a few iterations of alternating Gibbs sampling before
+initiating the down-pass, this is a contrastive form of the
+wake-sleep algorithm which eliminates the need to sample
+from the equilibrium distribution of the associative memory.
+The contrastive form also xes several other problems of the
+sleep phase. It ensures that the recognition weights are being
+learned for representations that resemble those used for real
+data and it also helps to eliminate the problem of mode aver-
+aging. If, given a particular data vector, the current recogni-
+tion weights always pick a particular mode at the level above
+and ignore other very different modes that are equally good at
+generating the data, the learning in the down-pass will not try
+to alter those recognition weights to recover any of the other
+modes as it would if the sleep phase used a pure ancestral
+pass. A pure ancestral pass would have to start by using pro-
+longed Gibbs sampling to get an equilibrium sample from the
+top-level associative memory. By using a top-level associa-
+
+5Because weights are no longer tied to the weights above them,
+i must be computed using the states of the variables in the layer
+^v0
+above i and the generative weights from these variables to i.
+
+Figure 6: All 49 cases in which the network guessed right but
+had a second guess whose probability was within 0:3 of the
+probability of the best guess. The true classes are arranged in
+standard scan order.
+
+tive memory we also eliminate a problem in the wake phase:
+Independent top-level units seem to be required to allow an
+ancestral pass, but they mean that the variational approxima-
+tion is very poor for the top layer of weights.
+
+Appendix B species the details of the up-down algorithm
+using matlab-style pseudo-code for the network shown in g-
+ure 1. For simplicity, there is no penalty on the weights, no
+momentum, and the same learning rate for all parameters.
+Also, the training data is reduced to a single case.
+
+6 Performance on the MNIST database
+
+6.1 Training the network
+
+The MNIST database of handwritten digits contains 60,000
+training images and 10,000 test images. Results for many
+different pattern recognition techniques are already published
+for this publicly available database so it is ideal for evaluating
+new pattern recognition methods. For the basic version of
+the MNIST learning task, no knowledge of geometry is pro-
+vided and there is no special pre-processing or enhancement
+of the training set, so an unknown but xed random permuta-
+tion of the pixels would not affect the learning algorithm. For
+this permutation-invariant version of the task, the general-
+ization performance of our network was 1.25% errors on the
+ofcial test set. The network6 shown in gure 1 was trained
+on 44,000 of the training images that were divided into 440
+balanced mini-batches each containing 10 examples of each
+digit class. The weights were updated after each mini-batch.
+
+6Preliminary experiments with 16 (cid:2) 16 images of handwritten
+digits from the USPS database showed that a good way to model
+the joint distribution of digit images and their labels was to use an
+architecture of this type, but for 16 (cid:2) 16 images, only 3=5 as many
+units were used in each hidden layer.
+
+Figure 7: The 125 test cases that the network got wrong. Each
+case is labeled by the networks guess. The true classes are
+arranged in standard scan order.
+
+In the initial phase of training, the greedy algorithm de-
+scribed in section 4 was used to train each layer of weights
+separately, starting at the bottom. Each layer was trained for
+30 sweeps through the training set (called epochs). Dur-
+ing training, the units in the visible layer of each RBM had
+real-valued activities between 0 and 1. These were the nor-
+malized pixel intensities when learning the bottom layer of
+weights. For training higher layers of weights, the real-valued
+activities of the visible units in the RBM were the activation
+probabilities of the hidden units in the lower-level RBM. The
+hidden layer of each RBM used stochastic binary values when
+that RBM was being trained. The greedy training took a few
+hours per layer in Matlab on a 3GHz Xeon processor and
+when it was done, the error-rate on the test set was 2.49%
+(see below for details of how the network is tested).
+
+When training the top layer of weights (the ones in the
+associative memory) the labels were provided as part of the
+input. The labels were represented by turning on one unit in a
+softmax group of 10 units. When the activities in this group
+were reconstructed from the activities in the layer above, ex-
+actly one unit was allowed to be active and the probability of
+
+picking unit i was given by:
+
+pi =
+
+exp(xi)
+Pj exp(xj)
+
+(10)
+
+where xi is the total input received by unit i. Curiously,
+the learning rules are unaffected by the competition between
+units in a softmax group, so the synapses do not need to know
+which unit is competing with which other unit. The competi-
+tion affects the probability of a unit turning on, but it is only
+this probability that affects the learning.
+
+After the greedy layer-by-layer training, the network was
+trained, with a different learning rate and weight-decay, for
+300 epochs using the up-down algorithm described in section
+5. The learning rate, momentum, and weight-decay7 were
+chosen by training the network several times and observing
+its performance on a separate validation set of 10,000 im-
+ages that were taken from the remainder of the full training
+set. For the rst 100 epochs of the up-down algorithm, the
+up-pass was followed by three full iterations of alternating
+Gibbs sampling in the associative memory before perform-
+ing the down-pass. For the second 100 epochs, six iterations
+were performed, and for the last 100 epochs, ten iterations
+were performed. Each time the number of iterations of Gibbs
+sampling was raised, the error on the validation set decreased
+noticeably.
+
+The network that performed best on the validation set was
+then tested and had an error rate of 1.39%. This network was
+then trained on all 60,000 training images8 until its error-rate
+on the full training set was as low as its nal error-rate had
+been on the initial training set of 44,000 images. This took
+a further 59 epochs making the total learning time about a
+week. The nal network had an error-rate of 1.25%9. The
+errors made by the network are shown in gure 7. The 49
+cases that the network gets correct but for which the second
+best probability is within 0.3 of the best probability are shown
+in gure 6.
+
+The error-rate of 1.25% compares very favorably with the
+error-rates achieved by feed-forward neural networks that
+have one or two hidden layers and are trained to optimize
+discrimination using the back-propagation algorithm (see ta-

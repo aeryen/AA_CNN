@@ -1,0 +1,970 @@
+Abstract
+
+Latent Dirichlet allocation (LDA) is a Bayesian network that has recently gained
+much popularity in applications ranging from document modeling to computer
+vision. Due to the large scale nature of these applications, current inference pro-
+cedures like variational Bayes and Gibbs sampling have been found lacking. In
+this paper we propose the collapsed variational Bayesian inference algorithm for
+LDA, and show that it is computationally efcient, easy to implement and signi-
+cantly more accurate than standard variational Bayesian inference for LDA.
+
+1 Introduction
+
+Bayesian networks with discrete random variables form a very general and useful class of proba-
+bilistic models. In a Bayesian setting it is convenient to endow these models with Dirichlet priors
+over the parameters as they are conjugate to the multinomial distributions over the discrete random
+variables [1]. This choice has important computational advantages and allows for easy inference in
+such models.
+
+A class of Bayesian networks that has gained signicant momentum recently is latent Dirichlet
+allocation (LDA) [2], otherwise known as multinomial PCA [3]. It has found important applications
+in both text modeling [4, 5] and computer vision [6]. Training LDA on a large corpus of several
+million documents can be a challenge and crucially depends on an efcient and accurate inference
+procedure. A host of inference algorithms have been proposed, ranging from variational Bayesian
+(VB) inference [2], expectation propagation (EP) [7] to collapsed Gibbs sampling [5].
+
+Perhaps surprisingly, the collapsed Gibbs sampler proposed in [5] seem to be the preferred choice
+in many of these large scale applications. In [8] it is observed that EP is not efcient enough to
+be practical while VB suffers from a large bias. However, collapsed Gibbs sampling also has its
+own problems: one needs to assess convergence of the Markov chain and to have some idea of
+mixing times to estimate the number of samples to collect, and to identify coherent topics across
+multiple samples. In practice one often ignores these issues and collects as many samples as is
+computationally feasible, while the question of topic identication is often sidestepped by using
+just 1 sample. Hence there still seems to be a need for more efcient, accurate and deterministic
+inference procedures.
+
+In this paper we will leverage the important insight that a Gibbs sampler that operates in a collapsed
+spacewhere the parameters are marginalized outmixes much better than a Gibbs sampler that
+samples parameters and latent topic variables simultaneously. This suggests that the parameters
+and latent variables are intimately coupled. As we shall see in the following, marginalizing out the
+parameters induces new dependencies between the latent variables (which are conditionally inde-
+pendent given the parameters), but these dependencies are spread out over many latent variables.
+This implies that the dependency between any two latent variables is expected to be small. This is
+
+precisely the right setting for a mean eld (i.e. fully factorized variational) approximation: a par-
+ticular variable interacts with the remaining variables only through summary statistics called the
+eld, and the impact of any single variable on the eld is very small [9]. Note that this is not true
+in the joint space of parameters and latent variables because uctuations in parameters can have a
+signicant impact on latent variables. We thus conjecture that the mean eld assumptions are much
+better satised in the collapsed space of latent variables than in the joint space of latent variables
+and parameters. In this paper we leverage this insight and propose a collapsed variational Bayesian
+(CVB) inference algorithm.
+
+In theory, the CVB algorithm requires the calculation of very expensive averages. However, the
+averages only depend on sums of independent Bernoulli variables, and thus are very closely approx-
+imated with Gaussian distributions (even for relatively small sums). Making use of this approxi-
+mation, the nal algorithm is computationally efcient, easy to implement and signicantly more
+accurate than standard VB.
+
+2 Approximate Inference in Latent Dirichlet Allocation
+
+LDA models each document as a mixture over topics. We assume there are K latent topics, each
+being a multinomial distribution over a vocabulary of size W . For document j, we rst draw a
+mixing proportion j = {jk} over K topics from a symmetric Dirichlet with parameter . For
+the ith word in the document, a topic zij is drawn with topic k chosen with probability jk, then
+word xij is drawn from the zijth topic, with xij taking on value w with probability kw. Finally, a
+symmetric Dirichlet prior with parameter  is placed on the topic parameters k = {kw}. The full
+joint distribution over all parameters and variables is:
+
+p(x, z, , |, ) =
+
+w=1 1+nkw
+
+kw
+
+(1)
+
+DYj=1
+
+(K)
+
+()K QK
+
+k=1 
+
+1+njk
+jk
+
+KYk=1
+
+(W )
+
+()W QW
+
+where njkw = #{i : xij = w, zij = k}, and dot means the corresponding index is summed out:
+
+nkw =Pj njkw, and njk =Pw njkw.
+
+Given the observed words x = {xij} the task of Bayesian inference is to compute the posterior
+distribution over the latent topic indices z = {zij}, the mixing proportions  = {j} and the topic
+parameters  = {k}. There are three current approaches, variational Bayes (VB) [2], expectation
+propagation [7] and collapsed Gibbs sampling [5]. We review the VB and collapsed Gibbs sam-
+pling methods here as they are the most popular methods and to motivate our new algorithm which
+combines advantages of both.
+
+2.1 Variational Bayes
+
+Standard VB inference upper bounds the negative log marginal likelihood  log p(x|, ) using the
+variational free energy:
+
+(2)
+with q(z, , ) an approximate posterior, H(q(z, , )) = Eq[ log q(z, , )] the variational en-
+tropy, and q(z, , ) assumed to be fully factorized:
+
+ log p(x|, )  eF (q(z, , )) = Eq[ log p(x, z, , |, )]  H(q(z, , ))
+
+q(z, , ) =Yij
+
+q(zij |ij)Yj
+
+q(j |j)Yk
+
+q(k| k)
+
+(3)
+
+q(zij|ij ) is multinomial with parameters ij and q(j|j ), q(k| k) are Dirichlet with parameters
+
+j and k respectively. Optimizing eF (q) with respect to the variational parameters gives us a set of
+updates guaranteed to improve eF (q) at each iteration and converges to a local minimum:
+
+jk =  +Pi ijk
+kw =  +Pij 111(xij = w)ijk
+ijk  exp(cid:16)(jk) + ( kxij )  (Pw
+
+kw)(cid:17)
+
+(4)
+(5)
+
+(6)
+
+where (y) =  log (y)
+
+y
+
+is the digamma function and 111 is the indicator function.
+
+Although efcient and easily implemented, VB can potentially lead to very inaccurate results. No-
+tice that the latent variables z and parameters ,  can be strongly dependent in the true posterior
+p(z, , |x) through the cross terms in (1). This dependence is ignored in VB which assumes that
+latent variables and parameters are independent instead. As a result, the VB upper bound on the
+negative log marginal likelihood can be very loose, leading to inaccurate estimates of the posterior.
+
+2.2 Collapsed Gibbs Sampling
+
+Standard Gibbs sampling, which iteratively samples latent variables z and parameters , , can
+potentially have slow convergence due again to strong dependencies between the parameters and
+latent variables. Collapsed Gibbs sampling improves upon Gibbs sampling by marginalizing out 
+and  instead, therefore dealing with them exactly. The marginal distribution over x and z is
+
+p(z, x|, ) =Yj
+
+(K)
+
+(K+nj)Qk
+
+(+njk)
+
+() Yk
+
+(W )
+
+(W  +nk)Qw
+
+( +nkw)
+
+()
+
+Given the current state of all but one variable zij, the conditional probability of zij is:
+
+(7)
+
+(8)
+
+p(zij = k|z
+
+ij, x, , ) =
+
+jk )( + nij
+
+kxij
+
+( + nij
+k0=1( + nij
+
+jk0)( + nij
+
+k0xij
+
+)(W  + nij
+
+k )1
+)(W  + nij
+
+k0)1
+
+PK
+
+where the superscript ij means the corresponding variables or counts with xij and zij excluded,
+and the denominator is just a normalization. The conditional distribution of zij is multinomial with
+simple to calculate probabilities, so the programming and computational overhead is minimal.
+Collapsed Gibbs sampling has been observed to converge quickly [5]. Notice from (8) that zij
+depends on zij only through the counts nij
+k . In particular, the dependence of zij on
+any particular other variable zi0j 0 is very weak, especially for large datasets. As a result we expect the
+convergence of collapsed Gibbs sampling to be fast [10]. However, as with other MCMC samplers,
+and unlike variational inference, it is often hard to diagnose convergence, and a sufciently large
+number of samples may be required to reduce sampling noise.
+
+jk , nij
+
+, nij
+
+kxij
+
+The argument of rapid convergence of collapsed Gibbs sampling is reminiscent of the argument for
+when mean eld algorithms can be expected to be accurate [9]. The counts nij
+k act as
+elds through which zij interacts with other variables. In particular, averaging both sides of (8) by
+p(zij |x, , ) gives us the Callen equations, a set of equations that the true posterior must satisfy:
+
+jk , nij
+
+, nij
+
+kxij
+
+p(zij = k|x, , ) = Ep(z
+
+ij |x,,)"
+
+jk )( +nij
+
+kxij
+
+(+nij
+k0=1(+nij
+
+jk0)( +nij
+
+k0xij
+
+)(W  +nij
+
+k )1
+)(W  +nij
+
+k0)1#
+
+(9)
+
+Since the latent variables are already weakly dependent on each other, it is possible to replace (9)
+by a set of mean eld equations where latent variables are assumed independent and still expect
+these equations to be accurate. This is the idea behind the collapsed variational Bayesian inference
+algorithm of the next section.
+
+PK
+
+3 Collapsed Variational Bayesian Inference for LDA
+
+We derive a new inference algorithm for LDA combining the advantages of both standard VB and
+collapsed Gibbs sampling. It is a variational algorithm which, instead of assuming independence,
+models the dependence of the parameters on the latent variables in an exact fashion. On the other
+hand we still assume that latent variables are mutually independent. This is not an unreasonable
+assumption to make since as we saw they are only weakly dependent on each other. We call this
+algorithm collapsed variational Bayesian (CVB) inference.
+
+There are two ways to deal with the parameters in an exact fashion, the rst is to marginalize them
+out of the joint distribution and to start from (7), the second is to explicitly model the posterior of
+,  given z and x without any assumptions on its form. We will show that these two methods
+
+are equivalent. The only assumption we make in CVB is that the latent variables z are mutually
+independent, thus we approximate the posterior as:
+
+q(z, , ) = q(, |z)Yij
+
+q(zij|ij)
+
+where q(zij|ij ) is multinomial with parameters ij. The variational free energy becomes:
+
+bF(q(z)q(, |z)) = Eq(z)q(,|z)[ log p(x, z, , |, )]  H(q(z)q(, |z))
+
+=Eq(z)[Eq(,|z)[ log p(x, z, , |, )]  H(q(, |z))]  H(q(z))
+
+We minimize the variational free energy with respect to q(, |z) rst, followed by q(z). Since
+we do not restrict the form of q(, |z), the minimum is achieved at the true posterior q(, |z) =
+p(, |x, z, , ), and the variational free energy simplies to:
+
+bF (q(z)) , min
+
+We see that CVB is equivalent to marginalizing out ,  before approximating the posterior over z.
+As CVB makes a strictly weaker assumption on the variational posterior than standard VB, we have
+
+and thus CVB is a better approximation than standard VB. Finally, we derive the updates for the
+variational parameters ij. Minimizing (12) with respect to ijk, we get
+
+(10)
+
+(11)
+
+(12)
+
+(13)
+
+(14)
+
+(15)
+
+q(,|z) bF(q(z)q(, |z)) = Eq(z)[ log p(x, z|, )]  H(q(z))
+bF (q(z))  eF(q(z)) , min
+exp(cid:0)Eq(z
+k0=1 exp(cid:0)Eq(z
+PK
+() =Pn1
+
+q()q() eF (q(z)q()q())
+ij )[p(x, zij , zij = k|, )](cid:1)
+ij )[p(x, zij , zij = k0|, )](cid:1)
+k )](cid:17)
+k0)](cid:17)
+
+jk0) + log( +nij
+
+jk ) + log( +nij
+
+)  log(W  +nij
+
+ij )[log(+nij
+
+)  log(W  +nij
+
+k0xij
+
+ij )[log(+nij
+
+kxij
+
+ijk = q(zij = k) =
+
+ijk =
+
+exp(cid:16)Eq(z
+k0=1 exp(cid:16)Eq(z
+PK
+
+3.1 Gaussian approximation for CVB Inference
+
+Plugging in (7), expanding log (+n)
+n, and cancelling terms appearing both in the numerator and denominator, we get
+
+l=0 log( + l) for positive reals  and positive integers
+
+For completeness, we describe how to compute each expectation term in (15) exactly in the ap-
+pendix. This exact implementation of CVB is computationally too expensive to be practical, and
+we propose instead to use a simple Gaussian approximation which works very accurately and which
+requires minimal computational costs.
+In this section we describe the Gaussian approximation applied to Eq[log( + nij
+two expectation terms are similarly computed. Assume that nj (cid:29) 0. Notice that nij
+
+Pi06=i 111(zi0j = k) is a sum of a large number independent Bernoulli variables 111(zi0j = k) each
+
+with mean parameter i0jk, thus it can be accurately approximated by a Gaussian. The mean and
+variance are given by the sum of the means and variances of the individual Bernoulli variables:
+
+jk )]; the other
+jk =
+
+Eq[nij
+
+jk ] =Xi06=i
+
+i0jk
+
+Varq[nij
+
+jk ] =Xi06=i
+
+i0jk(1  i0jk)
+
+(16)
+
+We further approximate the function log( + nij
+Eq[nij
+
+jk ], and evaluate its expectation under the Gaussian approximation:
+
+jk ) using a second-order Taylor expansion about
+
+Eq[log( + nij
+
+jk )]  log( + Eq[nij
+
+jk ]) 
+
+Varq(nij
+jk )
+2( + Eq[nij
+jk ])2
+
+(17)
+
+Because Eq[nij
+jk ] (cid:29) 0, the third derivative is small and the Taylor series approximation is very
+accurate. In fact, we have found experimentally that the Gaussian approximation works very well
+
+even when nj is small. The reason is that we often have i0jk being either close to 0 or 1 thus
+the variance of nij
+jk is small relative to its mean and the Gaussian approximation will be accurate.
+Finally, plugging (17) into (15), we have our CVB updates:
+
+ijk (cid:16)+Eq[nij
+
+jk ](cid:17)(cid:16) +Eq[nij
+
+kxij
+
+](cid:17)(cid:16)W  +Eq[nij
+
+k ](cid:17)1
+
+)
+
+Var q(nij
+jk )
+jk ])2 
+2(+E q[nij
+
+Var q(nij
+kxij
+2(+E q[nij
+
+kxij
+
+exp(cid:18)
+
+])2 +
+
+Var q(nij
+k )
+2(W +E q[nij
+
+k ])2(cid:19)
+
+(18)
+
+Notice the striking correspondence between (18), (8) and (9), showing that CVB is indeed the mean
+eld version of collapsed Gibbs sampling. In particular, the rst line in (18) is obtained from (8)
+by replacing the elds nij
+k by their means (thus the term mean eld) while the
+exponentiated terms are correction factors accounting for the variance in the elds.
+
+jk , nij
+
+and nij
+
+kxij
+
+CVB with the Gaussian approximation is easily implemented and has minimal computational costs.
+By keeping track of the mean and variance of njk, nkw and nk, and subtracting the mean and
+variance of the corresponding Bernoulli variables whenever we require the terms with xij , zij re-
+moved, the computational cost scales only as O(K) for each update to q(zij). Further, we only
+need to maintain one copy of the variational posterior over the latent variable for each unique docu-
+ment/word pair, thus the overall computational cost per iteration of CVB scales as O(M K) where
+M is the total number of unique document/word pairs, while the memory requirement is O(M K).
+This is the same as for VB. In comparison, collapsed Gibbs sampling needs to keep track of the
+current sample of zij for every word in the corpus, thus the memory requirement is O(N ) while the
+computational cost scales as O(N K) where N is the total number of words in the corpushigher
+than for VB and CVB. Note however that the constant factor involved in the O(N K) time cost of
+collapsed Gibbs sampling is signicantly smaller than those for VB and CVB.
+
+4 Experiments
+
+We compared the three algorithms described in the paper: standard VB, CVB and collapsed Gibbs
+sampling. We used two datasets: rst is KOS (www.dailykos.com), which has J = 3430 docu-
+ments, a vocabulary size of W = 6909, a total of N = 467, 714 words in all the documents and on
+average 136 words per document. Second is NIPS (books.nips.cc) with J = 1675 documents, a
+vocabulary size of W = 12419, N = 2, 166, 029 words in the corpus and on average 1293 words per
+document. In both datasets stop words and infrequent words were removed. We split both datasets
+into a training set and a test set by assigning 10% of the words in each document to the test set. In
+all our experiments we used  = 0.1,  = 0.1, K = 8 number of topics for KOS and K = 40 for
+NIPS. We ran each algorithm on each dataset 50 times with different random initializations.
+
+Performance was measured in two ways. First using variational bounds of the log marginal proba-
+bilities on the training set, and secondly using log probabilities on the test set. Expressions for the
+variational bounds are given in (2) for VB and (12) for CVB. For both VB and CVB, test set log
+probabilities are computed as:
+
+p(x
+
+test) =Yij Xk
+
+jk kxtest
+
+ij
+
+jk =
+
+ + Eq[njk]
+K + Eq[nj]
+
+kw =
+
+ + Eq[nkw]
+W  + Eq[nk]
+
+(19)
+
+Note that we used estimated mean values of jk and kw [11]. For collapsed Gibbs sampling, given
+S samples from the posterior, we used:
+
+p(x
+
+test) =Yij Xk
+
+1
+|S|
+
+SXs=1
+
+s
+jks
+
+kxtest
+ij
+
+s
+jk =
+
+ + ns
+jk
+K + ns
+j
+
+s
+
+kw =
+
+ + ns
+kw
+W  + ns
+k
+
+(20)
+
+Figure 1 summarizes our results. We show both quantities as functions of iterations and as his-
+tograms of nal values for all algorithms and datasets. CVB converged faster and to signicantly
+better solutions than standard VB; this conrms our intuition that CVB provides much better approx-
+imations than VB. CVB also converged faster than collapsed Gibbs sampling, but Gibbs sampling
+attains a better solution in the end; this is reasonable since Gibbs sampling should be exact with
+
+7.5
+
+8
+
+8.5
+
+9
+0
+
+20
+
+15
+
+10
+
+5
+
+0
+7.8
+7.4
+
+7.5
+
+7.6
+
+7.7
+
+7.8
+
+7.9
+0
+
+20
+
+15
+
+10
+
+5
+
+0
+7.7
+
+Collapsed VB
+Standard VB
+
+20
+
+40
+
+60
+
+80
+
+100
+
+Collapsed VB
+Standard VB
+
+7.675
+
+7.55
+
+Collapsed Gibbs
+Collapsed VB
+Standard VB
+
+20
+
+40
+
+60
+
+80
+
+100
+
+Collapsed Gibbs
+Collapsed VB
+Standard VB
+
+7.65
+
+7.6
+
+7.55
+
+7.5
+
+7.45
+
+7.4
+
+7.4
+
+7.6
+
+7.8
+
+8
+
+8.2
+
+8.4
+
+8.6
+
+8.8
+
+9
+0
+
+40
+
+35
+
+30
+
+25
+
+20
+
+15
+
+10
+
+5
+
+0
+
+7.65
+7.2
+
+7.3
+
+7.4
+
+7.5
+
+7.6
+
+7.7
+
+7.8
+
+7.9
+0
+
+30
+
+25
+
+20
+
+15
+
+10
+
+5
+
+0
+
+7.5
+
+Collapsed VB
+Standard VB
+
+20
+
+40
+
+60
+
+80
+
+100
+
+Collapsed VB
+Standard VB
+
+7.6
+
+7.55
+
+7.5
+
+7.45
+
+7.4
+
+Collapsed Gibbs
+Collapsed VB
+Standard VB
+
+20
+
+40
+
+60
+
+80
+
+100
+
+Collapsed Gibbs
+Collapsed VB
+Standard VB
+
+7.45
+
+7.4
+
+7.35
+
+7.3
+
+7.25
+
+7.2
+
+Figure 1: Left: results for KOS. Right: results for NIPS. First row: per word variational bounds as functions
+of numbers of iterations of VB and CVB. Second row: histograms of converged per word variational bounds
+across random initializations for VB and CVB. Third row: test set per word log probabilities as functions
+of numbers of iterations for VB, CVB and Gibbs. Fourth row: histograms of nal test set per word log
+probabilities across 50 random initializations.
+
+7.4
+
+7.5
+
+7.6
+
+7.7
+
+7.8
+
+7.9
+
+8
+
+8.1
+
+8.2
+0
+
+7.5
+
+8
+
+8.5
+
+9
+
+9.5
+0
+
+Collapsed Gibbs
+Collapsed VB
+Standard VB
+
+500
+
+1000
+
+1500
+
+2000
+
+2500
+
+Collapsed VB
+Standard VB
+
+500
+
+1000
+
+1500
+
+2000
+
+2500
+
+Figure 2: Left: test set per word log probabilities. Right: per word variational bounds. Both as functions of
+the number of documents for KOS.
+
+enough samples. We have also applied the exact but much slower version of CVB without the Gaus-
+sian approximation, and found that it gave identical results to the one proposed here (not shown).
+
+We have also studied the dependence of approximation accuracies on the number of documents in
+the corpus. To conduct this experiment we train on 90% of the words in a (growing) subset of the
+corpus and test on the corresponding 10% left out words. In gure Figure 2 we show both variational
+bounds and test set log probabilities as functions of the number of documents J. We observe that as
+expected the variational methods improve as J increases. However, perhaps surprisingly, CVB does
+not suffer as much as VB for small values of J, even though one might expect that the Gaussian
+approximation becomes dubious in that regime.
+
+5 Discussion
+
+We have described a collapsed variational Bayesian (CVB) inference algorithm for LDA. The al-
+gorithm is easy to implement, computationally efcient and more accurate than standard VB. The
+central insight of CVB is that instead of assuming parameters to be independent from latent vari-
+ables, we treat their dependence on the topic variables in an exact fashion. Because the factorization
+assumptions made by CVB are weaker than those made by VB, the resulting approximation is more
+accurate. Computational efciency is achieved in CVB with a Gaussian approximation, which was
+found to be so accurate that there is never a need for exact summation.
+
+The idea of integrating out parameters before applying variational inference has been indepen-
+dently proposed by [12]. Unfortunately, because they worked in the context of general conjugate-
+exponential families, the approach cannot be made generally computationally useful. Nevertheless,
+we believe the insights of CVB can be applied to a wider class of discrete graphical models beyond
+LDA. Specic examples include various extensions of LDA [4, 13] hidden Markov models with dis-
+crete outputs, and mixed-membership models with Dirichlet distributed mixture coefcients [14].
+These models all have the property that they consist of discrete random variables with Dirichlet
+priors on the parameters, which is the property allowing us to use the Gaussian approximation. We
+are also exploring CVB on an even more general class of models, including mixtures of Gaussians,
+Dirichlet processes, and hierarchical Dirichlet processes.
+
+Over the years a variety of inference algorithms have been proposed based on a combination of
+{maximize, sample, assume independent, marginalize out} applied to both parameters and latent
+variables. We conclude by summarizing these algorithms in Table 1, and note that CVB is located
+in the marginalize out parameters and assume latent variables are independent cell.
+
+A Exact Computation of Expectation Terms in (15)
+
+We can compute the expectation terms in (15) exactly as follows. Consider Eq[log( + nij
+which requires computing q(nij
+
+jk )],
+jk ) (other expectation terms are similarly computed). Note that
+
+Parameters 
+
+ Latent variables
+
+maximize
+sample
+
+maximize
+
+sample
+
+Viterbi EM
+
+?
+
+stochastic EM Gibbs sampling
+
+assume independent variational EM
+
+?
+
+assume
+
+independent
+
+ME
+?
+VB
+
+marginalize
+
+out
+ME
+
+collapsed Gibbs
+
+CVB
+
+marginalize out
+
+EM
+
+any MCMC
+
+EP for LDA
+
+intractable
+
+Table 1: A variety of inference algorithms for graphical models. Note that not every cell is lled in (marked
+by ?) while some are simply intractable. ME is the maximization-expectation algorithm of [15] and any
+MCMC means that we can use any MCMC sampler for the parameters once latent variables have been
+marginalized out.
+
+jk =Pi06=i 111(zi0j = k) is a sum of independent Bernoulli variables 111(zi0j = k) each with mean
+
+nij
+parameter i0jk. Dene vectors vi0jk = [(1  i0jk), i0jk]>, and let vjk = v1jk      vnjjk be
+the convolution of all vi0jk. Finally let vij
+jk = m) will
+be the (m+1)st entry in vij
+jk )] can now be computed explicitly.
+This exact implementation requires an impractical O(n2
+jk )]. At
+the expense of complicating the algorithm implementation, this can be improved by sparsifying the
+vectors vjk (setting small entries to zero) as well as other computational tricks. We propose instead
+the Gaussian approximation of Section 3.1, which we have found to give extremely accurate results
+but with minimal implementation complexity and computational cost.
+
+jk be vjk deconvolved by vijk. Then q(nij
+
+jk . The expectation Eq[log(+nij
+
+j) time to compute Eq[log(+nij
+
+Acknowledgement
+
+YWT was previously at NUS SoC and supported by the Lee Kuan Yew Endowment Fund. MW was
+supported by ONR under grant no. N00014-06-1-0734 and by NSF under grant no. 0535278.
+

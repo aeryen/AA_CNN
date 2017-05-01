@@ -1,0 +1,882 @@
+Abstract
+
+Interpolated Kneser-Ney is one of the best smoothing methods for n-gram language models. Previ-
+ous explanations for its superiority have been based on intuitive and empirical justications of specic
+properties of the method. We propose a novel interpretation of interpolated Kneser-Ney as approxi-
+mate inference in a hierarchical Bayesian model consisting of Pitman-Yor processes. As opposed to
+past explanations, our interpretation can recover exactly the formulation of interpolated Kneser-Ney, and
+performs better than interpolated Kneser-Ney when a better inference procedure is used.
+
+1 Introduction
+
+Probabilistic language models are used extensively in a variety of linguistic applications. Standard exam-
+ples include speech recognition, handwriting recognition, machine translation and spelling correction. The
+basic task is to model the probability distribution over sentences. Most researchers take the approach of
+modelling the conditional distribution of words given their histories, and piecing these together to form the
+joint distribution over the whole sentence,
+
+P (word1, word2, . . . , wordt) =
+
+t
+
+Yi=1
+
+P (wordi | word1, . . . , wordi1) .
+
+(1)
+
+The class of n-gram models form the bulk of such models. The basic assumption here is that the conditional
+probability of a word given its history can be simplied to its probability given a reduced context consisting
+of only the past n  1 words,
+
+P (wordi | word1, . . . , wordi1) = P (wordi | wordiN +1, . . . , wordi1)
+
+(2)
+
+Even for modest values of n the number of parameters involved in n-gram models is still tremendous.
+For example typical applications use n = 3 and has a O(50000) word vocabulary, leading to O(500003)
+parameters. As a result direct maximum-likelihood parameter tting will severely overt to our training
+data, and smoothing techniques are indispensible for the proper training of n-gram models. A large number
+of smoothing techniques have been proposed in the literature; see Chen and Goodman (1998); Goodman
+(2001); Rosenfeld (2000) for overviews, while more recent proposals include Charniak (2001); Bilmes and
+Kirchhoff (2003); Bengio et al. (2003); Xu and Jelinek (2004) and Blitzer et al. (2005).
+
+1
+
+In an extensive and systematic survey of smoothing techniques for n-grams, Chen and Goodman (1998)
+showed that interpolated Kneser-Ney and its variants were the most successful smoothing techniques at
+the time. Although more recent techniques have exhibited better performance, interpolated Kneser-Ney is
+still an important technique now as the better performances have only been achieved by combining more
+elaborate models with it. Interpolated Kneser-Ney involves three concepts: it interpolates linearly between
+higher and lower order n-grams, it alters positive word counts by subtracting a constant amount (absolute
+discounting), and it uses an unusual estimate of lower order n-grams.
+
+A number of explanations for why interpolated Kneser-Ney works so well has been given in the liter-
+ature. Kneser and Ney (1995), Chen and Goodman (1998) and Goodman (2001) showed that the unusual
+estimate of lower order n-grams follows from interpolation, absolute discounting, and a constraint on word
+marginal distributions. Goodman (2001) further showed that n-gram models which does not preserve these
+word marginal distributions cannot be optimal. Empirical results in Chen and Goodman (1998) demon-
+strated that interpolation works better than other ways of combining higher and lower order n-grams and
+that absolute discounting is a good approximation to the optimal discount. Finally, a different approach by
+Goodman (2004) showed that back-off Kneser-Ney is similar to a maximum-entropy model with exponential
+priors.
+
+We will give a new interpretation of interpolated Kneser-Ney as an approximate inference method in a
+Bayesian model. The model we propose is a straightforward hierarchical Bayesian model (Gelman et al.
+1995), where each hidden variable represents the distribution over next words given a particular context.
+These variables are related hierarchically such that the prior mean of a hidden variable corresponding to
+a context is the word distribution given the context consisting of all but the earliest word (we will make
+clear what we mean by this in the later parts of the paper). The hidden variables are distributed according
+to a well-studied nonparametric generalization of the Dirichlet distribution variously known as the two-
+parameter Poisson-Dirichlet process or the Pitman-Yor process (Pitman and Yor 1997; Ishwaran and James
+2001; Pitman 2002) (in this paper we shall refer to this as the Pitman-Yor process for succinctness).
+
+As we shall show in this paper, this hierarchical structure corresponds exactly to the technique of inter-
+polating between higher and lower order n-grams. Our interpretation has the advantage over past interpre-
+tations in that we can recover the exact form of interpolated Kneser-Ney. In addition, in comparison with
+the maximum-entropy view, where interpolated Kneser-Ney in fact does better than the model in which it is
+supposed to approximate, we show in experiments that our model works better than interpolated Kneser-Ney
+if we use more accurate inference procedures. As our model is fully Bayesian, we also reap other advantages
+of Bayesian methods, e.g. we can easily use the model as part of a more elaborate model.
+
+Bayesian techniques are not new in natural language processing and language modelling given the prob-
+abilistic nature of most approaches. Maximum-entropy models have found many uses relating features of
+inputs to distributions over outputs (Rosenfeld 1994; Berger et al. 1996; McCallum et al. 2000; Lafferty et al.
+2001). Use of priors is widespread and a number of studies have been conducted comparing different types
+of priors (Brand 1999; Chen and Rosenfeld 2000; Goodman 2004). Even hierarchical Bayesian models
+have been applied to language modellingMacKay and Peto (1994) have proposed one based on Dirichlet
+distributions. Our model is a natural generalization of this model using Pitman-Yor processes rather than
+Dirichlet distributions.
+
+Bayesian models have not been more widely adopted in the language modelling community because
+the models proposed so far have performed poorly in comparison to other smoothing techniques. The major
+contributions of our work are in proposing a Bayesian model with excellent performance, and in establishing
+the direct correspondence between interpolated Kneser-Ney, a well-established smoothing technique, and
+the Bayesian approach. We expect this connection to be useful both in terms of giving a principled statistical
+
+2
+
+footing to smoothing techniques and in suggesting even better performing Bayesian models.
+
+Goldwater et al. (2006) observed that Pitman-Yor processes generate power-law distributions and argued
+that since such distributions occur frequently in natural languages, they are more suited for natural languages
+processing.
+Is it thus perhaps unsurprising that our model has performance superior to the hierarchical
+Dirichlet language model of MacKay and Peto (1994). In fact, Goldwater et al. (2006) have independently
+noted this relationship between a hierarchical Pitman-Yor process and interpolated Kneser-Ney, but have not
+corroborated this with further investigations and experimental results.
+
+In the following section we will give a detailed description of interpolated Kneser-Ney and modied
+Kneser-Ney. We review the Pitman-Yor process as it pertains to language modelling in Section 3. In Sec-
+tion 4 we propose the hierarchical Pitman-Yor language model and relate it to interpolated Kneser-Ney.
+Experimental results establishing the performance of the model in terms of cross-entropy is reported in Sec-
+tion 5, and we conclude with some discussion in Section 6. Finally we delegate details of some additional
+properties of the model and inference using Markov chain Monte Carlo sampling to the appendices.
+
+2 Interpolated Kneser-Ney and its Variants
+
+In this section we introduce notations and describe in detail the n-gram language modelling task, interpo-
+lated Kneser-Ney and a modied version which performs better. Our sources of information are Chen and
+Goodman (1998) and Goodman (2001) which are excellent reviews of state-of-the-art smoothing techniques
+and language models.
+
+We assume that we have a closed set of words in our vocabolary W , which is of size V . For a word
+w  W and a context consisting of a sequence of n  1 words u  W n1 let cuw be the number of
+occurrences of w following u in our training corpus. The naive maximum likelihood probability for a word
+w following u is
+
+P ML
+u (w) =
+
+cuw
+cu
+
+(3)
+
+where cu = Pw0 cuw0. Instead, interpolated Kneser-Ney estimates the probability of word w following
+
+context u by discounting the true count cuw by a xed amount d|u| depending on the length |uw| if cuw > 0
+(otherwise the count remains 0). Further, it interpolates the estimated probability of word w with lower
+order m-gram probabilities. This gives,
+
+P IKN
+u (w) =
+
+max(0, cuw  d|u|)
+
+cu
+
++
+
+d|u|tu
+
+cu
+
+P IKN
+(u)(w)
+
+(4)
+
+where tu = #{w0 | cuw0 > 0} is the number of distinct words w0 following context u in the training
+corpus, (u) is the context consisting of all words in u except the rst and P IKN
+(u)(w) are the lower order
+m-gram probabilities. The value of tu is chosen simply to make the probability estimates sum to 1. Finally,
+interpolated Kneser-Ney uses modied sets of counts for the lower order m-gram probabilities. In particular,
+for a context u0 of length m < n  1 and words w0 and w, let
+
+tw0u0w =(1 if cw0u0w > 0;
+
+0 if cw0u0w = 0;
+
+cu0w = tu0w =Xw0
+
+tw0u0w
+
+(5)
+
+where w0u0 is the context formed by concatenating w0 and u0. The lower order m-gram probabilities are
+estimated as in (4) using the modied counts of (5). A different value of discount dm1 is used for each
+length m and these can either be estimated using formulas or by using cross-validation.
+
+3
+
+Modied Kneser-Ney is an improvement upon interpolated Kneser-Ney where the amount of discount
+is allowed more variability. In the empirical studies in Chen and Goodman (1998) and Church and Gale
+(1991) it was found that the optimal amount of discount that should be used changes slowly as a function of
+the counts cuw. This was used as one of the reasons for absolute discounting in Chen and Goodman (1998).
+In the same study it was also noticed that the optimal discounts for low values of cuw differ substantially
+from those with higher values. Modied Kneser-Ney uses different values of discounts for different counts,
+one each for cuw = 1, 2, . . . , c(max)  1 and another for cuw  c(max). The same formulas for (4) and
+(5) are used. Modied Kneser-Ney reduces to interpolated Kneser-Ney when c(max) = 1, while Chen and
+Goodman (1998) uses c(max) = 3 as a good compromise between diminishing improvements and increasing
+implementational complexity.
+
+The unusual counts in interpolated Kneser-Ney can be derived by preserving marginal word distribu-
+tions. let P emp(u) be the empirical probability of word sequence u among sequences of length n  1. Let
+w0 and w be words and u0 be a word sequence of length m = n  2. Assuming the form of (4) and the
+following marginal constraints,
+
+we can derive that
+
+P emp(w0u0)P IKN
+
+w0 u0(w) = P emp(u0w)
+
+Xw0
+
+P IKN
+
+u0
+
+(w) =
+
+cu0w
+cu0
+
+(6)
+
+(7)
+
+where cu0w is as given in (5). Finally, rather than using (7) we should discount these new counts and
+interpolate with even lower order m-gram probabilities, i.e. recursively apply (4) and (5).
+
+Satisfying the marginal constraints (6) is reasonable since the n-gram probabilities should be consistent
+with the statistics of the word counts.
+In fact Goodman (2001) showed that if these constraints are not
+satised then the n-gram probability estimates cannot be optimal (the converse is not true; satisfying these
+constraints does not imply optimality). Taking the marginal constraints view further, Goodman (2004)
+showed that a back-off version of Kneser-Ney can be seen as an approximation to a maximum-entropy model
+with approximately satised marginal constraints and an exponential prior on the parameters of the model.
+However this view of interpolated Kneser-Ney in terms of marginal constraints is limited in scope for a few
+reasons. Firstly, the maximum-entropy model of which back-off Kneser-Ney is supposed to approximate
+in fact performs worse than back-off Kneser-Ney which is in turn worse than interpolated Kneser-Ney.
+Secondly, modied Kneser-Ney, which performs better than interpolated Kneser-Ney does not satisfy these
+marginal constraints.
+
+3 Pitman-Yor Processes
+
+We go through the properties of the Pitman-Yor process relevant to language modelling in this section. For
+more in depth discussion we refer to Pitman and Yor (1997); Ishwaran and James (2001); Pitman (2002),
+while Jordan (2005) gives a high-level tutorial of this branch of statistics and probability theory from a
+machine learning perspective.
+
+The Pitman-Yor process PY(d, , G0) is a distribution over distributions over a probability space X. It
+has three parameters: a discount parameter 0  d < 1, a strength parameter  > d and a base distribu-
+tion G0 over X. The base distribution can be understood as a putative mean of draws from PY(d, , G0),
+while both  and d control the amount of variability around the base distribution G0. An explicit construc-
+tion of draws G1  PY(d, , G0) from a Pitman-Yor process is given by the stick-breaking construction
+
+4
+
+(Sethuraman 1994; Ishwaran and James 2001). This construction shows that G1 is a weighted sum of an
+innite sequence of point masses (with probability one). Let V1, V2, . . . and 1, 2, . . . be two sequence of
+independent random variables with distributions,
+
+Vk  Beta(1  d,  + kd)
+
+k  G0
+
+for k = 1, 2, . . .,
+
+Then the following construction gives a draw from PY(d, , G0):
+
+
+
+(8)
+
+(9)
+
+G1 =
+
+(1  V1)    (1  Vk1)Vkk
+
+Xk=1
+
+where  is a point mass located at . The stick-breaking construction is useful as it is mathematically
+elegant and it gives us a direct visualization of Pitman-Yor processes.
+
+A different perspective on the Pitman-Yor process is given by the Chinese restaurant process. This
+describes the properties of the Pitman-Yor process in terms of distributions over draws from G1, which is
+itself a distribution over X. Though indirect, this perspective is more useful for our purpose of language
+modelling, since draws from G1 will correspond to words whose distributions we wish to model. Let
+x1, x2, . . . be a sequence of identical and independent draws from G1. The analogy is that of a sequence
+of customers (xis) visiting a restaurant (corresponding to G1) with an unbounded number of tables. The
+Chinese restaurant process assigns a distribution over the seating arrangement of the customers. The rst
+customer sits at the rst available table, while each of the other customers sits at the kth occupied table with
+probability proportional to ck  d, where ck is the number of customers already sitting there, and she sits at
+a new unoccupied table with probability proportional to  + dt, where t is the current number of occupied
+tables. To generate draws for x1, x2, . . ., associate with each table k an independent draw k  G0 from
+the base distribution G0 and set the drawn value of xi to be k if customer i sat at table k. The k draws
+can be thought of as dishes, with customers sitting at each table eating the dish on the table. The resulting
+
+conditional distribution of the next draw after a sequence of c =Pk ck draws is thus:
+
+t
+
+xc+1 | x1 . . . , xc, seating arrangement 
+
+G0
+
+(10)
+
+ck  d
+ + c
+
+k +
+
+ + dt
+ + c
+
+Xk=1
+
+The sequence x1, x2, . . . as generated by the Chinese restaurant process can be shown to be exchangeable.
+That is, the distribution assigned by the Chinese restaurant process to x1, x2, . . . is invariant to permuting
+the order of the sequence. De Finettis theorem on exchangeable sequences then shows that there must be
+a distribution over distributions G1 such that x1, x2, . . . are conditionally independent and identical draws
+from G1 (Pitman 2002). The Pitman-Yor process is one such distribution over G1.
+
+Consider using the Pitman-Yor process as a prior for unigram word distributions. We use a uniform
+distribution over our xed vocabulary W of V words as the base distribution G0, that is, each word in W is
+equiprobable under G0, while the draw from the Pitman-Yor process G1 is the desired unigram distribution
+over words. We have a training corpus consisting of cw occurrences of word w  W , which corresponds to
+knowing that cw customers are eating dish w in the Chinese restaurant representation. Given this informa-
+
+tion, we infer the seating arrangement of the c = Pw cw customers in the restaurant. In particular, let tw
+
+be the number of tables serving dish w in the seating arrangement (since the vocabulary W is nite there
+is positive probability that multiple tables serve the same dish). The predictive probability of a new word
+given the seating arrangement is given by (10), which evaluates to
+
+P (xc+1 = w | seating arrangement) =
+
+cw  dtw
+
+ + c
+
++
+
+ + dt
+ + c
+
+G0(w)
+
+(11)
+
+5
+
+by collecting terms in (10) corresponding to each dish w. The actual predictive probability is then (11)
+averaged over the posterior probability over seating arrangements. We see that there are two opposing effects
+on word counts cw in the Pitman-Yor process. The second term adds to word counts, while the discount
+term in the rst fraction dtw subtracts from word counts. When d = 0 the Pitman-Yor process reduces
+to a Dirichlet distribution, and we only have the usual additive pseudo-counts of the Dirichlet distribution.
+If d > 0, we have discounts, and the additive term can be understood as interpolation with the uniform
+distribution. Further assuming that tw = 1, i.e. only one table serves dish w, we obtain absolute discounting.
+In the appendix we show that tws grow as O(c d
+
+w ) instead.
+
+4 Hierarchical Pitman-Yor Language Models
+
+In the previous section we already see how we can obtain absolute discounting and interpolation using the
+Pitman-Yor process. In this section we describe a language model based on a hierarchical extension of the
+Pitman-Yor process, and show that we can recover interpolated Kneser-Ney as approximate inference in the
+model. The hierarchical Pitman-Yor process is a generalization of the hierarchical Dirichlet process, and the
+derivation described here is a straightforward generalization of those in Teh et al. (2006).
+
+We are interested building a model of distributions over the current word given various contexts. Given
+a context u consisting of a sequence of up to n  1 words, let Gu(w) be the distribution over the current
+word w. Since we wish to infer Gu(w) from our training corpus, the Bayesian nonparametric approach we
+take here is to assume that Gu(w) is itself a random variable. We use a Pitman-Yor process as the prior for
+Gu(w), in particular,
+
+Gu(w)  PY(d|u|, |u|, G(u)(w))
+
+(12)
+
+where (u) is the sufx of u consisting of all but the rst word. The strength and discount parameters
+depend on the length of the context, just as in interpolated Kneser-Ney where the same discount parameter
+is used for each length of context. The base distribution is G(u)(w), the distribution over the current
+word given all but the earliest word in the context. That is, we believe that without observing any data the
+earliest word is the least important in determining the distribution over the current word. Since we do not
+know G(u)(w) either, We recursively place a prior over G(u)(w) using (12), but now with parameters
+|(u)|, d|(u)| and base distribution G((u))(w) and so on. Finally the prior for G(w), the distribution
+over current word given the empty context  is given a prior of
+
+G(w)  PY(d0, 0, G0)
+
+(13)
+
+where G0 is the global base distribution, which is assumed to be uniform over the vocabulary W of V words.
+The structure of the prior is that of a sufx tree of depth n, where each node corresponds to a context
+consisting of up to n  1 words, and each child corresponds to adding a different word to the beginning of
+the context. As we shall see, this choice of the prior structure expresses our belief that words appearing later
+in a context have more inuence over the distribution over the current word.
+
+We can apply the Chinese restaurant representation to the hierarchical Pitman-Yor language model to
+draw words from the prior. The basic observation is that to draw words from Gu(w) using the Chinese
+restaurant representation the only operation we need of the base distribution G(u)(w) is to draw words
+from it. Since G(u)(w) is itself distributed according to a Pitman-Yor process, we can use another Chinese
+restaurant to draw words from that. This is recursively applied until we need a draw from the global base
+distribution G0, which is easy since it assigns equal probability to each word in the vocabulary. In summary
+
+6
+
+we have a restaurant corresponding to each Gu(w), which has an unbounded number tables and has a
+sequence of customers corresponding to words drawn from Gu(w). Each table is served a dish (corresponds
+to a word drawn from the base distribution G(u)(w)), while each customer eats the dish served at the table
+she sat at (the word drawn for her is the same as the word drawn for the table). The dish served at the table
+is in turn generated by sending a customer to the parent restaurant in a recursive fashion. Notice that there
+are two types of customers in each restaurant, the independent ones arriving by themselves, and those
+sent by a child restaurant. Further, every table at every restaurant is associated with a customer in the parent
+restaurant, and every dish served in the restaurants can be traced to a draw from G0 in this way.
+
+In the rest of the paper we index restaurants (contexts) by u, dishes (words in our vocabulary) by w, and
+tables by k. Let cuwk be the number of customers in restaurant u sitting at table k eating dish w (cuwk = 0 if
+table k does not serve dish w), and let tuw be the number of tables in restaurant u serving dish w. We denote
+marginal counts by dots, for example cuk is the number of customers sitting around table k in restaurant u,
+cuw is the number eating dish w in restaurant u (number of occurrences of word w in context u), and tu is
+the number of tables in restaurant u.
+
+In language modelling, the training data consists knowing the number of occurrences of each word w
+after each context u of length n  1 (we pad the beginning of each sentence with begin-sentence symbols).
+This corresponds to knowing the number cuw of customers eating dish w in restaurant u, for each u with
+length n  1. These customers are the only independent ones in the restaurants, the others are all sent by
+child restaurants. As a result only the values of cuw with |u| = n  1 are xed by the training data, other
+values vary depending on the seating arrangement in each restaurant, and we have the following relationships
+among the cuws and tuw:
+
+(tuw = 0
+
+1  tuw  cuw
+
+if cuw = 0;
+if cuw > 0;
+
+cuw = Xu0:(u0)=u
+
+tu0w
+
+(14)
+
+Algorithm 1 gives details of how the Chinese restaurant representation can be used to generate words
+given contexts in terms of a function which draws a new word by calling itself recursively. Notice the self-
+reinforcing property of the hierarchical Pitman-Yor language model: the more a word w has been drawn in
+context u, the more likely will we draw w again in context u. In fact word w will be reinforced for other
+contexts that share a common sufx with u, with the probability of drawing w increasing as the length of
+the common sufx increases. This is because w will be more likely under the context of the common sufx
+as well.
+
+The Chinese restaurant representation can also be used for inference in the hierarchical Pitman-Yor
+language model. Appendix A.4 gives the joint distribution over seating arrangements in the restaurants,
+
+Table 1: Routine to draw a new word given context u using the Chinese restaurant representation.
+
+Function DrawWord(u):
+ If j = 0, return word w  W with probability G0(w) = 1/V .
+ Else with probabilities proportional to:
+
+max(0, cuwk  d|u|): sit customer at table k (increment cuwk);
+
+return word w.
+
+|u| + d|u|tu: let w  DrawWord((u));
+
+sit customer at an unoccupied table knew serving dish w (increment tuw, set cuwknew = 1);
+return w.
+
+7
+
+while Appendix B gives an inference routine based upon Gibbs sampling which returns samples from the
+posterior distribution over seating arrangements. Appendix C gives an auxiliary sampling routine for the
+strength and discount parameters. Given a sample from the posterior seating arrangement and parameters,
+the predictive probability of the next draw from Gu(w) is given by recursively applying (11). For the global
+base distribution the predictive probability is simply
+
+P HPY
+0
+
+(w | seating arrangement) = G0(w)
+
+(15)
+
+while for each context u the predictive probability of the next word after context u given the seating ar-
+rangement is
+
+P HPY
+
+u
+
+(w | seating arrangement) =
+
+cuw  d|u|tuw
+
+|u| + cu
+
++
+
+|u| + d|u|tu
+
+|u| + cu
+
+P HPY
+(u)(w | seating arrangement)
+
+(16)
+
+To form our n-gram probability estimates, we simply average (16) over the posterior of the seating arrange-
+ments and parameters.
+
+From (16) the correspondence to interpolated Kneser-Ney is now straightforward. Suppose that the
+strength parameters are all |u| = 0. Consider an approximate inference scheme for the hierarchical Pitman-
+Yor language model where we simply set
+
+tuw =(0 if cuw = 0;
+
+1 if cuw  1;
+
+cuw = Xu0:(u0)=u
+
+tu0w
+
+(17)
+
+(17) says that there is at most one table in each restaurant serving each dish. The predictive probabilities
+given by (16) now directly reduces to the predictive probabilities given by interpolated Kneser-Ney (4). As
+a result we can interpret interpolated Kneser-Ney as this particular approximate inference scheme in the
+hierarchical Pitman-Yor language model.
+
+Appendix A describes some additional properties of the hierarchical Pitman-Yor language model.
+
+5 Experimental Results
+
+We performed experiments on the hierarchical Pitman-Yor language model under two circumstances: tri-
+grams on a 16 million word corpus derived from APNews1. and bigrams on a 1 million word corpus derived
+from the Penn TreeBank portion of the WSJ dataset2 On the trigram APNews dataset, we compared our
+model to interpolated and modied Kneser-Ney on cross-entropies and studied the growth of discounts as
+functions of trigram counts. On the simpler bigram WSJ dataset, we studied the effect on cross-entropies of
+varying the strength and discount parameters and related our results to the hierarchical Dirichlet language
+model. We also showed that our proposed sampler converges very quickly.
+
+We compared the hierarchical Pitman-Yor language model against interpolated Kneser-Ney and mod-
+ied Kneser-Ney with c(max) = 2 and 3 on the trigram APNews dataset. We varied the training set size
+between approximately 2 million and 14 million words by six equal increments. For all three versions of
+interpolated Kneser-Ney, we rst determined the discount parameters by conjugate gradient descent in the
+
+1This is the same dataset as in Bengio et al. (2003). The training, validation and test sets consist of about 14 million, 1 million
+
+and 1 million words respectively, while the vocabulary size is 17964.
+
+2This is the same dataset as in Xu and Jelinek (2004) and Blitzer et al. (2005). We split the data into training, validation and test
+
+sets by randomly assigning bigrams to each with probabilities .6, .2, .2 respectively. The vocabulary size is 10000.
+
+8
+
+Comparison of different models
+
+Growth of discounts with counts
+
+Interpolated KneserNey
+Modified KneserNey, c(max)=2
+Modified KneserNey, c(max)=3
+Hierarchical PitmanYor
+
+5
+
+4.95
+
+4.9
+
+4.85
+
+4.8
+
+4.75
+
+t
+e
+s
+
+t
+s
+e
+t
+
+
+n
+o
+
+
+
+y
+p
+o
+r
+t
+n
+e
+
+s
+s
+o
+r
+C
+
+4.7
+2
+16
+Number of words in training and validation sets (millions)
+
+10
+
+4
+
+12
+
+14
+
+6
+
+8
+
+s
+t
+n
+u
+o
+c
+s
+i
+d
+
+
+e
+g
+a
+r
+e
+v
+A
+
+12
+
+10
+
+8
+
+6
+
+4
+
+2
+
+0
+0
+
+Interpolated KneserNey
+Modified KneserNey, c(max)=2
+Modified KneserNey, c(max)=3
+Hierarchical PitmanYor
+
+10
+
+20
+
+Counts
+
+30
+
+40
+
+50
+
+Figure 1: Left: Cross-entropy on test set (lower better). The training set size is varied on the x-axis while the
+y-axis shows the cross-entropy (in natural logarithm). Each line corresponds to a language model. Right:
+Average discount as a function of trigram counts. For the hierarchical Pitman-Yor language model the
+reported discount for a count c is d2 times the number of tables averaged over posterior samples of seating
+arrangement and over all trigrams that occurred c times in the full training set. The last entry is averaged
+over all trigrams that occurred at least 50 times.
+
+cross-entropy on the validation set (Chen and Goodman 1998). At the optimal values, we folded the valida-
+tion set into the training set to obtain the nal trigram probability estimates. For the hierarchical Pitman-Yor
+language model we inferred the posterior distribution over seating arrangement and the strength and dis-
+count parameters given both the training and validation set3. We used a sampling routine which alternates
+between updating the seating arrangement (Appendix B) and the parameters (Appendix C). Since the pos-
+terior is very well-behaved, we only used 125 iterations for burn-in, and 175 iterations to collect posterior
+samples. On the full 15 million word training set (includes data from the validation set) this took less than 2
+hours on 1.4Ghz Pentium IIIs.
+
+The cross-entropy results are given in Figure 1 (left). As expected the hierarchical Pitman-Yor language
+model performs better than interpolated Kneser-Ney, supporting our claim that interpolated Kneser-Ney is
+just an approximation inference scheme in the hierarchical Pitman-Yor language model. Interestingly, the
+hierarchical Pitman-Yor language model performs slightly worse than the modied versions of Kneser-Ney.
+In Figure 1 (right) we showed the average discounts returned by the hierarchical Pitman-Yor language model
+as a function of the observed count of trigrams in the training set. We also showed the discounts returned
+by the interpolated and modied Kneser-Ney models. We see that the average discounts returned by the
+hierarchical Pitman-Yor language model grows slowly as a function of the trigram counts. Appendix A.3
+shows that the average discount grows as a power-law with index d3 and this is reected well by the gure.
+The growth of the average discounts also matches relatively closely with that of the optimal discounts in
+Figure 25 of Chen and Goodman (1998),
+
+In the second set of experiments we investigated the effect of the strength and discount parameters on the
+
+3This is one of the advantages of a Bayesian procedure, we need not use a separate validation set to determine parameters of the
+model. Instead we can include the validation set in the training set and infer both the hidden variables and parameters in a single
+phase of training.
+
+9
+
+Performance with varying 
+1
+
+5.32
+
+5.31
+
+5.3
+
+5.29
+
+5.28
+
+
+
+t
+e
+s
+
+t
+s
+e
+t
+
+n
+o
+y
+p
+o
+r
+t
+n
+e
+
+s
+s
+o
+r
+C
+
+Performance with varying d
+1
+
+6.2
+
+6
+
+5.8
+
+5.6
+
+5.4
+
+
+
+t
+e
+s
+
+t
+s
+e
+t
+
+n
+o
+y
+p
+o
+r
+t
+n
+e
+
+s
+s
+o
+r
+C
+
+5.27
+0
+
+5
+
+10
+
+1
+
+15
+
+20
+
+5.2
+0
+
+0.2
+
+0.4
+
+d
+
+1
+
+0.6
+
+0.8
+
+1
+
+Figure 2: Left: Cross entropy on test data as 1 is varied and with other parameters held at the optimal
+settings found by interpolated Kneser-Ney. Right: Varying d1 instead.
+
+performance of the hierarchical Pitman-Yor language model in case of bigrams on a 1 million word dataset.
+We rst found optimal settings for the four parameters 0, 1, d0 and d1 by optimizing the performance of
+interpolated Kneser-Ney on a validation set4. Then for each parameter we varied it while keeping the others
+xed at its optimal. We found that the model is only sensitive to d1 but is insensitive to d0, 0 and 1. Results
+for 1 and d1 are shown in Figure 2. The model is insensitive to the strength parameters because in most
+cases these are very small compared with the count and discount terms in the predictive probabilities (16).
+In fact, we had repeated both trigram and bigram experiments with m set to 0 for each m, and the results
+were identical. The model is insensitive to d0 for two reasons: its effect on the predictive probabilities (16)
+is small, and most values of tw = 1 or 2 so the discount term corresponding to d0 in (16) is cancelled
+out by the additive term involving the uniform base distribution G0 over the vocabulary. When d1 = 0
+the hierarchical Pitman-Yor language model reduces down to the hierarchical Dirichlet language model of
+MacKay and Peto (1994), and as seen in Figure 2 (right) this performs badly.
+
+6 Discussion
+
+We have described using a hierarchical Pitman-Yor process as a language model and derived estimates
+of n-gram probabilities based on this model that are generalizations of interpolated Kneser-Ney. Setting
+some variables and parameters to specic values reduces the formula for n-gram probabilities to those in
+interpolated Kneser-Ney, hence we may interpret interpolated Kneser-Ney as approximate inference in this
+model. In experiments we have also shown that cross-entropies attained by the model are better than those
+obtained by interpolated Kneser-Ney.
+
+The hierarchical Dirichlet language model of MacKay and Peto (1994) was an inspiration for our work.
+Though MacKay and Peto (1994) had the right intuition to look at smoothing techniques as the outcome
+of hierarchical Bayesian models, the use of the Dirichlet distribution as a prior was shown to lead to non-
+competitive cross-entropy results. As a result the language modelling community seemed to have dismissed
+
+4We can use average values of the parameters as returned by the hierarchical Pitman-Yor language model as well, the parameter
+
+values are similar and does not affect our results.
+
+10
+
+Bayesian methods as theoretically nice but impractical methods. Our model is a nontrivial but direct general-
+ization of the hierarchical Dirichlet language model that gives state-of-the-art performance. We have shown
+that with a suitable choice of priors (namely the Pitman-Yor process), Bayesian methods can be competi-
+tive with the best smoothing techniques. In fact we have shown that one of the best smoothing techniques,
+namely interpolated Kneser-Ney, is a great approximation to a Bayesian model.
+
+The hierarchical Pitman-Yor process is a natural generalization of the recently proposed hierarchical
+Dirichlet process (Teh et al. 2006). The hierarchical Dirichlet process was proposed to solve a clustering
+problem instead and it is interesting to note that such a direct generalization leads us to a well-established
+solution for a different problem, namely interpolated Kneser-Ney. This indicates the naturalness of this class
+of models. Both the hierarchical Dirichlet process and the hierarchical Pitman-Yor process are examples
+of Bayesian nonparametric processes. These have recently received much attention in the statistics and
+machine learning communities because they can relax previously strong assumptions on the parametric
+forms of Bayesian models yet retain computational efciency, and because of the elegant way in which they
+handle the issues of model selection and structure learning in graphical models.
+
+The hierarchical Pitman-Yor language model is only the rst step towards comprehensive Bayesian solu-
+tions to many tasks in natural language processing. We envision that a variety of more sophisticated models
+which make use of the hierarchical Pitman-Yor process can be built to solve many problems. Foremost in
+our agenda are extensions of the current model that achieve better cross-entropy for language modelling,
+and verifying experimentally that this translates into reduced word error rates for speech recognition.
+
+Acknowledgement
+
+I wish to thank the Lee Kuan Yew Endowment Fund for funding, Joshua Goodman for answering many
+questions regarding interpolated Kneser-Ney and smoothing techniques, John Blitzer and Yoshua Bengio
+for help with datasets and Hal Daume III for comments on an earlier draft.
+

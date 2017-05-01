@@ -1,0 +1,2095 @@
+Abstract. Practical experience has shown that in order to obtain the best possible performance, prior knowledge
+about invariances of a classication problem at hand ought to be incorporated into the training procedure. We
+describe and review all known methods for doing so in support vector machines, provide experimental results, and
+discuss their respective merits. One of the signicant new results reported in this work is our recent achievement
+of the lowest reported test error on the well-known MNIST digit recognition benchmark task, with SVM training
+times that are also signicantly faster than previous SVM methods.
+
+Keywords:
+
+support vector machines, invariance, prior knowledge, image classication, pattern recognition
+
+1.
+
+Introduction
+
+In 1995, LeCun et al. published a pattern recognition performance comparison noting the
+following:
+
+The optimal margin classier has excellent accuracy, which is most remarkable,
+because unlike the other high performance classiers, it does not include a priori know-
+ledge about the problem. In fact, this classier would do just as well if the image pixels
+were permuted by a xed mapping. [...] However, improvements are expected as the
+technique is relatively new.
+
+Two things have changed in the years since this statement was made. First, optimal margin
+classiers, or support vector machines (SVMs) (Boser, Guyon, & Vapnik, 1992; Cortes &
+Vapnik, 1995; Vapnik, 1995), have turned into a mainstream method which is part of the
+standard machine learning toolkit. Second, methods for incorporating prior knowledge into
+optimal margin classiers have become part of the standard SV methodology.
+
+These two things are actually closely related. Initially, SVMs had been considered a
+theoretically elegant spin-off of the general but, allegedly, largely useless VC-theory of
+statistical learning. In 1996, using the rst methods for incorporating prior knowledge
+(Scholkopf, Burges, & Vapnik, 1996), SVMs became competitive with the state of the art in
+the handwritten digit classication benchmarks (LeCun et al., 1995) that were popularized
+
+162
+
+D. DECOSTE AND B. SCH OLKOPF
+
+in the machine learning community by AT&T and Bell Labs. At that point, practitioners
+who are not interested in theory, but in results, could no longer ignore SVMs. In this sense,
+the methods to be described below actually helped pave the way to make SVM a widely
+used machine learning tool.
+
+The present paper tries to provide a snapshot of the state of the art in methods to incorpo-
+rate prior knowledge about invariances of classication problems. It gathers material from
+various sources. Partly, it reviews older material that has appeared elsewhere (Scholkopf,
+Burges, & Vapnik, 1996, 1998a), but never in a journal paper, and partly, it presents new
+techniques, applications, and experimental results. It is organized as follows. The next sec-
+tion introduces the concept of prior knowledge, and discusses what types of prior knowledge
+are used in pattern recognition. The present paper focuses on prior knowledge about invari-
+ances, and Section 3 describes methods for incorporating invariances into SVMs. Section 4
+introduces a specic way which combines a method for invariant SVMs with the widely used
+SMO training algorithm. Section 5 reports experimental results on all presented methods,
+and Section 6 discusses our ndings.
+
+2. Prior knowledge in pattern recognition
+
+By prior knowledge we refer to all information about the learning task which is available in
+addition to the training examples. In this most general form, only prior knowledge makes
+it possible to generalize from the training examples to novel test examples.
+
+For instance, any classiers incorporate general smoothness assumptions about the prob-
+lem. A test patterns which is similar to one of the training examples will thus tend to be
+assigned to the same class. For SVMs, it can be shown that using a kernel function K amounts
+to enforcing smoothness with a regularizer (cid:3)Pf(cid:3)2, where f is the estimated function, and K
+is a Greens function of P
+is the adjoint operator of P ((Smola, Scholkopf, &
+Muller, 1998; Girosi, 1998), cf. also Poggio and Girosi (1989)). In a Bayesian maximum-
+a-posteriori setting, this corresponds to a smoothness prior of exp((cid:3)Pf(cid:3)2) (Kimeldorf &
+Wahba, 1970).
+
+P, where P
+
+
+
+
+
+A second method for incorporating prior knowledge, already somewhat more specic,
+consists of selecting features which are thought to be particularly informative or reliable for
+the task at hand. For instance, in handwritten character recognition, correlations between
+image pixels that are nearby tend to be more reliable than the ones of distant pixels. The
+intuitive reason for this is that variations in writing style tends to leave the local structure of
+a handwritten digit fairly unchanged, while the global structure is usually quite variable. In
+the case of SVMs, this type of prior knowledge is readily incorporated by designing poly-
+nomial kernels which compute mainly products of nearby pixels (Scholkopf et al., 1998a)
+(cf. Table 2). While the example given here applies to handwritten character recognition, it
+is clear that a great deal of problems have a similar local structure, for instance, problems
+of computational biology involving nucleotide sequences. Zien et al. (2000) have used this
+analogy to engineer kernels that outperform other approaches in the problem of recognizing
+translation initiation sites on DNA or mRNA sequences, i.e., positions which mark regions
+coding proteins. Haussler (1999) has gone further than that and constructed convolutional
+kernels which compute features targeted at problems such as those of bioinformatics.
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+163
+
+One way to look at feature selection is that it changes the representation of the data,
+and in this, it is not so different from another method for incorporating prior knowledge
+in SVMs that has recently attracted attention. In this method, it is assumed that we have
+knowledge about probabilistic models generating the data. Specically, let p(x | ) be a
+generative model that characterizes the probability of a pattern x given the underlying
+parameter . It is possible to construct a class of kernels which are invariant with respect
+(cid:7)) is
+to reparametrizations of  and which, loosely speaking, have the property that K (x, x
+subject to the assumption that they both stem from the generative
+the similarity of x and x
+model. These kernels are called Fisher kernels (Jaakkola & Haussler, 1999). It can be shown
+that they induce regularizers which, in turn, take account of the underlying model p(x | )
+(Oliver, Scholkopf, & Smola, 2000). A different approach to designing kernels based on
+probabilistic models is the one of Watkins (2000).
+
+(cid:7)
+
+Finally, we get to the type prior knowledge that the present paper will deal with: prior
+knowledge about invariances. For instance, in image classication tasks, there exist trans-
+formations which leave class membership invariant (e.g. translations).
+
+3.
+
+Incorporating invariances into SVMs
+
+In the present section, we describe methods for incorporating invariances into SVMs. We
+distinguish three types of methods, to be addressed in the following three subsections:
+
+ engineer kernel functions which lead to invariant SVMs
+ generate articially transformed examples from the training set, or subsets thereof (e.g.
+
+the set of SVs)
+
+ combine the two approaches by making the transformation of the examples part of the
+
+kernel denition
+
+This paper will mainly focus on the latter two methods. However, for completeness, we
+also include some material on the rst method, which we will presently describe.
+
+3.1.
+
+Invariant kernel functions
+
+This section briey reviews a method for engineering kernel functions leading to invariant
+SVMs. Following Scholkopf et al. (1998a), we consider linear decision functions f (x) =
+sgn (g(x)), where
+
+vi (Bx Bxi ) + b.
+
+(1)
+
+g(x) := (cid:6)(cid:2)
+
+i=1
+
+(cid:3)
+
+(cid:6)(cid:2)
+
+j=1
+
+1
+(cid:6)
+
+(cid:5)2
+
+(cid:4)(cid:4)(cid:4)(cid:4)
+
+
+t
+
+g(Ltx j )
+
+t=0
+
+To get local invariance under transformations forming a Lie group {Lt},1 one can minimize
+the regularizer
+
+.
+
+(2)
+
+164
+
+D. DECOSTE AND B. SCH OLKOPF
+
+One can show that this is equivalent to performing the usual SVM training after prepro-
+cessing the data with
+
+B = C
+
+ 1
+2 ,
+
+where
+
+C = 1
+
+(cid:6)
+
+(cid:3)
+
+(cid:6)(cid:2)
+
+j=1
+
+
+t
+
+(cid:4)(cid:4)(cid:4)(cid:4)
+
+Ltx j
+
+t=0
+
+(cid:5)(cid:3)
+
+(cid:4)(cid:4)(cid:4)(cid:4)
+
+
+t
+
+Ltx j
+
+t=0
+
+(cid:5)(cid:13)
+
+.
+
+(3)
+
+(4)
+
+In other words: the modication of the kernel function is equivalent to whitening the data
+with respect to the covariance matrix of the vectors  
+| t=0Ltxi . To get a clearer un-
+derstanding of what this means, let us diagonalize B using the matrix D containing the
+eigenvalues of C, as
+2 = SD
+ 1
+
+B = C
+
+(cid:13).
+
+(5)
+
+t
+
+ 1
+
+2 S
+
+t
+
+The preprocessing of the data thus consists of projecting x onto the Eigenvectors of C,
+and then dividing by the square roots of the Eigenvalues. In other words, the directions of
+main variance  
+|t=0Ltxthe directions that are most affected by the transformation
+are scaled back. Note that the leading S in (5) can actually be omitted, since it is unitary
+(since C is symmetric), and it thus does not affect the value of the dot product.
+Moreover, in practice, it is advisable to use C := (1 )C + I rather than C. This way,
+we can balance the two goals of maximizing the margin and of getting an invariant decision
+function by the parameter   [0, 1].
+
+In the nonlinear case, the above method still applies, using D
+
+Scholkopf et al. (1998a) have obtained performance improvements by applying the above
+technique in the linear case. However, these improvements are not nearly as large as the
+ones that we will get with the methods to be described in the next section,2 and thus we put
+the main emphasis in this study on the latter.
+(cid:13)(x). Here,  is a
+feature map corresponding to the kernel chosen, i.e., a (usually nonlinear) map satisfy-
+ing K (x, x(cid:7))= ((x) (x(cid:7))). To compute projections of the mapped data (x) onto the
+eigenvectors of S, one needs to essentially carry out kernel PCA on S (cf. (Scholkopf, 1997;
+Chapelle & Scholkopf, 2000)). For further material on methods to construct invariant kernel
+functions, cf. Vapnik (1998) and Burges (1999).
+
+ 1
+
+2 S
+
+3.2. Virtual examples and support vectors
+
+One way to make classiers invariant is to generate articial training examples, or virtual
+examples, by transforming the training examples accordingly (Baird, 1990; Poggio & Vetter,
+1992). It is then hoped that the learning machine will extract the invariances from the
+articially enlarged training data.
+
+Simard et al. (1992) report that, not surprisingly, training a neural network on the arti-
+cially enlarged data set is signicantly slower, due to both correlations in the articial data
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+165
+
+and the increase in training set size. If the size of a training set is multiplied by a number
+of desired invariances (by generating a corresponding number of articial examples for
+each training pattern), the resulting training sets can get rather large (as the ones used by
+Drucker, Schapire, & Simard, 1993). However, the method of generating virtual examples
+has the advantage of being readily implemented for all kinds of learning machines and
+symmetrics, even discrete ones such as reections (which do not form Lie groups). It would
+thus be desirable to construct a method which has the advantages of the virtual examples
+approach without its computational cost. The Virtual SV method (Scholkopf, Burges, &
+Vapnik, 1996), to be described in the present section, retains the exibility and simplicity of
+virtual examples approaches, while cutting down on their computational cost signicantly.
+In Scholkopf, Burges, and Vapnik (1995) and Vapnik (1995), it was observed that the
+SV set contains all information necessary to solve a given classication task. It particular,
+it was possible to train any one of three different types of SV machines solely on the SV set
+extracted by another machine, with a test performance not worse than after training on the
+full databaseSV sets seemed to be fairly robust characteristics of the task at hand. This led
+to the conjecture that it might be sufcient to generate virtual examples from the Support
+Vectors only. After all, one might hope that it does not add much information to generate
+virtual examples of patterns which are not close to the boundary. In high-dimensional
+cases, however, care has to be exercised regarding the validity of this intuitive picture.
+Experimental tests on high-dimensional real-world problems hence were imperative, and
+they have conrmed that the method works very well (Scholkopf, Burges, & Vapnik, 1996).
+It proceeds as follows (cf. gure 1):
+
+1. train a Support Vector machine to extract the Support Vector set
+2. generate articial examples, termed virtual support vectors, by applying the desired
+
+invariance transformations to the support vectors
+
+3. train another Support Vector machine on the generated examples.3
+
+If the desired invariances are incorporated, the curves obtained by applying Lie symmetry
+transformations to points on the decision surface should have tangents parallel to the latter
+(Simard et al., 1992). If we use small Lie group transformations to generate the virtual
+examples, this implies that the Virtual Support Vectors should be approximately as close to
+the decision surface as the original Support Vectors. Hence, they are fairly likely to become
+Support Vectors after the second training run; in this sense, they add a considerable amount
+of information to the training set.
+
+However, as noted above, the method is also applicable if the invariance transformations
+do not form Lie groups. For instance, performance improvements in object recognition of
+bilaterally symmetric objects have been obtained using reections (Scholkopf, 1997).
+
+3.3. Kernel jittering
+
+An alternative to the VSV approach of pre-expanding a training set by applying vari-
+ous transformations is to perform those transformations inside the kernel function itself
+(DeCoste & Burl, 2000; Simard, LeCun, & Denker, 1993).
+
+166
+
+D. DECOSTE AND B. SCH OLKOPF
+
+Figure 1. Suppose we have prior knowledge indicating that the decision function should be invariant with respect
+to horizontal translations. The true decision boundary is drawn as a dotted line (top left); however, as we are just
+given a limited training sample, different separating hyperplanes are conceivable (top right). The SV algorithm
+nds the unique separating hyperplane with maximal margin (bottom left), which in this case is quite different
+from the true boundary. For instance, it would lead to wrong classication of the ambiguous point indicated by
+the question mark. Making use of the prior knowledge by generating Virtual Support Vectors from the Support
+Vectors found in a rst training run, and retraining on these, yields a more accurate decision boundary (bottom
+right). Note, moreover, that for the considered example, it is sufcient to train the SV machine only on virtual
+examples generated from the Support Vectors from Scholkopf, 1997.
+
+In particular,we have recently explored the notion of jittering kernels, in which any two
+given examples are explicitly jittered around in the space of discrete invariance distortions
+until the closest match between them is found.
+For any kernel K (xi , x j ) Ki j suitable for traditional use in a SVM, consider a jittering
+kernel form K J(xi , x j ) K J
+
+i j , dened procedurally as follows:
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+167
+
+1. consider all jittered forms4 of example xi (including itself ) in turn, and select the one
+(xq) closest to xj ; specically, select xq to minimize the metric distance between xq
+and x j in the space induced by the kernel. This distance is given by:5
+
+(cid:6)
+
+Kqq  2Kq j + K j j .
+= Kq j .
+
+2. let K J
+i j
+
+Multiple invariances (e.g., both translations and rotations) could be considered as well, by
+considering cross-products (i.e. all valid combinations) during the generation of all jittered
+forms of xi  in step 1 above. However, we have not yet investigated the practicality of such
+multiple invariance via kernel jittering in any empirical work to date.
+
+For some kernels, such as radial-basis functions (RBFs), simply selecting the maximum
+Kq j value to be the value for K J
+i j sufces, since the Kqq and K j j terms are constant (e.g. 1)
+in that case. This similarly holds for translation jitters, as long as sufcient padding exists
+so that no image pixels fall off the image after translations. In general, a jittering kernel
+may have to consider jittering either or both examples. However, for symmetric invariances
+such as translation, it sufces to jitter just one.
+
+We refer to the use of jittering kernels as the JSV approach. A major motivation for
+considering JSV approachs is that VSV approaches scale at least quadratically in the number
+(J ) of jitters considered, whereas under favorable conditions jittering kernel approaches can
+scale only linearly in J , as discussed below.
+
+Jittering kernels are J times more expensive to compute than non-jittering kernels, since
+each K J
+i j computation involves nding a minimum over J Ki j computations. However, the
+potential benet is that the training set can be J times smaller than the corresponding VSV
+method, since the VSV approach can expand the training set by a factor of J . Known SVM
+training methods scale at least quadratically in the number of training examples. Thus, the
+potential net gain is that JSV training may only scale linearly in J instead of quadratically
+as in VSV.
+
+Furthermore, through comprehensive use of kernel caching, as is common in modern
+practical SVM implementations, even the factor of J slow-down in kernel computations
+using jittering kernels may be largely amortized away, either over multiple trainings (e.g.
+for different regularization C values) or within one training (simply because the same kernel
+value is often requested many times during training).
+
+As long as the distance metric conditions are satised under such jittering (i.e. non-
+negative, symmetry, triangularity inequality), the kernel matrix dened by K J
+i j will be
+positive denite and suitable for traditional use in SVM training (i.e. it will satisfy Mercers
+conditions, at least for the given set of training examples).
+
+In practice, those conditions seem to almost always be satised and we rarely detect
+the symptoms of a non-positive denite kernel matrix during SVM training with jittering
+kernels. The SMO method seems to tolerate such minor degrees of non-positivity, although,
+as discussed in Platt (1999) this still somewhat reduces convergence speed. This rarity
+seems particularly true for simple translation invariances which we have focused on to
+date in empirical work. The one exception is that the triangular inequality is sometimes
+
+168
+
+D. DECOSTE AND B. SCH OLKOPF
+
+violated. For example, imagine three simple images A, B, and C consisting of a single row
+of three binary pixels, with A= (1, 0, 0), B= (0, 1, 0), and C= (0, 0, 1). The minimal
+be 0. However, the distance between A and C will be positive (e.g. d(A, C)=
+jittered distances (under 1-pixel translation) between A and B and between B and C will
+2 for a
+linear kernel). Thus, the triangular inequality d(A, B)+ d(B, C) d(A, C) is violated in
+that example.
+
+Note that with a sufciently large jittering set (i.e. such as one including both 1-pixel
+and 2-pixel translations for the above example), the triangularity inequality is not violated.
+We suspect that for reasonably complete jittering sets, the odds of triangularity inequality
+violations will become small. Based on our limited preliminary experiments with kernel
+jittering to date, it is still unclear how much impact any such violations will typically have
+on generalization performance in practice.
+
+Jittering kernels have one other potential disadvantage compared to VSV approaches:
+the kernels must continue to jitter at test time. In contrast, the VSV approach effectively
+compiles the relevant jittering into the nal set of SVs it produces. In cases where the
+nal JSV SV set size is much smaller than the nal VSV SV set size, the JSV approach
+can actually be as fast or even faster at test time. We have indeed observed this result to
+be frequent, at least for the relatively small tests tried to date. We do not yet know how
+common this case is for large-scale applications.
+
+4. Efcient invariance training
+
+Recent developments in decomposition methods for SVM training have demonstrated sig-
+nicant improvements in both space and time costs for training SVMs on many tasks. In
+particular, the SMO (Platt, 1999) and SVMlight (Joachims, 1999) implementations have be-
+come popular practical methods for large-scale SVM training. In this section, we discuss
+some improvements to the style of SVM training represented by approaches such as SMO
+and SVMlight. We have found these improvements to lead to signicantly faster training
+times, in some cases by more than an order of magnitude. Our specic implementation and
+tests are based on enhancements to the variant of SMO described in Keerthi et al. (1999).
+However, these ideas should be applicable to the original SMO specication, as well as
+SVMlight. For simplicity, we will cast our discussion below in terms of the well-known
+SMO specication (Platt, 1999).
+
+For the sake of the rest of this section, we assume the SVM training task consists of the
+
+following Quadratic Programming (QP) dual formulation:
+
+i  j yi y j K (xi , x j )
+
+maximize:
+
+(cid:6)(cid:2)
+
+(cid:6)(cid:2)
+
+subject to:
+
+i  1
+2
+
+i=1
+i, j=1
+0  i  C,
+(cid:6)(cid:2)
+i yi = 0,
+
+i=1
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+169
+
+where (cid:6) is the number of training examples, yi is the label (+1 for positive example, 1
+for negative) for the ith training example (xi ), and K (xi , x j ) denotes the value of the SVM
+kernel function for ith and j-th examples. The output prediction of the SVM, for any
+example x is
+
+(cid:7)
+
+(cid:6)(cid:2)
+
+i=1
+
+(cid:8)
+
+f (x) = sign
+
+i yi K (x, xi ) + b
+
+,
+
+where scalar b (bias) and vector of alphas  (of length (cid:6)) are the variables determined by
+the above QP optimization problem.
+
+4.1. Key efciency issue: Maximizing cache reuse
+
+Employing general QP solvers to the SVM optimization problem typically involves O((cid:6)2)
+space and O((cid:6)3) time complexities. SMO can avoid the O((cid:6)2) space cost by avoiding the
+need for an explicit full kernel matrixit computes (and recomputes) elements as needed.
+Evaluating the current SVM outputs during training for each of the (cid:6) examples involves
+(cid:6) summations, each over all current support vectors. Thus, SMO (and any other approach
+which similarly checks KKT conditions during training) necessarily suffers time complexity
+of at least O(L  (cid:6)), where L is the nal number of support vectors, since it would require
+at least one nal full pass over all (cid:6) examples simply to check that all KKT conditions are
+satised.
+
+In practice, computing elements of the kernel matrix often dominates training time. The
+same element will typically be required many times, since many (e.g. tens or hundreds) of
+passes over the training set may be required before convergence to the nal solution. Thus,
+modern SMO implementations try to cache as many kernel computations as possible.
+
+However, caching all computed kernels is generally not possible, for two key reasons:
+
+1. L is often a signicant fraction of (cid:6) (e.g. 5% or more) and thus the space required to
+
+avoid any kernel recomputations would often prohibitively be O((cid:6)2).
+
+2. The intermediate (working) set of (candidate) support vectors is typically much larger
+
+than the nal size L.6
+
+Since full passes over all examples are required in SMO whenever the working set of
+candidate support vectors becomes locally optimal, the kernel cache is often implemented
+simply as the most frequently or recently accessed rows of the implicit full kernel matrix.
+For instance, for the 60,000 training examples of the MNIST data set (to be discussed in
+Section 5), 512 megabytes of computer memory reserved for the kernel cache, and IEEE
+single precision (4 byte) representations of the kernel values, only about 2230 rows can be
+cached at one time (e.g. only about half of all the support vectors for some of the MNIST
+binary recognition tasks).
+
+Of particular concern is that during SMO training, when the nal set of support vectors
+is not yet known, it turns out to be common for examples which will eventually not be
+support vectors to end up grabbing and hoarding cache rows rst, requiring other kernel
+
+170
+
+D. DECOSTE AND B. SCH OLKOPF
+
+rows (including those of nal support vectors) to be continually recomputed until those
+examples cease to be support vectors and release their cache memory. We will refer to this
+problem as intermediate support vector bulge. This problem is particularly critical for VSV
+methods, since they greatly enlarge the number of effective training examples. Addressing
+this key issue will be the subject of Section 4.2.
+
+4.2. Digestion: Reducing intermediate SV bulge
+
+SMO alternates between full and inbounds iterations, in which either all examples or
+just the examples with alphas between 0 and C are considered, respectively. In each inbounds
+stage, optimization continues until not further alpha changes occur. In each full stage, each
+example is optimized only once (with some other heuristically-selected example), to see if
+it becomes part of the working inbounds set and triggers new work for the next inbounds
+stage. During the course of SMO full iterations, it is not uncommon for the number of
+working candidate support vectors to become orders of magnitude larger than the number
+that will result at the end of the following inbounds iteration.
+
+When the kernel cache is sufciently large (i.e. R near (cid:6)) then such SV bulge behavior is
+not critically problematic. However, even in that case, the computation of the SVM outputs
+for each example can be quite excessive, since the time cost of computing an output is linear
+in the number of current support vectors. So, it would be generally useful to keep the the
+size of the support vector set closer to minimal.
+
+A key problem arises when the size of the working candidate support vector set has
+already exceeded R. In that case, any additional support vectors will not be able to cache
+their kernel computations.
+
+To address this key problem, we have extended the SMO algorithm to include a concept
+we call digestion. The basic idea is to jump out of full SMO iterations early, once the
+working candidate support vector set grows by a large amount. This switches SMO into an
+inbounds iteration in which it fully digests the working candidate SV set, reducing it
+to a locally minimal size, before switching back to a full iteration (and returning rst to the
+example at which it had previously jumped out).
+
+Digestion allows us to better control the size of the intermediate SV bulge, so as to best
+tradeoff the cost of overowing the kernel cache against the cost of doing more inbounds
+iterations that standard SMO would.
+
+Digestion is similar to other (non-SMO) chunking methods, in that it performs full
+optimizations over various large subsets of the data. However, it differs signicantly in that
+these full optimizations are triggered by heuristics based on maximizing the likely reuse
+of the kernel cache, instead of using some predetermined and xed chunk size. We suspect
+that digestion would be even more useful and distinct when using sparse kernel caches (e.g.
+hash tables), although our current implementation caches entire rows of the kernel matrix
+(much like other published implementations, such as SVMlight).
+
+Our current approach involves user-dened settings to reect tradeoff heuristics. We
+expect that future work could provide meta-learning methods for identifying the best values
+for these settings, tuned for the particular nature of specic domains (e.g. costs of each kernel
+computation), over the course of multiple training sessions. Our settings were choosen to
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+171
+
+computations, force a digestion.
+
+new (currently uncached) kernel values are computed before digesting again.
+
+be particularly reasonable for training set sizes on the order of (cid:6)= 10,000 to 100,000 and
+a kernel cache of about 800 megabytes, which is the case for our MNIST experiments (see
+Section 5.1.1). Our heuristics were (highest-priority rst):
+1. Once digestion has been performed, wait until at least some number (default= 1000) of
+2. After the current full iteration has already required some (default= 100,000) new kernel
+3. Otherwise, wait at least as long between digestions as some factor (default= 2) times the
+time spent in the previous inbounds iteration. The idea is that if the inbounds iterations
+are expensive themselves, one must tolerate longer full iterations as well.
+4. When the kernel cache is full (i.e. working candidate SV set size > R), digest as soon as
+the net number of new working candidate SVs grows past some threshold (default= 200).
+The idea here is that the kernel values computed for each such new SV cannot be cached,
+so it is becomes critical to free rows in the kernel cache, if at all possible.
+5. Digest whenever the net number of new SVs grows past some threshold (default= 1000).
+The intuition behind this is simply that output computations involve summations over
+all candidate SVs in the working set. Thus, it is often worthwhile to periodically make
+sure that this set is not many times larger than it should be.
+
+One can easily imagine promising alternative heuristics as well, such as ones based on
+when the working candidate SV set grows by more than some percentage of the working
+candidate SV size at the start of a full iteration. The key point is that heuristics to induce
+digestion have proven to be useful in signicantly reducing the complexity of SMO training
+on particularly difcult large-scale problems. For example, we observed speedups of over
+5 times for training some of the SVMs in the MNIST examples of Section 5.1.1 when using
+the above heuristics and default settings.
+
+5. Experiments
+
+5.1. Handwritten digit recognition
+
+We start by reporting results on two widely known handwritten digit recognition bench-
+marks, the USPS set and the MNIST set. Let us rst described the databases. Both of them
+are available from http://www. kernel-machines.org/data.html.
+
+The US Postal Service (USPS) database (see gure 2) contains 9298 handwritten digits
+(7291 for training, 2007 for testing), collected from mail envelopes in Buffalo (LeCun
+et al., 1989). Each digit is a 16 16 image, represented as a 256-dimensional vector with
+entries between 1 and 1. Preprocessing consisted of smoothing with a Gaussian kernel of
+width  = 0.75.
+
+It is known that the USPS test set is rather difcultthe human error rate is 2.5%
+(Bromley & Sackinger, 1991). For a discussion, see (Simard, LeCun, & Denker, 1993).
+Note, moreover, that some of the results reported in the literature for the USPS set have
+been obtained with an enhanced training set. For instance, Drucker, Schapire, and Simard
+
+172
+
+D. DECOSTE AND B. SCH OLKOPF
+
+Figure 2. The rst 100 USPS training images, with class labels.
+
+(1993) used an enlarged training set of size 9709, containing some additional machine-
+printed digits, and note that this improves the accuracy on the test set. Similarly, Bot-
+tou and Vapnik (1992) used a training set of size 9840. Since there are no machine-
+printed digits in the test set that is commonly used (size 2007), this addition distorts
+the original learning problem to a situation where results become somewhat hard to in-
+terpret. For our experiments, we only had the original 7291 training examples at our
+disposal.
+
+The MNIST database (gure 3) contains 120000 handwritten digits, equally divided into
+training and test set. The database is modied version of NIST Special Database 3 and
+NIST Test Data 1. Training and test set consist of patterns generated by different writers.
+The images were rst size normalized to t into a 20 20 pixel box, and then centered in
+a 28 28 image (LeCun et al., 1998).
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+173
+
+Figure 3. The rst 100 MNIST training images, with class labels.
+
+Test results on the MNIST database which are given in the literature (e.g. (LeCun
+et al., 1995; LeCun et al., 1998)) commonly do not use the full MNIST test set of 60000
+characters. Instead, a subset of 10000 characters is used, consisting of the test set patterns
+from 24476 to 34475. To obtain results which can be compared to the literature, we also
+use this test set, although the larger one would be preferable from the point of view of
+obtaining more reliable test error estimates. The MNIST benchmark data is available from
+http:/www.research.att.com/yann/exdb/mnist/index.html.
+
+5.1.0.1. Virtual SV methodUSPS database. The rst set of experiments was conducted
+on the USPS database. This database has been used extensively in the literature, with a
+LeNet1 Convolutional Network achieving a test error rate of 5.0% (LeCun et al., 1989). We
+
+174
+
+D. DECOSTE AND B. SCH OLKOPF
+
+Table 1. Comparison of Support Vector sets and performance for training on the original database and training
+on the generated Virtual Support Vectors. In both training runs, we used polynomial classier of degree 3.
+
+Classir trained on
+
+Full training set
+Overall SV set
+Virtual SV set
+Virtual patterns from full DB
+
+Size
+
+7291
+1677
+8385
+36455
+
+Av. no. of SVs
+
+Test error
+
+274
+268
+686
+719
+
+4.0%
+4.1%
+3.2%
+3.4%
+
+Virtual Support Vectors were generated by simply shifting the images by one pixel in the four principal directions.
+Adding the unchanged Support Vectors, this leads to a training set of the second classier which has ve times
+the size of the rst classiers overall Support Vector set (i.e. the union of the 10 Support Vector sets of the binary
+classiers, of size 1677note that due to some overlap, this is smaller than the sum of the ten support set sizes).
+Note that training on virtual patterns generated from all training examples does not lead to better results han in
+the Virtual SV case; moreover, although the training set in this case is much larger, it hardly leads to more SVs.
+
+Figure 4. Different invariance transformations in the case of handwritten digit recognition. In all three cases,
+the central pattern, taken from the MNIST database, is the original which is transformed into virtual examples
+(marked by grey frames) with the same class membership by applying small transformations (from Scholkopf,
+1997).
+
+used the regularization constant C = 10. This value was taken from earlier work (Scholkopf,
+Burges, & Vapnik, 1995), no additional model selection was performed.
+
+Virtual Support Vectors were generated for the set of all different Support Vectors of
+the ten classiers. Alternatively, one can carry out the procedure separately for the ten
+binary classiers, thus dealing with smaller training sets during the training of the second
+machine. Table 1 shows that incorporating only translational invariance already improves
+performance signicantly, from 4.0% to 3.2% error rate. For other types of invariances
+(gure 4), we also found improvements, albeit smaller ones: generating Virtual Support
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+175
+
+Table 2. Summary of results on the USPS set.
+
+Classier
+
+Nearest-neighbor
+LeNet1
+Optimal margin classier
+SVM
+Linear Hyperplane on KPCA features
+Local learning
+Virtual SVM
+Virtual SVM, local kernel
+Boosted neural nets
+Tangent distance
+Human error rate
+
+Train set
++
+USPS
++
+USPS
+USPS
+USPS
+USPS
++
+USPS
+USPS
+USPS
++
+USPS
++
+USPS
+
+
+Test err
+
+Reference
+
+5.9%
+5.0%
+4.6%
+4.0%
+4.0%
+3.3%
+3.2%
+3.0%
+2.6%
+2.6%
+2.5%
+
+(Simard et al., 1993)
+(LeCun et al., 1989)
+(Boser et al., 1992)
+(Scholkopf et al., 1995)
+(Scholkopf et al., 1998b)
+(Bottou and Vapnik, 1992)
+(Scholkopf et al., 1996)
+(Scholkopf, 1997)
+(Drucker et al., 1993)
+(Simard et al., 1993)
+(Bromley and Sackinger, 1991)
+
++
+Note that two variants of this database have been used in the literature; one of them (denoted by USPS
+) has
+been enhanced by a set of machine-printed characters which have been found to improve the test error. Note that
+the virtual SV systems perform best out of all systems trained on the original USPS set.
+
+Vectors by rotation or by the line thickness transformation of Drucker, Schapire, and Simard
+(1993), we constructed polynomial classiers with 3.7% error rate (in both cases). For
+purposes of comparison, we have summarized the main results on the USPS database in
+Table 2.
+
+Note, moreover, that generating Virtual examples from the full database rather than just
+from the SV sets did not improve the accuracy, nor did it enlarge the SV set of the nal
+classier substantially. This nding was conrmed using Gaussian RBF kernels (Scholkopf,
+1997): in that case, similar to Table 1, generating virtual examples from the full database led
+to identical performance, and only slightly increased SV set size. From this, we conclude
+that for the considered recognition task, it is sufcient to generate Virtual examples only
+from the SVsVirtual examples generated from the other patterns do not add much useful
+information.
+
+5.1.0.2. Virtual SV methodMNIST database. The larger a database, the more information
+about invariances of the decision function is already contained in the differences between
+patterns of the same class. To show that it is nevertheless possible to improve classication
+accuracies with our technique, we applied the method to the MNIST database of 60000
+handwritten digits. This database has become the standard for performance comparisons at
+AT&T and Bell Labs.
+
+Using Virtual Support Vectors generated by 1-pixel translations, we improved a degree
+5 polynomial SV classier from 1.4% to 1.0% error rate on the 10000 element test set.
+In this case, we applied our technique separately for all ten Support Vector sets of the
+binary classiers (rather than for their union) in order to avoid having to deal with large
+training sets in the retraining stage. Note, moreover, that for the MNIST database, we did
+
+176
+
+D. DECOSTE AND B. SCH OLKOPF
+
+Table 3. Summary of results on the MNIST set. At 0.6% (0.56% before rounding), the system described in
+Section 5.1.1 performs best.
+
+Classier
+
+3-Nearest-neighbor
+2-Layer MLP
+SVM
+Tangent distance
+
+LeNet4
+LeNet4, local learning
+Virtual SVM
+LeNet5
+Dual-channel vision model
+Boosted LeNet4
+Virtual SVM, 2-pixel translation
+
+Test err.
+(60k)
+
+Test err.
+(10k)
+
+
+
+1.6%
+
+
+
+
+1.0%
+
+
+
+
+
+2.4%
+1.6%
+1.4%
+1.1%
+
+1.1%
+1.1%
+0.8%
+0.8%
+0.7%
+0.7%
+0.6%
+
+Reference
+
+(LeCun et al., 1998)
+(LeCun et al., 1998)
+(Scholkopf, 1997)
+(Simard et al., 1993)
+
+(LeCun et al., 1998)
+
+(LeCun et al., 1998)
+(LeCun et al., 1998)
+(Scholkopf, 1997)
+(LeCun et al., 1998)
+(Teow and Loe, 2000)
+(LeCun et al., 1998)
+this paper; see Section 5.1.1
+
+not compare results of the VSV technique to those for generating Virtual examples from the
+whole database: the latter is computationally exceedingly expensive, as it entails training
+on a very large training set.7
+
+After retraining, the number of SVs more than doubled. Thus, although the training
+sets for the second set of binary classiers were substantially smaller than the original
+database (for four Virtual SVs per SV, four times the size of the original SV sets, in our case
+amounting to around 104), we concluded that the amount of data in the region of interest,
+close to the decision boundary, had more than doubled. Therefore, we reasoned that it should
+be possible to use a more complex decision function in the second stage (note that typical
+VC risk bounds depends on the ratio VC-dimension and training set size (Vapnik, 1995)).
+Indeed, using a degree 9 polynomial led to an error rate of 0.8%, very close to the record
+performance of 0.7%. The main results on the MNIST set are summarized in Table 3. Prior
+to the present work, the best system on the MNIST set was a boosted ensemble of LeNet4
+neural networks, trained on a huge database of articially generated virtual examples. Note
+that a difference in error rates on the IST set which is at least 0.1% may be considered
+signicant (LeCun et al., 1998).
+
+It should be noted that while it is much slower in training, the LeNet4 ensemble also
+has the advantage of a faster runtime speed. Especially when the number of SVs is large,
+SVMs tend to be slower at runtime than neural networks of comparable capacity. This is
+particularly so for virtual SV systems, which work by increasing the number of SV. Hence,
+if runtime speed is an issue, the systems have to be sped up. Burges and Scholkopf (1997)
+have shown that one can reduce the number of SVs to about 10% of the original number
+with very minor losses in accuracy. In a study on the MNIST set, they started with a VSV
+system performing at 1.0% test error rate, and sped it up by a factor of 10 with the accuracy
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+177
+
+degrading only slightly to 1.1%.8 Note that there are neural nets which are still faster than
+that (cf., LeCun et al. (1998)).
+
+5.1.1. SMO VSV experiments.
+MNIST data set.
+
+In this section we summarize our newest results on the
+
+Following the last section, we used a polynomial kernel of degree 9. We normalized so
+that dot-products giving values within [0, 1] yield kernel values within [0, 1]; specically:
+
+K (u, v)  1
+512
+
+(u  v + 1)9.
+
+This ensures that kernel values of 1 and 0 have the same sort of canonical meaning that
+holds for others, such as radial-basis function (RBF) kernels. Namely, a kernel value of 1
+corresponds to the minimum distance between (identical) examples in the kernel-induced
+metric distance and 0 corresponds to the maximum distance.
+
+We ensured any dot-product was within [0, 1] by normalizing each example by their
+2-norm scalar value (i.e. such that each example dot-producted against itself gives a value
+of 1). We used this normalization (a form of brightness or amount of ink equalization)
+by default because it is the sort of normalization that we routinely use in our NASA space
+image detection applications. This also appears to be a good normalization for the MNIST
+domain.
+Since our polynomial kernel value normalization gives a kernel value of 1 special signif-
+icance, we suspected that a SVM regularization parameter setting of C= 1 would probably
+be too low. We also determined, by trying a large value (C= 10) for training a binary
+recognizer for digit 8, that no training example reached an alpha value above 7.0. By
+looking at the histogram of the 60,000 alpha values for that case, we realized that only a
+handful of examples in each of the 10 digit classes had alpha values above 2.0. Under the
+assumption that only a few training examples in each class are particularly noisy and that
+digit 8 is one of the harder digits to recognize, for simplicity we used C= 2 for training
+each SVM. We have not yet attempted to nd better C values, and it is most likely that our
+simplistic choice was relatively suboptimal. In future work, we will determine the effect
+of more careful selection of C, such as via cross-validation and approximations based on
+generalization error upper-bound estimates.
+
+Experiment 1: 1-Pixel translations
+
+Tables 4, 5, and 6 summarize our VSV results on the MNIST data sets using 1-pixel
+translations in all 8 directions.
+
+These experiments employed our new SMO-based methods, as described in Section 4
+(including our digestion technique). To see whether our faster training times could be put
+to good use, we tried the VSV method with more invariance than was practical in previous
+experiments. Specically, we used 3 3 box jitter of the image centers, which corresponds
+to translation of each image for a distance of one pixel in any of the 8 directions (horizontal,
+vertical, or both). Total training time, for obtaining 10 binary recognizers for each of the
+
+178
+
+D. DECOSTE AND B. SCH OLKOPF
+
+Table 4. Errors on MNIST (10,000 test examples), using VSV with 1-pixel translation.
+
+Misclassications
+
+Digit misclassications
+
+Digit
+
+SV
+VSV
+
+0
+
+6
+2
+
+1
+
+8
+3
+
+2
+
+15
+7
+
+3
+
+17
+7
+
+4
+
+13
+7
+
+5
+
+10
+8
+
+6
+
+8
+7
+
+7
+
+15
+8
+
+8
+
+9
+7
+
+9
+
+21
+12
+
+10-class
+
+Test error rate
+
+1.22%
+0.68%
+
+Table 5. Binary-recognition errors on MNIST (10,000 test examples), using VSV with 1-pixel translation.
+
+SVM for digit
+
+SV
+
+False negatives
+False positives
+
+VSV
+
+False negatives
+False positives
+
+0
+
+9
+6
+
+5
+4
+
+Errors for each binary recognizer
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+9
+
+12
+3
+
+6
+4
+
+22
+11
+
+11
+9
+
+21
+6
+
+11
+5
+
+18
+8
+
+6
+5
+
+22
+4
+
+12
+3
+
+20
+5
+
+12
+7
+
+33
+11
+
+16
+10
+
+27
+9
+
+14
+7
+
+40
+14
+
+21
+8
+
+Table 6. Number of support vectors for MNIST (60,000 training examples), using VSV with 1-pixel translation.
+
+Number of support vectors for each binary recognizer
+
+Digit
+
+SV
+
+0 < i < C
+i = C
+VSV
+
+0 < i < C
+i = C
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+9
+
+1955
+1848
+107
+
+8294
+7907
+387
+
+1354
+1210
+144
+
+5439
+4724
+715
+
+3784
+3630
+154
+
+15186
+14648
+538
+
+4157
+3915
+242
+
+16697
+15794
+903
+
+3231
+3051
+180
+
+12575
+11784
+791
+
+3977
+3791
+186
+
+15858
+15124
+734
+
+2352
+2237
+115
+
+9587
+9081
+506
+
+3090
+2886
+204
+
+13165
+12133
+1032
+
+4396
+4060
+336
+
+18749
+17315
+1434
+
+4130
+3730
+400
+
+18215
+16322
+1893
+
+base SV and the VSV stages, was about 2 days (50 hours) on an Sun Ultra60 workstation
+with a 450 Mhz processor and 2 Gigabytes of RAM (allowing an 800 Mb kernel cache). This
+training time compares very favorably to other recently published results, such as learning
+just a single binary recognizer even without VSV (e.g. training digit 8 took about 8 hours
+in Platt, 1999). The VSV stage is also signicantly more expensive that the base SV stage
+(averaging about 4 hours versus 1 hour)a majority of examples given to VSV training
+typically end up being support vectors.
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+179
+
+Experiment 2: Deslanted images and additional translations
+
+Some previous work on the MNIST data have achieved their best results by deslanting
+each image before training and testing. Deslanting is performed by computing each images
+principal axis and horizontally translating each row of pixels to best approximate the process
+of rotating each image to make its principal axis become vertical. For example, under such
+deslanting, tilted 1 digits all become very similar and all close to vertical.
+
+Tables 7, 8, and 9 summarize our newest results, using deslanted versions of the MNIST
+training and test sets. Other than using deslanted data, the same training conditions were
+used as the previous experiments (i.e. same kernel, same C= 2, same 3 3 box jitter for
+VSV).
+
+Interestingly, using deslanted images did not improve the test error rates for our exper-
+iments. In fact, the same test error rate was reached using either version of the data set
+for either SV (122 errors) or VSV (68 errors), although the specic test examples with
+errors varied somewhat. This result seems to provide evidence that the polynomial kernel
+is already doing a good job in capturing some of the rotational invariance from the training
+
+Table 7. Errors on deslanted MNIST (10,000 test examples), using VSV with 2-pixel translation.
+
+Misclassications
+
+Digit misclassications
+
+Digit
+
+SV
+VSV
+VSV2
+
+0
+
+5
+3
+3
+
+1
+
+5
+4
+3
+
+2
+
+14
+6
+5
+
+3
+
+12
+4
+3
+
+4
+
+13
+8
+6
+
+5
+
+10
+7
+7
+
+6
+
+13
+8
+7
+
+7
+
+13
+7
+6
+
+8
+
+12
+8
+5
+
+9
+
+25
+13
+11
+
+10-class
+
+Test error rate
+
+1.22%
+0.68%
+0.56%
+
+Table 8. Binary-recognition errors on deslanted MNIST (10,000 test examples), using VSV with 2-pixel
+translation.
+
+SVM for digit
+
+SV
+
+False negatives
+False positives
+
+VSV
+
+False negatives
+False positives
+
+VSV2
+
+False negatives
+False positives
+
+0
+
+9
+7
+
+5
+3
+
+5
+4
+
+Errors for each binary recognizer
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+9
+
+11
+6
+
+5
+6
+
+5
+5
+
+21
+7
+
+13
+11
+
+12
+9
+
+22
+5
+
+11
+4
+
+11
+4
+
+15
+8
+
+5
+9
+
+4
+9
+
+21
+6
+
+9
+3
+
+9
+4
+
+22
+9
+
+12
+11
+
+13
+11
+
+24
+9
+
+13
+6
+
+12
+9
+
+21
+10
+
+13
+3
+
+11
+3
+
+47
+8
+
+21
+7
+
+18
+7
+
+180
+
+D. DECOSTE AND B. SCH OLKOPF
+
+Table 9. Number of support vectors for deslanted MNIST (60,000 training examples), using VSV with 2-pixel
+translation.
+
+Number of support vectors for each binary recognizer
+
+Digit
+
+SV
+
+0 < i < C
+i = C
+VSV
+
+0 < i < C
+i = C
+VSV2
+
+0 < i < C
+i = C
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+9
+
+1859
+1758
+101
+
+8041
+7619
+422
+
+11305
+10650
+655
+
+1057
+927
+130
+
+4534
+3762
+772
+
+6298
+5117
+1181
+
+3186
+3023
+163
+
+13462
+12837
+625
+
+18549
+17539
+1010
+
+3315
+3090
+225
+
+13628
+12609
+1019
+
+18680
+17141
+1539
+
+2989
+2830
+159
+
+12115
+11146
+969
+
+16800
+15329
+1471
+
+3311
+3124
+187
+
+13395
+12584
+811
+
+18550
+17294
+1256
+
+2039
+1934
+105
+
+8558
+8031
+527
+
+11910
+11084
+826
+
+2674
+2475
+199
+
+11731
+10538
+1193
+
+16489
+14645
+1844
+
+3614
+3301
+313
+
+15727
+14181
+1546
+
+21826
+19382
+2444
+
+3565
+3202
+363
+
+16341
+14332
+2009
+
+23003
+19898
+3105
+
+set alone. Nevertheless, comparing Table 6 with 9 shows that deslanted data does lead to
+signicantly fewer SVs and VSVs, with a particularly high percentage of reduction for digit
+1 (as one might expect, since deslanted 1 digits are especially similar to each other).
+To investigate whether further jitters would lead to even better results (or perhaps worse
+ones), we tried the VSV method using 3 3 box jitter combined with four additional
+translations by 2-pixels (i.e. horizontally or vertically, but not both), using the same training
+conditions as the other experiments. Although this only enlarged the number of training
+examples by about 50% (from 9 to 13 per original SV), it require approximately 4 times
+more training time, due to the large number of VSVs that resulted.
+
+The results of this experiment are labelled as VSV2 in Tables 7, 8, and 9. Figure 5
+shows the 56 misclassied test examples that resulted. It is interesting to note that the largest
+number of VSVs (23,003) is still only about a third of the size of the full (60,000) training
+set, despite the large number of translation jitters explored in this case.
+
+Other distortions, such as scale, rotation, and line thickness, have all been reported to also
+help signicantly in this domain. It seems clear from gure 5 that many of the remaining
+misclassications are due to failure to fully account for such other invariances.
+
+5.1.2. SMO jittering kernels experiments. Table 10 summarizes some initial experiments
+in comparing VSV and JSV methods on a small subset of the MNIST training set. Specif-
+ically, 200 3 digit examples and 200 8 digit examples from the training set and all
+1984 3 and 8 digits from the 10,000 example test set. We have not yet run more
+conclusion comparisons using the entire data set. We again used a polynomial kernel
+of degree 9.
+
+These experiments illustrate typical relative behaviors, such as the JSV test times being
+much faster than the worst case (of J times slower than VSV test times), even though JSV
+must jitter at test time, due to JSV having many fewer nal SVs than for VSV. Furthermore,
+both JSV and VSV typically beat standard SVMs (i.e. no invariance). They also both
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+181
+
+Figure 5. The 56 errors for deslanted 10,000 MNIST test data (VSV2). The number in the lower-left corner of
+each image box indicates the test example number (1 thru 10,000). The rst number in the upper-right corner
+indicates the predicted digit label and the second indicates the true label.
+
+typically beat query jitter as well, in which the test examples are jittered inside the kernels
+during SVM output computations. Query jitter effectively uses jittering kernels at test time,
+even though the SVM was not specically trained for a jittering kernel. We tested that case
+simply as a control in such experiments, to verify that training the SVM with the actual
+jittering kernel used at test time is indeed important.
+Relative test errors between VSV and JSV varysometimes VSV is substantially better
+(as in the 5 5 box jitter example) and sometime it is somewhat worse. Although our results
+to date are preliminary, it does seem that VSV methods are substantially more robust than
+JSV ones, in terms of variance in generalization errors.
+
+5.2. NASA volcanoe recognition
+
+We are currently applying these invariance approaches to several difcult NASA object
+detection tasks. In particular, we are focusing on improving known results in volcanoe
+
+182
+
+D. DECOSTE AND B. SCH OLKOPF
+
+Table 10.
+
+3 vs 8 results for MNIST (all 1984 test examples, rst 200 3s and 200 8s from training set).
+
+Test errors
+
+Method
+Using 3 3 box jitter
+
+SV/N
+
+Task
+
+Time (secs)
+
+Base
+
+VSV
+
+JSV
+
+61/1984
+50/1984
+
+34/1984
+
+207/400
+
+1050/1863
+
+171/400
+
+30/1984
+
+train
+test
+query jitter test
+train
+test
+train
+test
+
+Using 55 box jitter and deslant preprocessing (principal axis vertical)
+
+Base
+
+VSV
+
+JSV
+
+33/1984
+50/1984
+
+8/1984
+
+28/1984
+
+179/400
+
+2411/4475
+
+151/400
+
+train
+test
+query jitter test
+train
+test
+train
+test
+
+2.3
+11.0
+119.4
+51.7
+60.5
+18.8
+98.6
+
+1.8
+9.9
+480.5
+385.0
+>400
+31.7
+396.0
+
+detection (Burl et al., 1998) and in enabling useful initial results for a crater detection
+application (Burl, 2001). These NASA applications have in fact motivated much of our
+recent work on efcient training of invariant SVMs.
+
+In this section we present some preliminary results on a subset of the NASA volcanoe data,
+specically that which is currently publicly available (the UCI KDD Archive volcanoes
+data (Burl, 2000)). Figure 6 shows some examples from this data set. As described in Burl
+et al. (1998), all examples were determined from a focus of attention (FOA) matched lter
+that was designed to quickly scan large images and select 15-pixel-by-15-pixel subimages
+with relatively high false alarm rates but low miss rates (about 20:1).
+
+The previous best overall results on this data were achieved using a quadratic classier,
+modeling the two classes with one Gaussian for each class (Burl et al., 1998). To overcome
+the high dimensionality of the 225-pixel example vectors, PCA was performed to nd the
+six principal axes of only the positive examples and then all examples were projected to
+those axes. Mean and covariance matrices were computed over those six dimensions for
+each class.
+
+Figures 7 and 8 compare ROC10 curves for our initial SVMs (without any explicit in-
+variance) versus the best previous Gaussian models.11 There are ve experiments, varying
+from homogeneous collections of volcanoes from the same regions of Venus to heteroge-
+neous collections of examples from across the planet, with various k-fold partitionings into
+training and test sets for each experiment. The ROC curves represent the leave-out-fold
+cross-validation performances for each experiment.
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+183
+
+Figure 6. First 25 positive (left) and rst 25 negative (right) test examples of volcanoe data set HOM4 (partition A1)
+(Burl, 2000).
+
++
+
++ = 3C
+
+
+
+The number of example images vary from thousands to tens of thousands across the
+ve experiments. Due to the much greater number of negative examples than positive
+examples in each experiment (by factors ranging from 10 to 20), we trained SVMs used
+SV M light, employing its implemented ability to use two regularization parameters, C
+and
+, instead of a single C. That was done to reect the importance of a high detection rate
+C
+ = 1
+despite the relatively scarcity of positive training examples. Specically, we used C
+(u  v + 1)9, based solely on some
+and C
+manual tuning on data set HOM4 (experiment A). Burl et al. (1998) similarly used HOM4 to
+determine settings for the remaining four experiments. It is interesting to note that HOM4
+is the only one of the experiments for which our (SVM) results seem to be very similar
+to theirs. We also adopted the same normalization (of the 8-bit pixel values) used in their
+original experiments, namely so that the mean pixel value of each example image is 0 and
+the standard deviation is 1.
+
+and the polynomial kernel K (u, v)  1
+
+512
+
+
+
+To extract ROC curves from each trained SVM, we added a sliding offset value to the
+SVM output, with an offset of 0 giving the trained response. Interesting, our SVMs beat
+the previous best (Gaussian) model for each of the ve experiments when offset= 0, i.e.
+at the operating point for which the SVM was specically trained. This suggests that the
+SVM-derived ROC curves might be even higher overall if a SVM was explicitly trained for
+multiple operating points, instead of just one. It is also interesting that the SVM approach
+does well without the sort of feature extraction effort (i.e. PCA) that the previous work
+had required. One disadvantage of our SVM approach was that training time for all ve
+experiments was somewhat slowerabout 15 minutes, versus 3 minutes for the Gaussian
+model, on the same machine (a 450 Mhz Sun Ultra60).
+
+This NASA volcanoe detection problem is somewhat challenging for VSV techniques to
+make further progress, since many potential invariances have already been normalized away.
+For example, the Sun light source is from the same angle and intensity for each example
+considered, so rotation transformations would not be useful. Furthermore, the focus of
+attention mechanism already centers each volcanoe example quite well. Nevertheless, the
+volcanoe examples (e.g. gure 6) do indicate some slight variance in the location of the
+
+184
+
+D. DECOSTE AND B. SCH OLKOPF
+
+Figure 7. ROC curves for the rst four experiments described by Burl et al. (1998). The solid curve is the ROC
+for our SVM and the dashed curve is the ROC for the best two-Gaussian model from Burl et al. (1998). The mark
+ on the SVM curve indicates the operating point of the trained SVM (i.e. offset= 0). The dashed line near the
+
+
+top of each plot box indicates the best performance possible, which is less than a detection rate of 1.0 due to the
+focus of attention mechanism having a non-zero miss rate.
+
+characteristic bright middle of each volcanoe, so we have been investigating whether VSV
+translations can still help.
+
+Due to the relatively large number of negative examples, we rst explored whether
+performing VSV transformations only on the positive examples might sufce. This was
+inspired by the previous work succeeding with PCA limited to capturing the variance
+only in the positive examples. Furthermore, it seemed possible that the large set of neg-
+ative examples might already contain considerable translation variation. However, we
+found that this lead to signicantly worse performance than using no VSV. The stan-
+dard VSV approach of transforming both negative and positive SVs indeed seems critical,
+perhaps because otherwise the new positive instances have free reign to claim large ar-
+eas of kernel feature space for which it (incorrectly) appears negative instances would not
+occur.
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+185
+
+Figure 8. ROC curves for the fth experiment (as in gure 7).
+
+Figure 9 shows a comparison of ROC curves for a baseline SVM and its VSV SVM, using
+four 1-pixel translations (horizontal or vertical) for all SVs of the baseline SVM and the
+same training conditions as above. However, unlike for the MNIST domain, in this domain
+replacing a pixel which moves away from an edge is not as simple as shifting in a constant
+background (e.g. zero) pixel. For simplicity, we rst tried replicating the shifted row (or
+column), but found this did not work well, presumably because this conicted with the
+higher-order correlations modeled by the nonlinear kernel. So, instead for each image we
+did the following: (1) apply the translation to each raw 8-bit-pixel image (without concern
+for shift-in values), (2) shrink from 15-by-15 to 13-by-13 images (i.e. ignore the borders),
+(3) normalize each 13 13 example. This shrinking was done for the baseline SVM as well,
+which apparently did not inuence the ROC curve signicantly (as comparison of HOM4 in
+gures 7 and 9 indicates).
+
+Histograms of the SVM outputs suggest that a key reason for the overall improvements
+in the ROC curve for the VSV SVM is that it is signicantly more condent in its outputs
+(e.g. they are much larger in magnitude), especially for negative examples.
+
+For comparison, we have also tried translating all examples (not just SVs). As in earlier
+
+work, we found the results to be essentially identical, although much slower to train.
+
+Our work with VSV on the volcanoe data is still preliminary, so we are still focussing
+on the HOM4 data and remaining blind to VSV performance on the others. To date we
+have observed that VSV does not seem to hurt overall ROC performance, as long as the
+
+186
+
+D. DECOSTE AND B. SCH OLKOPF
+
+Figure 9. Dashed ROC curve is from baseline SVM (mark xshows threshold= 0 operating point). Solid ROC
+curve is from SVM including VSV with four 1-pixel translations (mark  shows threshold= 0 operating point).
+
+above warnings are heeded, and sometimes helps. We suspect that with signicant further
+work (e.g. employing scale transforms, starting with larger 17-by-17 images to shrink after
+translations, using more comprehensive model selection, etc.) signicantly better results
+can still be achieved in this domain.
+
+6. Conclusion
+
+This paper has described a variety of methods for incorporating prior knowledge about
+invariances into SVMs. In experimental work, we have demonstrated that these techniques
+allow state-of-the-art performance, both in terms of generalization error and in terms of
+SVM training time.
+
+As mentioned throughout this paper, there are several promising lines of future work.
+These include experiments with a wider assortment of distortions (e.g. rotations, scale, line
+thickness) and across multiple domains (e.g. further NASA space applications, in addition
+to the traditional digit recognition tasks).
+
+An interesting issue is under what conditions applying additional distortions to training
+data leads to signicantly worse test errors, even when using careful cross-validation during
+training. One would expect that obviously-excessive distortions, such as rotating 6 digits
+
+TRAINING INVARIANT SUPPORT VECTOR MACHINES
+
+187
+
+so far as to confuse them with 9 digits, would be easily detected as counter-productive
+during such cross-validations. Thus, an open issue is to what extent distortions reecting
+known invariances can be safely applied during training whenever computationally feasible
+and to what extent their use makes controlling generalization error more difcult.
+
+Given our demonstrated success in training invariant SVMs that generalize very well, a
+key issue for future work is in lowering their test time costs. For example, the best neural
+networks (e.g. (LeCun et al., 1998)) still appear to be much faster at test time than our best
+SVMs, due to the large number of (virtual) support examples that are each compared to
+each test example during kernel computations. Further work in reducing the number of such
+comparisons per test example (with minimal increase in test errors), perhaps along the lines
+of reduced sets (Burges & Scholkopf, 1997), would seem particularly useful at this point.
+
+Acknowledgments
+
+Thanks to Chris Burges, Michael C. Burl, Olivier Chapelle, Sebastian Mika, Patrice Simard,
+Alex Smola, and Vladimir Vapnik for useful discussions.
+
+Parts of this research were carried out by the Jet Propulsion Laboratory, California Insti-
+tute of Technology, under contract with the National Aeronautics and Space Administration.
+
+Notes
+
+1. The reader who is not familiar with this concept may think of it as a group of transformations where each
+element is labelled by a set of continuously variable parameters, cf. also (Simard et al., 1992; Simard, LeCun,
+& Denker, 1993). Such a group may be considered also to be a manifold, where the parameters are the
+coordinates. For Lie groups, it is required that all group operations are smooth maps. It follows that one can,
+for instance, compute derivatives with respect to the parameters. Examples of Lie groups are the translation
+group, the rotation group, or the Lorentz group; for details, see e.g. (Crampin & Pirani, 1986).
+
+2. We think that this is because that study focused on the linear case. The nonlinear case has recently been studied
+
+by Chapelle and Scholkopf (2000).
+
+3. Clearly, the scheme can be iterated; however, care has to exercised, since the iteration of local invariances
+would lead to global ones which are not always desirablecf. the example of a 6 rotating into a 9 (Simard,
+LeCun, & Denker, 1993).
+
+4. For example, gure 4 shows some jittered forms of a particular example of digit 5.
+5. This corresponds to Euclidian distance in the feature space corresponding to the kernel, using the denition
+
+of the two-norm:
+
+(cid:3)Zi  Z j(cid:3)2 = (Zi  Zi )  2 (Zi  Z j ) + (Z j  Z j ).
+
+6. Incidentally, this is why we expect, for large-scale problems, that JSV approaches may be able to effectively
+amortize away much of their extra jittering kernel costs (J times slower than VSVs standard kernels). That
+is, the JSV working set will be J times smaller than for the corresponding VSV, and thus might reuse a limited
+cache more effectively.
+
+7. We did, however, make a comparison for a subset of the MNIST database, utilizing only the rst 5000 training
+example. There, a degree 5 polynomial classier was improved from 3.8% to 2.5% error by the Virtual SV
+method, with an increase of the average SV set sizes from 324 to 823. By generating Virtual examples from
+the full training set, and retraining on these, we obtained a system which had slightly more SVs (939), but an
+unchanged error rate.
+
+8. Note this study was done before VSV systems with higher accuracy were obtained.
+
+188
+
+D. DECOSTE AND B. SCH OLKOPF
+
+9. The difference in CPUs (i.e. our Sparc Ultra-II 450 Mhz versus Platts Intel Pentium II 266 Mhz) seems not as
+signicant as one might imagine. Experiments on both CPUs indicate that the Sparc is effectively only 50%
+faster than the Pentium in dot-product computations, which dominate the training time in our experiments.
+
+10. As in Burl et al. (1998), these are actually FROC (Free-response ROC) curves, showing probability of detection
+
+versus the number of false alarms per unit area.
+
+11. The volcanoe data from the UCI KDD Archive (Burl. 2000) are slightly different from the data used in Burl
+et al. (1998), due to recent changes in their FOA mechanism. The author of those experiments (Burl) reran
+them for us, so that all our ROC plots here involve the same data. This accounts for our slight differences
+from the ROC curves shown in Burl et al. (1998).
+

@@ -1,0 +1,3466 @@
+An Introduction to Variational Methods
+for Graphical Models
+
+MICHAEL I. JORDAN
+Department of Electrical Engineering and Computer Sciences and Department of Statistics,
+University of California, Berkeley, CA 94720, USA
+
+jordan@cs.berkeley.edu
+
+ZOUBIN GHAHRAMANI
+Gatsby Computational Neuroscience Unit, University College London WC1N 3AR, UK
+
+zoubin@gatsby.ucl.ac.uk
+
+TOMMI S. JAAKKOLA
+Articial Intelligence Laboratory, MIT, Cambridge, MA 02139, USA
+
+LAWRENCE K. SAUL
+AT&T LabsResearch, Florham Park, NJ 07932, USA
+
+Editor: David Heckerman
+
+tommi@ai.mit.edu
+
+lsaul@research.att.edu
+
+Abstract. This paper presents a tutorial introduction to the use of variational methods for inference and learning
+in graphical models (Bayesian networks and Markov random elds). We present a number of examples of graphical
+models, including the QMR-DT database, the sigmoid belief network, the Boltzmann machine, and several variants
+of hidden Markov models, in which it is infeasible to run exact inference algorithms. We then introduce variational
+methods, which exploit laws of large numbers to transform the original graphical model into a simplied graphical
+model in which inference is efcient. Inference in the simpied model provides bounds on probabilities of interest
+in the original model. We describe a general framework for generating variational transformations based on convex
+duality. Finally we return to the examples and demonstrate how variational algorithms can be formulated in each
+case.
+
+Keywords: graphical models, Bayesian networks, belief networks, probabilistic inference, approximate infer-
+ence, variational methods, mean eld methods, hidden Markov models, Boltzmann machines, neural networks
+
+1.
+
+Introduction
+
+The problem of probabilistic inference in graphical models is the problem of computing a
+conditional probability distribution over the values of some of the nodes (the hidden or
+unobserved nodes), given the values of other nodes (the evidence or observed nodes).
+Thus, letting H represent the set of hidden nodes and letting E represent the set of evidence
+nodes, we wish to calculate P.H j E /:
+
+P.H j E / D P.H; E /
+P.E /
+
+:
+
+(1)
+
+184
+
+JORDAN ET AL.
+
+General exact inference algorithms have been developed to perform this calculation (Jensen,
+1996; Shachter, Andersen, & Szolovits, 1994; Shenoy, 1992); these algorithms take system-
+atic advantage of the conditional independencies present in the joint distribution as inferred
+from the pattern of missing edges in the graph.
+
+We often also wish to calculate marginal probabilities in graphical models, in particular
+the probability of the observed evidence, P.E /. Viewed as a function of the parameters of
+the graphical model, for xed E, P.E / is an important quantity known as the likelihood. As
+is suggested by Eq. (1), the evaluation of the likelihood is closely related to the calculation
+of P.H j E /. Indeed, although inference algorithms do not simply compute the numerator
+and denominator of Eq. (1) and divide, they in fact generally produce the likelihood as a
+by-product of the calculation of P.H j E /. Moreover, algorithms that maximize likelihood
+(and related quantities) generally make use of the calculation of P.H j E / as a subroutine.
+Although there are many cases in which the exact algorithms provide a satisfactory
+solution to inference and learning problems, there are other cases, several of which we
+discuss in this paper, in which the time or space complexity of the exact calculation is
+unacceptable and it is necessary to have recourse to approximation procedures. Within the
+context of the junction tree construction, for example, the time complexity is exponential
+in the size of the maximal clique in the junction tree. As we will see, there are natural
+architectural assumptions that necessarily lead to large cliques.
+
+Even in cases in which the complexity of the exact algorithms is manageable, there can be
+reason to consider approximation procedures. Note in particular that the exact algorithms
+make no use of the numerical representation of the joint probability distribution associ-
+ated with a graphical model; put another way, the algorithms have the same complexity
+regardless of the particular probability distribution under consideration within the family
+of distributions that is consistent with the conditional independencies implied by the graph.
+There may be situations in which nodes or clusters of nodes are nearly conditionally
+independent, situations in which node probabilities are well determined by a subset of the
+neighbors of the node, or situations in which small subsets of congurations of variables
+contain most of the probability mass. In such cases the exactitude achieved by an exact
+algorithm may not be worth the computational cost. A variety of approximation proce-
+dures have been developed that attempt to identify and exploit such situations. Examples
+include the pruning algorithms of Kjrulff (1994), the bounded conditioning method of
+Horvitz, Suermondt, and Cooper (1989), search-based methods (e.g., Henrion, 1991), and
+the localized partial evaluation method of Draper and Hanks (1994). A virtue of all of
+these methods is that they are closely tied to the exact methods and thus are able to take full
+advantage of conditional independencies. This virtue can also be a vice, however, given the
+exponential growth in complexity of the exact algorithms.
+
+A related approach to approximate inference has arisen in applications of graphical model
+inference to error-control decoding (McEliece, MacKay, & Cheng, 1998). In particular,
+Kim and Pearls algorithm for singly-connected graphical models (Pearl, 1988) has been
+used successfully as an iterative approximate method for inference in non-singly-connected
+graphs.
+
+Another approach to the design of approximation algorithms involves making use of
+Monte Carlo methods. A variety of Monte Carlo algorithms have been developed (see Neal,
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+185
+
+1993) and applied to the inference problem in graphical models (Dagum & Luby, 1993; Fung
+& Favero, 1994; Gilks, Thomas, & Spiegelhalter, 1994; Jensen, Kong, & Kjrulff, 1995;
+Pearl, 1988). Advantages of these algorithms include their simplicity of implementation and
+theoretical guarantees of convergence. The disadvantages of the Monte Carlo approach are
+that the algorithms can be slow to converge and it can be hard to diagnose their convergence.
+In this paper we discuss variational methods, which provide yet another approach to the
+design of approximate inference algorithms. Variational methodology yields deterministic
+approximation procedures that generally provide bounds on probabilities of interest. The
+basic intuition underlying variational methods is that complex graphs can be probabilisti-
+cally simple; in particular, in graphs with dense connectivity there are averaging phenomena
+that can come into play, rendering nodes relatively insensitive to particular settings of val-
+ues of their neighbors. Taking advantage of these averaging phenomena can lead to simple,
+accurate approximation procedures.
+
+It is important to emphasize that the various approaches to inference that we have outlined
+are by no means mutually exclusive; indeed they exploit complementary features of the
+graphical model formalism. The best solution to any given problem may well involve
+an algorithm that combines aspects of the different methods. In this vein, we will present
+variational methods in a way that emphasizes their links to exact methods. Indeed, as we will
+see, exact methods often appear as subroutines within an overall variational approximation
+(cf. Jaakkola & Jordan, 1996; Saul & Jordan, 1996).
+
+It should be acknowledged at the outset that there is as much art as there is science
+in our current understanding of how variational methods can be applied to probabilistic
+inference. Variational transformations form a large, open-ended class of approximations,
+and although there is a general mathematical picture of how these transformations can
+be exploited to yield bounds on probabilities in graphical models, there is not as yet a
+systematic algebra that allows particular variational transformations to be matched optimally
+to particular graphical models. We will provide illustrative examples of general families
+of graphical models to which variational methods have been applied successfully, and we
+will provide a general mathematical framework which encompasses all of these particular
+examples, but we are not as yet able to provide assurance that the framework will transfer
+easily to other examples.
+
+We begin in Section 2 with a brief overview of exact inference in graphical models,
+basing the discussion on the junction tree algorithm. Section 3 presents several examples
+of graphical models, both to provide motivation for variational methodology and to provide
+examples that we return to and develop in detail as we proceed through the paper. The core
+material on variational approximation is presented in Section 4. Sections 5 and 6 ll in some
+of the details, focusing on sequential methods and block methods, respectively. In these latter
+two sections, we also return to the examples and work out variational approximations in
+each case. Finally, Section 7 presents conclusions and directions for future research.
+
+2. Exact inference
+
+In this section we provide a brief overview of exact inference for graphical models, as repre-
+sented by the junction tree algorithm (for relationships between the junction tree algorithm
+
+186
+
+JORDAN ET AL.
+
+Figure 1. A directed graph is parameterized by associating a local conditional probability with each node. The
+joint probability is the product of the local probabilities.
+
+and other exact inference algorithms, see Shachter, Andersen, and Szolovits (1994); see
+also Dechter (1999), and Shenoy (1992), for recent developments in exact inference). Our
+intention here is not to provide a complete description of the junction tree algorithm, but
+rather to introduce the moralization and triangulation steps of the algorithm. An un-
+derstanding of these steps, which create data structures that determine the run time of the
+inference algorithm, will sufce for our purposes.1 For a comprehensive introduction to the
+junction tree algorithm see Jensen (1996).
+
+Graphical models come in two basic avorsdirected graphical models and undirected
+graphical models. A directed graphical model (also known as a Bayesian network) is
+specied numerically by associating local conditional probabilities with each of the nodes
+in an acyclic directed graph. These conditional probabilities specify the probability of node
+Si given the values of its parents, i.e., P.Si j S.i //, where .i / represents the set of indices
+of the parents of node Si and S.i / represents the corresponding set of parent nodes (see
+gure 1).2 To obtain the joint probability distribution for all of the N nodes in the graph,
+i.e., P.S/ D P.S1; S2; : : : ; SN /, we take the product over the local node probabilities:
+
+(2)
+
+
+
+P.S/ D NY
+
+iD1
+
+Si j S.i /
+
+P
+
+
+
+Inference involves the calculation of conditional probabilities under this joint distribution.
+An undirected graphical model (also known as a Markov random eld) is specied
+numerically by associating potentials with the cliques of the graph.3 A potential is a
+function on the set of congurations of a clique (that is, a setting of values for all of the
+nodes in the clique) that associates a positive real number with each conguration. Thus,
+for every subset of nodes Ci that forms a clique, we have an associated potential `i .Ci /
+(see gure 2). The joint probability distribution for all of the nodes in the graph is obtained
+by taking the product over the clique potentials:
+
+P.S/ D
+
+M
+iD1
+
+`i .Ci /
+Z
+
+;
+
+(3)
+
+Q
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+187
+
+Figure 2. An undirected graph is parameterized by associating a potential with each clique in the graph. The
+cliques in this example are C1 D fS1; S2; S3g, C2 D fS3; S4; S5g, and C3 D fS4; S5; S6g. A potential assigns a
+positive real number to each conguration of the corresponding clique. The joint probability is the normalized
+product of the clique potentials.
+
+where M is the total number of cliques and where the normalization factor Z is obtained
+by summing the numerator over all congurations:
+
+(
+
+MY
+
+)
+
+X
+
+Z D
+
+`i .Ci /
+
+:
+
+fSg
+
+iD1
+
+(4)
+
+In keeping with statistical mechanical terminology we will refer to this sum as a partition
+function.
+
+The junction tree algorithm compiles directed graphical models into undirected graphical
+models; subsequent inferential calculation is carried out in the undirected formalism. The
+step that converts the directed graph into an undirected graph is called moralization. (If the
+initial graph is already undirected, then we simply skip the moralization step). To understand
+moralization, we note that in both the directed and the undirected cases, the joint probability
+distribution is obtained as a product of local functions. In the directed case, these functions
+are the node conditional probabilities P.Si j S.i //. In fact, this probability nearly qualies
+as a potential function; it is certainly a real-valued function on the congurations of the set
+of variables fSi ; S.i /g. The problem is that these variables do not always appear together
+within a clique. That is, the parents of a common child are not necessarily linked. To be
+able to utilize node conditional probabilities as potential functions, we marry the parents
+of all of the nodes with undirected edges. Moreover we drop the arrows on the other edges
+in the graph. The result is a moral graph, which can be used to represent the probability
+distribution on the original directed graph within the undirected formalism.4
+
+The second phase of the junction tree algorithm is somewhat more complex. This phase,
+known as triangulation, takes a moral graph as input and produces as output an undirected
+graph in which additional edges have (possibly) been added. This latter graph has a special
+
+188
+
+JORDAN ET AL.
+
+Figure 3.
+between nodes B and D renders the graph triangulated.
+
+(a) The simplest non-triangulated graph. The graph has a 4-cycle without a chord. (b) Adding a chord
+
+property that allows recursive calculation of probabilities to take place. In particular, in a
+triangulated graph, it is possible to build up a joint distribution by proceeding sequentially
+through the graph, conditioning blocks of interconnected nodes only on predecessor blocks
+in the sequence. The simplest graph in which this is not possible is the 4-cycle, the cycle
+of four nodes shown in gure 3(a). If we try to write the joint probability sequentially as, for
+example, P.A/P.B j A/P.C j B/P.D j C/, we see that we have a problem. In particular, A
+depends on D, and we are unable to write the joint probability as a sequence of conditionals.
+A graph is not triangulated if there are 4-cycles which do not have a chord, where a chord
+is an edge between non-neighboring nodes. Thus the graph in gure 3(a) is not triangulated;
+it can be triangulated by adding a chord as in gure 3(b). In the latter graph we can write
+the joint probability sequentially as P.A; B; C; D/ D P.A/P.B; D j A/P.C j B; D/.
+
+More generally, once a graph has been triangulated it is possible to arrange the cliques
+of the graph into a data structure known as a junction tree. A junction tree has the running
+intersection property: If a node appears in any two cliques in the tree, it appears in all cliques
+that lie on the path between the two cliques. This property has the important consequence that
+a general algorithm for probabilistic inference can be based on achieving local consistency
+between cliques. (That is, the cliques assign the same marginal probability to the nodes that
+they have in common). In a junction tree, because of the running intersection property, local
+consistency implies global consistency.
+
+The probabilistic calculations that are performed on the junction tree involve marginal-
+izing and rescaling the clique potentials so as to achieve local consistency between neigh-
+boring cliques. The time complexity of performing this calculation depends on the size of
+the cliques; in particular for discrete data the number of values required to represent the
+potential is exponential in the number of nodes in the clique. For efcient inference, it is
+therefore critical to obtain small cliques.
+
+In the remainder of this paper, we will investigate specic graphical models and consider
+the computational costs of exact inference for these models. In all of these cases we will
+either be able to display the obvious triangulation, or we will be able to lower bound
+the size of cliques in a triangulated graph by considering the cliques in the moral graph.
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+189
+
+Thus we will not need to consider specic algorithms for triangulation (for discussion of
+triangulation algorithms, see, e.g., Kjrulff, 1990).
+
+3. Examples
+
+In this section we present examples of graphical models in which exact inference is generally
+infeasible. Our rst example involves a diagnostic system in which a xed graphical model
+is used to answer queries. The remaining examples involve estimation problems in which a
+graphical model is t to data and subsequently used for prediction or diagnosis.
+
+3.1. The QMR-DT database
+
+The QMR-DT database is a large-scale probabilistic database that is intended to be used as
+a diagnostic aid in the domain of internal medicine.5 We provide a brief overview of the
+QMR-DT database here; for further details see Shwe et al. (1991).
+
+The QMR-DT database is a bipartite graphical model in which the upper layer of nodes
+represent diseases and the lower layer of nodes represent symptoms (see gure 4). There
+are approximately 600 disease nodes and 4000 symptom nodes in the database.
+
+The evidence is a set of observed symptoms; henceforth we refer to observed symptoms
+as ndings and represent the vector of ndings with the symbol f . The symbol d denotes
+the vector of diseases. All nodes are binary, thus the components fi and di are binary random
+variables. Making use of the conditional independencies implied by the bipartite form of
+the graph,6 and marginalizing over the unobserved symptom nodes, we obtain the following
+joint probability over diseases and ndings:
+
+"Y
+
+P. f; d/ D P. f j d/P.d/
+P. fi j d/
+
+D
+
+P.d j /
+
+:
+
+#"Y
+
+#
+
+(5)
+
+(6)
+
+i
+
+j
+
+Figure 4. The structure of the QMR-DT graphical model. The shaded nodes represent evidence nodes and are
+referred to as ndings.
+
+190
+
+JORDAN ET AL.
+
+The prior probabilities of the diseases, P.d j /, were obtained by Shwe et al. from archival
+data. The conditional probabilities of the ndings given the diseases, P. fi j d/, were ob-
+tained from expert assessments under a noisy-OR model. That is, the conditional proba-
+bility that the ith symptom is absent, P. fi D 0j d/, is expressed as follows:
+
+P. fi D 0 j d/ D .1  qi0/
+
+.1  qi j /d j
+
+Y
+
+j2.i /
+
+(7)
+
+(8)
+
+(9)
+
+where the qi j are parameters obtained from the expert assessments. Considering the case
+in which all diseases are absent, we see that the qi0 parameter can be interpreted as the
+probability that the ith nding is present even though no disease is present. The effect of
+each additional disease, if present, is to contribute an additional factor of .1  qi j / to the
+probability that the ith nding is absent.
+
+We will nd it useful to rewrite the noisy-OR model in an exponential form:
+
+(
+P. fi D 0 j d/ D exp
+
+
+
+X
+
+j2.i /
+
+)
+
+(cid:181)i j d j  (cid:181)i0
+
+where (cid:181)i j  ln.1  qi j / are the transformed parameters. Note also that the probability of
+a positive nding is given as follows:
+
+(
+P. fi D 1 j d/ D 1  exp
+
+
+
+X
+
+j2.i /
+
+)
+
+(cid:181)i j d j  (cid:181)i0
+
+These forms express the noisy-OR model as a generalized linear model.
+If we now form the joint probability distribution by taking products of the local proba-
+bilities P. fi j d/ as in Eq. (6), we see that negative ndings are benign with respect to
+the inference problem. In particular, a product of exponential factors that are linear in the
+diseases (cf. Eq. (8)) yields a joint probability that is also the exponential of an expression
+linear in the diseases. That is, each negative nding can be incorporated into the joint
+probability in a linear number of operations.
+
+Products of the probabilities of positive ndings, on the other hand, yield cross products
+terms that are problematic for exact inference. These cross product terms couple the diseases
+(they are responsible for the explaining away phenomena that arise for the noisy-OR
+model; see Pearl, 1988). Unfortunately, these coupling terms can lead to an exponential
+growth in inferential complexity. Considering a set of standard diagnostic cases (the CPC
+cases; see Shwe et al., 1991), Jaakkola and Jordan (1999b) found that the median size of
+the maximal clique of the moralized QMR-DT graph is 151.5 nodes. Thus even without
+considering the triangulation step, we see that diagnostic calculation under the QMR-DT
+model is generally infeasible.7
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+191
+
+Figure 5. The layered graphical structure of a neural network. The input nodes and output nodes comprise the
+set of evidence nodes.
+
+3.2. Neural networks as graphical models
+
+Neural networks are layered graphs endowed with a nonlinear activation function at each
+node (see gure 5). Let us consider activation functions that are bounded between zero and
+one, such as those obtained from the logistic function f .z/ D 1=.1 C e
+z/. We can treat
+such a neural network as a graphical model by associating a binary variable Si with each
+node and interpreting the activation of the node as the probability that the associated binary
+variable takes one of its two values. For example, using the logistic function, we write:
+
+(10)
+
+
+
+Si D 1
+
+P
+
+ S.i /
+
+ D
+
+'P
+
+1 C exp
+
+
+
+1
+j2.i / (cid:181)i j S j  (cid:181)i0
+
+where (cid:181)i j are the parameters associated with edges between parent nodes j and node i, and
+(cid:181)i0 is the bias parameter associated with node i. This is the sigmoid belief network
+introduced by Neal (1992). The advantages of treating a neural network in this manner
+include the ability to perform diagnostic calculations, to handle missing data, and to treat
+unsupervised learning on the same footing as supervised learning. Realizing these benets,
+however, requires that the inference problem be solved in an efcient way.
+
+In fact, it is easy to see that exact inference is infeasible in general layered neural network
+models. A node in a neural network generally has as parents all of the nodes in the preceding
+layer. Thus the moralized neural network graph has links between all of the nodes in this
+layer (see gure 6). That these links are necessary for exact inference in general is clearin
+particular, during training of a neural network the output nodes are evidence nodes, thus
+the hidden units in the penultimate layer become probabilistically dependent, as do their
+ancestors in the preceding hidden layers.
+
+Thus if there are N hidden units in a particular hidden layer, the time complexity of
+inference is at least O.2N /, ignoring the additional growth in clique size due to triangulation.
+Given that neural networks with dozens or even hundreds of hidden units are commonplace,
+we see that training a neural network using exact inference is not generally feasible.
+
+192
+
+JORDAN ET AL.
+
+Figure 6. Moralization of a neural network. The output nodes are evidence nodes during training. This creates
+probabilistic dependencies between the hidden nodes which are captured by the edges added by the moralization.
+
+Figure 7. A Boltzmann machine. An edge between nodes Si and S j is associated with a factor exp.(cid:181)i j Si S j / that
+contributes multiplicatively to the potential of one of the cliques containing the edge. Each node also contributes
+a factor exp.(cid:181)i0 Si / to one and only one potential.
+
+3.3. Boltzmann machines
+
+A Boltzmann machine is an undirected graphical model with binary-valued nodes and a
+restricted set of potential functions (see gure 7). In particular, the clique potentials are
+formed by taking products of Boltzmann factorsexponentials of terms that are at most
+quadratic in the Si (Hinton & Sejnowski, 1986). Thus each clique potential is a product of
+factors expf(cid:181)i j Si S jg and factors expf(cid:181)i0Sig, where Si 2 f0; 1g.8
+A given pair of nodes Si and S j can appear in multiple, overlapping cliques. For each
+such pair we assume that the expression expf(cid:181)i j Si S jg appears as a factor in one and only
+one clique potential. Similarly, the factors expf(cid:181)i0Sig are assumed to appear in one and only
+one clique potential. Taking the product over all such clique potentials (cf. Eq. (3)), we
+have:
+
+;
+
+(11)
+
+'P
+P.S/ D exp
+
+i < j
+
+(cid:181)i j Si S j CP
+
+Z
+
+
+
+(cid:181)i0Si
+
+i
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+193
+
+where we have set (cid:181)i j D 0 for nodes Si and S j that are not neighbors in the graphthis
+convention allows us to sum indiscriminately over all pairs Si and S j and still respect
+the clique boundaries. We refer to the negative of the exponent in Eq. (11) as the energy.
+With this denition the joint probability in Eq. (11) has the general form of a Boltzmann
+distribution.
+
+Saul and Jordan (1994) pointed out that exact inference for certain special cases of
+Boltzmann machinesuch as trees, chains, and pairs of coupled chainsis tractable
+and they proposed a decimation algorithm for this purpose. For more general Boltzmann
+machines, however, decimation is not immune to the exponential time complexity that
+plagues other exact methods. Indeed, despite the fact that the Boltzmann machine is a
+special class of undirected graphical model, it is a special class only by virtue of its param-
+eterization, not by virtue of its conditional independence structure. Thus, exact algorithms
+such as decimation and the junction tree algorithm, which are based solely on the graphical
+structure of the Boltzmann machine, are no more efcient for Boltzmann machines than
+they are for general graphical models. In particular, when we triangulate generic Boltzmann
+machines, including the layered Boltzmann machines and grid-like Boltzmann machines,
+we obtain intractably large cliques.
+
+Sampling algorithms have traditionally been used to attempt to cope with the intractabil-
+ity of the Boltzmann machine (Hinton & Sejnowski, 1986). The sampling algorithms are
+overly slow, however, and more recent work has considered the faster mean eld ap-
+proximation (Peterson & Anderson, 1987). We will describe the mean eld approximation
+for Boltzmann machines later in the paperit is a special form of the variational ap-
+proximation approach that provides lower bounds on marginal probabilities. We will also
+discuss a more general variational algorithm that provides upper and lower bounds on
+probabilities (marginals and conditionals) for Boltzmann machines (Jaakkola & Jordan,
+1997a).
+
+3.4. Hidden Markov models
+
+In this section, we briey review hidden Markov models. The hidden Markov model (HMM)
+is an example of a graphical model in which exact inference is tractable; our purpose in
+discussing HMMs here is to lay the groundwork for the discussion of intractable variations
+on HMMs in the following sections. See Smyth, Heckerman, and Jordan (1997) for a fuller
+discussion of the HMM as a graphical model.
+
+An HMM is a graphical model in the form of a chain (see gure 8). Consider a sequence
+of multinomial state nodes Xi and assume that the conditional probability of node Xi ,
+given its immediate predecessor Xi1, is independent of all other preceding variables. (The
+index i can be thought of as a time index). The chain is assumed to be homogeneous; that is,
+the matrix of transition probabilities, A D P.Xi j Xi1/, is invariant across time. We also
+require a probability distribution  D P.X1/ for the initial state X1.
+The HMM model also involves a set of output nodes Yi and an emission probability
+law B D P.Yi j Xi /, again assumed time-invariant.
+
+194
+
+JORDAN ET AL.
+
+Figure 8. A HMM represented as a graphical model. The left-to-right spatial dimension represents time. The
+output nodes Yi are evidence nodes during the training process and the state nodes Xi are hidden.
+
+An HMM is trained by treating the output nodes as evidence nodes and the state nodes as
+hidden nodes. An expectation-maximization (EM) algorithm (Baum et al., 1970; Dempster,
+Laird, & Rubin, 1977) is generally used to update the parameters A; B; ; this algorithm
+involves a simple iterative procedure having two alternating steps: (1) run an inference
+algorithm to calculate the conditional probabilities P.Xi jfYig/ and P.Xi ; Xi1 jfYig/; (2)
+update the parameters via weighted maximum likelihood where the weights are given by
+the conditional probabilities calculated in step (1).
+
+It is easy to see that exact inference is tractable for HMMs. The moralization and trian-
+gulation steps are vacuous for the HMM; thus the time complexity can be read off from
+gure 8 directly. We see that the maximal clique is of size N 2, where N is the dimensionality
+of a state node. Inference therefore scales as O.N 2T /, where T is the length of the time
+series.
+
+3.5. Factorial hidden Markov models
+
+In many problem domains it is natural to make additional structural assumptions about the
+state space and the transition probabilities that are not available within the simple HMM
+framework. A number of structured variations on HMMs have been considered in recent
+years (see Smyth et al., 1997); generically these variations can be viewed as dynamic
+belief networks (Dean & Kanazawa, 1989; Kanazawa, Koller, & Russell, 1995). Here we
+consider a particularly simple variation on the HMM theme known as the factorial hidden
+Markov model (Ghahramani & Jordan, 1997; Williams & Hinton, 1991).
+
+The graphical model for a factorial HMM (FHMM) is shown in gure 9. The system
+is composed of a set of M chains indexed by m. Let the state node for the mth chain
+at time i be represented by X .m/
+and let the transition matrix for the mth chain be rep-
+resented by A.m/. We can view the effective state space for the FHMM as the Cartesian
+product of the state spaces associated with the individual chains. The overall transition
+probability for the system is obtained by taking the product across the intra-chain transition
+
+i
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+195
+
+Figure 9. A factorial HMM with three chains. The transition matrices are A.1/, A.2/, and A.3/ associated with
+the horizontal edges, and the output probabilities are determined by matrices B.1/, B.2/, and B.3/ associated with
+the vertical edges.
+
+probabilities:
+
+P.Xi j Xi1/ D MY
+
+
+
+A.m/
+
+X .m/
+
+i
+
+
+
+ X .m/
+
+i1
+
+;
+
+mD1
+
+!
+
+X
+
+m
+
+(12)
+
+/.
+
+where the symbol Xi stands for the M-tuple .X .1/
+
+; X .2/
+
+; : : : ; X .M/
+
+i
+
+i
+
+i
+
+Ghahramani and Jordan utilized a linear-Gaussian distribution for the emission proba-
+
+bilities of the FHMM. In particular, they assumed:
+
+P.Yi j Xi / D N
+
+B .m/ X .m/
+
+i
+
+; 6
+
+;
+
+(13)
+
+where the B .m/ and 6 are matrices of parameters.
+
+The FHMM is a natural model for systems in which the hidden state is realized via
+the joint conguration of an uncoupled set of dynamical systems. Moreover, an FHMM is
+able to represent a large effective state space with a much smaller number of parameters
+than a single unstructured Cartesian product HMM. For example, if we have 5 chains and
+in each chain the nodes have 10 states, the effective state space is of size 100,000, while
+the transition probabilities are represented compactly with only 500 parameters. A single
+unstructured HMM would require 1010 parameters for the transition matrix in this case.
+
+The fact that the output is a function of the states of all of the chains implies that the
+states become stochastically coupled when the outputs are observed. Let us investigate the
+implications of this fact for the time complexity of exact inference in the FHMM. Figure 10
+shows a triangulation for the case of two chains (in fact this is an optimal triangulation).
+
+196
+
+JORDAN ET AL.
+
+Figure 10. A triangulation of an FHMM with two component chains. The moralization step links states at a
+single time step. The triangulation step links states diagonally between neighboring time steps.
+
+Figure 11. A triangulation of the state nodes of a three-chain FHMM with three component chains. (The obser-
+vation nodes have been omitted in the interest of simplicity.)
+
+Figure 12. This graph is not a triangulation of a three-chain FHMM.
+
+The cliques for the hidden states are of size N 3; thus the time complexity of exact inference
+is O.N 3T /, where N is the number of states in each chain (we assume that each chain
+has the same number of states for simplicity). Figure 11 shows the case of a triangulation
+of three chains; here the triangulation (again optimal) creates cliques of size N 4. (Note in
+particular that the graph in gure 12, with cliques of size three, is not a triangulation; there
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+197
+
+are 4-cycles without a chord). In the general case, it is not difcult to see that cliques of
+size N MC1 are created, where M is the number of chains; thus the complexity of exact
+inference for the FHMM scales as O.N MC1T /. For a single unstructured Cartesian product
+HMM having the same number of states as the FHMMi.e., N M statesthe complexity
+scales as O.N 2M T /, thus exact inference for the FHMM is somewhat less costly, but the
+exponential growth in complexity in either case shows that exact inference is infeasible for
+general FHMMs.
+
+3.6. Higher-order hidden Markov models
+
+A related variation on HMMs considers a higher-order Markov model in which each state
+depends on the previous K states instead of the single previous state. In this case it is again
+readily shown that the time complexity is exponential in K . We will not discuss the higher-
+order HMM further in this paper; for a variational algorithm for the higher-order HMM see
+Saul and Jordan (1996).
+
+3.7. Hidden Markov decision trees
+
+Finally, we consider a model in which a decision tree is endowed with Markovian dynamics
+(Jordan, Ghahramani, & Saul, 1997). A decision tree can be viewed as a graphical model
+by modeling the decisions in the tree as multinomial random variables, one for each level of
+the decision tree. Referring to gure 13, and focusing on a particular time slice, the shaded
+node at the top of the diagram represents the input vector. The unshaded nodes below the
+input nodes are the decision nodes. Each of the decision nodes are conditioned on the input
+
+Figure 13. A hidden Markov decision tree. The shaded nodes fUig and fYig represent a time series in which
+each element is an (input, output) pair. Linking the inputs and outputs are a sequence of decision nodes which
+correspond to branches in a decision tree. These decisions are linked horizontally to represent Markovian temporal
+dependence.
+
+198
+
+JORDAN ET AL.
+
+and on the entire sequence of preceding decisions (the vertical arrows in the diagram). In
+terms of a traditional decision tree diagram, this dependence provides an indication of the
+path followed by the data point as it drops through the decision tree. The node at the bottom
+of the diagram is the output variable.
+
+If we now make the decisions in the decision tree conditional not only on the current data
+point, but also on the decisions at the previous moment in time, we obtain a hidden Markov
+decision tree (HMDT). In gure 13, the horizontal edges represent this Markovian temporal
+dependence. Note in particular that the dependency is assumed to be level-specicthe
+probability of a decision depends only on the previous decision at the same level of the
+decision tree.
+
+Given a sequence of input vectors Ui and a corresponding sequence of output vectors Yi ,
+the inference problem is to compute the conditional probability distribution over the hidden
+states. This problem is intractable for general HMDTsas can be seen by noting that the
+HMDT includes the FHMM as a special case.
+
+4. Basics of variational methodology
+
+Variational methods are used as approximation methods in a wide variety of settings, includ-
+ing nite element analysis (Bathe, 1996), quantum mechanics (Sakurai, 1985), statistical
+mechanics (Parisi, 1988), and statistics (Rustagi, 1976). In each of these cases the applica-
+tion of variational methods converts a complex problem into a simpler problem, where the
+simpler problem is generally characterized by a decoupling of the degrees of freedom in the
+original problem. This decoupling is achieved via an expansion of the problem to include
+additional parameters, known as variational parameters, that must be t to the problem at
+hand.
+
+The terminology comes from the roots of the techniques in the calculus of variations.
+We will not start systematically from the calculus of variations; instead, we will jump off
+from an intermediate point that emphasizes the important role of convexity in variational
+approximation. This point of view turns out to be particularly well suited to the development
+of variational methods for graphical models.
+
+4.1. Examples
+
+Let us begin by considering a simple example. In particular, let us express the logarithm
+function variationally:
+
+ln.x/ D min
+
+
+
+fx  ln   1g:
+
+(14)
+
+In this expression  is the variational parameter, and we are required to perform the min-
+imization for each value of x. The expression is readily veried by taking the derivative
+with respect to , solving and substituting. The situation is perhaps best appreciated geo-
+metrically, as we show in gure 14. Note that the expression in braces in Eq. (14) is linear
+in x with slope . Clearly, given the concavity of the logarithm, for each line having slope
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+199
+
+Figure 14. Variational transformation of the logarithm function. The linear functions .x  ln   1/ form a
+family of upper bounds for the logarithm, each of which is exact for a particular value of x.
+
+ there is a value of the intercept such that the line touches the logarithm at a single point.
+Indeed, ln   1 in Eq. (14) is precisely this intercept. Moreover, if we range across ,
+the family of such lines forms an upper envelope of the logarithm function. That is, for any
+given x, we have:
+
+ln.x/  x  ln   1;
+
+(15)
+
+for all . Thus the variational transformation provides a family of upper bounds on the
+logarithm. The minimum over these bounds is the exact value of the logarithm.
+
+The pragmatic justication for such a transformation is that we have converted a nonlinear
+function into a linear function. The cost is that we have obtained a free parameter  that
+must be set, once for each x. For any value of  we obtain an upper bound on the logarithm;
+if we set  well we can obtain a good bound. Indeed we can recover the exact value of
+logarithm for the optimal choice of .
+
+Let us now consider a second example that is more directly relevant to graphical models.
+For binary-valued nodes it is common to represent the probability that the node takes one of
+its values via a monotonic nonlinearity that is a simple functione.g., a linear functionof
+the values of the parents of the node. An example is the logistic regression model:
+
+f .x/ D
+
+1
+
+1 C ex
+
+;
+
+(16)
+
+which we have seen previously in Eq. (10). Here x is the weighted sum of the values of the
+parents of a node.
+
+200
+
+JORDAN ET AL.
+
+The logistic function is neither convex nor concave, so a simple linear bound will not
+
+work. However, the logistic function is log concave. That is, the function
+
+g.x/ D ln.1 C e
+
+x /
+
+(17)
+
+is a concave function of x (as can readily be veried by calculating the second derivative).
+Thus we can bound the log logistic function with linear functions and thereby bound the
+logistic function by the exponential. In particular, we can write:
+
+g.x/ D min
+
+fx  H ./g;
+
+
+
+(18)
+where H ./ is the binary entropy function, H ./ D  ln   .1  / ln.1  /. (We will
+explain how the binary entropy function arises below; for now it sufces to think of it simply
+as the appropriate intercept term for the log logistic function). We now take the exponential
+of both sides, noting that the minimum and the exponential function commute:
+
+
+f .x/ D min
+
+
+
+
+
+exH ./
+
+:
+
+(19)
+
+This is a variational transformation for the logistic function; examples are plotted in g-
+ure 15. Finally, we note once again that for any value of  we obtain an upper bound of the
+logistic function for all values of x:
+
+f .x/  exH ./:
+
+Good choices for  provide better bounds.
+
+(20)
+
+Figure 15. Variational transformation of the logistic function.
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+201
+
+The advantages of the transformation in Eq. (20) are signicant in the context of graphical
+models. In particular, to obtain the joint probability in a graphical model we are required
+to take a product over the local conditional probabilities (cf. Eq. (2)). For conditional
+probabilities represented with logistic regression, we obtain products of functions of the
+form f .x/ D 1=.1Ce
+x /. Such a product is not in a simple form. If instead we augment our
+network representation by including variational parametersi.e. representing each logistic
+function variationally as in Eq. (20)we see that a bound on the joint probability is obtained
+by taking products of exponentials. This is tractable computationally, particularly so given
+that the exponents are linear in x.
+
+4.2. Convex duality
+
+Can we nd variational transformations more systematically? Indeed, many of the vari-
+ational transformations that have been utilized in the literature on graphical models are
+examples of the general principle of convex duality. It is a general fact of convex analysis
+(Rockafellar, 1972) that a concave function f .x/ can be represented via a conjugate or dual
+function as follows:
+f .x/ D min
+
+fT x  f
+
+./g;
+
+
+
+(21)
+./ can be obtained
+
+(22)
+
+where we now allow x and  to be vectors. The conjugate function f
+from the following dual expression:
+fT x  f .x/g:
+
+./ D min
+
+f
+
+x
+
+This relationship is easily understood geometrically, as shown in gure 16. Here we plot
+f .x/ and the linear function x for a particular value of . The short vertical segments
+
+Figure 16. The conjugate function f
+linesbetween x and f .x/.
+
+./ is obtained by minimizing across the deviationsrepresented as dashed
+
+202
+
+JORDAN ET AL.
+
+represent values x  f .x/. It is clear from the gure that we need to shift the linear
+function x vertically by an amount which is the minimum of the values x  f .x/ in
+order to obtain an upper bounding line with slope  that touches f .x/ at a single point. This
+observation both justies the form of the conjugate function, as a minimum over differences
+x  f .x/, and explains why the conjugate function appears as the intercept in Eq. (21).
+./ D
+ln C 1, and the conjugate function for the log logistic function is the binary entropy H ./.
+Although we have focused on upper bounds in this section, the framework of convex
+
+It is an easy exercise to verify that the conjugate function for the logarithm is f
+
+duality applies equally well to lower bounds; in particular for convex f .x/ we have:
+
+f .x/ D max
+
+
+
+fT x  f
+
+./g;
+
+where
+
+f
+
+./ D max
+
+fT x  f .x/g
+
+x
+
+(23)
+
+(24)
+
+is the conjugate function.
+
+We have focused on linear bounds in this section, but convex duality is not restricted to
+linear bounds. More general bounds can be obtained by transforming the argument of the
+function of interest rather than the value of the function (Jaakkola & Jordan, 1997a). For
+example, if f .x/ is concave in x 2 we can write:
+
+
+
+fx 2  Nf
+
+./g;
+
+f .x/ D min
+(25)
+./ is the conjugate function of Nf .x/  f .x 2/. Thus the transformation yields a
+where Nf
+quadratic bound on f .x/. It is also worth noting that such transformations can be combined
+with the logarithmic transformation utilized earlier to obtain Gaussian representations for
+the upper bounds. This can be useful in obtaining variational approximations for posterior
+distributions (Jaakkola & Jordan, 1997b).
+
+To summarize, the general methodology suggested by convex duality is the following.
+We wish to obtain upper or lower bounds on a function of interest. If the function is
+already convex or concave then we simply calculate the conjugate function. If the function
+is not convex or concave, then we look for an invertible transformation that renders the
+function convex or concave. We may also consider transformations of the argument of the
+function. We then calculate the conjugate function in the transformed space and transform
+back. For this approach to be useful we need to nd a transform, such as the logarithm,
+whose inverse has useful algebraic properties.
+
+4.3. Approximations for joint probabilities and conditional probabilities
+
+The discussion thus far has focused on approximations for the local probability distributions
+at the nodes of a graphical model. How do these approximations translate into approxima-
+tions for the global probabilities of interest, in particular for the conditional distribution
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+203
+
+P.H j E / that is our interest in the inference problem and the marginal probability P.E /
+that is our interest in learning problems?
+Let us focus on directed graphs for concreteness. Suppose that we have a lower bound
+and an upper bound for each of the local conditional probabilities P.Si j S.i //. That is,
+assume that we have forms PU .Si j S.i /; U
+/ and P L .Si j S.i /; L
+/, providing upper and
+lower bounds, respectively, where U
+i and L
+i are (generally different) variational para-
+meterizations appropriate for the upper and lower bounds. Consider rst the upper bounds.
+Given that the product of upper bounds is an upper bound, we have:
+
+i
+
+i
+
+
+
+:
+
+(26)
+
+
+
+P
+
+Si
+
+
+
+PU
+
+Si
+
+ S.i /
+
+ S.i /; U
+
+i
+
+Y
+Y
+
+i
+
+i
+
+P.S/ D
+
+
+This inequality holds for arbitrary settings of values of the variational parameters U
+i .
+Moreover, Eq. (26) must hold for any subset of S whenever some other subset is held xed;
+this implies that upper bounds on marginal probabilities can be obtained by taking sums
+over the variational form on the right-hand side of the equation. For example, letting E and
+H be a disjoint partition of S, we have:
+
+P.E / D
+
+
+P.H; E /
+
+
+
+ S.i /; U
+
+i
+
+
+
+;
+
+(27)
+
+PU
+
+Si
+
+X
+X
+
+fHg
+
+Y
+
+fHg
+
+i
+
+i
+
+where, as we will see in the examples to be discussed below, we choose the variational
+forms PU .Si j S.i /; U
+/ so that the summation over H can be carried out efciently (this
+is the key step in developing a variational method). In either Eq. (26) or Eq. (27), given
+that these upper bounds hold for any settings of values the variational parameters U
+i , they
+hold in particular for optimizing settings of the parameters. That is, we can treat the right-
+hand side of Eq. (26) or the right-hand side of Eq. (27) as a function to be minimized with
+respect to U
+i . In the latter case, this optimization process will induce interdependencies
+between the parameters U
+i . These interdependencies are desirable; indeed they are critical
+for obtaining a good variational bound on the marginal probability of interest. In particular,
+the best global bounds are obtained when the probabilistic dependencies in the distribution
+are reected in dependencies in the approximation.
+
+To clarify the nature of variational bounds, note that there is an important distinction to be
+made between joint probabilities (Eq. (26)) and marginal probabilities (Eq. (27)). In Eq. (26),
+if we allow the variational parameters to be set optimally for each value of the argument S,
+then it is possible (in principle) to nd optimizing settings of the variational parameters that
+recover the exact value of the joint probability. (Here we assume that the local probabilities
+P.Si j S.i // can be represented exactly via a variational transformation, as in the examples
+discussed in Section 4.1). In Eq. (27), on the other hand, we are not generally able to recover
+exact values of the marginal by optimizing over variational parameters that depend only on
+the argument E. Consider, for example, the case of a node Si 2 E that has parents in H.
+
+204
+
+JORDAN ET AL.
+
+As we range across fHg there will be summands on the right-hand side of Eq. (27) that will
+involve evaluating the local probability P.Si j S.i // for different values of the parents S.i /.
+If the variational parameter U
+i depends only on E, we cannot in general expect to obtain
+an exact representation for P.Si j S.i // in each summand. Thus, some of the summands in
+Eq. (27) are necessarily bounds and not exact values.
+This observation provides a bit of insight into reasons why a variational bound might be
+expected to be tight in some circumstances and loose in others. In particular, if P.Si j S.i //
+is nearly constant as we range across S.i /, or if we are operating at a point where the
+variational representation is fairly insensitive to the setting of U
+(for example the right-
+i
+hand side of the logarithm in gure 14), then the bounds may be expected to be tight. On
+the other hand, if these conditions are not present one might expect that the bound would be
+loose. However the situation is complicated by the interdependencies between the U
+that
+i
+are induced during the optimization process. We will return to these issues in the discussion.
+Although we have discussed upper bounds, similar comments apply to lower bounds,
+and to marginal probabilities obtained from lower bounds on the joint distribution.
+The conditional distribution P.H j E /, on the other hand, is the ratio of two marginal
+distributions; i.e., P.H j E / D P.H; E /=P.E /.9 To obtain upper and lower bounds on the
+conditional distribution, we must have upper and lower bounds on both the numerator and
+the denominator. Generally speaking, however, if we can obtain upper and lower bounds
+on the denominator, then our labor is essentially nished, because the numerator involves
+fewer sums. Indeed, in the case in which S D H [ E, the numerator involves no sums and
+is simply a function evaluation.
+
+Finally, it is worth noting that variational methods can also be of interest simply as
+tractable approximations rather than as methods that provide strict bounds (much as sam-
+pling methods are used). One way to do this is to obtain a variational approximation that
+is a bound for a marginal probability, and to substitute the variational parameters thus
+obtained into the conditional probability distribution. Thus, for example, we might obtain
+a lower bound on the likelihood P.E / by tting variational parameters. We can substi-
+tute these parameters into the parameterized variational form for P.H; E / and then utilize
+this variational form as an efcient inference engine in calculating an approximation to
+P.H j E /.
+In the following sections we will illustrate the general variational framework as it has
+been applied in a number of worked-out examples. All of these examples involve architec-
+tures of practical interest and provide concrete examples of variational methodology. To a
+certain degree the examples also serve as case histories that can be generalized to related
+architectures. It is important to emphasize, however, that it is not necessarily straightfor-
+ward to develop a variational approximation for a new architecture. The ease and the utility
+of applying the methods outlined in this section depend on architectural details, including
+the choice of node probability functions, the graph topology and the particular parameter
+regime in which the model is operated. In particular, certain choices of node conditional
+probability functions lend themselves more readily than others to variational transforma-
+tions that have useful algebraic properties. Also, certain architectures simplify more readily
+under variational transformation than others; in particular, the marginal bounds in Eq. (27)
+are simple functions in some cases and complex in others. These issues are currently not
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+205
+
+well understood and the development of effective variational approximations can in some
+cases require substantial creativity.
+
+4.4. Sequential and block methods
+
+Let us now consider in somewhat more detail how variational methods can be applied
+to probabilistic inference problems. The basic idea is that suggested abovewe wish to
+simplify the joint probability distribution by transforming the local probability functions.
+By an appropriate choice of variational transformation, we can simplify the form of the
+joint probability distribution and thereby simplify the inference problem. We can transform
+some or all of the nodes. The cost of performing such transformations is that we obtain
+bounds or approximations to the probabilities rather than exact results.
+
+The option of transforming only some of the nodes is important; it implies a role for
+the exact methods as subroutines within a variational approximation. In particular, partial
+transformations of the graph may leave some of the original graphical structure intact
+and/or introduce new graphical structure to which exact methods can be fruitfully applied.
+In general, we wish to use variational approximations in a limited way, transforming the
+graph into a simplied graph to which exact methods can be applied. This will in general
+yield tighter bounds than an algorithm that transforms the entire graph without regard for
+computationally tractable substructure.
+
+The majority of variational algorithms proposed in the literature to date can be divided into
+two main classes: sequential and block. In the sequential approach, nodes are transformed
+in an order that is determined during the inference process. This approach has the advantage
+of exibility and generality, allowing the particular pattern of evidence to determine the best
+choices of nodes to transform. In some cases, however, particularly when there are obvious
+substructures in a graph which are amenable to exact methods, it can be advantageous to
+designate in advance the nodes to be transformed. We will see that this block approach is
+particularly natural in the setting of parameter estimation.
+
+5. The sequential approach
+
+The sequential approach introduces variational transformations for the nodes in a particu-
+lar order. The goal is to transform the network until the resulting transformed network is
+amenable to exact methods. As we will see in the examples below, certain variational trans-
+formations can be understood graphically as a sparsication in which nodes are removed
+from the graph. If a sufcient number of variational transformations are introduced the
+resulting graph becomes sufciently sparse such that an exact method becomes applicable.
+An operational denition of sparseness can be obtained by running a greedy triangulation
+algorithmthis upper bounds the run time of the junction tree inference algorithm.
+
+There are basically two ways to implement the sequential approachone can begin
+with the untransformed graph and introduce variational transformations one node at a time,
+or one can begin with a completely transformed graph and reintroduce exact conditional
+probabilities one node at a time. An advantage of the latter approach is that the graph
+remains tractable at all times; thus it is feasible to directly calculate the quantitative effect
+
+206
+
+JORDAN ET AL.
+
+of transforming or reintroducing a given node. In the former approach the graph is intractable
+throughout the search, and the only way to assessing a transformation is via its qualitative
+effect on graphical sparseness.
+
+The sequential approach is perhaps best presented in the context of a specic example.
+In the following section we return to the QMR-DT network and show how a sequential
+variational approach can be used for inference in this network.
+
+5.1. The QMR-DT network
+
+Jaakkola and Jordan (1999b) present an application of sequential variational methods to the
+QMR-DT network. As we have seen, the QMR-DT network is a bipartite graph in which
+the conditional probabilities for the ndings are based on the noisy-OR model (Eq. (8) for
+the negative ndings and Eq. (9) for the positive ndings). Note that symptom nodes that are
+not ndingsi.e., symptoms that are not observedcan simply be marginalized out of the
+joint distribution by omission and therefore they have no impact on inference. Moreover,
+as we have discussed, the negative ndings present no difculties for inferencegiven
+the exponential form of the probability in Eq. (8), the effects of negative ndings on the
+disease probabilities can be handled in linear time. Let us therefore assume that the updates
+associated with the negative ndings have already been made and focus on the problem of
+performing inference when there are positive ndings.
+
+Repeating Eq. (9) for convenience, we have the following representation for the proba-
+
+bility of a positive nding:
+
+(
+P. fi D 1 j d/ D 1  exp
+
+
+
+X
+
+j2.i /
+
+)
+
+(cid:181)i j d j  (cid:181)i0
+
+The function 1  e
+x is log concave; thus, as in the case of the logistic function, we are
+able to express the variational upper bound in terms of the exponential of a linear function.
+In particular:
+1  e
+
+x  ex f
+
+./;
+
+(29)
+
+where the conjugate function is as follows:
+./ D  ln  C . C 1/ ln. C 1/:
+
+f
+
+(30)
+
+Plugging the argument of Eq. (28) into Eq. (29), and noting that we need a different varia-
+tional parameter i for each transformed node, we obtain:
+
+(
+P. fi D 1 j d/  exp
+
+i
+
+)
+
+ f
+
+.i /
+
+!
+
+X
+(cid:181)i j d j C (cid:181)i0
+Y
+
+j2.i /
+
+[ei (cid:181)i j ]d j:
+
+D ei (cid:181)i0 f
+
+.i /
+
+j2.i /
+
+(28)
+
+(31)
+
+(32)
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+207
+
+Figure 17. The QMR-DT graph after the lightly shaded nding has been subjected to a variational transformation.
+The effect is equivalent to delinking the node from the graph.
+
+The nal equation displays the effect of the variational transformation. The exponential
+factor outside of the product is simply a constant. The product is taken over all nodes in
+the parent set for node i, but unlike the case in which the graph is moralized for exact
+computation, the contributions associated with the d j nodes are uncoupled. That is, each
+factor exp.i (cid:181)i j / is simply a constant that can be multiplied into the probability that was
+previously associated with node d j (for d j D 1). There is no coupling of d j and dk nodes
+as there would be if we had taken products of the untransformed noisy-OR. Thus the
+graphical effect of the variational transformation is as shown in gure 17; the variational
+transformation delinks the ith nding from the graph. In our particular example, the graph
+is now rendered singly connected and an exact inference algorithm can be invoked. (Recall
+that marginalizing over the unobserved symptoms simply removes them from the graph).
+The sequential methodology utilized by Jaakkola and Jordan begins with a completely
+transformed graph and then reinstates exact conditional probabilities at selected nodes. To
+choose the ordering in which to reinstate nodes, Jaakkola and Jordan make use of a heuristic,
+basing the choice on the effect on the likelihood bound of reinstating each node individually
+starting from the completely transformed state. Despite the suboptimality of this heuristic,
+they found that it yielded an approximation that was orders of magnitude more accurate
+than that of an algorithm that used a random ordering. Given the ordering the algorithm
+then proceeds as follows: (1) Choose the next node in the ordering, and consider the effect
+of reintroducing the links associated with the node into the current graph. (2) If the resulting
+graph is still amenable to exact methods, reinstate the node and iterate. Otherwise stop and
+run an exact method. Finally, (3) we must also choose the parameters i so as to make the
+approximation as tight as possible. It is not difcult to verify that products of the expression
+in Eq. (32) yield an overall bound that is a convex function of the i parameters (Jaakkola
+& Jordan, 1999b). Thus standard optimization algorithms can be used to nd good choices
+for the i .
+
+Figure 18 shows results from Jaakkola and Jordan (1999b) for approximate inference
+on four of the CPC cases that were mentioned earlier. For these four cases there were
+a sufciently small number of positive ndings that an exact algorithm could be run to
+provide a gold standard for comparison. The leftmost gure shows upper and lower bounds
+
+208
+
+JORDAN ET AL.
+
+Figure 18.
+(a) Exact values and variational upper and lower bounds on the log-likelihood for the four tractable
+CPC cases. (b) The mean correlation between the approximate and exact posterior marginals as a function of the
+execution time (seconds). Solid line: variational estimates; dashed line: likelihood-weighting sampling. The lines
+above and below the sampling result represent standard errors of the mean based on the ten independent runs of
+the sampler.
+
+on the log-likelihood for these cases. Jaakkola and Jordan also calculated approximate
+posterior marginals for the diseases. The correlations of these marginals with the gold
+standard are shown in the rightmost gure. This gure plots accuracy against run time,
+for runs in which 8, 12, and 16 positive ndings were treated exactly. Note that accurate
+values were obtained in less than a second. The gure also shows results from a state-of-the-
+art sampling algorithm (the likelihood-weighted sampler of Shwe and Cooper, 1991). The
+sampler required signicantly more computer time than the variational method to obtain
+roughly comparable accuracy.
+
+Jaakkola and Jordan (1999b) also presented results for the entire corpus of CPC cases.
+They again found that the variational method yielded reasonably accurate estimates of the
+posterior probabilities of the diseases (using lengthy runs of the sampler as a basis for
+comparison) within less than a second of computer time.
+
+5.2. The Boltzmann machine
+
+Let us now consider a rather different example. As we have discussed, the Boltzmann
+machine is a special subset of the class of undirected graphical models in which the potential
+functions are composed of products of quadratic and linear Boltzmann factors. Jaakkola
+and Jordan (1997a) introduced a sequential variational algorithm for approximate inference
+in the Boltzmann machine. Their method, which we discuss in this section, yields both
+upper and lower bounds on marginal and conditional probabilities of interest.
+
+Recall the form of the joint probability distribution for the Boltzmann machine:
+
+'P
+P.S/ D exp
+
+i < j
+
+(cid:181)i j Si S j CP
+
+Z
+
+
+
+(cid:181)i0Si
+
+i
+
+:
+
+(33)
+
+To obtain marginal probabilities such as P.E / under this joint distribution, we must calculate
+sums over exponentials of quadratic energy functions. Moreover, to obtain conditional
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+209
+
+probabilities such as P.H j E / D P.H; E /=P.E /, we take ratios of such sums, where the
+numerator requires fewer sums than the denominator. The most general such sum is the
+partition function itself, which is a sum over all congurations fSg. Let us therefore focus
+on upper and lower bounds for the partition function as the general case; this allows us to
+calculate bounds on any other marginals or conditionals of interest.
+
+Our approach is to perform the sums one sum at a time, introducing variational trans-
+formations to ensure that the resulting expression stays computationally tractable. In fact,
+at every step of the process that we describe, the transformed potentials involve no more
+than quadratic Boltzmann factors. (Exact methods can be viewed as creating increasingly
+higher-order terms when the marginalizing sums are performed). Thus the transformed
+Boltzmann machine remains a Boltzmann machine.
+
+Let us rst consider lower bounds. We write the partition function as follows:
+
+(X
+X
+
+j <k
+
+exp
+
+X
+X
+
+fSg
+
+exp
+
+fSnSig
+
+Si2f0;1g
+
+Z D
+
+D
+
+X
+
+(cid:181) jk S j Sk C
+
+(X
+
+(cid:181) j0S j
+
+j
+
+(cid:181) jk S j Sk C
+
+j <k
+
+j
+
+)
+X
+
+)
+
+(cid:181) j0S j
+
+;
+
+(34)
+
+and attempt to nd a tractable lower bound on the inner summand over Si on the right-hand
+side. It is not difcult to show that this expression is log convex. Thus we bound its logarithm
+variationally:
+
+ln
+
+Si2f0;1g
+D
+
+" X
+X
+X
+X
+
+D
+
+
+
+f j <kg6Di
+
+f j <kg6Di
+
+f j <kg6Di
+
+(X
+
+exp
+
+j <k
+
+(cid:181) jk S j Sk C
+X
+X
+X
+
+j6Di
+
+j6Di
+
+(cid:181) jk S j Sk C
+
+(cid:181) j0S j C ln
+
+(cid:181) jk S j Sk C
+
+(cid:181) j0S j C ln
+
+(cid:181) jk S j Sk C
+
+(cid:181) j0S j C L
+
+i
+
+j6Di
+
+X
+
+j
+
+(cid:181) j0S j
+
+)#
+" X
+"
+X
+
+j6Di
+
+Si2f0;1g
+1 C exp
+
+(X
+(X
+
+exp
+
+j6Di
+(cid:181)i j S j C (cid:181)i0
+
+)#
+
+(35)
+
+(36)
+
+(cid:181)i j Si S j C (cid:181)i0Si
+)#
+
+
+j6Di
+(cid:181)i j S j C (cid:181)i0
+!
+
+
+C H
+
+L
+i
+
+;
+
+where the sum in the rst term on the right-hand side is a sum over all pairs j < k such that
+neither j nor k is equal to i, where H ./ is as before the binary entropy function, and where
+L
+is the variational parameter associated with node Si . In the rst line we have simply
+i
+pulled outside of the sum all of those terms not involving Si , and in the second line we
+have performed the sum over the two values of Si . Finally, to lower bound the expression in
+Eq. (35) we need only lower bound the term ln.1C ex / on the right-hand side. But we have
+already found variational bounds for a related expression in treating the logistic function;
+recall Eq. (18). The upper bound in that case translates into the lower bound in the current
+
+210
+
+JORDAN ET AL.
+
+Figure 19. The transformation of the Boltzmann machine under the approximate marginalization over node Si
+for the case of lower bounds. (a) The Boltzmann machine before the transformation. (b) The Boltzmann machine
+after the transformation, where Si has become delinked. All of the pairwise parameters, (cid:181) jk, for j and k not equal
+to i, have remained unaltered. As suggested by the wavy lines, the linear coefcients have changed for those nodes
+that were neighbors of Si .
+
+case:
+
+ln.1 C e
+
+x /  x C H ./:
+
+(37)
+
+This is the bound that we have utilized in Eq. (36).
+
+Let us consider the graphical consequences of the bound in Eq. (36) (see gure 19).
+Note that for all nodes in the graph other than node Si and its neighbors, the Boltzmann
+factors are unaltered (see the rst two terms in the bound). Thus the graph is unaltered for
+such nodes. From the term in parentheses we see that the neighbors of node Si have been
+endowed with new linear terms; importantly, however, these nodes have not become linked
+(as they would have become if we had done the exact marginalization). Neighbors that were
+linked previously remain linked with the same (cid:181) jk parameter. Node Si is absent from the
+transformed partition function and thus absent from the graph, but it has left its trace via the
+new linear Boltzmann factors associated with its neighbors. We can summarize the effects
+of the transformation by noting that the transformed graph is a new Boltzmann machine
+with one fewer node and the following parameters:
+
+Q(cid:181) jk D (cid:181) jk
+Q(cid:181) j0 D (cid:181) j0 C L
+
+i
+
+(cid:181)i j
+
+j; k 6D i
+j 6D i:
+
+(cid:181)i0 C H .L
+
+Note nally that we also have a constant term L
+/ to keep track of. This term
+i
+will have an interesting interpretation when we return to the Boltzmann machine later in
+the context of block methods.
+Upper bounds are obtained in a similar way. We again break the partition function into a
+sum over a particular node Si and a sum over the congurations of the remaining nodes SnSi .
+Moreover, the rst three lines of the ensuing derivation leading to Eq. (35) are identical. To
+
+i
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+211
+
+complete the derivation we now nd an upper bound on ln.1 C ex /. Jaakkola and Jordan
+(1997a) proposed using quadratic bounds for this purpose. In particular, they noted that:
+
+ln.1 C ex / D ln.ex=2 C e
+
+x=2/ C x
+2
+
+(38)
+
+and that ln.ex=2 C e
+x=2/ is a concave function of x 2 (as can be veried by taking the second
+derivative with respect to x 2). This implies that ln.1 C ex / must have a quadratic upper
+bound of the following form:
+ln.1 C ex /  x 2 C x
+2
+./ is an appropriately dened conjugate function. Using these upper bounds in
+
+./:
+
+ Ng
+
+(39)
+
+X
+
+(cid:181) jk S j Sk C
+
+
+
+
+U
+i
+
+;
+
+(cid:181) j0S j
+
+j6Di
+
+(40)
+
+where Ng
+Eq. (35) we obtain:
+
+ln
+
+" X
+X
+
+Si2f0;1g
+
+exp
+
+C U
+
+i
+
+j6Di
+
+(X
+
+(cid:181) jk S j Sk C
+
+(cid:181) j0S j
+
+X
+X
+!2 C 1
+
+j
+
+2
+
+j6Di
+
+j <k
+
+(cid:181)i j S j C (cid:181)i0
+
+)#
+
+X
+!
+
+f j <kg6Di
+
+
+
+(cid:181)i j S j C (cid:181)i0
+
+ Ng
+
+where U
+i
+
+is the variational parameter associated with node Si .
+
+The graphical consequences of this transformation are somewhat different than those of
+the lower bounds (see gure 20). Considering the rst two terms in the bound, we see that
+
+Figure 20. The transformation of the Boltzmann machine under the approximate marginalization over node Si
+for the case of upper bounds. (a) The Boltzmann machine before the transformation. (b) The Boltzmann machine
+after the transformation, where Si has become delinked. As the dashed edges suggest, all of the neighbors of Si
+have become linked and those that were formerly linked have new parameter values. As suggested by the wavy
+lines, the neighbors of Si also have new linear coefcients. All other edges and parameters are unaltered.
+
+Q(cid:181) jk D (cid:181) jk C 2U
+Q(cid:181) j0 D (cid:181) j0 C (cid:181)i j
+
+i
+
+2
+
+(cid:181) ji (cid:181)ik
+C 2U
+
+i
+
+(cid:181)i0(cid:181)i j C U
+
+i
+
+(cid:181) 2
+i j
+
+j; k 6D i
+j 6D i:
+ Ng
+
+(cid:181) 2
+i0
+
+i
+
+212
+
+JORDAN ET AL.
+
+it is still the case that the graph is unaltered for all nodes in the graph other than node Si and
+its neighbors, and moreover neighbors of Si that were previously linked remain linked. The
+quadratic term, however, gives rise to new links between the previously unlinked neighbors
+of node Si and alters the parameters between previously linked neighbors. Each of these
+nodes also acquires a new linear term. Expanding Eq. (40) and collecting terms, we see
+that the approximate marginalization has yielded a Boltzmann machine with the following
+parameters:
+
+i
+
+/.
+
+.U
+
+Finally, the constant term is given by (cid:181)i0=2 C U
+The graphical consequences of the lower and upper bound transformations also have com-
+putational consequences. In particular, given that the lower bound transformation introduces
+no additional links when nodes are delinked, it is somewhat more natural to combine these
+transformations with exact methods. In particular, the algorithm simply delinks nodes until
+a tractable structure (such as a tree) is revealed; at this point an exact algorithm is called
+as a subroutine. The upper bound transformation, on the other hand, by introducing links
+between the neighbors of a delinked node, does not reveal tractable structure as readily.
+This seeming disadvantage is mitigated by the fact that the upper bound is a tighter bound
+(Jaakkola & Jordan, 1997a).
+
+6. The block approach
+
+An alternative approach to variational inference is to designate in advance a set of nodes
+that are to be transformed. We can in principle view this block approach as an off-line
+application of the sequential approach. In the case of lower bounds, however, there are ad-
+vantages to be gained by developing a methodology that is specic to block transformation.
+In this section, we show that a natural global measure of approximation accuracy can be
+obtained for lower bounds via a block version of the variational formalism. The method
+meshes readily with exact methods in cases in which tractable substructure can be identi-
+ed in the graph. This approach was rst presented by Saul and Jordan (1996), as a rened
+version of mean eld theory for Markov random elds, and has been developed further in a
+number of recent studies (e.g., Ghahramani & Jordan, 1997; Ghahramani & Hinton, 1996;
+Jordan et al., 1997).
+
+In the block approach, we begin by identifying a substructure in the graph of interest
+that we know is amenable to exact inference methods (or, more generally, to efcient
+approximate inference methods). For example, we might pick out a tree or a set of chains in
+the original graph. We wish to use this simplied structure to approximate the probability
+distribution on the original graph. To do so, we consider a family of probability distributions
+that are obtained from the simplied graph via the introduction of variational parameters.
+We choose a particular approximating distribution from the simplifying family by making a
+particular choice for the variational parameters. As in the sequential approach a new choice
+of variational parameters must be made each time new evidence is available.
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+213
+
+More formally, let P.S/ represent the joint distribution on the graphical model of interest,
+where as before S represents all of the nodes of the graph and H and E are disjoint
+subsets of S representing the hidden nodes and the evidence nodes, respectively. We wish to
+approximate the conditional probability P.H j E /. We introduce an approximating family
+of conditional probability distributions, Q.H j E ; /, where  are variational parameters.
+The graph representing Q is not generally the same as the graph representing P; generally
+it is a sub-graph. From the family of approximating distributions Q, we choose a particular
+distribution by minimizing the Kullback-Leibler (KL) divergence, D.Q k P/, with respect
+to the variational parameters:
+
+(41)
+
+
+
+ D arg min
+D.Q.H j E ; /k P.H j E //;
+X
+
+D.Q k P/ D
+
+Q.S/ ln
+
+fSg
+
+Q.S/
+P.S/
+
+where for any probability distributions Q.S/ and P.S/ the KL divergence is dened as
+follows:
+
+:
+
+(42)
+
+The minimizing values of the variational parameters, 
+, dene a particular distribu-
+tion, Q.H j E ; /, that we treat as the best approximation of P.H j E / in the family
+Q.H j E ; /.
+One simple justication for using the KL divergence as a measure of approximation
+accuracy is that it yields the best lower bound on the probability of the evidence P.E /
+(i.e., the likelihood) in the family of approximations Q.H j E ; /. Indeed, we bound the
+logarithm of P.E / using Jensens inequality as follows:
+
+P.H; E /
+
+X
+ln P.E / D ln
+X
+D ln
+X
+
+fHg
+
+
+
+fHg
+
+
+
+Q.H j E /  P.H; E /
+Q.H j E /
+P.H; E /
+Q.H j E /
+
+fHg
+Q.H j E / ln
+
+
+
+:
+
+(43)
+
+The difference between the left and right hand sides of this equation is easily seen to be the
+KL divergence D.Q k P/. Thus, by the positivity of the KL divergence (Cover & Thomas,
+1991), the right-hand side of Eq. (43) is a lower bound on P.E /. Moreover, by choosing 
+according to Eq. (41), we obtain the tightest lower bound.
+
+6.1. Convex duality and the KL divergence
+
+We can also justify the choice of KL divergence by making an appeal to convex duality
+theory, thereby linking the block approach with the sequential approach (Jaakkola, 1997).
+Consider, for simplicity, the case of discrete-valued nodes H. The distribution Q.H j E ; /
+
+214
+
+JORDAN ET AL.
+
+can be viewed as a vector of real numbers, one for each conguration of the variables
+H. Treat this vector as the vector-valued variational parameter  in Eq. (23). Moreover,
+the log probability ln P.H; E / can also be viewed as a vector of real numbers, dened on
+the set of congurations of H. Treat this vector as the variable x in Eq. (23). Finally,
+dene f .x/ to be ln P.E /. It can be veried that the following expression for ln P.E /:
+
+!
+
+ln P.E / D ln
+
+eln P.H;E /
+
+X
+(X
+
+fHg
+
+fHg
+
+)
+
+(44)
+
+(45)
+
+is indeed convex in the values ln P.H; E /. Moreover, by direct substitution in Eq. (22):
+
+.Q/ D min
+
+f
+
+Q.H j E ; / ln P.H; E /  ln P.E /
+P
+
+and minimizing with respect to ln P.H; E /, the conjugate function f
+the negative entropy function
+lower bound the log likelihood as follows:
+
+.Q/ is seen to be
+fHg Q.H j E / ln Q.H j E /. Thus, using Eq. (23), we can
+
+ln P.E / 
+
+Q.H j E / ln P.H; E /  Q.H j E / ln Q.H j E /
+
+(46)
+
+X
+
+fHg
+
+This is identical to Eq. (43). Moreover, we see that we could in principle recover the exact
+log likelihood if Q were allowed to range over all probability distributions Q.H j E /. By
+ranging over a parameterized family Q.H j E ; /, we obtain the tightest lower bound that
+is available within the family.
+
+6.2. Parameter estimation via variational methods
+
+Neal and Hinton (1999) have pointed out that the lower bound in Eq. (46) has a useful role
+to play in the context of maximum likelihood parameter estimation. In particular, they make
+a link between this lower bound and parameter estimation via the EM algorithm.
+Let us augment our notation to include parameters (cid:181) in the specication of the joint
+probability distribution P.S j (cid:181) /. As before, we designate a subset of the nodes E as the
+observed evidence. The marginal probability P.E j (cid:181) /, thought of as a function of (cid:181), is
+known as the likelihood. The EM algorithm is a method for maximum likelihood parameter
+estimation that hillclimbs in the log likelihood. It does so by making use of the convexity
+relationship between ln P.H; E j (cid:181) / and ln P.E j (cid:181) / described in the previous section.
+
+In Section 6 we showed that the function
+
+L.Q; (cid:181) / D
+
+Q.H j E / ln P.H; E j (cid:181) /  Q.H j E / ln Q.H j E /
+
+(47)
+
+X
+
+fHg
+
+is a lower bound on the log likelihood for any probability distribution Q.H j E /. Moreover,
+we showed that the difference between ln P.E j (cid:181) / and the bound L.Q; (cid:181) / is the KL
+divergence between Q.H j E / and P.H j E /. Suppose now that we allow Q.H j E / to
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+215
+
+range over all possible probability distributions on H and minimize the KL divergence. It
+is a standard result (cf. Cover & Thomas, 1991) that the KL divergence is minimized by
+choosing Q.H j E / D P.H j E ; (cid:181) /, and that the minimal value is zero. This is veried by
+substituting P.H j E ; (cid:181) / into the right-hand side of Eq. (47) and recovering ln P.E j (cid:181) /.
+This suggests the following algorithm. Starting from an initial parameter vector (cid:181) .0/, we
+iterate the following two steps, known as the E (expectation) step and the M (maximiza-
+tion) step. First, we maximize the bound L.Q; (cid:181) / with respect to probability distributions
+Q. Second, we x Q and maximize the bound L.Q; (cid:181) / with respect to the parameters (cid:181).
+More formally, we have:
+
+(E step) : Q.kC1/ D arg max
+(M step) : (cid:181) .kC1/ D arg max
+
+Q
+
+(cid:181)
+
+Q; (cid:181) .k/
+Q.kC1/; (cid:181)
+
+
+
+(48)
+
+(49)
+
+
+
+L
+L
+
+which is coordinate ascent in L.Q; (cid:181) /.
+
+This can be related to the traditional presentation of the EM algorithm (Dempster, Laird,
+& Rubin, 1977) by noting that for xed Q, the right-hand side of Eq. (47) is a function of
+(cid:181) only through the ln P.H; E j (cid:181) / term. Thus maximizing L.Q; (cid:181) / with respect to (cid:181) in the
+M step is equivalent to maximizing the following function:
+
+H j E ; (cid:181) .k/
+
+ln P.H; E j (cid:181) /:
+
+(50)
+
+
+
+X
+
+P
+
+fHg
+
+
+
+Maximization of this function, known as the complete log likelihood in the EM literature,
+denes the M step in the traditional presentation of EM.
+Let us now return to the situation in which we are unable to compute the full conditional
+distribution P.H j E ; (cid:181) /. In such cases variational methodology suggests that we consider
+a family of approximating distributions. Although we are no longer able to perform a true
+EM iteration given that we cannot avail ourselves of P.H j E ; (cid:181) /, we can still perform
+coordinate ascent in the lower bound L.Q; (cid:181) /. Indeed, the variational strategy of minimi-
+zing the KL divergence with respect to the variational parameters that dene the approx-
+imating family is exactly a restricted form of coordinate ascent in the rst argument of
+L.Q; (cid:181) /. We then follow this step by an M step that increases the lower bound with
+respect to the parameters (cid:181).
+
+This point of view, which can be viewed as a computationally tractable approximation
+to the EM algorithm, has been exploited in a number of recent architectures, including the
+sigmoid belief network, factorial hidden Markov model and hidden Markov decision tree
+architectures that we discuss in the following sections, as well as the Helmholtz machine
+of Dayan et al. (1995) and Hinton et al. (1995).
+
+6.3. Examples
+
+We now return to the problem of picking a tractable variational parameterization for a given
+graphical model. We wish to pick a simplied graph which is both rich enough to provide
+
+216
+
+JORDAN ET AL.
+
+distributions that are close to the true distribution, and simple enough so that an exact algo-
+rithm can be utilized efciently for calculations under the approximate distribution. Similar
+considerations hold for the variational parameterization: the variational parameterization
+must be representationally rich so that good approximations are available and yet simple
+enough so that a procedure that minimizes the KL divergence has some hope of nding good
+parameters and not getting stuck in a local minimum. It is not necessarily possible to realize
+all of these desiderata simultaneously; however, in a number of cases it has been found that
+relatively simple variational approximations can yield reasonably accurate solutions. In this
+section we discuss several such examples.
+
+6.3.1. Mean eld Boltzmann machine.
+In Section 5.2 we discussed a sequential variational
+algorithm that yielded upper and lower bounds for the Boltzmann machine. We now revisit
+the Boltzmann machine within the context of the block approach and discuss lower bounds.
+We also relate the two approaches.
+
+Recall that the joint probability for the Boltzmann machine can be written as follows:
+
+'P
+P.S j (cid:181) / D exp
+
+i < j
+
+(cid:181)i j Si S j CP
+
+
+
+(cid:181)i0Si
+
+i
+
+;
+
+Z
+
+(51)
+where (cid:181)i j D 0 for nodes Si and S j that are not neighbors in the graph. Consider now the
+representation of the conditional distribution P.H j E ; (cid:181) / in a Boltzmann machine. For
+nodes Si 2 E and S j 2 E, the contribution (cid:181)i j Si S j reduces to a constant, which vanishes
+when we normalize. If Si 2 H and S j 2 E, the quadratic contribution becomes a linear
+contribution that we associate with node Si . Finally, linear terms associated with nodes
+Si 2 E also become constants and vanish. In summary, we can express the conditional
+distribution P.H j E ; (cid:181) / as follows:
+
+(cid:181)i j Si S j CP
+
+i < j
+
+Zc
+
+
+
+(cid:181) c
+i0Si
+
+i
+
+;
+
+(52)
+
+where the sums are restricted to range over nodes in H and the updated parameters (cid:181) c
+i0
+include contributions associated with the evidence nodes:
+
+'P
+P.H j E ; (cid:181) / D exp
+X
+
+D (cid:181)i0 C
+"
+X
+
+(cid:181)i j S j :
+
+j2E
+
+(X
+
+(cid:181) c
+i0
+
+The updated partition function Zc is given as follows:
+
+Zc D
+
+exp
+
+fHg
+
+(cid:181)i j Si S j C
+
+i < j
+
+i
+
+(cid:181) c
+i0Si
+
+:
+
+)#
+
+X
+
+(53)
+
+(54)
+
+In sum, we have a Boltzmann machine on the subset H.
+
+The mean eld approximation (Peterson & Anderson, 1987) for Boltzmann machines is
+a particular form of variational approximation in which a completely factorized distribution
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+217
+
+(a) A node Si in a Boltzmann machine with its Markov blanket. (b) The approximating mean eld
+Figure 21.
+distribution Q is based on a graph with no edges. The mean eld equations yield a deterministic relationship,
+represented in the gure with the dotted lines, between the variational parameters i and  j for nodes j in the
+Markov blanket of node i.
+
+is used to approximate P.H j E ; (cid:181) /. That is, we consider the simplest possible approxi-
+mating distribution; one that is obtained by dropping all of the edges in the Boltzmann
+graph (see gure 21). For this choice of Q.H j E ; /, (where we now use  to represent
+the variational parameters), we have little choice as to the variational parameterizationto
+represent as large an approximating family as possible we endow each degree of freedom
+Si with its own variational parameter i . Thus Q can be written as follows:
+
+Q.H j E ; / D
+
+.1  i /1Si ;
+
+Si
+i
+
+(55)
+
+Y
+
+i2H
+
+where the product is taken over the hidden nodes H.
+
+Forming the KL divergence between the fully factorized Q distribution and the P distri-
+
+bution in Eq. (52), we obtain:
+
+D.Q k P/ D
+
+X
+X
+[i ln i C .1  i / ln.1  i /]
+(cid:181)i j i  j 
+i C ln Zc;
+
+X
+
+(cid:181) c
+i0
+
+i
+
+
+
+i < j
+
+i
+
+(56)
+
+where the sums range across nodes in H. In deriving this result we have used the fact that,
+under the Q distribution, Si and S j are independent random variables with mean values i
+and  j .
+
+We now take derivatives of the KL divergence with respect to i noting that Zc is
+
+independent of i and set the derivative to zero to obtain the following equations:
+
+X
+
+!
+
+i D (cid:190)
+
+(cid:181)i j  j C (cid:181)i0
+
+;
+
+(57)
+
+j
+
+where (cid:190) .z/ D 1=.1 C e
+z/ is the logistic function and we dene (cid:181)i j equal to (cid:181) ji for j < i.
+Equation (57) denes a set of coupled equations known as the mean eld equations.
+
+218
+
+JORDAN ET AL.
+
+These equations are solved iteratively for a xed point solution. Note that each variational
+parameter i updates its value based on a sum across the variational parameters in its
+Markov blanket (cf. gure 21(b)). This can be viewed as a variational form of a local
+message passing algorithm.
+
+Peterson and Anderson (1987) compared the mean eld approximation to Gibbs sampling
+on a set of test cases and found that it ran 1030 times faster, while yielding a roughly
+equivalent level of accuracy.
+
+There are cases, however, in which the mean eld approximation is known to break
+down. These cases include sparse Boltzmann machines and Boltzmann machines with
+frustrated interactions; these are networks whose potential functions embody constraints
+between neighboring nodes that cannot be simultaneously satised (see also Galland, 1993).
+In the case of sparse networks, exact algorithms can provide help; indeed, this observation
+led to the use of exact algorithms as subroutines within the structured mean eld approach
+pursued by Saul and Jordan (1996).
+
+Let us now consider the parameter estimation problem for Boltzmann machines. Writing
+
+out the lower bound in Eq. (47) for this case, we have:
+i  ln Z
+
+ln P.E j (cid:181) / 
+
+(cid:181) c
+i0
+
+X
+X
+(cid:181)i j i  j C
+
+i < j
+
+X
+
+i
+
+
+
+[i ln i C .1  i / ln.1  i /]
+
+(58)
+
+i
+
+Taking the derivative with respect to (cid:181)i j yields a gradient which has a simple Hebbian
+term i  j as well as a contribution from the derivative of ln Z with respect to (cid:181)i j . It is
+not hard to show that this derivative is hSi S ji; where the brackets signify an average with
+respect to the unconditional distribution P.S j (cid:181) /. Thus we have the following gradient
+algorithm for performing an approximate M step:
+
+1(cid:181)i j / .i  j  hSi S ji/:
+
+(59)
+
+Unfortunately, however, given our assumption that calculations under the Boltzmann dis-
+tribution are intractable for the graph under consideration, it is intractable to compute the
+unconditional average. We can once again appeal to mean eld theory and compute an
+approximation to hSi S ji, where we now use a factorized distribution on all of the nodes;
+however, the M step is now a difference of gradients of two different bounds and is therefore
+no longer guaranteed to increase L. There is a more serious problem, moreover, which is
+particularly salient in unsupervised learning problems. If the data set of interest is a het-
+erogeneous collection of sub-populations, such as in unsupervised classication problems,
+the unconditional distribution will generally be required to have multiple modes. Unfortu-
+nately the factorized mean eld approximation is unimodal and is a poor approximation
+for a multi-modal distribution. One approach to this problem is to utilize multi-modal Q
+distributions within the mean-eld framework; for example, Jaakkola and Jordan (1999a)
+discuss the use of mixture models as approximating distributions.
+
+These issues nd a more satisfactory treatment in the context of directed graphs, as we
+see in the following section. In particular, the gradient for a directed graph (cf. Eq. (68))
+does not require averages under the unconditional distribution.
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+219
+
+Finally, let us consider the relationship between the mean eld approximation and the
+lower bounds that we obtained via a sequential algorithm in Section 5.2. In fact, if we run
+the latter algorithm until all nodes are eliminated from the graph, we obtain a bound that is
+identical to the mean eld bound (Jaakkola, 1997). To see this, note that for a Boltzmann
+machine in which all of the nodes have been eliminated there are no quadratic and linear
+terms; only the constant terms remain. Recall from Section 5.2 that the constant that arises
+when node i is removed is L
+i
+been updated to absorb the linear terms from previously eliminated nodes j < i. (Recall
+that the latter update is given by Q(cid:181)i0 D (cid:181)i0 C L
+(cid:181)i j for the removal of a particular node j
+that is a neighbor of i). Collecting together such updates for j < i, and summing across all
+X
+nodes i, we nd that the resulting constant term is given as follows:
+
+/, where O(cid:181)i0 refers to the value of (cid:181)i0 after it has
+
+O(cid:181)i0 C H .L
+
+X
+fO(cid:181)i0i C H .i /g D
+
+i
+
+i
+
+(cid:181) c
+i0
+
+i
+
+[i ln i C .1  i / ln.1  i /]
+
+(60)
+
+i
+
+This differs from the lower bound in Eq. (58) only by the term ln Z, which disappears when
+we maximize with respect to i .
+
+X
+(cid:181)i j i  j C
+X
+
+i < j
+
+
+
+i
+
+i
+
+
+
+
+
+6.3.2. Neural networks. As discussed in Section 3, the sigmoid belief network is essen-
+tially a (directed) neural network with graphical model semantics. We utilize the logistic
+function as the node probability function:
+
+Si D 1 j S.i /
+
+P
+
+ D
+
+'P
+
+1 C exp
+
+ ;
+
+1
+j2.i / (cid:181)i j S j  (cid:181)i0
+
+where we assume that (cid:181)i j D 0 unless j is a parent of i. (In particular, (cid:181)i j
+6D 0 ) (cid:181) ji D 0).
+Noting that the probabilities for both the Si D 0 case and the Si D 1 case can be written in
+a single expression as follows:
+
+'P
+ D exp
+'P
+j2.i / (cid:181)i j S j C (cid:181)i0
+1 C exp
+"
+'P
+Y
+'P
+j2.i / (cid:181)i j S j C (cid:181)i0
+exp
+1 C exp
+
+
+Si
+j2.i /(cid:181)i j S j C (cid:181)i0
+
+Si
+j2.i /(cid:181)i j S j C (cid:181)i0
+
+
+ ;
+#
+
+
+i
+
+;
+
+Si j S.i /
+
+P
+
+P.S j (cid:181) / D
+
+we obtain the following representation for the joint distribution:
+
+(61)
+
+(62)
+
+(63)
+
+We wish to calculate conditional probabilities under this joint distribution.
+
+As we have seen (cf. gure 6), inference for general sigmoid belief networks is intractable,
+and thus it is sensible to consider variational approximations. Saul, Jaakkola, and Jordan
+
+220
+
+JORDAN ET AL.
+
+(1996) and Saul and Jordan (1999) have explored the viability of the simple completely
+factorized distribution. Thus once again we set:
+
+Q.H j E ; / D
+
+.1  i /1Si ;
+
+Si
+i
+
+(64)
+
+Y
+
+i2H
+
+and attempt to nd the best such approximation by varying the parameters i .
+
+The computation of the KL divergence D.Q k P/ proceeds much as it does in the case
+of the mean eld Boltzmann machine. The entropy term (Q ln Q) is the same as before.
+The energy term (Q ln P) is found by taking the logarithm of Eq. (63) and averaging with
+)#+
+respect to Q. Putting these results together, we obtain:
+
+"
+
+*
+
+ln P.E j (cid:181) / 
+
+1 C exp
+
+ln
+
+(cid:181)i j S j C (cid:181)i0
+
+( X
+
+j2.i /
+
+X
+
+X
+(cid:181)i j i  j C
+X
+
+i < j
+
+X
+
+(cid:181)i0i 
+
+i
+
+i
+
+
+
+[i ln i C .1  i / ln.1  i /]
+
+i
+
+(65)
+
+P
+
+where hi denotes an average with respect to the Q distribution, and where we have abused
+notation by dening i values for i 2 E; these are set to the instantiated values i 2 f0; 1g.
+Note that, despite the fact that Q is factorized, we are unable to calculate the average
+j2.i / (cid:181)i j S j C (cid:181)i0. This is an important term which
+of ln[1 C ezi ], where zi denotes
+arises directly from the directed nature of the sigmoid belief network (it arises from the
+denominator of the sigmoid, a factor which is necessary to dene the sigmoid as a local
+conditional probability). To deal with this term, Saul et al. (1996) introduced an additional
+variational transformation, due to Seung (1995), that can be viewed as a rened form of
+Jensens inequality. In particular:
+hln[1 C ezi ]i D hln[ei zi e
+
+D ihzii C
+
+
+i zi .1 C ezi /i
+
+ln
+ ihzii C ln
+
+
+i zi C e.1i /zi
+e
+i zi C e.1i /zi
+
+e
+
+
+
+;
+
+(66)
+
+where i is a variational parameter. (Note that the inequality reduces to the standard Jensen
+inequality for i D 0). The nal result can be utilized directly in Eq. (65) to provide a tractable
+lower bound on the log likelihood and the variational parameter i can be optimized along
+with the other variational parameters.
+
+Saul and Jordan (1999) show that in the limiting case of networks in which each hidden
+node has a large number of parents, so that a central limit theorem can be invoked, the
+parameter i has a probabilistic interpretation as the approximate expectation of (cid:190) .zi /,
+where (cid:190) ./ is again the logistic function.
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+221
+
+Figure 22.
+(a) A node Si in a sigmoid belief network machine with its Markov blanket. (b) The mean eld
+equations yield a deterministic relationship, represented in the gure with the dotted lines, between the variational
+parameters i and  j for nodes j in the Markov blanket of node i.
+
+For xed values of the parameters i , by differentiating the KL divergence with respect
+
+to the variational parameters i , we obtain the following consistency equations:
+
+X
+
+X
+
+!
+
+X
+
+i D (cid:190)
+
+(cid:181)i j  j C (cid:181)i0 C
+
+(cid:181) ji . j   j / C
+
+j
+
+j
+
+K ji
+
+j
+
+(67)
+
+ j z j C e.1 j /z ji with respect to i . As Saul et al.
+where K ji is the derivative of lnhe
+show, this term depends on node i, its child j, and the other parents (the co-parents) of
+node j. Given that the rst term is a sum over contributions from the parents of node i,
+and the second term is a sum over contributions from the children of node i, we see that
+the consistency equation for a given node again involves contributions from the Markov
+blanket of the node (see gure 22). Thus, as in the case of the Boltzmann machine, we nd
+that the variational parameters are linked via their Markov blankets and the consistency
+equation (Eq. (67)) can be interpreted as a local message-passing algorithm.
+
+Saul, Jaakkola, and Jordan (1996) and Saul and Jordan (1999) also show how to update
+the variational parameters i . The two papers utilize these parameters in slightly different
+ways and obtain different update equations. (Yet another related variational approximation
+for the sigmoid belief network, including both upper and lower bounds, is presented in
+Jaakkola and Jordan, 1996).
+
+Finally, we can compute the gradient with respect to the parameters (cid:181)i j for xed variational
+parameters  and . The result obtained by Saul and Jordan (1999) takes the following form:
+
+1(cid:181)i j / .i  i / j  (cid:181)i j i .1  i /i .1  i /:
+
+(68)
+
+Note that there is no need to calculate variational parameters under the unconditional distri-
+bution, P.S j (cid:181) /, as in the case of the Boltzmann machine (a fact rst noted by Neal, 1992).
+
+222
+
+JORDAN ET AL.
+
+Figure 23. The leftmost gure shows examples of the images used by Saul and Jordan (1999) in training their
+handwritten digit classier. The rightmost gure shows examples of images whose bottom halves were inferred
+from their top halves via a variational inference algorithm.
+
+Note also the interesting appearance of a regularization termthe second term in the
+equation is a weight decay term that is maximal for non-extreme values of the varia-
+tional parameters (both of these parameters are bounded between zero and one). Thus, this
+computationally-motivated approximation to maximum likelihood estimation is in fact a
+form of penalized maximum likelihood estimation.
+
+Saul and Jordan (1999) tested the sigmoid belief network on a handwritten digit clas-
+sication problem, obtaining results that were competitive with other supervised learning
+systems. Examples of the digits that Saul and Jordan used are shown in gure 23. Figure 23
+also illustrates the ability of a sigmoid belief network to ll in missing data. All of the
+pixels in the bottom halves of these images were treated as missing and their values were
+inferred via variational inference equations. As a result of this capacity for lling in missing
+data, the degradation in classication performance with missing pixels is slight; indeed,
+Saul and Jordan reported that the classication error went from 5 percent to 12 percent
+when half of the pixels were missing.
+
+For further comparative empirical work on sigmoid belief networks and related architec-
+
+tures, including comparisons with Gibbs sampling, see Frey, Hinton, and Dayan (1996).
+
+6.3.3. Factorial hidden Markov models. The factorial hidden Markov model (FHMM)
+is a multiple chain structure (see gure 24(a)). Using the notation developed earlier (see
+Section 3.5), the joint probability distribution for the FHMM is given by:
+
+'
+
+
+
+P
+
+X .m/
+
+t
+
+;fYtg j (cid:181)
+
+"
+ D MY
+ TY
+
+mD1
+
+P
+
+tD1
+
+#
+
+ X .m/
+
+t1
+
+ .m/
+
+A.m/
+
+X .m/
+
+t
+
+X .m/
+
+
+Yt j'
+
+1
+
+
+
+ TY
+M
+
+tD2
+
+X .m/
+
+t
+
+mD1
+
+
+
+
+
+Computation under this probability distribution is generally infeasible because, as we saw
+earlier, the clique size becomes unmanageably large when the FHMM chain structure is
+moralized and triangulated. Thus it is necessary to consider approximations.
+
+(69)
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+223
+
+Figure 24.
+(a) The FHMM. (b) A variational approximation for the FHMM can be obtained by picking out a
+tractable substructure in the FHMM graph. Parameterizing this graph leads to a family of tractable approximating
+distributions.
+
+For the FHMM there is a natural substructure on which to base a variational algorithm. In
+particular, the chains that compose the FHMM are individually tractable. Therefore, rather
+than removing all of the edges, as in the naive mean eld approximation discussed in the
+previous two sections, it would seem more reasonable to remove only as many edges as
+are necessary to decouple the chains. In particular, we remove the edges that link the state
+nodes to the output nodes (see gure 24(b)). Without these edges the moralization process
+no longer links the state nodes and no longer creates large cliques. In fact, the moralization
+process on the delinked graph in gure 24(b) is vacuous, as is the triangulation. Thus the
+cliques on the delinked graph are of size N 2, where N is the number of states for a single
+chain. One iteration of approximate inference runs in time O.MT N 2/, where M is the
+number of chains and T is the length of the time series.
+
+Let us now consider how to express a variational approximation using the delinked
+graph of gure 24(b) as an approximation. The idea is to introduce one free parameter
+into the approximating probability distribution, Q, for each edge that we have dropped.
+These free parameters, which we denote as .m/
+, essentially serve as surrogates for the
+effect of the observation at time t on state component m. When we optimize the divergence
+D.Q k P/ with respect to these parameters they become interdependent; this (deterministic)
+interdependence can be viewed as an approximation to the probabilistic dependence that is
+captured in an exact algorithm via the moralization process.
+
+t
+
+Referring to gure 24(b), we write the approximating Q distribution in the following
+
+where  is the vector of variational parameters .m/
+to be the product of the exact transition matrix A.m/ and the variational parameter .m/
+
+t
+
+:
+
+t
+
+
+
+
+
+ X .m/
+
+t
+
+t1
+
+X .m/
+
+QA.m/
+(70)
+. We dene the transition matrix QA.m/
+
+;
+
+
+
+Q .m/
+
+X .m/
+
+1
+
+ TY
+
+tD2
+
+
+
+ X .m/
+
+factorized form:
+
+'
+
+Q
+
+X .m/
+
+t
+
+mD1
+
+ D MY
+fYtg; (cid:181); 
+ X .m/
+ D A.m/
+
+
+
+ D  .m/
+
+t1
+
+X .m/
+
+1
+
+.m/
+1
+
+:
+
+QA.m/
+
+
+
+
+Q .m/
+
+X .m/
+
+1
+
+X .m/
+
+.m/
+t
+and similarly for the initial state probabilities Q .m/:
+
+X .m/
+
+t1
+
+;
+
+t
+
+t
+
+(71)
+
+(72)
+
+224
+
+JORDAN ET AL.
+
+This family of distributions respects the conditional independence statements of the ap-
+proximate graph in gure 24, and provides additional degrees of freedom via the variational
+parameters.
+
+Ghahramani and Jordan (1997) present the equations that result from minimizing the
+KL divergence between the approximating probability distribution (Eq. (70)) and the true
+probability distribution (Eq. (69)). The result can be summarized as follows. As in the other
+architectures that we have discussed, the equation for a variational parameter (.m/
+) is a
+function of terms that are in the Markov blanket of the corresponding delinked node (i.e.,
+, for n 6D m, thus linking
+Yt ). In particular, the update for .m/
+depends on the parameters .n/
+t
+the variational parameters at time t. Moreover, the update for .m/
+depends on the expected
+value of the states X .m/
+, where the expectation is taken under the distribution Q. Given
+that the chains are decoupled under Q, expectations are found by running one of the exact
+algorithms (for example, the forward-backward algorithm for HMMs), separately for each
+chain. These expectations of course depend on the current values of the parameters .m/
+(cf. Eq. (70)), and it is this dependence that effectively couples the chains.
+
+t
+
+t
+
+t
+
+t
+
+t
+
+To summarize, tting the variational parameters for a FHMM is an iterative, two-phase
+procedure. In the rst phase, an exact algorithm is run as a subroutine to calculate expec-
+tations for the hidden states. This is done independently for each of the M chains, making
+reference to the current values of the parameters .m/
+. In the second phase, the parameters
+.m/
+are updated based on the expectations computed in the rst phase. The procedure then
+t
+returns to the rst phase and iterates.
+
+t
+
+Ghahramani and Jordan (1997) reported results on tting an FHMM to the Bach chorale
+data set (Merz & Murphy, 1996). They showed that signicantly larger effective state spaces
+could be t with the FHMM than with an unstructured HMM, and that performance in terms
+of probability of the test set was an order of magnitude larger for the FHMM. Moreover,
+evidence of overtting was seen for the HMM for 35 states or more; no evidence of overtting
+for the FHMM was seen for up to 1000 states.
+
+6.3.4. Hidden Markov decision trees. As a nal example we return to the hidden Markov
+decision tree (HMDT) described in the introduction and briey discuss variational approxi-
+mation for this architecture. As we have discussed, a HMDT is essentially a Markov time
+series model, where the probability model at each time step is a (probabilistic) decision tree
+with hidden decision nodes. The Markovian dependence is obtained via separate transition
+matrices at the different levels of the decision tree, giving the model a factorized structure.
+The variational approach to tting a HMDT is closely related to that of tting a FHMM;
+however, there are additional choices as to the variational approximation. In particular,
+we have two substructures worth considering in the HMDT: (1) Dropping the vertical
+edges, we recover a decoupled set of chains. As in the FHMM, these chains can each be
+handled by the forward-backward algorithm. (2) Dropping the horizontal edges, we recover
+a decoupled set of decision trees. We can calculate probabilities in these trees using the
+posterior propagation algorithm described in Jordan (1994).
+
+The rst approach, which we refer to as the forest of chains approximation, is shown
+in gure 25. As in the FHMM, we write a variational approximation for the forest of chains
+approximation by respecting the conditional independencies in the approximating graph
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+225
+
+Figure 25. The forest of chains approximation for the HMDT. Parameterizing this graph leads to an approxi-
+mating family of Q distributions.
+
+Figure 26. The forest of trees approximation for the HMDT. Parameterizing this graph leads to an approxi-
+mating family of Q distributions.
+
+and incorporating variational parameters to obtain extra degrees of freedom (see Jordan
+et al., 1997, for the details).
+
+We can also consider a forest of trees approximation in which the horizontal links are
+eliminated (see gure 26). Given that the decision tree is a fully connected graph, this is
+essentially a naive mean eld approximation on a hypergraph.
+
+Finally, it is also possible to develop a variational algorithm for the HMDT that is analo-
+gous to the Viterbi algorithm for HMMs. In particular, we utilize an approximation Q that
+assigns probability one to a single path in the state space. The KL divergence for this Q
+distribution is particularly easy to evaluate, given that the entropy contribution to the KL
+divergence (i.e., the Q ln Q term) is zero. Moreover, the evaluation of the energy (i.e., the
+Q ln P term) reduces to substituting the states along the chosen path into the P distribution.
+The resulting algorithm involves a subroutine in which a standard Viterbi algorithm is
+run on a single chain, with the other chains held xed. This subroutine is run on each chain
+in turn.
+
+Jordan et al. (1997) found that performance of the HMDT on the Bach chorales was
+essentially the same as that of the FHMM. The advantage of the HMDT was its greater
+interpretability; most of the runs resulted in a coarse-to-ne ordering of the temporal scales
+of the Markov processes from the top to the bottom of the tree.
+
+226
+
+7. Discussion
+
+JORDAN ET AL.
+
+We have described a variety of applications of variational methods to problems of inference
+and learning in graphical models. We hope to have convinced the reader that variational
+methods can provide a powerful and elegant tool for graphical models, and that the algo-
+rithms that result are simple and intuitively appealing. It is important to emphasize, however,
+that research on variational methods for graphical models is of quite recent origin, and there
+are many open problems and unresolved issues. In this section we discuss a number of
+these issues. We also broaden the scope of the presentation and discuss a number of related
+strands of research.
+
+7.1. Related research
+
+The methods that we have discussed all involve deterministic, iterative approximation al-
+gorithms. It is of interest to discuss related approximation schemes that are either non-
+deterministic or non-iterative.
+
+7.1.1. Recognition models and the Helmholtz machine. All of the algorithms that we
+have presented have at their core a nonlinear optimization problem. In particular, after
+having introduced the variational parameters, whether sequentially or as a block, we are left
+with a bound such as that in Eq. (27) that must be optimized. Optimization of this bound is
+generally achieved via a xed-point iteration or a gradient-based algorithm. This iterative
+optimization process induces interdependencies between the variational parameters which
+give us a best approximation to the marginal or conditional probability of interest.
+
+Consider in particular a problem in which a directed graphical model is used for unsu-
+pervised learning. A common approach in unsupervised learning is to consider graphical
+models that are oriented in the generative direction; that is, they point from hidden vari-
+ables to observables. In this case the predictive calculation of P.E j H / is elementary.
+The calculation of P.H j E /, on the other hand, is a diagnostic calculation that proceeds
+backwards in the graph. Diagnostic calculations are generally non-trivial and require the
+full power of an inference algorithm.
+
+An alternative approach to solving iteratively for an approximation to the diagnostic
+calculation is to learn both a generative model and a recognition model that approximates
+the diagnostic distribution P.H j E /. Thus we associate different parameters with the gene-
+rative model and the recognition model and rely on the parameter estimation process to bring
+these parameterizations into register. This is the basic idea behind the Helmholtz machine
+(Dayan et al., 1995; Hinton et al., 1995).
+The key advantage of the recognition-model approach is that the calculation of P.H j E /
+
+is reduced to an elementary feedforward calculation that can be performed quickly.
+
+There are some disadvantages to the approach as well. In particular, the lack of an
+iterative algorithm makes the Helmholtz machine unable to deal naturally with missing
+data, and with phenomena such as explaining-away, in which the couplings between
+hidden variables change as a function of the conditioning variables. Moreover, although
+in some cases there is a clear natural parameterization for the recognition model that is
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+227
+
+induced from the generative model (in particular for linear models such as factor analysis),
+in general it is difcult to insure that the models are matched appropriately.10 Some of
+these problems might be addressed by combining the recognition-model approach with the
+iterative variational approach; essentially treating the recognition-model as a cache for
+storing good initializations for the variational parameters.
+
+7.1.2. Sampling methods.
+In this section we make a few remarks on the relationships
+between variational methods and stochastic methods, in particular the Gibbs sampler. In
+the setting of graphical models, both classes of methods rely on extensive message-passing.
+In Gibbs sampling, the message-passing is particularly simple: each node learns the cur-
+rent instantiation of its Markov blanket. With enough samples the node can estimate the
+distribution over its Markov blanket and (roughly speaking) determine its own statistics.
+The advantage of this scheme is that in the limit of very many samples, it is guaranteed
+to converge to the correct statistics. The disadvantage is that very many samples may be
+required.
+
+The message-passing in variational methods is quite different. Its purpose is to couple the
+variational parameters of one node to those of its Markov blanket. The messages do not come
+in the form of samples, but rather in the form of approximate statistics (as summarized by the
+variational parameters). For example, in a network of binary nodes, while the Gibbs sampler
+is circulating messages of binary vectors that correspond to the instantiations of Markov
+blankets, the variational methods are circulating real-valued numbers that correspond to
+the statistics of Markov blankets. This may be one reason why variational methods often
+converge faster than Gibbs sampling. Of course, the disadvantage of these schemes is that
+they do not necessarily converge to the correct statistics. On the other hand, they can provide
+bounds on marginal probabilities that are quite difcult to estimate by sampling. Indeed,
+sampling-based methodswhile well-suited to estimating the statistics of individual hidden
+H P.H; E /.
+An interesting direction for future research is to consider combinations of sampling
+methods and variational methods. Some initial work in this direction has been done by
+Hinton, Sallans, and Ghahramani (1999), who discuss brief Gibbs sampling from the point
+of view of variational approximation.
+
+nodesare ill-equipped to compute marginal probabilities such as P.E / DP
+
+7.1.3. Bayesian methods. Variational inference can be applied to the general problem of
+Bayesian parameter estimation. Indeed we can quite generally treat parameters as additional
+nodes in a graphical model (cf. Heckerman, 1999) and thereby treat Bayesian inference on
+the same footing as generic probabilistic inference in a graphical model. This probabilistic
+inference problem is often intractable, and variational approximations can be useful.
+
+A variational method known as ensemble learning was originally introduced as a way
+of tting an ensemble of neural networks to data, where each setting of the parameters
+can be thought of as a different member of the ensemble (Hinton & van Camp, 1993). Let
+Q.(cid:181) j E / represent a variational approximation to the posterior distribution P.(cid:181) j E /. The
+ensemble is t by minimizing the appropriate KL divergence:
+
+Z
+
+K L.Q k P/ D
+
+Q.(cid:181) j E / ln
+
+Q.(cid:181) j E /
+P.(cid:181) j E /
+
+d(cid:181):
+
+(73)
+
+228
+
+JORDAN ET AL.
+
+Following the same line of argument as in Section 6, we know that this minimization must
+be equivalent to the maximization of a lower bound. In particular, copying the argument
+from Section 6, we nd that minimizing the KL divergence yields the best lower bound on
+the following quantity:
+
+Z
+
+ln P.E / D ln
+
+P.E j (cid:181) /P.(cid:181) / d(cid:181);
+
+(74)
+
+which is the logarithm of the marginal likelihood; a key quantity in Bayesian model selection
+and model averaging.
+
+More recently, the ensemble learning approach has been applied to mixture of experts ar-
+chitectures (Waterhouse, MacKay, & Robinson, 1996) and hidden Markov models (MacKay,
+1997). One interesting aspect of these applications is that they do not assume any particular
+parametric family for Q, rather they make the nonparametric assumption that Q factorizes
+in a specic way. The variational minimization itself determines the best family given this
+factorization and the prior on (cid:181).
+
+Jaakkola and Jordan (1997b) have also developed variational methods for Bayesian in-
+ference, using a variational approach to nd an analytically tractable approximation for
+logistic regression with a Gaussian prior on the parameters.
+
+7.1.4. Perspective and prospectives. Perhaps the key issue that faces developers of vari-
+ational methods is the issue of approximation accuracy. One can develop an intuition for
+when variational methods perform well and when they perform poorly by examining their
+properties in certain well-studied cases. In the case of fully factorized approximations for
+undirected graphs, a good starting point is the statistical mechanics literature where this
+approximation can give not only good, but indeed exact, results. Such cases include densely
+connected graphs with uniformly weak (but non-negative) couplings between neighboring
+nodes (Parisi, 1988). The mean eld equations for these networks have a unique solution
+that determines the statistics of individual nodes in the limit of very large graphs.
+
+Kearns and Saul (1998) have utilized large deviation methods to study the approximation
+accuracy of bounds on the likelihood for dense directed graphs. Characterizing the accuracy
+in terms of the number N of parents for each node (assumed constant) in a layered graph, they
+p
+have shown that the gap between variational upper and lower bounds converges at a rate of
+ln.N /=N /. Their approach utilizes a rather general form of upper and lower bounds for
+O.
+the local conditional probabilities that does not depend on convexity properties. Thus their
+result should be expected to be rather robust across the general family of variational methods;
+moreover, faster rates may be obtainable for the convexity-based variational approximations
+discussed in the current paper.
+
+In more general graphical models the conditions for convergence of fully factorized
+variational approximations may not be so favorable. In general some nodes may have a
+small Markov blanket or may be strongly dependent on particular neighbors, and variational
+transformations of such nodes would yield poor bounds. More globally, if there are strong
+probabilistic dependencies in the model the posterior can have multiple modes (indeed, in the
+limiting case of deterministic relationships one can readily create switching automata that
+have multiple modes). Fully factorized approximations, which are necessarily unimodal,
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+229
+
+will fail in such cases. Handling such cases requires making use of methods that transform
+only a subset of the nodes, incorporating exact inferential procedures as subroutines to
+handle the untransformed structure. The exact methods can capture the strong dependencies,
+leaving the weaker dependencies for the variational transformations. In practice, achieving
+this kind of division of labor either requires that the strong dependencies can be identied
+in advance by inspection of the graph, or can be identied in the context of a sequential
+variational method via simple greedy calculations.
+
+An alternative approach to handling multiple modes is to utilize mixture models as
+approximating distributions (the Q distributions in block variational methods). See Jaakkola
+and Jordan (1999a) and Bishop et al. (1998) for discussion of this approach.
+Finally, it is also important to stress the difference between joint distributions P.H; E /,
+and conditional distributions P.H j E /. In many situations, such as classication problems
+in which H represents a category label, the joint distribution P.H; E / is multi-modal, but
+the conditional distribution P.H j E / is not. Thus factorized approximations may make
+sense for inference problems even when they would be poor overall approximations to the
+joint probability model.
+
+Another key issue has to do with broadening the scope of variational methods. In this
+paper we have presented a restricted set of variational techniques, those based on convexity
+transformations. For these techniques to be applicable the appropriate convexity properties
+need to be identied. While it is relatively easy to characterize small classes of models where
+these properties lead to simple approximation algorithms, such as the case in which the
+local conditional probabilities are log-concave generalized linear models, it is not generally
+easy to develop variational algorithms for other kinds of graphical models. A broader
+characterization of variational approximations is needed and a more systematic algebra is
+needed to match the approximations to models.
+
+Other open problems include: (1) the problem of combining variational methods with
+sampling methods and with search based methods, (2) the problem of making more in-
+formed choices of node ordering in the case of sequential methods, (3) the development
+of upper bounds within the block framework, (4) the combination of multiple variational
+approximations for the same model, and (5) the development of variational methods for
+architectures that combine continuous and discrete random variables.
+
+Similar open problems exist for sampling methods and for methods based on incomplete
+or pruned versions of exact methods. The difculty in providing solid theoretical foundations
+in all of these cases lies in the fact that accuracy is contingent to a large degree on the actual
+conditional probability values of the underlying probability model rather than on the discrete
+properties of the graph.
+
+Appendix
+
+In this section, we calculate the conjugate functions for the logarithm function and the log
+logistic function.
+
+For f .x/ D ln x, we have:
+
+./ D min
+
+fx  ln xg:
+
+x
+
+f
+
+(A.1)
+
+230
+
+JORDAN ET AL.
+
+Taking the derivative with respect to x and setting to zero yields x D 1. Substituting back
+in Eq. (A.1) yields:
+
+./ D ln  C 1;
+
+f
+
+which justies the representation of the logarithm given in Eq. (14).
+
+For the log logistic function g.x/ D ln.1 C e
+
+x /, we have:
+
+./ D min
+
+fx C ln.1 C e
+
+x
+
+g
+
+x /g:
+
+Taking the derivative with respect to x and setting to zero yields:
+
+ D e
+
+x
+1 C ex
+
+;
+
+from which we obtain:
+
+x D ln
+
+and
+
+1  
+
+
+
+ln.1 C e
+
+x / D ln
+
+1
+1  
+
+:
+
+Plugging these expressions back into Eq. (A.3) yields:
+
+./ D  ln   .1  / ln.1  /;
+
+g
+
+(A.2)
+
+(A.3)
+
+(A.4)
+
+(A.5)
+
+(A.6)
+
+(A.7)
+
+which is the binary entropy function H ./. This justies the representation of the logistic
+function given in Eq. (19).
+
+Acknowledgments
+
+We wish to thank Brendan Frey, David Heckerman, Uffe Kjrulff, and (as always) Peter
+Dayan for helpful comments on the manuscript.
+
+Notes
+
+1. Our presentation will take the point of view that moralization and triangulation, when combined with a local
+message-passing algorithm, are sufcient for exact inference. It is also possible to show that, under certain
+conditions, these steps are necessary for exact inference. See Jensen and Jensen (1994).
+
+2. Here and elsewhere we identify the ith node with the random variable Si associated with the node.
+3. We dene a clique to be a subset of nodes which are fully connected and maximal; i.e., no additional node
+
+can be added to the subset so that the subset remains fully connected.
+
+4. Note in particular that gure 2 is the moralization of gure 1.
+
+INTRODUCTION TO VARIATIONAL METHODS
+
+231
+
+5. The acronym QMR-DT refers to the Decision Theoretic version of the Quick Medical Reference.
+6. In particular, the pattern of missing edges in the graph implies that (a) the diseases are marginally independent,
+
+and (b) given the diseases, the symptoms are conditionally independent.
+
+7. Jaakkola and Jordan (1999b) also calculated the median of the pairwise cutset size. This value was found to
+
+be 106.5, which also rules out exact cutset methods for inference for the QMR-DT.
+
+8. It is also possible to consider more general Boltzmann machines with multivalued nodes, and potentials that
+are exponentials of arbitrary functions on the cliques. Such models are essentially equivalent to the general
+undirected graphical model of Eq. (3) (although the latter can represent zero probabilities while the former
+cannot).
+
+9. Note that we treat P.H; E / in general as a marginal probability; that is, we do not necessarily assume that H
+
+and E jointly exhaust the set of nodes S.
+
+10. The particular recognition model utilized in the Helmholtz machine is a layered graph, which makes weak
+conditional independence assumptions and thus makes it possible, in principle, to capture fairly general
+dependencies.
+

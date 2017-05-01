@@ -1,0 +1,1825 @@
+Abstract
+
+Real-world learning tasks often involve high-dimensional data sets with complex patterns of missing
+features.
+In this paper we review the problem of learning from incomplete data from two statistical
+perspectives|the likelihood-based and the Bayesian. The goal is two-fold: to place current neural net-
+work approaches to missing data within a statistical framework, and to describe a set of algorithms, derived
+from the likelihood-based framework, that handle clustering, classi(cid:12)cation, and function approximation
+from incomplete data in a principled and e(cid:14)cient manner. These algorithms are based on mixture mod-
+eling and make two distinct appeals to the Expectation-Maximization (EM) principle (Dempster et al.,
+	)|both for the estimation of mixture components and for coping with the missing data.
+
+Copyright c(cid:13) Massachusetts Institute of Technology, 		
+
+This report describes research done at the Center for Biological and Computational Learning and the Arti(cid:12)cial Intelligence
+Laboratory of the Massachusetts Institute of Technology. Support for the Center is provided in part by a grant from the
+National Science Foundation under contract ASC{	. Support for the laboratorys arti(cid:12)cial
+intelligence research is
+provided in part by the Advanced Research Projects Agency of the Department of Defense. The authors were supported in
+part by a grant from ATR Auditory and Visual Perception Research Laboratories, by a grant from Siemens Corporation, by
+grant IRI-			 from the National Science Foundation, and by grant N-	-J-	 from the O(cid:14)ce of Naval Research.
+Zoubin Ghahramani was supported by a grant from the McDonnell-Pew Foundation. Michael I. Jordan is a NSF Presidential
+Young Investigator.
+
+
+
+Introduction
+
+In computational and biological learning the environ-
+ment does not often provide complete information to the
+learner. For example, a vision system may encounter
+many partially occluded examples of an object, yet have
+to recover a model for the unoccluded object. Similarly,
+an adaptive controller may be required to learn a map-
+ping from sensor readings to actions even if its sensors
+are unreliable and sometimes fail to give readings. Ex-
+amples of data sets with missing values abound in ma-
+chine learning. 
+
+In this paper we review the problem of learning from
+incomplete data from a statistical perspective. The goal
+is two-fold: to place current neural network treatments
+of missing data within a statistical framework, and to
+derive from this framework a set of algorithms that han-
+dle incomplete data in a principled manner. To maintain
+the breadth of the review we discuss classi(cid:12)cation, func-
+tion approximation, and clustering problems. Because
+missing data can arise in both the input and the target
+variables, we treat both missing inputs and unlabeled
+data.
+
+The statistical framework that we adopt (cf. Little
+and Rubin, 	) makes a distinction between the envi-
+ronment, which we assume to generate complete data,
+and the missing data mechanism which renders some
+of the output of the environment unobservable to the
+learner. The supervised learning problem consists of
+forming a map from inputs to targets. The unsuper-
+vised learning process generally consists of extracting
+some compact statistical description of the inputs.
+In
+both these cases the learner may bene(cid:12)t from knowl-
+edge of constraints both on the data generation process
+(e.g., that it falls within a certain parametric family),
+and on the mechanism which caused the pattern of in-
+completeness (e.g., that it is independent of the data
+generation process). The use of statistical theory allows
+us to formalize the consequences of these constraints and
+provides us with a framework for deriving learning algo-
+rithms that make use of these consequences.
+
+Before developing a framework for incomplete data,
+let us motivate the problem with perhaps the simplest
+statistical example that illustrates an interaction be-
+tween the missing data and the data generation mecha-
+nisms. Imagine we wish to estimate the mean ((cid:22)x; (cid:22)y)
+and covariance matrix (cid:6) of a bivariate normal distribu-
+tion, from a data set X = f(xi; yi)gN
+i= where some of the
+observations of yi are missing (see Fig. ). If we estimate
+(cid:22)x by the mean of the xi and (cid:22)y by the mean of the ob-
+served values of yi, we will underestimate (cid:22)y as we have
+ignored the covariance structure in the observed data. A
+more intelligent heuristic would use the covariance struc-
+ture to (cid:12)ll-in the values of the missing yi by regressing
+them on the xi. However, even this heuristic will yield a
+biased estimate of the covariance matrix as the (cid:12)lled-in
+data points will all fall along the regression line. Both
+of the above \(cid:12)lling-in" techniques, known as mean im-
+putation and regression imputation, yield unsatisfactory
+
+results even on this simple parameter estimation prob-
+lem.
+
+The paper is organized as follows.
+
+In section  we
+outline the statistical framework that de(cid:12)nes the miss-
+ing data and data generation mechanisms. In section 
+we proceed to describe a likelihood-based approach to
+learning from incomplete data. In section  we use this
+approach to derive a set of learning algorithms for func-
+tion approximation, classi(cid:12)cation, and clustering. Sec-
+tion  describes an alternative to the likelihood-based
+approach, the Bayesian approach, and several algorithms
+that implement it. Section  discusses Boltzmann ma-
+chines and incomplete data. Finally, we conclude in sec-
+tion .
+
+y
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1
+
+0
+
+-1
+
+-1
+
+0
+
+1
+
+2
+
+3
+
+5
+
+6
+
+7
+
+8
+
+9
+
+4
+x
+
+Figure : A simple example. Complete data were gen-
+erated from a Gaussian with mean (; ) and covariance
+matrix (= 	=; 	= =). Data points with missing
+y values are denoted by hollow circles on the y = 
+line. The solid square indicates the (x; y) mean calcu-
+lated over the observed data. The hollow square and the
+ellipse indicate the mean and standard deviation calcu-
+lated from the incomplete data using a maximum likeli-
+hood (ML) algorithm. Note that the ML estimate of (cid:22)y
+is higher than any of the observed values of y!
+
+ The Framework
+
+The statistical framework we present is based on Lit-
+tle and Rubin (	). We assume that the data set
+X = fxigN
+i= can be divided into an observed component
+X o and a missing component X m. Each data vector xi
+may have di(cid:11)erent patterns of missing features. We will
+not distinguish for now between the input and target
+components of the data vector.
+
+We formalize the notion of a missing data mechanism
+by de(cid:12)ning a missing data indicator matrix R, such that
+
+See, for example, the UCI Repository of Machine Learn-
+
+ing Databases (Murphy and Aha, 		).
+
+
+
+Rij = (cid:26) ; xij observed,
+
+; xij missing.
+
+Both the data generation process and the missing data
+mechanism are considered to be random processes, with
+joint probability distribution given by
+
+then
+
+P (X o
+
+P (X ; Rj(cid:18); (cid:30)) = P (X j(cid:18))P (RjX ; (cid:30)):
+
+()
+
+We use the parameters (cid:18) for the data generation process
+and a distinct set of parameters, (cid:30), for the missing data
+mechanism.
+
+Once the data probability model has been decom-
+posed as in (), we can distinguish three nested types
+of missing data mechanism. The data can be
+
+. Missing
+
+completely
+
+at
+random (MCAR): P (RjX ; (cid:30)) = P (Rj(cid:30)). That is,
+the probability that xij is missing is independent
+of the values in the data vector.
+
+; X m
+
+. Missing at random (MAR): P (RjX o
+
+; (cid:30)) =
+P (RjX o
+; (cid:30)). That is, the probability that xij is
+missing is independent of values of missing com-
+ponents of the data, but may depend on the val-
+ues of observed components. For example, xij may
+be missing for certain values of xik;(k=j) provided
+that xik is always observed. Figure  illustrates
+this case.
+
+. Not missing at
+
+; X m
+
+random (NMAR). That
+
+is,
+P (RjX o
+; (cid:30)) may depend on the value of xij.
+If P (Rijjxij; (cid:30)) is a function of xij the data is said
+to be censored. For example, if a sensor fails when
+its input exceeds some range its output will be cen-
+sored.
+
+The type of the missing data mechanism is critical in
+evaluating learning algorithms for handling incomplete
+data. Full maximum likelihood and Bayesian approaches
+can handle data that is missing at random or completely
+at random. Several simpler learning approaches can han-
+dle MCAR data but fail on MAR data in general. No
+general approaches exist for NMAR data.
+
+For both Bayesian and maximum likelihood tech-
+niques the estimates of the parameters (cid:18) and (cid:30) are linked
+to the observed data, X o and R, via P (X o
+; Rj(cid:18); (cid:30)). For
+maximum likelihood methods the likelihood is
+
+L((cid:18); (cid:30)jX o
+
+; R) / P (X o
+
+; Rj(cid:18); (cid:30));
+
+and for Bayesian methods the posterior probability is
+
+P ((cid:18); (cid:30)jX o
+
+; R) / P (X o
+
+; Rj(cid:18); (cid:30))P ((cid:18); (cid:30)):
+
+We wish to ascertain under which conditions the pa-
+rameters of the data generation process can be estimated
+independently of the parameters of the missing data
+mechanism. Given that
+
+P (X o
+
+; Rj(cid:18); (cid:30)) = Z P (X o
+
+we note that if
+
+; X mj(cid:18))P (RjX o
+
+; X m
+
+; (cid:30))dX m
+
+;
+
+P (RjX o
+
+; X m
+
+; (cid:30)) = P (RjX o
+
+; (cid:30));
+
+For succinctness will use the non-Bayesian phrase \esti-
+mating parameters" in this section; this can be replaced by
+\calculating the posterior probabilities of the parameters" for
+the parallel Bayesian argument.
+
+
+
+; Rj(cid:18); (cid:30)) = P (RjX o
+
+; (cid:30))Z P (X o
+
+; X mj(cid:18))dX m
+
+P (RjX o
+
+; (cid:30))P (X oj(cid:18)):
+
+()
+
+Equation () states that if the data is MAR then
+the likelihood can be factored. For maximum like-
+lihood methods this implies directly that maximizing
+L((cid:18)jX o) / P (X oj(cid:18)) as a function of (cid:18) is equivalent to
+maximizing L((cid:18); (cid:30)jX o
+; R). Therefore the parameters of
+the missing data mechanism can be ignored for the pur-
+poses of estimating (cid:18) (Little and Rubin, 	).
+
+For Bayesian methods, the missing data mechanism
+cannot be ignored unless we make the additional require-
+ment that the prior is factorizable:
+
+P ((cid:18); (cid:30)) = P ((cid:18))P ((cid:30)):
+
+These results imply that data sets that are NMAR, such
+as censored data, cannot be handled by Bayesian or
+likelihood-based methods unless a model of the missing
+data mechanism is also learned. On the positive side,
+they also imply that the MAR condition, which is weaker
+than the MCAR condition, is su(cid:14)cient for Bayesian or
+likelihood-based learning.
+
+ Likelihood-Based Methods for
+
+Feedforward Networks
+
+In the previous section we showed that maximum likeli-
+hood methods can be utilized for estimating the param-
+eters of the data generation model, ignoring the missing
+data mechanism, provided that the data is missing at
+random. We now turn to the problem of estimating the
+parameters of a model from incomplete data.
+
+We focus (cid:12)rst on feedforward neural network models
+before turning to a class of models where the missing
+data can be incorporated more naturally into the esti-
+mation algorithm. For feedforward neural networks we
+know that descent in the error cost function can be inter-
+preted as ascent in the model parameter likelihood (e.g.
+In particular if the target vector is as-
+White, 		).
+
+sumed to be Gaussian, P (yijxi; (cid:18)) (cid:24) N (yi; f(cid:18)(xi); (cid:27)
+i I),
+then the log likelihood is equivalent to the sum-squared
+error weighted by the output variances:
+
+maxXi
+
+log P (yijxi; (cid:18)) () min
+
+
+
+ Xi
+
+
+
+(cid:27)i
+
+(yi (cid:0) f(cid:18)(xi))
+
+If a target yi is missing or unknown the variance of that
+
+output can be taken to be in(cid:12)nite, (cid:27)
+i ! . Similarly, if
+certain components of a target vector are missing we can
+assume that the variance of that component is in(cid:12)nite.
+The missing targets drop out of the likelihood and the
+minimization can proceed as before, simply with certain
+targets replaced by \dont cares."
+
+If components of an input vector are missing, how-
+ever, then the likelihood is not properly de(cid:12)ned since
+P (yijxi; (cid:18)) depends on the full input vector. The con-
+ditional over the observed inputs needed for the likeli-
+hood requires integrating out the missing inputs. This,
+in turn, requires a model for the input density, P (x),
+
+which is not explicitly available in a feedforward neural
+network.
+
+Tresp et al. (		) proposed solving this problem by
+separately estimating the input density, P (x), with a
+Gaussian mixture model and the conditional density,
+P (yjx), with a feedforward network. This approach can
+be seen as maximizing the joint input-output log likeli-
+hood
+
+l = Xi
+= Xi
+
+log P (xi; yij(cid:18); (cid:30))
+
+log P (yijxi; (cid:18)) + Xi
+
+log P (xij(cid:30))
+
+where the feedforward network is parametrized by (cid:18) and
+the mixture model is parametrized by (cid:30). If some com-
+ponents of an input vector are missing the observed data
+likelihood can be expressed as
+
+P (yijxo
+
+i ; (cid:18)) = Z P (yijxo
+
+i ; xm
+
+; (cid:18))P (xmjxo
+
+i ; (cid:30))dxm
+
+;
+
+where the input has been decomposed into its observed
+and missing components, x = (xo
+; xm). The mixture
+model is used to integrate the likelihood over the missing
+inputs of the feedforward network. The gradient of this
+likelihood with respect to the network parameters,
+
+@l
+
+@(cid:18)
+
+= Xi
+
+
+
+i ; (cid:18)) Z P (yijxo
+
+P (yijxo
+
+i ; xm
+
+; (cid:18))P (xmjxo
+
+i ; (cid:30))
+
+(yi (cid:0) f(cid:18)(xo
+
+i ; xm))
+
+@f(cid:18)(xo
+
+i ; xm)
+@(cid:18)
+
+dxm
+
+;
+
+exhibits error terms which weight each completion of the
+missing input vector by P (xmjyi; xo
+i ; (cid:18); (cid:30)). This term, by
+Bayes rule, is proportional to the product of the prob-
+ability of the completion given the input, P (xmjxo
+i ; (cid:30)),
+and the posterior probability of the output given that
+completion P (yijxo
+; (cid:18)). The integral can be approx-
+imated by a Monte Carlo method, where, for each miss-
+ing input, several completions are generated according
+to the input distribution. An intuitively appealing as-
+pect of this method is that more weight is placed on
+error gradients from input completions that better ap-
+proximate the target (Tresp et al., 		; Buntine and
+Weigend, 		).
+
+i ; xm
+
+These arguments imply that computing maximum
+likelihood estimates from missing inputs requires a
+model of the joint input density. In principle this could
+be achieved by multiple feedforward networks each learn-
+ing a particular conditional density of inputs. For exam-
+ple, if the pattern of missing inputs is monotone, i.e. the
+d input dimensions can be ordered such that if xij is
+observed then all xik for k < j are also observed, then
+the missing data can be completed by a cascade of d (cid:0) 
+networks. Each network is trained to predict one in-
+put dimension from completed instances of all the lower
+index input dimensions and therefore models that par-
+ticular conditional density (cf. regression imputation for
+monotone multivariate normal data; Little and Rubin,
+	).
+
+However, to accommodate general patterns of miss-
+ing inputs and targets the approach of using multiple
+
+feedforward networks becomes practically cumbersome
+as the number of such networks grows exponentially with
+the data dimensionality. This problem can be avoided
+by modeling both the input and output densities using
+a mixture model.
+
+ Mixture Models and Incomplete Data
+
+The mixture modeling framework allows learning from
+data sets with arbitrary patterns of incompleteness.
+Learning in this framework is a classical estimation prob-
+lem requiring an explicit probabilistic model and an al-
+gorithm for estimating the parameters of the model. A
+possible disadvantage of parametric methods is their lack
+of (cid:13)exibility when compared with nonparametric meth-
+ods. Mixture models, however, largely circumvent this
+problem as they combine much of the (cid:13)exibility of non-
+parametric methods with certain of the analytic advan-
+tages of parametric methods (McLachlan and Basford,
+	).
+
+Mixture models have been utilized recently for super-
+vised learning problems in the form of the \mixtures of
+experts" architecture (Jacobs et al., 		; Jordan and
+Jacobs, 		). This architecture is a parametric re-
+gression model with a modular structure similar to the
+nonparametric decision tree and adaptive spline models
+(Breiman et al., 	; Friedman, 		). The approach
+presented here di(cid:11)ers from these regression-based ap-
+proaches in that the goal of learning is to estimate the
+density of the data. No distinction is made between in-
+put and output variables; the joint density is estimated
+and this estimate is then used to form an input/output
+map. Similar density estimation approaches have been
+discussed by Specht (		) for nonparametric models,
+and Nowlan (		) and Tresp et al. (		), among oth-
+ers, for Gaussian mixture models. To estimate the vec-
+tor function y = f (x) the joint density P (x; y) is esti-
+mated and, given a particular input x, the conditional
+density P (yjx) is formed. To obtain a single estimate of
+y rather than the full conditional density one can evalu-
+ate ^y = E(yjx), the expectation of y given x.
+
+The most appealing feature of mixture models in the
+context of this paper is that they can deal naturally with
+incomplete data. In fact, the problem of estimating mix-
+ture densities can itself be viewed as a missing data prob-
+lem (the \labels" for the component densities are miss-
+ing) and an Expectation{Maximization (EM) algorithm
+(Dempster et al., 	) can be developed to handle both
+kinds of missing data.
+
+. The EM algorithm for mixture models
+
+This section outlines the estimation algorithm for (cid:12)nd-
+ing the maximum likelihood parameters of a mixture
+model (Dempster et al., 	). We model the data
+X = fxigN
+i= as being generated independently from a
+mixture density
+
+P (xi) =
+
+M
+
+Xj=
+
+P (xij!j; (cid:18)j)P (!j);
+
+()
+
+where each component of the mixture is denoted !j and
+parametrized by (cid:18)j . We start by assuming complete
+
+
+
+data. From equation () and the independence assump-
+tion we see that the log likelihood of the parameters
+given the data set is
+
+l((cid:18)jX ) =
+
+N
+
+Xi=
+
+log
+
+M
+
+Xj=
+
+P (xij!j; (cid:18)j )P (!j):
+
+By the maximum likelihood principle the best model of
+the data has parameters that maximize l((cid:18)jX ). This
+function, however, is not easily maximized numerically
+because it involves the log of a sum.
+
+Intuitively, there is a \credit-assignment" problem:
+it is not clear which component of the mixture gener-
+ated a given data point and thus which parameters to
+adjust to (cid:12)t that data point. The EM algorithm for
+mixture models is an iterative method for solving this
+credit-assignment problem. The intuition is that if one
+had access to a \hidden" random variable z indicating
+which data point was generated by which component,
+then the overall maximization problem would decou-
+ple into a set of simple maximizations. Using the bi-
+nary indicator variables Z = fzigN
+i=, de(cid:12)ned such that
+zi = (zi; : : : ; ziM ) and zij =  i(cid:11) xi is generated by
+Gaussian j, a \complete-data" log likelihood function
+can be written
+
+lc((cid:18)jX ; Z) =
+
+N
+
+M
+
+Xi=
+
+Xj=
+
+zij log[P (xijzi; (cid:18))P (zi; (cid:18))];
+
+()
+
+which does not involve a log of a summation.
+
+Since z is unknown lc cannot be utilized directly, so we
+instead work with its expectation, denoted by Q((cid:18)j(cid:18)k).
+As shown by (Dempster et al., 	), l((cid:18)jX ) can be max-
+imized by iterating the following two steps:
+
+E-step: Q((cid:18)j(cid:18)k) = E[lc((cid:18)jX ; Z)jX ; (cid:18)k]
+Q((cid:18)j(cid:18)k):
+M-step:
+
+= arg max
+
+(cid:18)k+
+
+()
+
+(cid:18)
+
+The Expectation or E-step computes the expected com-
+plete data log likelihood, and the Maximization or M-
+step (cid:12)nds the parameters that maximize this likelihood.
+In practice, for densities from the exponential family the
+E-step reduces to computing the expectation over the
+missing data of the su(cid:14)cient statistics required for the
+M-step. These two steps form the basis of the EM algo-
+rithm for mixture modeling.
+
+.. Incorporating missing values into the EM
+
+algorithm
+
+In the previous section we presented one aspect of the
+EM algorithm: learning mixture models. Another im-
+portant application of EM is to learning from data sets
+with missing values (Little and Rubin, 	; Dempster
+et al., 	). This application has been pursued in the
+statistics literature mostly for non-mixture density es-
+timation problems. We now show how combining the
+
+Some exceptions are the use of mixture densities in the
+context of contaminated normal models for robust estima-
+tion (Little and Rubin, 	), and in the context of mixed
+categorical and continuous data with missing values (Little
+and Schluchter, 	).
+
+missing data application of EM with that of learning
+mixture parameters results in a set of clustering, classi-
+(cid:12)cation, and function approximation algorithms for in-
+complete data.
+
+i ; xm
+
+Using the previously de(cid:12)ned notation, xi is divided
+into (xo
+i ) where each data vector can have di(cid:11)erent
+patterns of missing components. (To denote the missing
+and observed components in each data vector we would
+ordinarily introduce superscripts mi and oi, however, we
+have simpli(cid:12)ed the notation for the sake of clarity.)
+
+To handle missing data we rewrite the EM algorithm
+incorporating both the indicator variables from algo-
+rithm () and the missing inputs, X m.
+
+E-step: Q((cid:18)j(cid:18)k) = E[lc((cid:18)jX o
+M-step:
+= arg max
+
+(cid:18)k+
+
+; Z)jX o
+
+; X m
+Q((cid:18)j(cid:18)k):
+
+; (cid:18)k]
+
+(cid:18)
+
+The expected value in the E-step is taken with respect
+to both sets of missing variables. We proceed to illus-
+trate this algorithm for two classes of models, mixtures
+of Gaussians and mixtures of Bernoullis, which we later
+use as building blocks for classi(cid:12)cation and function ap-
+proximation.
+
+.. Real-valued data: mixture of Gaussians
+
+Real-valued data can be modeled as a mixture of
+Gaussians. We start with the estimation algorithm for
+complete data (Duda and Hart, 	; Dempster et al.,
+	; Nowlan, 		). For this model the E-step simpli-
+(cid:12)es to computing E[zijjxi; (cid:18)k]. Given the binary nature
+of zij , E[zijjxi; (cid:18)k], which we denote by hij, is the prob-
+ability that Gaussian j generated data point i.
+
+hij =
+
+j ^(cid:6)jj(cid:0)= expf(cid:0) 
+l= j ^(cid:6)lj(cid:0)= expf(cid:0) 
+PM
+
+ (xi (cid:0) ^(cid:22)j )T ^(cid:6)(cid:0)
+
+j (xi (cid:0) ^(cid:22)j)g
+(xi (cid:0) ^(cid:22)
+
+l)T ^(cid:6)(cid:0)
+
+l
+
+:
+
+l)g
+
+ (xi (cid:0) ^(cid:22)
+
+()
+The M-step re-estimates the means and covariances of
+the Gaussians using the data set weighted by the hij:
+
+;
+
+()
+
+i= hijxi
+
+i= hij
+
+^(cid:22)
+
+k+
+
+j = PN
+PN
+i= hij(xi (cid:0) ^(cid:22)
+PN
+
+i= hij
+
+^(cid:6)k+
+
+j = PN
+
+k+
+j
+
+)(xi (cid:0) ^(cid:22)
+
+k+
+j
+
+)T
+
+:
+
+()
+
+To incorporate missing data we begin by rewriting the
+
+log likelihood of the complete data,
+
+lc((cid:18)jX o
+
+; X m
+
+; Z) =
+
+N
+
+M
+
+Xi
+
+Xj
+
+N
+
+M
+
+Xi
+
+Xj
+
+zij log P (xijzi; (cid:18)) +
+
+zij log P (zij(cid:18)):
+
+(	)
+
+We can ignore the second term since we will only be es-
+timating the parameters of the P (xijzi; (cid:18)). Specializing
+equation (	) to the mixture of Gaussians we note that
+
+Though this derivation assumes equal priors for the
+Gaussians, if the priors are viewed as mixing parameters they
+can also be learned in the maximization step.
+
+
+
+if only the indicator variables zi are missing, the E step
+can be reduced to estimating E[zijjxi; (cid:18)] as before. For
+the case we are interested in, with both zi and xm
+i miss-
+ing, we expand equation (	) using m and o superscripts
+to denote subvectors and submatrices of the parameters
+matching the missing and observed components of the
+data, to obtain
+
+lc((cid:18)jX o
+
+; X m
+
+; Z) =
+
+N
+
+M
+
+Xi
+
+Xj
+
+zij [
+
+n
+
+
+log (cid:25) +
+
+
+
+
+log j(cid:6)jj
+
+(cid:0)
+
+
+
+
+(xo
+
+i (cid:0) (cid:22)
+
+(cid:0)(xo
+
+o
+i (cid:0) (cid:22)
+
+j
+
+o
+
+j )T (cid:6)(cid:0);oo
+j )T (cid:6)(cid:0);om
+
+j
+
+(xo
+
+i (cid:0) (cid:22)
+
+o
+j )
+
+(xm
+
+i (cid:0) (cid:22)
+
+m
+j )
+
+(cid:0)
+
+
+
+
+(xm
+
+i (cid:0) (cid:22)
+
+m
+
+j )T (cid:6)(cid:0);mm
+
+j
+
+(xm
+
+i (cid:0) (cid:22)
+
+m
+j )]:
+
+Note that after taking the expectation,
+the su(cid:14)-
+cient statistics for the parameters include three un-
+known terms, zij , zijxm
+T .
+Thus
+we must compute: E[zij jxo
+i jxo
+i ; (cid:18)k], and
+E[zijxm
+
+i xm
+i ; (cid:18)k], E[zijxm
+
+i , and zijxm
+
+T jxo
+
+i
+
+i ; (cid:18)k]:
+
+i xm
+
+i
+
+One intuitive approach to dealing with missing data
+is to use the current estimate of the data density to com-
+pute the expectation of the missing data in an E-step,
+complete the data with these expectations, and then use
+this completed data to re-estimate parameters in an M-
+step. However, as we have seen in section , this intuition
+fails even when dealing with a single two-dimensional
+Gaussian; the expectation of the missing data always lies
+along a line, which biases the estimate of the covariance.
+On the other hand, the approach arising from applica-
+tion of the EM algorithm speci(cid:12)es that one should use
+the current density estimate to compute the expectation
+of whatever incomplete terms appear in the likelihood
+maximization. For the mixture of Gaussians these in-
+complete terms are the interactions between the indica-
+tor variable zij and the (cid:12)rst and second moments of xm
+i .
+Thus, simply computing the expectation of the missing
+data zi and xm
+from the model and substituting those
+values into the M step is not su(cid:14)cient to guarantee an
+increase in the likelihood of the parameters.
+
+i
+
+To compute the above expectations we de(cid:12)ne
+
+^xm
+ij (cid:17) E[xm
+
+i jzij = ; xo
+
+i ; (cid:18)k] = (cid:22)
+
+m
+
+j + (cid:6)mo
+
+j (cid:6)oo(cid:0)
+
+j
+
+(xo
+
+i (cid:0) (cid:22)
+
+o
+j );
+
+which is the least-squares linear regression between xm
+and xo
+i predicted by Gaussian j. Then, the (cid:12)rst expec-
+tation is E[zijjxo
+i ; (cid:18)k] = hij, the probability as de(cid:12)ned
+in () measured only on the observed dimensions of xi.
+Similarly, we get
+
+i
+
+E[zijxm
+
+i jxo
+
+i ; (cid:18)k] = hij ^xm
+ij ;
+
+For example, (cid:6) is divided into (cid:18) (cid:6)oo (cid:6)om
+
+(cid:6)mo (cid:6)mm (cid:19) corre-
+m (cid:19) : Also note that the superscript
+
+sponding to x = (cid:18) x
+
+x
+
+o
+
+((cid:0); oo) denotes inverse followed by submatrix operations,
+whereas (oo(cid:0)) denotes the reverse order.
+
+
+
+and
+E[zijxm
+
+ij ):
+
+i
+
+j
+
+j
+
+j (cid:6)oo(cid:0)
+
+(cid:6)mo
+
+T jxo
+
+i xm
+
+T +^xm
+
+j (cid:0)(cid:6)mo
+
+i ; (cid:18)k] = hij ((cid:6)mm
+
+ij ^xmT
+()
+The M-step uses these expectations substituted into
+equations () and () to re-estimate the means and co-
+variances. To re-estimate the mean vector, (cid:22)j, we sub-
+stitute the values of ^xm
+ij for the missing components of
+xi in equation (). To re-estimate the covariance matrix
+we substitute the values of the bracketed term in () for
+the outer product matrices involving the missing compo-
+nents of xi in equation ().
+
+.. Discrete-valued data: mixture of
+
+Bernoullis
+
+Binary data can be modeled as a mixture of Bernoulli
+densities. That is, each D-dimensional vector x =
+(x; : : : ; xd; : : : xD), xd  f; g, is modeled as generated
+from the mixture of M Bernoulli densities:
+
+P (xj(cid:18)) =
+
+M
+
+Xj=
+
+P (!j)
+
+D
+
+Yd=
+
+xd
+
+jd ( (cid:0) (cid:22)j d)((cid:0)xd)
+
+(cid:22)
+
+:
+
+For this model the complete data E-step computes
+
+xid
+
+jd ( (cid:0) ^(cid:22)jd)((cid:0)xid)
+
+;
+
+()
+
+ld ( (cid:0) ^(cid:22)ld)((cid:0)xid)
+and the M-step re-estimates the parameters by
+
+d= ^(cid:22)
+
+xid
+
+d= ^(cid:22)
+
+hij = QD
+l= QD
+PM
+j = PN
+PN
+
+k+
+
+^(cid:22)
+
+i= hijxi
+
+i= hij
+
+:
+
+()
+
+i jxo
+
+As before,
+
+to incorporate missing data we must
+compute the appropriate expectations of the su(cid:14)cient
+For the Bernoulli mixture
+statistics in the E-step.
+these include the incomplete terms E[zijjxo
+i ; (cid:18)k] and
+E[zijxm
+i ; (cid:18)k]. The (cid:12)rst is equal to hij calculated over
+the observed subvector of xi. The second, since we as-
+sume that within a class the individual dimensions of the
+m
+Bernoulli variable are independent, is simply hij (cid:22)
+j . The
+M-step uses these expectations substituted into equa-
+tion ().
+
+More generally, discrete or categorical data can be
+modeled as generated by a mixture of multinomial den-
+sities and similar derivations for the learning algorithm
+can be applied. Finally, the extension to data with mixed
+real, binary, and categorical dimensions can be readily
+derived by assuming a joint density with mixed compo-
+nents of the three types. Such mixed models can serve
+to solve classi(cid:12)cation problems, as will be discussed in a
+later section.
+
+. Clustering
+
+Gaussian mixture model estimation is a form of soft clus-
+tering (Nowlan, 		). Furthermore, if a full covariance
+model is used the principal axes of the Gaussians align
+with the principal components of the data within each
+soft cluster. For binary or categorical data soft clus-
+tering algorithms can also be obtained using the above
+Bernoulli and multinomial mixture models. We illus-
+trate the extension of these clustering algorithms to miss-
+ing data problems with a simple example from character
+recognition.
+
+Figure : Learning digit patterns. First row: the ten  (cid:2)  templates used to generate the data set. Second row:
+templates with Gaussian noise added. Third row: templates with noise added and % missing pixels. The training
+set consisted of ten such noisy, incomplete samples of each digit. Fourth row: means of the twelve Gaussians at
+asymptote ((cid:24)  passes through the data set of  patterns) using the mean imputation heuristic. Fifth row:
+means of the twelve Gaussians at asymptote ((cid:24)  passes, same incomplete data set) using the EM algorithm.
+Gaussians constrained to diagonal covariance matrices.
+
+In this example (Fig. ), the Gaussian mixture algo-
+rithm was used on a training set of  -dimensional
+noisy greyscale digits with % of the pixels missing.
+The EM algorithm approximated the cluster means from
+this highly de(cid:12)cient data set quite well. We compared
+EM to mean imputation, a common heuristic where
+the missing values are replaced with their unconditional
+means. The results showed that EM outperformed mean
+imputation when measured both by the distance be-
+tween the Gaussian means and the templates (see Fig. ),
+and by the likelihoods (log likelihoods (cid:6)  s.e.: EM
+(cid:0) (cid:6) ; mean imputation (cid:0) (cid:6) ; n = ).
+
+. Function approximation
+
+So far, we have alluded to data vectors with no refer-
+ence to \inputs" and \targets." In supervised learning,
+however, we generally wish to predict target variables
+from some set of input variables|that is, we wish to ap-
+proximate a function relating these two sets of variables.
+If we decompose each data vector xi into an \input"
+subvector, xi
+i, and a \target" or output subvector, xt
+i,
+then the relation between input and target variables can
+be expressed through the conditional density P (xt
+i).
+This conditional density can be readily obtained from
+the joint input/target density, which is the density which
+all the above mixture models seek to estimate. Thus,
+in this framework, the distinction between supervised
+learning, i.e. function approximation, and unsupervised
+learning, i.e. density estimation, is semantic, resulting
+from whether the data is considered to be composed of
+inputs and targets or not.
+
+ijxi
+
+Focusing on the Gaussian mixture model we note that
+
+the conditional density P (xt
+i) is also a Gaussian mix-
+ture. Given a particular input the estimated output
+should summarize this density.
+
+ijxi
+
+If we require a single estimate of the output, a natu-
+ral candidate is the least squares estimate (LSE), which
+takes the form ^xt(xi
+i). Expanding the expec-
+tation we get
+
+i) = E(xt
+
+i jxi
+
+^xt(xi
+
+i) =
+
+M
+
+Xj=
+
+hij[(cid:22)
+
+t
+j + (cid:6)ti
+
+j (cid:6)ii(cid:0)
+
+j
+
+(xi
+
+i (cid:0) (cid:22)
+
+i
+j)];
+
+()
+
+which is a convex sum of the least squares linear approx-
+imations given by each Gaussian. The weights in the
+sum, hij, vary nonlinearly over the input space and can
+be viewed as corresponding to the output of a classi(cid:12)er
+that assigns to each point in the input space a probability
+of belonging to each Gaussian. The least squares esti-
+mator has interesting relations to models such as CART
+(Breiman et al., 	), MARS (Friedman, 		), and
+mixtures of experts (Jacobs et al., 		; Jordan and
+Jacobs, 		), in that the mixture of Gaussians com-
+petitively partitions the input space, and learns a linear
+regression surface on each partition. This similarity has
+also been noted by Tresp et al. (		).
+
+If the Gaussian covariance matrices are constrained to
+be diagonal, the least squares estimate further simpli(cid:12)es
+to
+
+^xt(xi
+
+i) =
+
+M
+
+Xj=
+
+hij (cid:22)
+
+t
+j ;
+
+The hij in equation () are computed by substituting
+i into equation () and evaluating the exponentials over the
+
+i
+
+x
+
+dimensions of the input space.
+
+
+
+the average of the output means, weighted by the prox-
+imity of xi
+i to the Gaussian input means. This expression
+has a form identical to normalized radial basis function
+(RBF) networks (Moody and Darken, 		; Poggio and
+Girosi, 		), although the two algorithms are derived
+from disparate frameworks. In the limit, as the covari-
+ance matrices of the Gaussians approach zero, the ap-
+proximation becomes a nearest-neighbor map.
+
+Not all learning problems lend themselves to least
+squares estimates|many problems involve learning a
+one-to-many mapping between the input and target vari-
+ables (Ghahramani, 		). The resulting conditional
+densities are multimodal and no single value of the
+output given the input will appropriately re(cid:13)ect this
+fact (Shizawa, 		; Ghahramani, 		; Bishop, 		).
+For such problems a stochastic estimator, where the out-
+put is sampled according to ^xt(xi
+i), is to be
+preferred to the least squares estimator.
+
+i) (cid:24) P (xt
+
+ijxi
+
+For learning problems involving discrete variables the
+LSE and stochastic estimators have a di(cid:11)erent interpre-
+tation. If we wish to obtain the posterior probability of
+the output given the input we would use the LSE esti-
+mator. On the other hand, if we wish to obtain output
+estimates that fall in our discrete output space we would
+use the stochastic estimator.
+
+. Classi(cid:12)cation
+
+Classification with missing inputs
+
+100
+
+80
+
+60
+
+40
+
+20
+
+n
+o
+i
+t
+a
+c
+i
+f
+i
+s
+s
+a
+l
+c
+
+t
+c
+e
+r
+r
+o
+c
+
+%
+
+0
+
+EM
+
+MI
+
+80
+
+100
+
+40
+
+20
+% missing features
+
+60
+
+Figure : Classi(cid:12)cation of the iris data set.  data
+points were used for training and  for testing. Each
+data point consisted of  real-valued attributes and one
+of three class labels. The (cid:12)gure shows classi(cid:12)cation per-
+formance (cid:6)  standard error (n = ) as a function of
+proportion missing features for the EM algorithm and
+for mean imputation (MI), a common heuristic where
+the missing values are replaced with their unconditional
+means.
+
+Classi(cid:12)cation, though strictly speaking a special case
+of function approximation, merits attention of its own.
+Classi(cid:12)cation problems involve learning a mapping from
+an input space of attributes into a set of discrete class
+
+
+
+labels. The mixture modeling framework presented here
+lends itself readily to classi(cid:12)cation problems by modeling
+the class label as a multinomial variable. For example,
+if the attributes are real-valued and there are D class
+labels, a mixture model with Gaussian and multinomial
+components can be used;
+
+P (x; C = dj(cid:18)) =
+
+M
+
+Xj=
+
+P (!j)
+
+(cid:22)jd
+
+((cid:25))n=j(cid:6)jj=
+
+expf(cid:0)
+
+
+
+
+(x (cid:0) (cid:22)j)T (cid:6)(cid:0)
+
+j (x (cid:0) (cid:22)j )g
+
+denotes the joint probability that the data point has at-
+tributes x and belongs to class d, where the (cid:22)jd are the
+parameters for the multinomial class variable. That is,
+
+d= (cid:22)jd = .
+
+(cid:22)jd = P (C = dj!j; (cid:18)), and PD
+
+Missing attributes and missing class labels (i.e., unla-
+beled data points) are readily handled via the EM algo-
+rithm. In the E-step, missing attributes are completed
+using the same formulas as for the Gaussian mixture ex-
+cept that
+
+hij = P (xo
+
+i ; Ci = dj!j; (cid:18)) =
+
+i j!j ; (cid:18))
+
+(cid:22)jdP (xo
+PM
+l= (cid:22)ld P (xo
+
+:
+
+i j!l ; (cid:18))
+
+On the other hand, if a class label is missing hij becomes
+l= P (xij!l; (cid:18)), exactly as in the Gaussian
+mixture. The class label is then completed with a prob-
+
+P (xij!j ; (cid:18))=PM
+ability vector whose dth component is PM
+
+Once the classi(cid:12)cation model has been estimated,
+the most likely label for a particular input x may be
+obtained by computing P (C = djx; (cid:18)). Similarly, the
+class conditional densities can be computed by evaluat-
+ing P (xjC = d; (cid:18)). Conditionalizing over classes in this
+way yields class conditional densities which are in turn
+mixtures of Gaussians. Figure  shows the performance
+of the EM algorithm on a sample classi(cid:12)cation problem
+with varying proportions of missing features.
+
+j= hij (cid:22)j d.
+
+This mixture-based approach to classi(cid:12)cation is
+closely related to the mixture discriminant analysis
+(MDA) approach recently proposed by Hastie and Tib-
+shirani (		). In MDA, classes are also (cid:12)t by mixture
+densities using the EM algorithm and an optimal dis-
+criminant is obtained. Hastie and Tibshirani extend
+this basic MDA procedure by combining it with reduced
+rank discrimination. Like Fisher-Rao linear discriminant
+analysis this results in an interpretable, low dimensional
+projection of the data and often also leads to improved
+classi(cid:12)cation performance. While the authors do not
+mention missing data, it seems likely that EM methods
+can be used in the context of their algorithm.
+
+Previous approaches to classi(cid:12)cation from incomplete
+patterns have proceeded along di(cid:11)erent lines. Cheese-
+man et al. (	) describe a Bayesian classi(cid:12)cation
+method in which each class is modeled as having Gaus-
+sian real-valued attributes and multinomial discrete at-
+tributes. The learning procedure (cid:12)nds the maximum a
+posteriori parameters of the model by di(cid:11)erentiating the
+posterior probability of the class parameters and setting
+to zero. This yields a coupled set of nonlinear equations,
+
+similar to the EM steps, which can be iterated to (cid:12)nd
+the posterior mode of the parameters (Dempster et al.,
+	). To handle missing data the authors state that
+\for discrete attributes it can be shown that the correct
+procedure for treating an unknown value is equivalent to
+adding an unknown category to the value set" (p. ).
+For real-valued attributes they add a known/unknown
+category to each attribute and set its value appropri-
+ately. Three comments can be made about this ap-
+proach. First, each unknown category added to the
+multinomial value set results in an extra parameter that
+has to be estimated. Furthermore, adding an unknown
+category does not re(cid:13)ect the fact that the unobserved
+data actually arises from the original multinomial value
+set (an argument also made by Quinlan, 	; see be-
+low). For example, for a data set in which one attribute
+is often unknown the algorithm may form a class based
+on that attribute taking on the value unknown|a situ-
+ation which is clearly undesirable in a classi(cid:12)er. Finally,
+as each class is modeled by a single Gaussian or multino-
+mial and the data points are assumed to be unlabeled,
+the Cheeseman et al. (	) algorithm is in fact a form
+of soft clustering.
+
+Southcott and Bogner (		) have approached the
+problem of classi(cid:12)cation of incomplete data using an ap-
+proximation to EM for clustering.
+In the E-step, the
+observed data are classi(cid:12)ed using the current mixture
+model, and each data point is assigned to its most likely
+class. The parameters of each class are then re-estimated
+in the M-step. In our notation this approximation corre-
+sponds to setting the highest hij for each data point to
+ and all the others to . They compared this method
+with a neural network based algorithm in which each
+missing input is varied through the possible range of
+(discrete) attribute values to (cid:12)nd the completion result-
+ing in minimum classi(cid:12)cation error. They reported that
+their approximation to EM outperformed both the neu-
+ral network algorithm and an algorithm based on linear
+discriminant analysis. They did not include the exact
+EM algorithm in their comparison.
+
+Quinlan (	,		) discusses the problem of missing
+data in the context of decision tree classi(cid:12)ers. Quinlans
+decision tree framework uses a measure of information
+gain to build a classi(cid:12)er, resulting in a tree structure
+of queries on attribute values and a set of leaves rep-
+resenting class membership. The author concludes that
+treating unknown as a separate value is not a good so-
+lution to the missing value problem, as querying on at-
+tributes with unknown values will have higher apparent
+information gain (Quinlan, 	). The approach that
+he advocates instead is to compute the expected infor-
+mation gain, by assuming that the unknown attribute is
+distributed according to the observed values in the sub-
+set of the data at that node of the tree. This approach
+is consistent with the information theoretic framework
+adopted in his work and parallels the EM and Bayesian
+treatments of missing data which suggest integrating
+over the possible missing values.
+
+An alternative method of handling missing data in de-
+cision trees is presented by Breiman et al. (	) for the
+CART algorithm. CART initially constructs a large de-
+
+cision tree based on a splitting criterion closely related to
+the above measure of information gain. The tree is then
+pruned recursively using a measure of model complexity
+proportional to the number of terminal nodes, resulting
+in a smaller, more interpretable tree with better gener-
+alization properties. If a case is missing the value of an
+attribute then it is not considered when evaluating the
+goodness of splits on that attribute. Cases are assigned
+to branches of a split on an attribute where they have
+missing values using the best surrogate split|i.e. the
+split on another attribute which partitions the data most
+similarly to the original split. This method works well
+when there is a single, highly correlated attribute that
+predicts the e(cid:11)ects of a split along the missing attribute.
+However, if no single attribute can predict the e(cid:11)ects of
+the split this method may not perform well. An approach
+based on computing the expected split from all the ob-
+served variables, similar to Quinlans, would be more
+suitable from a statistical perspective and may provide
+improved performance with missing data.
+
+ Bayesian methods
+
+In Bayesian learning the parameters are treated as un-
+known random variables characterized by a probability
+distribution. Bayesian learning utilizes a prior distribu-
+tion for the parameters, which may encode world knowl-
+edge, initial biases of the learner, or constraints on the
+probable parameter values. Learning proceeds by Bayes
+rule|multiplying the prior probability of the parameters
+by the likelihood of the data given the parameters, and
+normalizing by the integral over the parameter space|
+resulting in a posterior distribution of the parameters.
+The information learned about the unknown parameters
+is expressed in the form of this posterior probability dis-
+tribution.
+
+In the context of learning from incomplete data, the
+Bayesian use of priors can have impact in two arenas.
+First, the prior may re(cid:13)ect assumptions about the initial
+distribution of parameter values as described above. The
+learning procedure converts this prior into a posterior via
+the data likelihood. We have seen that to perform this
+conversion independently of the missing data mechanism
+requires both that the mechanism be missing at random
+and that the prior be factorizable. Second, the prior
+may re(cid:13)ect assumptions about the initial distribution of
+the missing values. Thus, if we have a prior distribution
+for input values we can complete the missing data by
+sampling from this distribution.
+
+For complete data problems and simple models the
+judicious choice of conjugate priors for the parameters
+often allows analytic computation of their posterior dis-
+tribution (Box and Tiao, 	). However, in incomplete
+data problems the usual choices of conjugate priors do
+not generally lead to recognizable posteriors, making it-
+erative simulation and sampling techniques for obtaining
+the posterior distribution indispensable (Schafer, 		).
+
+. Data augmentation and Gibbs sampling
+
+One such technique, which is closely related in form to
+the EM algorithm, is data augmentation (Tanner and
+Wong, 	). This iterative algorithm consists of two
+
+
+
+steps. In the Imputation or I-step, instead of comput-
+ing the expectations of the missing su(cid:14)cient statistics,
+we simulate m random draws of the missing data from
+their conditional distribution P (X mjX o
+; (cid:18)). In the Pos-
+terior or P-step we sample m times from the posterior
+distribution of the parameters, which can now be more
+easily computed with the imputed data: P ((cid:18)jX o
+; X m).
+Thus, we obtain samples from the joint distribution of
+P (X m
+; (cid:18)jX o) by alternately conditioning on one or the
+other of the unknown variables, a technique known as
+Gibbs sampling (Geman and Geman, 	). Under some
+mild regularity conditions this algorithm can be shown
+to converge in distribution to the posterior (Tanner and
+Wong, 	). Note that the augmented data can be cho-
+sen so as to simplify the P-step in much the same way as
+indicator variables can be chosen to simplify the M-step
+in EM.
+Data
+
+aug-
+mentation techniques have been recently combined with
+the Metropolis{Hastings algorithm (Schafer, 		). In
+Metropolis{Hastings (Metropolis et al., 	; Hastings,
+	), one creates a Monte Carlo Markov chain by draw-
+ing from a probability distribution meant to approximate
+the distribution of interest and accepting or rejecting the
+drawn value based on an acceptance ratio. The accep-
+tance ratio, e.g. the ratio of probabilities of the drawn
+state and the previous state, can often be chosen to be
+easy to calculate as it does not involve computation of
+the normalization factor. If the transition probabilities
+allow any state to be reached eventually from any other
+state (i.e. the chain is ergodic) then the Markov chain
+will approach its stationary distribution, chosen to be
+the distribution of interest, from any initial distribution.
+The combination of data augmentation and Metropolis{
+Hastings can be used, for example, in problems where
+the posterior itself is di(cid:14)cult to sample from in the P-
+step. For such problems one may generate a Markov
+chain whose stationary distribution is P ((cid:18)jX o
+
+; X m).
+
+. Multiple imputation and Bayesian
+
+backpropagation
+
+Multiple imputation (Rubin, 	) is a technique in
+which each missing value is replaced by m simulated val-
+ues which re(cid:13)ect uncertainty about the true value of the
+missing data. After multiple imputation, m completed
+data sets exist, each of which can be analyzed using com-
+plete data methods. The results can then be combined
+to form a single inference. Though multiple imputation
+requires sampling from P (X mjX o
+; (cid:18)), which may be dif-
+(cid:12)cult, iterative simulation methods can also be used in
+this context (Schafer, 		).
+
+The Bayesian backpropagation technique for missing
+data presented by Buntine and Weigend (		) is a spe-
+cial case of multiple imputation. In Bayesian backpropa-
+gation, multiple values of the input are imputed accord-
+ing to a prior distribution so as to approximate the inte-
+gral in (), which in turn is used to compute the gradient
+required for backpropagation. This procedure is similar
+to that of Tresp et al. (		), except that whereas the
+former completes the data by sampling from a prior dis-
+tribution of inputs, the latter estimates this distribution
+
+directly from the data.
+
+ Boltzmann machines and incomplete
+
+data
+
+Boltzmann machines are networks of binary stochastic
+units with symmetric connections, in which learning cor-
+responds to minimizing the relative entropy between the
+probability distribution of the visible states and a target
+distribution (Hinton and Sejnowski, 	). The relative
+entropy cost function can be rewritten to reveal that,
+if the target distribution is taken to be the empirical
+distribution of the data, it is equivalent to the model
+likelihood. Therefore, the Boltzmann learning rule im-
+plements maximum likelihood density estimation over
+binary variables.
+
+The Boltzmann learning procedure (cid:12)rst estimates cor-
+relations between unit activities in a stage where both
+input and target units are clamped and in a stage where
+the target units are unclamped. These correlations are
+then used to modify the parameters of the network in
+the direction of the relative entropy cost gradient. This
+moves the output unit distribution in the unclamped
+phase closer to the target distribution in the clamped
+phase.
+
+Reformulated in terms of maximum likelihood condi-
+tional density estimation, the Boltzmann learning rule
+is an instance of the generalized EM algorithm (GEM;
+Dempster, Laird, and Rubin, 	): the estimation of
+the unit correlations given the current weights and the
+clamped values corresponds to the E-step, and the up-
+date of the weights corresponds to the M-step (Hinton
+and Sejnowski, 	). It is generalized EM in the sense
+that the M-step does not actually maximize the likeli-
+hood but simply increases it by gradient ascent.
+
+The incomplete variables in the Boltzmann machine
+are the states of the hidden units|those that are not
+denoted as the visible input or output units. This sug-
+gests that the principled way of handling missing inputs
+or targets in a Boltzmann machine is to treat them as
+hidden units, that is, to leave them unclamped. Ex-
+actly as in the formulation for mixture models presented
+above, the EM algorithm will then estimate the appro-
+priate su(cid:14)cient statistics|the (cid:12)rst order correlations|
+in the E-step. These su(cid:14)cient statistics will then be used
+to increase the model likelihood in the M-step.
+
+ Conclusions
+
+There are several ways of handling missing data dur-
+ing learning. Heuristics, such as (cid:12)lling in the missing
+data with unconditional or conditional means, are not al-
+ways e(cid:14)cient, discarding information latent in the data
+set. More principled statistical approaches yield inter-
+pretable results, providing a guarantee to (cid:12)nd the max-
+imum likelihood parameters despite the missing data.
+
+These statistical approaches argue convincingly that
+the missing data has to be integrated out using an esti-
+mate of the data density. One class of models in which
+
+From a strictly Bayesian point of view both procedures
+are improper in that they dont take into account the vari-
+ability of the parameters in the integration.
+
+
+
+this can be performed naturally and e(cid:14)ciently are mix-
+ture models. For these models, we have described appli-
+cations to clustering, function approximation, and clas-
+si(cid:12)cation from real and discrete data. In particular, we
+have shown how missing inputs and targets can be incor-
+porated into the mixture model framework|essentially
+by making a dual use of the ubiquitous EM algorithm.
+Finally, our principal conclusion is that virtually all of
+the incomplete data techniques reviewed from the neural
+network and machine learning literatures can be placed
+within this basic statistical framework.
+
+Acknowledgements
+
+Thanks to D.B. Rubin for helpful discussions on miss-
+ing data. The iris data set was obtained from the UCI
+Repository of Machine Learning Databases.
+

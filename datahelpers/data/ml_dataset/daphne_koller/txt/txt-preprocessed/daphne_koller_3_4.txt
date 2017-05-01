@@ -1,0 +1,4364 @@
+ABSTRACT
+Estimating the result size of complex queries that involve selection on mul-
+tiple attributes and the join of several relations is a difcult but fundamental
+task in database query processing. It arises in cost-based query optimiza-
+tion, query proling, and approximate query answering. In this paper, we
+show how probabilistic graphical models can be effectively used for this
+task as an accurate and compact approximation of the joint frequency dis-
+tribution of multiple attributes across multiple relations. Probabilistic Re-
+lational Models (PRMs) are a recent development that extends graphical
+statistical models such as Bayesian Networks to relational domains. They
+represent the statistical dependencies between attributes within a table, and
+between attributes across foreign-key joins. We provide an efcient algo-
+rithm for constructing a PRM from a database, and show how a PRM can
+be used to compute selectivity estimates for a broad class of queries. One
+of the major contributions of this work is a unied framework for the es-
+timation of queries involving both select and foreign-key join operations.
+Furthermore, our approach is not limited to answering a small set of pre-
+determined queries; a single model can be used to effectively estimate the
+sizes of a wide collection of potential queries across multiple tables. We
+present results for our approach on several real-world databases. For both
+single-table multi-attribute queries and a general class of select-join queries,
+our approach produces more accurate estimates than standard approaches to
+selectivity estimation, using comparable space and time.
+
+1.
+
+INTRODUCTION
+
+Accurate estimates of the result size of queries are crucial to sev-
+eral query processing components of a database management sys-
+tem (DBMS). Cost-based query optimizers use intermediate result
+size estimates to choose the optimal query execution plan. Query
+prolers provide feedback to a DBMS user during the query de-
+sign phase by predicting resource consumption and distribution of
+query results. Precise selectivity estimates also allow efcient load
+balancing for parallel join on multiprocessor systems. Selectivity
+estimates can also be used to approximately answer counting (ag-
+gregation) queries.
+
+The result size of a selection query over multiple attributes is de-
+termined by the joint frequency distribution of the values of these
+attributes. The joint distribution encodes the frequencies of all
+
+Permission to make digital or hard copies of all or part of this work for
+personal or classroom use is granted without fee provided that copies are
+not made or distributed for prot or commercial advantage and that copies
+bear this notice and the full citation on the rst page. To copy otherwise, to
+republish, to post on servers or to redistribute to lists, requires prior specic
+permission and/or a fee.
+ACM SIGMOD 2001 May 21-24, Santa Barbara, California, USA
+Copyright 2001 ACM 1-58113-332-4/01/05 ...$5.00.
+
+combinations of attribute values, so representing it exactly becomes
+infeasible as the number of attributes and values increases. Most
+commercial systems approximate the joint distribution by adopting
+several key assumptions; these assumptions allow fast computation
+of selectivity estimates, but, as many have noted, the estimates can
+be very inaccurate.
+
+The rst common assumption is the attribute value independence
+assumption, under which the distributions of individual attributes
+are independent of each other and the joint distribution is the prod-
+uct of single-attribute distributions. However, real data often con-
+tain strong correlations between attributes that violate this assump-
+tion, leading to very inaccurate approximations. For example a cen-
+sus database might contain highly correlated attributes such as In-
+come and Home-Owner. The attribute value independence assump-
+tion would lead to an overestimate of the result size of a query that
+asks for low-income home-owners.
+
+A second common assumption is the join uniformity assump-
+tion, which states that a tuple from one relation is equally likely
+to join with any tuple from the second relation. Again, there are
+many situations in which this assumption is violated. For exam-
+ple, assume that our census database has a second table for online
+purchases. High-income individuals typically make more online
+purchases than average. Therefore, a tuple in the purchases table is
+more likely to join with a tuple of a high-income individual, thereby
+violating the join uniformity assumption. If we consider a query
+for purchases by high-income individuals, an estimation procedure
+that makes the join uniformity assumption is likely to substantially
+underestimate the query size.
+
+To relax these assumptions, we need a more rened approach,
+that takes into consideration the joint distribution over multiple at-
+tributes, rather than the distributions over the attributes in isola-
+tion. Several approaches to joint distribution approximation, also
+referred to as data reduction, have been proposed recently; see [2]
+for an excellent summary of this area. Most of this work has fo-
+cused on the task of estimating the selectivity of a select operation
+ the select selectivity  within a single table. One simple ap-
+proach for approximating the query size is via random sampling.
+Here, a set of samples is generated, and then the query result size is
+estimated by computing the actual query result size relative to the
+sampled data. However, the amount of data required for accurate
+estimation can be quite large. More recently, several approaches
+have been proposed that attempt to capture the joint distribution
+over attributes more directly. The earliest of these is the multidi-
+mensional histogram approach of Poosala and Ioannidis [23, 25].
+They provide an extensive exploration of the taxonomy of methods
+for constructing multidimensional histograms and study the effec-
+tiveness of different techniques. They also propose an approach
+based on singular value decomposition, applicable only in the two-
+
+dimensional case. A newer approach is the use of wavelets to ap-
+proximate the underlying joint distribution [21, 27, 6].
+
+Much less work has been done on estimating the selectivity of
+joins. Commercial DBMSs commonly make the uniform join as-
+sumption. One approach that has been suggested is based on ran-
+dom sampling: randomly sample the two tables, and compute their
+join. This approach is awed in several ways [1], and some work
+has been devoted to alternative approaches that generate samples
+in a more targeted way [20]. An alternative recent approach is
+the work of Acharya et al. [1] on join synopses, which maintains
+statistics for a few distinguished joins. To our knowledge, no work
+has been done on approaches that support selectivity estimation for
+queries containing both select and join operations in real-world do-
+mains.
+
+In this paper, we propose an alternative approach for the selec-
+tivity estimation problem, based on techniques from the area of
+probabilistic graphical models [17, 24]. As we will show, our ap-
+proach has several important advantages. First, it provides a uni-
+form framework for select selectivity estimation and foreign-key
+join selectivity estimation, introducing a systematic method for es-
+timating the size of queries involving both operators. Second, our
+approach is not limited to answering a small set of predetermined
+queries; a single statistical model can be used to effectively esti-
+mate the sizes of any (select foreign-key join) query, over any set
+of tables and attributes in the database.
+
+Probabilistic graphical models are a language for compactly rep-
+resenting complex joint distributions over high-dimensional spaces.
+They are based on a graphical notation that encodes conditional
+independence between attributes in the distribution. Conditional
+independence arises when two attributes are correlated, but the in-
+teraction is mediated via one or more other variables. For exam-
+ple, in a census database, education is correlated with income, and
+home-owner status is correlated with income. Hence, education is
+correlated with home-owner status, but only indirectly via the in-
+come level. Interactions of this type are extremely common in real
+domains. Probabilistic graphical models exploit the conditional in-
+dependencies that exist in a domain, and thereby allow us to specify
+joint distributions over high dimensional spaces compactly.
+
+In this paper, we provide a framework for using probabilistic
+graphical models to estimate selectivity of queries in a relational
+database. As we show, Bayesian networks (BNs) [24] can be used to
+represent the interactions between attributes in a single table, pro-
+viding high-quality estimates of the joint distribution over the at-
+tributes in that table. Probabilistic relational models (PRMs) [18]1
+extend Bayesian networks to the relational setting. As we show,
+PRMs allow us to represent skew in the join probabilities between
+tables, as well as correlations between attributes of tuples joined
+via a foreign-key. They thereby allow us to estimate selectivity of
+queries involving both selects and joins over multiple tables.
+
+Like most selectivity estimation algorithms, our algorithm con-
+sists of two phases. The ofine phase, in which the PRM is con-
+structed from the database. This process is automatic, based solely
+on the data and the space allocated to the statistical model. The
+second, online phase, is the selectivity estimation for a particular
+query. The selectivity estimator receives as input a query and a
+PRM, and outputs an estimate for the result size of the query. Note
+that the same PRM is used to estimate the size of a query over any
+subset of the attributes in the database; we are not required to have
+prior information about the query workload.
+ The term probabilistic relational models has two very distinct
+meanings in two different communities: the probabilistic modeling
+community [11] and the database community [14, 10]. We use the
+term in its former sense.
+
+Throughout this paper, we make two important assumptions. The
+rst is that foreign keys obey referential integrity. This assumption
+about the database is required in the construction of the PRM. The
+second is that all joins are equality joins between a foreign key and
+a primary key. This assumption is made purely for ease of presen-
+tation. While queries with foreign-key joins stand to benet most
+from the probabilistic models that we propose, our methods are not
+limited to dealing with these queries and we describe how to extend
+our approach to a broader class of joins in Section 6.
+
+The remainder of the paper is structured as follows. In Section 2,
+we consider the case of selectivity estimation for select operations
+over a single table. We dene Bayesian networks, and show how
+they can be used to approximate the joint distribution over the en-
+tire set of attributes in the table. In Section 3, we move to the more
+complex case of queries over multiple tables. We present the PRM
+framework, which generalizes Bayesian networks to the relational
+case, and show how we can use PRMs to accomplish both select
+and join selectivity estimation in a single framework. In Section 4,
+we present an algorithm for automatically constructing a PRM from
+a relational database. In Section 5, we provide empirical validation
+of our approach, and compare it to some of the most common ex-
+isting approaches. We present experiments over several real-world
+domains, showing that our approach provides much higher accu-
+racy (in a given amount of space) than previous approaches, at a
+very reasonable computational cost, both ofine and online.
+
+2. ESTIMATION FOR SINGLE TABLES
+
+We rst consider estimating the result size for select queries over
+a single relation. For most of this section, we restrict attention to
+domains where the number of values for each attribute is relatively
+small (up to about 50), and to queries with equality predicates of
+the form attribute = value. Neither of these restrictions is a fun-
+damental limitation of our approach; at the end of this section, we
+discuss how our approach can be applied to domains with larger
+attribute value spaces and to range queries.
+Let 
+attributes
+bution over
+
+deal with the normalized frequency distribution
+where:
+
+be some table; we use 
+.* to denote the value (non-key)
+. We denote the joint frequency distri-
+. It is convenient to
+
+
+
+	
+
+
+	
+
+
+
+
+of 
+as
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+, and then select as the values of
+
+
+
+
+
+This transformation allows us to treat
+as a prob-
+ability distribution. We can also view this joint distribution as
+generated by an imaginary process, where we sample a tuple
+from 
+of
+pling process used to dene
+merely using it as a way of dening
+
+the values
+. (Note that we are not suggesting that the sam-
+be carried out in practice. We are
+
+
+
+
+
+
+
+
+
+
+.)
+
+
+Now, consider a query
+.*, which is a conjunction of selections of the form
+#$ be the event that the equalities in
+the size of the result of the query
+is:
+
+over a set of attributes
+
+hold for
+
+
+. Let
+. It is clear that
+
+
+"!
+
+
+
+
+
+-,
+
+')(
+
+*+
+
+size$&%
+
+#$
+is
+is the number of tuples satisfying
+where
+the probability, relative to '
+. To simplify notation,
+we will often simply use
+. As the size of the relation is
+known, the joint probability distribution contains all the necessary
+information for query size estimation. Hence, we focus attention
+on the joint probability distribution.
+
+
+
+, of the event#$
+
+
+
+and
+
+#$
+
+(1)
+
+Unfortunately, the number of entries in this joint distribution
+grows exponentially in the number of attributes, so that explicitly
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+representing the joint distribution
+is almost always intractable.
+Several approaches have been proposed to circumvent this issue by
+approximating the joint distribution (or projections of it) using a
+more compact structure [25, 21]. We also propose the use of statis-
+tical models that approximate the full joint distribution. However in
+order to represent the distribution in a compact manner, we exploit
+the conditional independence that often holds in a joint distribution
+over real-world data. By decomposing the representation of a joint
+distribution into factors that capture the independencies that hold
+in the domain, we get a compact representation for the distribution.
+2.1 Conditional Independence
+Consider a simple relation  with the following three value at-
+tributes, each with its value domain shown in parentheses: Educa-
+tion (high-school, college, advanced-degree), Income (low, medium,
+high), and Home-Owner (false, true). As shorthand, we will use
+the rst letter in each of these names to denote the attribute, using
+capital letters for the attributes and lower case letters for particular
+to denote a probability distri-
+values of the attributes. We use
+bution over the possible values of attribute
+to denote
+the probability of the event
+
+, and
+
+
+
+.
+
+Assume that the joint distribution of attribute values in a database
+is as shown in Fig. 1(a). Using this joint distribution, we can com-
+pute the selectivity of any query over 
+. As shorthand,
+we will use
+
+to denote a select query of the form 
+
+. However, to
+explicitly represent the joint distribution we need to store 18 num-
+bers, one for each possible combination of values for the attributes.
+(In fact, we can get away with 17 numbers because we know that
+the entries in the joint distribution must sum to 1.)
+
+
+. Then size$
+
+
+, 
+, and 
+
+
+
+
+	
+
+')(
+
+,
+
+
+
+In many cases, however, our data will exhibit a certain structure
+that allows us to (approximately) represent the distribution using a
+much more compact form. The intuition is that some of the correla-
+tions between attributes might be indirect ones, mediated by other
+attributes. For example, the effect of education on owning a home
+might be mediated by income: a high-school dropout who owns
+a successful Internet startup is more likely to own a home than a
+highly educated beach bum  the income is the dominant factor,
+not the education. This assertion is formalized by the statement
+that Home-owner is conditionally independent of Education given
+
+, we have that:
+
+Income, i.e., for every combinations of values
+
+
+This assumption holds for the distribution of Fig. 1.
+
+
+
+
+
+
+
+
+
+
+
+The conditional independence assumption allows us to represent
+the joint distribution more compactly in a factored form. Rather
+, we will represent: the marginal dis-
+than representing
+; a conditional distribution of In-
+tribution over Education 
+; and a conditional distribution
+come given Education 
+of Home-owner given Income 
+. It is easy to verify
+that this representation contains all of the information in the orig-
+inal joint distribution, if the conditional independence assumption
+holds:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(2)
+
+and 
+
+where the last equality follows from the conditional independence
+of 
+. In our example, the joint distribution can be
+represented using the three tables shown in Fig. 1(b). It is easy to
+verify that they do encode precisely the same joint distribution as
+in Fig. 1(a).
+
+given 
+
+The storage requirement for the factored representation seems to
+
+be 
+
+ , as before. In fact, if we account for the fact
+
+that some of the parameters are redundant because the numbers
+
+must add up to 1, we get  !	!"
+#$ , as compared to the
+&% we had in the full joint. While the savings in this case may
+
+not seem particularly impressive, the savings grow exponentially as
+the number of attributes increases, as long as the number of direct
+dependencies remains bounded.
+
+Note that the conditional independence assumption is very dif-
+ferent from the standard attribute independence assumption. In this
+case, for example, the one-dimensional histograms (i.e., marginal
+distributions) for the three attributes are shown in Fig. 1(c). It is
+easy to see that the joint distribution that we would obtain from
+the attribute independence assumption in this case is very different
+from the true underlying joint distribution. It is also important to
+note that our conditional independence assumption is compatible
+with the strong correlation that exists between Home-owner and
+Education in this distribution. Thus, conditional independence is a
+much weaker and more exible assumption than standard (marginal)
+independence.
+
+2.2 Bayesian Networks
+
+Bayesian networks [24] are compact graphical representations
+for high-dimensional joint distributions. They exploit the the un-
+derlying structure of the domain  the fact that only a few aspects
+of the domain affect each other directly. We dene our probabil-
+ity space as the set of possible assignments to the set of attributes
+. BNs can compactly represent a joint
+
+distribution over
+by utilizing a structure that captures
+conditional independences among attributes, thereby taking advan-
+tage of the locality of probabilistic inuences.
+
+of a relation 
+
+
+
+
+A Bayesian network '
+component, (
+
+
+consists of two components. The rst
+, is a directed acyclic graph whose nodes correspond
+. The edges in the graph denote a di-
+to the attributes
+
+rect dependence of an attribute
+. The
+graphical structure encodes a set of conditional independence as-
+sumptions: each node
+is conditionally independent of its non-
+descendants given its parents.
+
+on its parents Parents
+
+
+
+
+Fig. 2(a) shows a Bayesian network constructed (automatically)
+from data obtained from the 1993 Current Population Survey of
+U.S. Census Bureau using their Data Extraction System [5]. In this
+case, the table contains 12 attributes: Age, Worker-Class, Educa-
+tion, Marital-Status, Industry, Race, Sex, Child-Support, Earner,
+Children, Income, and Employment-Type. The domain sizes for the
+attributes are, respectively: 18, 9, 17, 7, 24, 5, 2, 3, 3, 42, and 4. We
+see, for example, that the Children attribute (representing whether
+or not there are children in the household) depends on other at-
+tributes only via the attributes Income, Age, and Marital-Status.
+Thus, Children is conditionally independent of all other attributes
+given Income, Age, and Marital-Status.
+
+
+
+
+
+
+
+
+
+*)
+
+Parents
+
+The second component of a BN describes the statistical relation-
+It consists of a condi-
+ship between each node and its parents.
+for
+tional probability distribution (CPD)
+each attribute, which species the distribution over the values of
+given any possible assignment of values to its parents. This
+CPD may be represented in a number of ways. It may be repre-
+sented as a table, as in our earlier example. Alternatively, it can
+be represented as a tree, where the interior vertices represent splits
+, and the leaves contain distri-
+on the value of some parent of
+. In this representation, we nd the
+butions over the values of
+conditional distribution over
+given a particular choice of val-
+
+/.
+ues
+for its parents by following the
+-,
+appropriate path in the tree down to a leaf: When we encounter a
+split on some variable
+10 , we go down the branch correspond-
+ing to the value of $2 ; we then use the distribution stored at that
+
+
+
++
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+H 	
+
+
+
+I
+l
+l
+
+E
+f
+h
+h
+t
+h m f
+t
+h m
+f
+h
+h
+t
+h
+h
+f
+l
+c
+c
+l
+t
+c m f
+t
+c m
+f
+h
+c
+t
+h
+c
+l
+a
+f
+a
+l
+t
+a m f
+t
+a m
+f
+h
+a
+a
+h
+t
+
+0.27
+0.03
+0.105
+0.045
+0.005
+0.045
+0.135
+0.015
+0.063
+0.027
+0.006
+0.054
+0.018
+0.002
+0.042
+0.018
+0.012
+0.108
+
+E
+h
+c
+a
+
+
+
+0.5
+0.3
+0.2
+
+E
+I
+h
+l
+m h
+h
+h
+l
+c
+m c
+h
+c
+l
+a
+m a
+h
+a
+
+
+
+0.6
+0.3
+0.1
+0.5
+0.3
+0.2
+0.1
+0.3
+0.6
+
+I
+H
+l
+t
+l
+f
+t
+m
+f m
+h
+t
+f
+h
+
+
+
+
+0.1
+0.9
+0.3
+0.7
+0.9
+0.1
+
+E
+h
+c
+a
+
+I
+l
+m
+h
+
+
+
+0.5
+0.3
+0.2
+
+
+
+0.47
+0.30
+0.23
+
+H 
+
+
+
+0.344
+0.656
+
+t
+f
+
+(a)
+
+(b)
+
+(c)
+
+Figure 1: (a) The joint probability distribution for a simple example. (b) A representation of the joint distribution that exploits
+conditional independence. (c) The single-attribute probability histograms.
+
+4	5
+
++;
+
+.'+
+
+*' '9&%1
+
+&'
+
+ ,.
+$2*
+$,12/	+*&31"+
+
+/	"0
+
+$%7+%
+
+()
+
+%*+%
+
+age
+
+17-59
+
+0.7
+0
+0.3
+
+<DFE
+
+1
+0
+0
+
+
+
+! "#"$%'&
+
+
+%,+*
+
+%'
+
+*,.$0/	+
+
+(a)
+
+<0=?>
+
+@?A
+
+age
+
+ 60
+
+GFH
+I0.03
+
+0.07
+
+<#@?@
+
+marital-status
+never
+married
+
+others
+
+income
+
+7.5-17.4K
+
+ 55
+
+0.4
+0.01
+0.58
+
+ 17.5K
+
+age
+
+<#@B@
+
+marital-status
+
+never
+married
+
+divorced
+separated
+
+married
+widowed
+
+age
+
+ 55
+
+0.2
+0.05
+0.75
+
+ 50
+
+0.23
+0.24
+0.53
+
+0.59
+0.03
+0.38
+
+0.6
+0.17
+0.23
+
+0.19
+0.04
+0.77
+
+0.17
+0.23
+0.6
+
+<@?C
+
+0.26
+0.47
+0.27
+
+(b)
+
+Figure 2: (a) A Bayesian network for the census domain. (b) A tree-structured CPD for the Children node given its parents Income,
+Age and Marital-Status.
+
+married is
+
+Marital-Status
+
+never-married is
+
+leaf. The CPD tree for the Children attribute in the network of
+Fig. 2(a) is shown in Fig. 2(b). The possible values for this at-
+tribute are N/A, Yes and No. We can see, for example, that the
+K!K , and
+distribution over Children given Income J
+&%
+; the distri-
+
+'N
+N , and Marital-Status 
+bution given Income J
+, Age M
+KL
+, as is the distribution given Income J
+N , and Marital-Status
+
+K!L
+The conditional independence assumptions associated with the
+, together with the CPDs associated with the nodes, uniquely
+determine a joint probability distribution over the attributes via the
+chain rule:
+
+tiations lead to the same induced path down the tree.
+
+widowed: the two instan-
+
+, Age M
+%$%-
+
+
+'N
+, Age M
+
+BN '
+
+KL
+N!O
+
+&%
+
+
+
+
+
+
+Q
+
+
+
+
+Parents
+
+
+
+
+
+
+(This formula is precisely analogous to the one we used in Eq. (2)
+for our simple example from Section 2.1.) Thus, from our compact
+model, we can recover the joint distribution; we do not need to
+represent it explicitly. In our example above, the number of entries
+in the full joint distribution is approximately 7 billion, while the
+number of parameters in our BN is 951a signicant reduction!
+
+2.3 BNs for Query Estimation
+
+Our conditional independence assertions correspond to equality
+constraints on the joint distribution in the database table. In general,
+of course, these equalities will rarely hold exactly. In fact, even if
+the data was generated by independently generating random sam-
+ples from a distribution that satises the conditional independence
+(or even unconditional independence) assumptions, the distribution
+derived from the frequencies in our data will not satisfy these as-
+sumptions. However, in many cases we can approximate the dis-
+tribution very well using a Bayesian network with the appropriate
+structure. We defer a longer discussion of this issue to Section 4.
+
+A Bayesian network is a compact representation of a full joint
+distribution. Hence, it implicitly contains the answer to any query
+about the probability of any assignment of values to a set of at-
+, we
+. As-
+can easily use it to estimate
+sume that our query
+(here we abbreviate a
+multidimensional select using vector notation). Then we can com-
+pute
+
+tributes. Thus, if we construct a BN '
+
+that approximates
+over 
+
+
+
+has the form
+
+for any query
+
+TS
+
+
+
+
+US
+
++
+
+
+
+
+WV+
+
+-,
+
+Of course, generating the full joint distribution
+
+US
+) can be com-
+
+
+
+-
+(
++
+6
+(
+)
+8
+)
+&
+)
+
+-
+:
+)
+
+
+
+
+
+
+N
+
+
+N
+
+
+K
+
+
+
+
+N
+
+O
+%
+
+N
+
+
+%
+
+
+%
+
+K
+
+
+)
+
+
+
+
+
+
+P
+
+
+)
+
+
+
+
+
+
+
+
+
+
+
+R
+R
+
+
+,
+
+
+)
+
+R
+
+
+putationally very expensive, and is almost always infeasible in the
+runtime setting in which query size is typically estimated. Thus,
+we need a more efcient algorithm for computing
+.
+Although the problem of computing this probability is NP-hard in
+the worst case, BN inference is typically very efcient for network
+structures encountered in practice. The standard BN inference al-
+gorithms [19] use special-purpose graph-based algorithms that ex-
+ploit the graphical structure of the network. The complexity of
+these algorithms depends on certain natural parameters relating to
+the connectivity of the graph. These parameters are typically small
+for most real-world models, allowing very effective inference for
+many networks with hundreds of nodes or more [16, 26].
+
+*)
+
+At the start of this section, we made several assumptions. We
+now describe how to relax these assumptions. First, we made the
+assumption that our select operations used only equality predicates.
+It is straightforward to extend the techniques that we have just de-
+scribed for computing the probability of an assignment of values to
+a set of attributes to handle range queries by computing the prob-
+ability that an assignment of values to the attributes falls in that
+range. We simply sum over all potential value assignments satis-
+fying the range constraints. While at rst glance, this may sound
+quite expensive, the BN inference algorithms described above can
+be easily adapted to compute these values without any increase in
+computational complexity. The second important assumption that
+we have been making is that the domains for the attributes are small
+to moderately sized. We can lift this restriction on our BNs by using
+techniques that have been developed for discretization of domain
+values [12, 22]. In cases where domain values are not ordinal, we
+can use feature hierarchies if they are available [9] or we may use
+any of a number of clustering algorithms. Once we have built a BN
+over the discretized or abstracted attribute value space, we must
+now modify our query estimation techniques to provide estimates
+for queries over the base level values. One method for doing this
+is to simply compute the selectivity estimate for an abstract query,
+which maps the base level values to their appropriate discretized or
+abstracted value, and to then compute an estimate for the base level
+query by assuming a uniform distribution within the result.
+
+3.
+
+JOIN SELECTIVITY ESTIMATION
+
+In the previous section, we restricted attention to queries over a
+single table. In this section, we extend our approach to deal with
+queries over multiple tables. We restrict attention to databases sat-
+isfying referential integrity: Let 
+be a for-
+eign key in 
+; then
+for every tuple
+such that
+. Throughout this paper, we restrict attention to foreign
+. We will use the term
+
+that refers to some table  with primary key L
+
+
+there must be some tuple
+
+be a table, and let
+
+
+
+key joins  joins of the form
+keyjoin as a shorthand for this type of join.
+3.1 Joining Two Tables
+
+Consider a medical database with two tables: Patient, contain-
+ing tuberculosis (TB) patients, and Contact, containing people with
+whom a patient has had contact, and who may or may not be in-
+fected with the disease. We might be interested in answering queries
+involving a join between these two tables. For example, we might
+be interested in the following query: patient.Age = 60+ and con-
+tact.Patient = patient.Patient-ID and contact.Contype = roommate,
+i.e., nding all patients whose age is over 60 who have had contact
+with a roommate.
+
+A simple approach to this problem would proceed as follows: By
+referential integrity, each tuple in Contact must join with exactly
+one tuple in
+. Therefore, the size of the joined relation,
+
+
+prior to the selects, is
+. We then compute the probability
+
+
+
+
+
+	
+
+
+ of Patient.Age = 60+ and the probability
+roommate, and estimate the size of the resulting query as
+
+of Contact.Contype =
+
+
+
+
+
+.
+
+This naive approach is awed in two ways. First, the attributes
+of the two different tables are often correlated.
+In general, for-
+eign keys are often used to connect tuples in different tables that
+are semantically related, and hence the attributes of tuples related
+through foreign key joins are often correlated. For example, there
+is a clear correlation between the age of the patient and the type
+of contacts they have; in fact, elderly patients with roommates
+are quite rare, and this naive approach would overestimate their
+number. Second, the probability that two tuples join with each
+other can also be correlated with various attributes. For example,
+middle-aged patients typically have more contacts than older pa-
+tients. Thus, while the join size of these two tables, prior to the
+selection on patient age, is
+, the fraction of the joined tu-
+ples where the patient is over 60 is lower than the overall fraction
+of patients over 60 within the Patient table.
+
+
+
+
+
+
+such that 
+
+We address these issues by providing a more accurate model of
+the joint distribution of these two tables. Consider two tables 
+. We dene a joint probability
+and 
+space over 
+and  using an imaginary sampling process that ran-
+and independently samples a tuple
+domly samples a tuple
+. The two tuples may or may not join with each other. We
+from 
+introduce a new join indicator variable to model this event. This
+variable,
+and false
+
+otherwise.
+
+points to 
+from 
+
+, is binary valued; it is true when
+
+
+
+over the values of the join indicator
+
+This sampling process induces a distribution
+ "!
+, and the value attributes
+. Now, consider
+
+:
+
+$#
+(where again we abbreviate a multidimensional select using
+
+
+
+&%
+any select-keyjoin query
+
+
+.*
+and 
+over 
+
+
+and 
+
+
+
+.*
+
+vector notation). It is easy to to see that the size of the result of
+is:
+
+TS
+
+)(
+
+size$
+
+')(
+
+
+
+
+
+-,
+
+TS
+
+'
+
+*(
+
+
+
+true
+
+In other words, we can estimate the size of any query of this form
+using the joint distribution
+dened using our sampling process.
+As we now show, an extension of the techniques in Section 2 allow
+us to estimate this joint distribution using a probabilistic graphical
+model.
+3.2 Probabilistic Relational Models
+
+Probabilistic relational models (PRMs) [18] extend Bayesian net-
+works to the relational setting. They allow us to model correlations
+not only between attributes of the same tuple, but also between
+attributes of related tuples in different tables. This extension is ac-
+complished by allowing, as a parent of an attribute 
+, an at-
+tribute 
+has a foreign key for
+. We can also allow dependencies on attributes in relations that
+are related to  via a longer chain of joins; to simplify the notation,
+we omit the description. A PRM for our TB domain is shown in
+Fig. 3(a). Here, for example, we have that the type of the contact
+depends on the age and gender of the patient.
+
+in another relation 
+
+such that 
+
+DEFINITION 3.1.: A probabilistic relational model (PRM)
+
+for a relational database is a pair
+probabilistic model for each of the following variables:
+
+.
+for each table  and each attribute
+
+
+-,
+
+, which species a local
+
+.* a variable 
+
+;
+
+0
+
+
+R
+
+S
+
+
+
+
+
+
+
+
+
+
+
+
+L
+
+
+
+
+
+
+
+L
+
+
+
+
+
+,
+
+,
+
+
+
+
+
+
+
+L
+
+
+
+
+
+
+
+
+
+L
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+
+
+R
+
+
+
+'
+
+
+
+
+
+
+
+
+L
+
+%
+
+
+
+
+
+
+,
+
+
+
+
+
+R
+
+
+
+
+
+
+
+
+
+
++
+
+/
+
+
+
+Strain
+
+
+
+
+
+
+
+
+#
+
+Patient
+
+
+
+
+	
+
+$
+
+#
+
+
+
+
+
+
+
+
+!
+
+
+
+
+
+
+
+
+
+
+
+
+&!
+
+
+
+
+
+
+
+Contact
+
+%
+
+
+(a)
+
+
+$
+
+6;
+
+6-
+
+27985:
+
+4
+;
+
+7%2
+
+/4+
+
+"
+
+
+4+.=-
+
+()
+
+,-;0#-.4
+
+(b)
+
+7%2
+
+/-
+
+-+
+-?>
+
+22
+
+:.3
+
+23
+-+54
++,.-+/0#1
+
+Figure 3: (a) A PRM for the Tuberculosis domain. (b) A query-evaluation BN for TB domain and the keyjoin query 
+ Strain-ID.
+
+ Strain
+
+, a boolean join indicator
+
+does not describe a distribution over a single table in isolation. The
+probability distribution of an attribute can depend on parents that
+are attributes in other, foreign-key related tuples. We therefore need
+to dene a joint probability distribution over a tuple
+together with
+all tuples on which it depends. To guarantee that the set of tuples
+we must consider is nite, we place a stratication restriction on
+our PRM models.
+
+DEFINITION 3.2.: Let D be a partial ordering over the tables in
+our database. We say that a foreign key 
+consistent with D
+exists a partial ordering D
+of some 
+We can now dene the minimal extension to a query
+
+is
+is (table) stratied if there
+is a parent
+
+. A PRM
+such that whenever 
+
+is a foreign key into  ), then 
+
+that connects to 
+
+if 
+(where
+
+. Let
+
+.
+
+be a keyjoin query over the tuple variables
+or may not refer to the same tables).
+
+
+
+(which may
+
+DEFINITION 3.3.: Let
+
+ward closure
+following two conditions:
+
+for
+
+FE
+
+be a keyjoin query. We dene the up-
+to be the minimal query that satises the
+
+1.
+
+E contains all of the join operations in
+2. For each
+where 
+in
+
+, if there is an attribute 
+points to 
+for which
+
+,
+, then there is a unique tuple variable
+
+with parent 
+.
+
+.
+
+E contains the join
+
+tuple variable G
+variables G
+
+from the Contact, then
+where 
+
+We can construct the upward closure for any query and that this set
+in the TB domain is over a
+is nite. For example, if our query
+is over the three tuple
+is a
+tuple variable over Strain. Note that there is no direct dependence
+of attributes of Contact on attributes of Strain, but there are depen-
+in
+dencies on Patient, and the introduction of the tuple variable 
+turn necessitates the introduction of the tuple variable
+. Note that,
+if we consider a keyjoin query
+
+is a tuple variable over Patient and
+
+IH that already contains a tuple vari-
+
+H is identical to the closure of
+
+able  with the constraint G .Patient = 
+
+.Patient-ID, then the closure
+of
+; i.e., the process will not intro-
+duce a new tuple variable if a corresponding one is already present.
+We can extend the denition of upward closure to select-keyjoin
+queries in the obvious way: the select clauses are not relevant to
+the notion of upward closure.
+
+Upward closing a query does not change its result size:
+
+PROPOSITION 3.4.: Let
+
+be a query and let
+
+closure. Then size$
+
+')(
+
+size$KJ
+
+( .
+
+FE be its upward
+
+.
+
+
+
+into 
+
+for each foreign key
+variable 
+
+of 
+For each variable of the form 
+species a set of parents Parents
+or 
+has the form 
+into some table  and
+. species a CPD
+
+:
+
+ , where each parent
+is a foreign key of 
+where
+is an attribute of  ;
+ .
+ Parents
+
+and
+
+only if
+
+to depend on
+
+on an attribute
+is related to
+
+This framework allows a probabilistic dependence of an attribute
+. This type of dependence only makes sense
+via some foreign key dependence: Our PRM
+if
+models a distribution where
+are chosen independently at
+random; there is no reason for their attributes to be correlated unless
+they are somehow related. Hence, we constrain the PRM model to
+. More precisely,
+allow
+we require that if 
+must also
+be a parent of 
+is only
+dened for cases where 
+true; in other words, in the CPD
+tree for 
+, 
+is at the root of the tree, and only the fork in
+which 
+Note that the join indicator variable also has parents and a CPD.
+Consider the PRM for our TB domain. The join indicator variable
+Patient.
+which indicates whether the strain is unique in the population or
+has appeared in more than one patient. There are essentially three
+cases: for a non-unique strain and a patient that was born outside
+
+
+ Strain has the parents Patient.USBorn and Strain.Unique,
+
+
+. We also require that the CPD of 
+
+is a parent of 
+
+true is meaningful.
+
+, then 
+
+
+
+non-unique strain and a patient born in the U.S. the probability is
+
+the U.S., the probability that they will join is around N
+ability is N
+
+ ; for a
+ , nearly three times as large; for a unique strain, the prob-
+N!N!O , regardless of the patients place of birth. Thus,
+
+we are much more likely to have U.S.-born patients joining to non-
+unique strains than foreign-born ones. (The reason is that foreign-
+born patients often immigrate to the U.S. already infected with the
+disease; such patients typically have a unique strain indigenous to
+their region. U.S.-born patients, on the other hand, are much more
+likely to contract the disease by catching it from someone local,
+and therefore will appear in infection clusters.)
+3.3 Selectivity Estimation using PRMs
+
+We now wish to describe the relationship between a PRM model
+and the database. In the case of BNs, the connection was straight-
+is an approximation to the frequency distribu-
+. In the case of PRMs, the issue is more subtle, as a PRM
+
+forward: the BN 'CB
+
+tion
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+'
+*
+6
+0
+)
+2
+2
+-
+)
+<
+)
+;
+(
+-
+)
+@
+
+
+/
+
+
+
+
+A
+/
+,
+
+
+
+A
+
+
+
+
+
+
+
+
+/
+
+
+
+
+A
+
+
+
+A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+L
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+N
+N
+N
+
+N
+N
+
+
+N
+
+
+
+
+D
+
++
+
+
+
+
+
+
+
+
+
+D
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+E
+
+
+
+
+
+
+
+
+L
+
+
+E
+
+
+
+
+
+
+
+
+
+%
+
+%
+'
+This result follows immediately from referential integrity.
+
+be a keyjoin query, and let
+be the tuple variables in
+
+E be its upward closure. Let
+
+Let
+be
+
+the distribution obtained by sampling each tuple
+inde-
+, the PRM
+pendently. Then for any query
+, precisely the quantity required
+allows us to approximate
+for estimating the query selectivity. We can compute the PRM es-
+timate using the following simple construction:
+
+H which extends
+
+
+
+
+. Let
+
+: If 
+in
+; if 
+. where
+FE asserts that
+
+DEFINITION 3.5.: Let
+, and let
+be an keyjoin query. We dene the query-evaluation Bayesian
+
+ be a PRM over '
+
+.
+( to be a BN as follows:
+
+
+-,
+
+network '
+
+It has a node
+It also has a node
+/ For every variable
+ied in Parents
+is a parent of
+is a parent of
+
+for every
+
+
+for every clause
+, the node
+
+in
+
+FE and attribute
+.*.
+.
+FE
+has the parents spec-
+is a parent of 
+, then
+is a parent of 
+, then
+is the unique tuple variable
+
+.
+
+ Strain-ID.
+
+is as specied in . .
+ Strain 
+
+for which
+/ The CPD of
+For example, Fig. 3(b) shows the query evaluation BN for the
+upwardly closed keyjoin query 
+We can now use this Bayesian network to estimate the selectiv-
+ity of any query. Consider a select-keyjoin query
+tends the keyjoin query
+$
+Q
+)
+is
+
+query 
+closes  ), and compute the probability of (
+ Strain 
+ Strain-ID). In reality, we dont need to construct a BN over all
+the nodes in the closure
+tributes queried and their ancestors in '
+4. PRM CONSTRUCTION
+
+true. For example, to evaluate the probability of the
+.Age = 60+, we would use the BN in Fig. 3(b) (as it upward
+
+is itself (as above), and #
+
+
+. We can estimate
+Q
+
+; it is sufcient to include only the at-
+
+IH which ex-
+
+, where #
+
+
+.Age = 60+,
+
+by computing
+
+( .
+
+
+
+
+The previous two sections showed how we can perform query
+size estimation once we have a PRM that captures the signicant
+statistical correlations in the data distribution. This section ad-
+dresses the question of how to construct such a model automati-
+cally from the relational database. Many of the ideas in this section
+are simple adaptations of previous work on the topic: the work on
+learning Bayesian networks from data (e.g., [15]) and the recent
+extension of this learning framework to PRMs [11].
+
+In the construction algorithm, our goal is to nd a PRM
+
+The input to the construction algorithm consists of two parts: a
+relational schema, that species the basic vocabulary in the domain
+ the set of tables, the attributes associated with each of the tables,
+and the possible foreign key joins between tuples; and the database
+itself, which species the actual tuples contained in each table.
+
+-,
+
+.
+that best represents the dependencies in the data. In order to pro-
+vide a formal specication for this task, we rst need to dene an
+appropriate notion of best. Given this criterion, the algorithm
+will try to nd the model that optimizes it. There are two parts
+to our optimization problem. The parameter estimation problem
+. The
+for a given dependency structure
+structure selection problem nds the dependency structure
+that,
+with the optimal choice of parameters, achieves the maximal score,
+subject to our space constraints on the model.
+4.1 Scoring Criterion
+
+nds best parameter set .
+
+To provide a formal denition of model quality, we make use
+of basic concepts from information theory [8]. The quality of a
+
+model can be measured by the extent to which it summarizes the
+data. In other words, if we had the model, how many bits would
+be required, using an optimal encoding, to represent the data. The
+more informative the model, the fewer bits are required to encode
+the data.
+
+It is well known that the optimal Shannon encoding of a data
+set, given the model, uses a number of bits which is the negative
+logarithm of the probability of the data given the model. In other
+words, we dene the score of a model
+using the following
+log-likelihood function:
+
+.
+
+
+-,
+
+
+
+.
+
+(3)
+
+We can therefore formulate the model construction task as that of
+nding the model that has maximum log-likelihood given the data.
+We note that this criterion is different from those used in the stan-
+dard formulations of learning probabilistic models from data [15].
+In the latter cases, we typically choose a scoring function that trades
+off t to data with model complexity. This tradeoff allows us to
+avoid tting the training data too closely, thereby reducing our abil-
+ity to predict unseen data. In this case, our goal is very different:
+We do not want to generalize to new data, but only to summarize
+the patterns in the existing data. This difference in focus is what
+motivates our choice of scoring function.
+4.2 Parameter Estimation
+
+We begin by considering the parameter estimation task for a
+given dependency structure. In other words, having selected a de-
+pendency structure
+that determines the set of parents for each
+that parameterize it. The
+parameter estimation task is a key subroutine in the structure selec-
+tion step: to evaluate the score for a structure, we must rst param-
+eterize it. In other words, the highest scoring model is the structure
+whose best parameterization has the highest score.
+
+attribute, we must ll in the numbers .
+
+be its parents in
+
+a given structure
+in the data. More precisely, consider some attribute
+
+It is well-known that the highest likelihood parameterization for
+is the one that precisely matches the frequencies
+in table 
+. Our model contains a parameter
+to 
+.
+. The maximum likelihood value for this parameter is
+ within the population of
+
+and let 
+
+This parameter represents the conditional probability
+simply the relative frequency of 
+cases 
+
+and each assignment of values 
+
+for each value  of
+
+:
+
+(4)
+
+.
+
+
+
+
+
+The frequencies, or counts, used in this expression are called suf-
+cient statistics in the statistical learning literature.
+
+This computation is very simple in the case where the attribute
+and its parents are in the same table. For example, to compute the
+CPD associated with the Patient.Gender attribute in our TB model,
+we simply execute a count and group-by query on Gender and HIV,
+which gives us the counts for all possible values of these two at-
+tributes. These counts immediately give us the sufcient statistics
+in both the numerator and denominator of the entire CPD. This
+computation requires a linear scan of the data.
+
+The case where some of the parents of an attribute appear in a
+different table is only slightly more complex. Recall that we restrict
+dependencies between tuples to those that utilize foreign-key joins.
+In other words, we can have
+
+depending on
+
+only if
+
+for a foreign key
+Thus, to compute the CPD for 
+, we
+simply need to execute a foreign-key join between 
+, and
+then use the same type of count and group-by query over the result.
+
+in  which is also the primary key of 
+
+that depends on 
+and 
+
+.
+
+
+
+
+
+
+
+E
+
+
+
+
+
+
+
+
+
+
+
+
+
+E
+
+
+
+#
+$
+
+
++
+
+
+%
+
+/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+L
+
+
+A
+
+
+A
+
+
+
+A
+
+,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+L
+
+
+A
+
+
+
+
+H
+
+
+
+#
+$
+
+J
+
+
+
+
+
+
+
+
+
+
+E
+%
+
+
+,
+,
+
+
+
+.
+
+,
+
+'
+
+
+
+'
+
+,
+
+,
+,
+
+,
+.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+L
+
+
+
+
+
+
+For example, in our TB model, Contact.Age has the parents Con-
+tact.Contype and Contact.Patient.Age. To compute the sufcient
+statistics, we simply join Patient and Contact on Patient.Patient-
+ID=Contact.Patient, and then group and count appropriately.
+We have presented this analysis for the case where 
+depends
+. However, the discussion
+only on a single foreign attribute 
+clearly extends to dependencies on multiple attribute, potentially
+in different tables. We simply do all of the necessary foreign-key
+joins, generate a single result table over 
+and all of its parents
+, and compute the sufcient statistics.
+While this process might appear expensive at rst glance, it can
+be executed very efciently. Recall that we are only allowing de-
+pendencies via foreign-key joins. Putting that restriction together
+with our referential integrity assumption, we know that each tuple
+. Thus, the number of tuples
+will join with precisely a single tuple
+in the resulting join is precisely the size of 
+. The same observa-
+tion holds when 
+has parents in multiple tables. Assuming that
+we have a good indexing structure on keys (e.g., a hash index), the
+cost of performing the join operations is therefore linear in the size
+of 
+It remains to describe the computation of the CPD for a join
+indicator variable
+. In this case, we must compute the proba-
+from 
+bility that a random tuple
+from
+. The probability of the join event can
+ will satisfy
+depend on values of attributes in
+, e.g., on the value of
+. In our TB domain, the join indicator between Pa-
+tient and Strain depends on USBorn within the Patient table and on
+Unique within the Strain table. To compute the sufcient statis-
+tics for
+, we need to compute the total number
+
+
+of cases where
+those where
+The rst is simply
+
+. Fortunately, this computation is also easy.
+. The latter is
+
+
+, which can be computed by
+joining the two tables and then doing a count and group-by query.
+The cost of this operation (assuming an appropriate index structure)
+is again linear in the number of tuples in 
+4.3 Structure Selection
+
+ , and then the number within
+
+and a random tuple
+
+and in 
+
+
+
+
+and
+
+and
+
+
+
+.
+
+,
+
+.
+
+Our second task is the structure selection task: nding the depen-
+dency structure that achieves the highest log-likelihood score. The
+problem here is nding the best dependency structure among the
+superexponentially many possible ones.2 This is a combinatorial
+optimization problem, and one which is known to be NP-hard [7].
+We therefore provide an algorithm that nds a good dependency
+structure using simple heuristic techniques; despite the fact that the
+optimal dependency structure is not guaranteed to be produced, the
+algorithm nevertheless performs very well in practice.
+
+4.3.1 Scoring revisited
+
+The log-likelihood function can be reformulated in a way that
+both facilitates the model selection task and allows its effect to be
+more easily understood. We rst require the following basic deni-
+tion[8]:
+
+consider some joint distribution
+
+DEFINITION 4.1.: Let
+the mutual information of
+IMI&
+
+ If we have
+dependency structures is  
+
+	
+
+as:
+
+over their union. We can dene
+relative to
+
+and be two sets of attributes, and
+and
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!!  . If we have multiple tables, the
+
+
+
+
+
+
+
+
+
+
+expression is slightly more complicated, because not all dependen-
+cies between attributes in different tables are legal.
+
+attributes in a single table, the number of possible
+
+The term inside the expectation is the logarithm of the relative er-
+ror between
+
+and an approximation to it
+
+independent, but maintains the probability of each one. The
+entire expression is simply a weighted average of this relative error
+over the distribution, where the weights are the probabilities of the
+. It is intuitively clear that mutual information is mea-
+. If they
+are independent, then the mutual information is zero. Otherwise,
+the mutual information is always positive. The stronger the corre-
+lation, the larger the mutual information.
+
+are correlated in
+
+that makes
+
+Consider a particular structure
+
+. Our analysis in the previous
+section species the optimal choice (in terms of likelihood) for pa-
+rameterizing
+be the distribution in the database, as above. We can now reformu-
+late the log-likelihood score in terms of mutual information:
+
+to denote this set of parameters. Let
+
+and
+
+(5)
+
+) Pa
+
++*
+
+.-
+
+is a constant that does not depend on the choice of struc-
+ture. Thus, the overall score of a structure decomposes as a sum,
+where each component is local to an attribute and its parents. The
+local score depends directly on the mutual information between a
+node and its parents in the structure. Thus, our scoring function
+prefers structures where an attribute is strongly correlated with its
+
+ .
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+where
+
+
+and
+events
+suring the extent to which
+. We use .#"
+
+'&
+where-
+parents. We will use/
+0
+
+4.3.2 Model space
+
+214325
+
+.#"
+
+ .*
+
+
+-,
+
+IMI(
+
+
+-,76
+
+to denote 
+
+.
+
+.
+
+
+-,
+
+An important design decision is the space of dependency struc-
+tures that we allow the algorithm to consider. Several constraints
+are imposed on us by the semantics of our models. Bayesian net-
+works and PRMs only dene a coherent probability distribution if
+the dependency structure is acyclic, i.e., there is no directed path
+from an attribute back to itself. Thus, we restrict attention to de-
+pendency structures that are directed acyclic graphs. Furthermore,
+we have placed certain requirements on inter-table dependencies: a
+dependency of 
+is a foreign key
+in 
+,
+and plays the appropriate role in the CPD tree. Finally, we have
+required that the dependency structure be stratied along tables, as
+specied above.
+
+is also a parent of 
+
+, and if the join indicator variable
+
+is only allowed if 
+
+on 
+
+
+
+A second set of constraints is implied by computational consid-
+erations. A database system typically places a bound on the amount
+of space used to specify the statistical model. We therefore place a
+bound on the size of the models constructed by our algorithm. In
+our case, the size is typically the number of parameters used in the
+CPDs for the different attributes, plus some small amount required
+to specify the structure. A second computational consideration is
+the size of the intermediate group-by tables constructed to compute
+the CPDs in the structure. If these tables get very large, storing and
+manipulating them can get expensive. Therefore, we often choose
+to place a bound on the number of parents per node.
+
+4.3.3 Search algorithm
+
+Given a set of legal candidate structures, and a scoring function
+that allows us to evaluate different structures, we need only provide
+a procedure for nding a high-scoring hypothesis in our space. The
+simplest heuristic search algorithm is greedy hill-climbing search,
+using random steps to escape local maxima. We maintain our cur-
+and iteratively improve it. At each it-
+rent candidate structure
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+L
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+L
+
+
+
+
+
+
+,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+L
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+,
+,
+
+
+
+
+'
+
+
+$
+%
+
+
+
+
+
+
+
+B
+
+
+
+
+
+
+
+
+
+,
+'
+
+"
+
+'
+
+
+
+
+
+
+L
+
+
+,
+H , we check that
+
+eration, we consider a set of simple local transformations to that
+structure. For each resulting candidate successor
+it satises our constraints, and select the best one. We restrict atten-
+tion to simple transformations such as adding or deleting an edge,
+and adding or deleting a split in a CPD tree. This process contin-
+ues until none of the possible successor structures
+score than
+. At this point, the algorithm can take some number
+of random steps, and then resume the hill-climbing process. Af-
+ter some number of iterations of this form, the algorithm halts and
+outputs the best structure discovered during the entire process.
+
+H have a higher
+
+Furthermore, after taking a step in the search, most of the work
+from the previous iteration can be reused.
+
+To understand this idea, assume that our current structure is
+
+.
+To do the search, we evaluate a set of changes to
+, and select the
+one that gives us the largest improvement. Say that we have cho-
+sen to update the local model for 
+(either its parent set or its
+CPD tree). The resulting structure is
+possible local changes to
+has not
+nent of the score corresponding to another attribute 
+changed. Hence, the change in score resulting from the change to
+
+H . Now, we are considering
+H . The key insight is that the compo-
+
+/
+0
+
+/
+0
+
+143#5
+
+
+-,76
+
+143#5
+
+H of a given structure
+
+sible successor structures
+vious approach is to simply choose the structure
+the largest improvement in score, i.e., that maximizes 
+
+One important issue to consider is how to choose among the pos-
+. The most ob-
+that provides
+*
+. However, this approach is very
+shortsighted, as it ignores the cost of the transformation in terms of
+increasing the size of the structure. We now present two approaches
+that address this concern.
+
+
+
+
+-,
+
+
+-,
+
+The rst approach is based on an analogy between this problem
+and the weighted knapsack problem: We have a set of items, each
+with a value and a volume, and a knapsack with a xed volume; our
+goal is to select the largest value set of items that ts in the knap-
+sack. Our goal here is very similar: every edge that we introduce
+into the model has some value in terms of score and some cost in
+terms of space. A standard heuristic for the knapsack problem is to
+greedily add the item into the knapsack that has, not the maximum
+value, but the largest value to volume ratio.
+In our case, we can
+similarly choose the edge for which the likelihood improvement
+normalized by the additional space requirement:
+
+
+-,
+
+
+
+/20
+
+
+-,
+
+
+
+-,
+
+
+-,
+
+/0
+
+is largest.3 We refer to this method of scoring as storage size nor-
+malized (SSN).
+
+The second idea is to use a modication to the log-likelihood
+scoring function called MDL (minimum description length). This
+scoring function is motivated by ideas from information and coding
+theory. It scores a model using not simply the negation of the num-
+ber of bits required to encode the data given the model, but also the
+number of bits required to encode the model itself. This score has
+the form
+
+/
+0
+
+2143
+
+
+-,
+
+!
+
+-,
+
+	
+
+
+
+/20
+143
+/
+0
+
+
+-,
+!
+
+
+-,
+
+
+-,76
+
+
+-,
+!
+
+.
+
+-,
+
+/
+0
+
+2143
+
+*
+
+We dene 
+
+.
+We have experimentally compared the naive approach with the
+two ideas outlined above on the Census dataset described in Sec-
+tion 2.2. Both SSN and MDL scoring achieved higher log-likelihood
+than the naive approach for a xed amount of space. In fact, SSN
+and MDL performed almost identically for the entire range of allo-
+cated space, and no clear winner was evident.
+
+All three approaches involve the computation of 
+
+. Eq. (5)
+
+then provides a key insight for improving the efciency of this com-
+putation. As we saw, the score decomposes into a sum, each of
+which is associated only with a node and its parents in the struc-
+ture. Thus, if we modify the parent set or the CPD of only a single
+attribute, the terms in the score corresponding to other attributes
+remain unchanged [15]. Thus, to compute the score corresponding
+to a slightly modied structure, we need only recompute the local
+score for the one attribute whose dependency model has changed.
+
+This heuristic has provable performance guarantees for the knap-
+sack problem. Unfortunately, in our problem the values and costs
+are not linearly additive, so there is no direct mapping between the
+problems and the same performance bounds do not apply.
+
+is the same in
+
+and in
+
+ber unchanged. Only changes to 
+moving to
+
+H , and we can simply reuse that num-
+
+need to be re-evaluated after
+
+H .
+
+5. EXPERIMENTAL RESULTS
+
+In this section, we present experimental results for a variety of
+real-world data, including: a census dataset
+[5]; a subset of the
+database of nancial data used in the 1999 European KDD Cup [4];
+and a database of tuberculosis patients in San Francisco [3]. We
+begin by evaluating the accuracy of our methods on select queries
+over a single relation. We then consider more complex, select-join
+queries over several relations. Finally, we discuss the running time
+for construction and estimation for our models.
+
+Select Queries. We evaluated accuracy for selects over a single
+relation on a dataset from Census database described above (ap-
+proximately 150K tuples). We performed two sets of experiments.
+In the rst set of experiments, we compared our approach to an
+existing selectivity estimation technique  multidimensional his-
+tograms. Multidimensional histograms are typically used to esti-
+mate the joint over some small subset of attributes that participate
+in the query. To allow a fair comparison, we applied our approach
+(and others) in the same setting. We selected subsets of two, three,
+and four attributes of the Census dataset, and estimated the query
+size for the set of all equality select queries over these attributes.
+
+We compared the performance of four algorithms. AVI is a
+simple estimation technique that assumes attribute value indepen-
+dence: for each attribute a one dimensional histogram is main-
+tained. In this domain, the domain size of each attribute is small,
+so it is feasible to maintain a bucket for each value. This tech-
+nique is representative of techniques used in existing cost-based
+query optimizers such as System-R. MHIST builds a multidimen-
+sional histogram over the attributes, using the V-Optimal(V,A) his-
+togram construction of Poosala et al. [25].4 This technique con-
+structs buckets that minimize the variance in area (frequency
+value) within each bucket. Poosala et al. found this method for
+building histograms to be one of the most successful in experiments
+over this domain. SAMPLE constructs a random sample of the ta-
+ble and estimates the result size of a query from the sample. PRM
+uses our method for query size estimation. Unless stated otherwise,
+PRM uses tree CPDs and the SSN scoring method.
+
+error of the query size estimate:
+query and 
+
+
+We compare the different methods using the adjusted relative
+is the actual size of our
+is our estimate, then the adjusted relative error is
+. For each experiment, we computed the av-
+erage adjusted error over all possible instantiations for the select
+values of the query; thus each experiment is typically the average
+over several thousand queries.
+
+If 
+
+
+
+We evaluated the accuracy of these methods as we varied the
+space allocated to each method (with the exception of AVI, where
+
+ We would like to thank Vishy Poosala for making this code avail-
+able to us for our comparisons.
+
+,
+,
+,
+,
+,
+,
+H
+5
+H
+
+,
+H
+6
+'
+'
+
+
+
+H
+
+,
+
+5
+H
+
+,
+
+3
+H
+3
+
+5
+6
+'
+
+
+
+"
+
+'
+3
+
+
+!
+H
+
+,
+5
+H
+6
+'
+5
+'
+
+5
+H
+
+,
+
+,
+,
+
+
+,
+,
+
+
+
+
+
+,
+,
+
+
+,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1400
+1200
+1000
+800
+600
+400
+200
+0
+200 400 600 800 1000 1200
+
+MHIST
+SAMPLE
+PRM
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+(a)
+
+600
+
+500
+
+400
+
+300
+
+200
+
+100
+
+0
+500
+
+MHIST
+SAMPLE
+PRM
+
+3500
+
+2500
+
+	
+&'
+
+
+
+1500
+
+
+
+
+
+(b)
+
+70
+60
+50
+40
+30
+20
+10
+0
+500 1500 2500 3500 4500 5500
+
+MHIST
+SAMPLE
+PRM
+
+
+
+&(	
+
+
+)
+
+
+'
+
+
+
+(c)
+
+Figure 4: Relative error vs. storage size for a query suite over the Census dataset. (a) Two attribute query (Age and Income). The
+relative error for AVI is 7395. (b) Three attribute query (Age, HoursPerWeek and Income). The relative error for AVI is 865. (c)
+Four attribute query (Age, Education, HoursPerWeek and Income). The relative error for AVI is 70.19.
+
+100
+
+90
+
+80
+
+70
+
+60
+
+50
+
+40
+
+1500
+
+2500
+
+*+
+
+,-
+
+./0
+*1
+(a)
+
+3500
+
+20
+3
+
+45+
+
+067
+
+4500
+
+10
+
+1500
+
+SAMPLE
+
+GH&IJLK
+GH&IJLK
+
+MLNPO)Q
+RTS
+RRTS
+MU
+
+40
+
+30
+
+20
+
+SAMPLE
+
+GH&IJLK
+GH&IJLK
+
+MLNPO'Q
+RTS
+R'RTS
+MU
+
+1500
+
+1250
+
+1000
+
+750
+
+500
+
+250
+
+0
+
+3500
+
+*+
+
+,&-
+
+5500
+
+7500
+
+9500
+
+203
+
+45+
+
+067
+
+./0
+*1
+(b)
+
+0
+
+250
+
+500
+
+750
+
+1000
+
+1250
+
+1500
+
+VWXYZ\[WT](^P_
+
+aP^b'^Pc
+(c)
+
+](^[_
+
+fT_'g
+
+hji
+
+Figure 5: Relative error vs. storage size for a query over the Census dataset, with models constructed over 12 attributes. (a) Three
+attribute query (WorkerClass, Education, and MaritalStatus) (b) Four attribute query (Income, Industry, Age and EmployType).
+(c) A scatter plot showing the error on individual queries for a three attribute query (Income, Industry, Age) for SAMPLE and PRM
+(using 9.3K bytes of storage). In the scatter plot, each point represents a query, where the
+coordinate is the relative error using
+SAMPLE and the
+coordinate is the relative error using PRM. Thus, points above the diagonal line correspond to queries on which
+SAMPLE outperforms PRM and points below the diagonal line correspond to queries on which PRM performs better.
+
+the model size is xed). Fig. 4 shows results on Census for three
+query suites: over two, three, and four attributes. MHIST and
+SAMPLE, and all methods signicantly outperform AVI. Note that
+a BN with tree CPDs over two attributes is simply a slightly dif-
+ferent representation of a multi-dimensional histogram. Thus, it is
+interesting that our approach still dominates MHIST, even in this
+case. As the power of the representations is essentially equivalent
+here, the success of PRMs in this setting is due to the different
+scoring function for evaluating different models, and the associated
+search algorithm.
+
+In the second set of experiments, we consider a more challeng-
+ing setting, where a single model is built for the entire table, and
+then used to evaluate any select query over that table. In this case,
+MHIST is no longer applicable, so we compared the accuracy of
+PRM to SAMPLE, and also compared to PRMs with table CPDs.
+We built a PRM (BN) for the entire set of attributes in the table,
+and then queried subsets of three and four attributes. Similarly, for
+SAMPLE, the samples included all 12 attributes.
+
+We tested these approaches on the Census dataset with 12 at-
+tributes. The results for two different query suites are shown in
+Fig. 5(a) and (b). Although for very small storage size, SAMPLE
+achieves lower errors, PRMs with tree CPDs dominates as the stor-
+age size increases. Note also that tree CPDs consistently outper-
+form table CPDs. The reason is that table CPDs force us to split
+all bins in the CPD whenever a parent is added, wasting space on
+making distinctions that might not be necessary. Fig. 5(c) shows the
+
+performance on a third query suite in more detail. The scatter plot
+compares performance of SAMPLE and PRM for a xed storage
+size (9.3K bytes). Here we see that PRM outperforms SAMPLE on
+the majority of the queries. (The spike in the plot at SAMPLE error
+100% corresponds to the large set of query results estimated to be
+
+of size N by SAMPLE.)
+Select-Join Queries. We evaluate the accuracy of estimation
+for select-join queries on two real-world datasets. Our nancial
+database (FIN) has three tables: Account (4.5K tuples), Transaction
+(106K tuples) and District (77 tuples); Transaction refers through a
+foreign key to Account and Account refers to District. The tuber-
+culosis database (TB) also has three tables: Patient (2.5K tuples),
+Contact (19K tuples) and Strain (2K tuples); Contact refers through
+a foreign key to Patient and Patient refers to Strain. Both databases
+satisfy the referential integrity assumption.
+
+We compared the following techniques. SAMPLE constructs a
+random sample of the join of all three tables along the foreign keys
+and estimates the result size of a query from the sample. BN+UJ
+is a restriction of the PRM that does not allow any parents for the
+join indicator variable and restricts the parents of other attributes to
+be in the same relation. This is equivalent to a model with a BN
+for each relation together with the uniform join assumption. PRM
+uses unrestricted PRMs. Both PRM and BN+UJ were constructed
+using tree-CPDs and SSN scoring.
+
+We tested all three approaches on a set of queries that joined all
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+
+"
+
+#
+$
+%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+
+"
+
+#
+$
+%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+
+"
+
+#
+$
+%
+8
+9
+:
+;
+<
+=
+:
+>
+:
+?
+<
+@
+A
+9
+:
+B
+;
+;
+C
+;
+D
+E
+F
+8
+9
+:
+;
+<
+=
+:
+>
+:
+?
+<
+@
+A
+9
+:
+B
+;
+;
+C
+;
+D
+E
+F
+`
+`
+d
+e
+_
+k
+l
+m
+n
+o
+p
+q
+r
+s
+p
+l
+p
+t
+r
+u
+v
+o
+p
+w
+q
+q
+x
+q
+y
+z
+{
+|
+}
+SAMPLE
+BN+UJ
+PRM
+
+300
+280
+260
+240
+220
+200
+180
+160
+140
+120
+100
+
+300
+
+1300
+
+2300
+
+3300
+
+4300
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+(a)
+
+1400
+
+1200
+
+1000
+
+800
+
+600
+
+400
+
+200
+
+0
+
+SAMPLE
+BN+UJ
+PRM
+
+100
+
+90
+
+80
+
+70
+
+60
+
+50
+
+40
+
+30
+
+20
+
+10
+
+0
+
+SAMPLE
+BN+UJ
+PRM
+
+1
+
+2
+
+3
+
+1
+
+2
+
+3
+
+&(')*
+
++-,).
+(b)
+
+>@?
+AB
+
+CEDAF
+(c)
+
+Figure 6: (a) Relative error vs. storage size for a select-join query over three tables in the TB domain with selection on 3 attributes.
+(b) Relative error for three query sets on TB (c) Relative error for three query sets on FIN
+
+three tables (although all three can also be used for a query over
+any subset of the tables). The queries select one or two attributes
+from each table. For each query suite, we averaged the error over
+all possible instantiations of the selected variables. Note that all
+three approaches were run so as to construct general models over
+all of the attributes of the tables, and not in a way that was specic
+to the query suite.
+
+Fig. 6(a) compares the accuracy of the three methods for vari-
+ous storage sizes on a three attribute query in the TB domain. The
+graph shows both BN+UJ and PRM outperforming SAMPLE for
+most storage sizes. Fig. 6(b) compares the accuracy of the three
+methods for several different query suites on TB, allowing each
+method 4.4K bytes of storage. Fig. 6(c) compares the accuracy of
+the three methods for several different query suites on FIN, allow-
+ing 2K bytes of storage for each. These histograms show that PRM
+always outperforms BN+UJ and SAMPLE.
+
+Running Time. Finally, we examine the running time for con-
+struction and estimation for our models. These experiments were
+performed on a Sparc60 workstation running Solaris2.6 with 256MB
+of internal memory.
+
+We rst consider the time required by the ofine construction
+phase, shown in Fig. 7(a). As we can see, the construction time
+varies with the amount of storage allocated for the model: Our
+search algorithm starts with smallest possible model in its search
+space (all attributes independent of each other), so that more search
+is required to construct the more complex models that take advan-
+tage of the additional space. Note that table CPDs are orders of
+magnitude easier to construct than tree CPDs; however, as we dis-
+cussed, they are also substantially less accurate.
+
+The running time for construction also varies with the amount
+of data in the database. Fig. 7(b) shows construction time versus
+dataset size for tree CPDs and table CPDs for xed model storage
+size (3.5K bytes). Note that, for table CPDs, running time grows
+linearly with the data size. For tree CPDs, running time has high
+variance and is almost independent of data size, since the running
+time is dominated by the search for the tree CPD structure once
+sufcient statistics are collected.
+
+The online estimation phase is, of course, more time-critical than
+construction, since it is often used in the inner loop of query opti-
+mizers. The running time of our estimation technique varies roughly
+with the storage size of the model, since models that require a lot
+of space are usually highly interconnected networks which require
+somewhat longer inference time. The experiments in Fig. 7(c) il-
+lustrate the dependence. The estimation time for both methods is
+quite reasonable. The estimation time for tree CPDs is signicantly
+
+higher, but this is using an algorithm that does not fully exploit the
+tree-structure; we expect that an algorithm that is optimized for tree
+CPDs would perform on a par with the table estimation times.
+
+6. CONCLUSIONS
+
+In this paper, we have presented a novel approach for estimating
+query selectivity using probabilistic graphical models  Bayesian
+networks and their relational extension. Our approach utilizes prob-
+abilistic graphical models, which exploit conditional independence
+relations between the different attributes in the table to allow a
+compact representation of the joint distribution of the database at-
+tribute values. We have tested our algorithm on several real-world
+databases in a variety of domains  medical, nancial, and social.
+The success of our approach on all of these datasets indicates that
+the type of structure exploited by our methods is very common, and
+that our approach is a viable option for many real-world databases.
+Our approach has several important advantages. To our knowl-
+edge, it is unique in its ability to handle select and join opera-
+tors in a single unied framework, thereby providing estimates for
+complex queries involving several select and join operations. Sec-
+ond, our approach circumvents the dimensionality problems asso-
+ciated with multi-dimensional histograms. Multi-dimensional his-
+tograms, as the dimension of the table grows, either grow expo-
+nentially or become less and less accurate. Our approach esti-
+mates the high-dimensional joint distribution using a set of lower-
+dimensional conditional distributions, each of which is quite accu-
+rate. As we saw, we can put these conditional distributions together
+to get a good approximation to the entire joint distribution. Thus,
+our model is not limited to answering queries over a small set of
+predetermined attributes that happen to appear in a histogram to-
+gether; it can be used to answer queries over an arbitrary set of
+attributes in the database.
+
+There are several important topics that we have not fully ad-
+dressed in this paper. One is the incremental maintenance of the
+PRM as the database changes. It is straightforward to extend our
+approach to adapt the parameters of the PRM over time, keeping
+the structure xed. To adapt the structure, we can apply a variant
+of the approach of [13]. We can also keep track of the model score,
+relearning the structure if the score decreases drastically.
+
+Another important topic that we have not discussed is joins over
+non-key attributes. In our presentation and experiments, our queries
+use only foreign key joins. While this category of queries stands to
+benet most from the probabilistic models that we propose, our
+methods are more general. We can compute estimates for queries
+that join non-key attributes by summing over the possible values
+of the joined attributes, and our estimates are likely to be more
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+
+"
+
+#
+$
+%
+/
+0
+1
+2
+3
+4
+1
+5
+1
+6
+3
+7
+8
+0
+1
+9
+2
+2
+:
+2
+;
+<
+=
+G
+H
+I
+J
+K
+L
+I
+M
+I
+N
+K
+O
+P
+H
+I
+Q
+J
+J
+R
+J
+S
+T
+U
+2500
+
+2000
+
+1500
+
+1000
+
+500
+
+0
+500
+
+Trees
+Tables
+
+700
+
+600
+
+500
+
+400
+
+300
+
+200
+
+100
+
+0
+
+2500 4500 6500 8500
+
+
+
+	
+
+
+
+
+
+
+
+
+
+(a)
+
+Trees
+Tables
+
+0.4
+
+0.35
+
+0.3
+
+0.25
+
+0.2
+
+0.15
+
+0.1
+
+0.05
+
+Trees
+Tables
+
+96
+
+112 128
+
+0
+1000
+
+0
+
+16
+
+32
+
+80
+*,+++(-
+
+64
+'(
+)
+
+48
+"#$%&
+(b)
+
+3000
+:;
+
+<>=
+
+5000
+EFABG
+
+?@AB:DC
+(c)
+
+7000
+AJKJL
+
+HJIJ;
+
+9000
+
+Figure 7: (a) The construction time for a PRM for Census using tree and table CPDs as a function of model storage space. (b) The
+construction time for a PRM for Census using tree and table CPDs as a function of data size. (c) The running time for query size
+estimation as a function of model size.
+
+accurate than methods that do not model any of the dependencies
+between tuples. However an empirical investigation is required to
+evaluate our methods on this category of queries.
+
+There are many interesting extensions to our approach, which
+we intend to investigate in future work. First, we want to extend
+our techniques to handle much larger databases; we believe that
+an initial single pass over the data can be used to home in on a
+much smaller set of candidate models, the sufcient statistics for
+which can then be computed very efciently in batch mode. More
+interestingly, there are obvious applications of our techniques to the
+task of approximate query answering, both for OLAP queries and
+for general database queries (even queries involving joins).
+
+Acknowledgments. We would like to thank Chris Olsten and
+Vishy Poosala for their helpful feedback. This work was supported
+ONR contract N66001-97-C-8554 under DARPAs HPKB program,
+and by the generosity of the Sloan Foundation and the Powell foun-
+dation.
+

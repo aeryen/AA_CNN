@@ -1,0 +1,1093 @@
+Abstract
+
+We consider learning in a Markov decision
+process where we are not explicitly given a re-
+ward function, but where instead we can ob-
+serve an expert demonstrating the task that
+we want to learn to perform. This setting
+is useful in applications (such as the task of
+driving) where it may be di(cid:14)cult to write
+down an explicit reward function specifying
+exactly how di(cid:11)erent desiderata should be
+traded o(cid:11). We think of the expert as try-
+ing to maximize a reward function that is ex-
+pressible as a linear combination of known
+features, and give an algorithm for learning
+the task demonstrated by the expert. Our al-
+gorithm is based on using \inverse reinforce-
+ment learning" to try to recover the unknown
+reward function. We show that our algorithm
+terminates in a small number of iterations,
+and that even though we may never recover
+the experts reward function, the policy out-
+put by the algorithm will attain performance
+close to that of the expert, where here per-
+formance is measured with respect to the ex-
+perts unknown reward function.
+
+1. Introduction
+Given a sequential decision making problem posed in
+the Markov decision process (MDP) formalism, a num-
+ber of standard algorithms exist for (cid:12)nding an optimal
+or near-optimal policy. In the MDP setting, we typi-
+cally assume that a reward function is given. Given a
+reward function and the MDPs state transition prob-
+abilities, the value function and optimal policy are ex-
+actly determined.
+The MDP formalism is useful for many problems be-
+cause it is often easier to specify the reward function
+than to directly specify the value function (and/or op-
+timal policy). However, we believe that even the re-
+ward function is frequently di(cid:14)cult to specify manu-
+ally. Consider, for example, the task of highway driv-
+ing. When driving, we typically trade o(cid:11) many dif-
+
+Appearing in Proceedings of the 21 st International Confer-
+ence on Machine Learning, Ban(cid:11), Canada, 2004. Copyright
+2004 by the authors.
+
+ferent desiderata, such as maintaining safe following
+distance, keeping away from the curb, staying far from
+any pedestrians, maintaining a reasonable speed, per-
+haps a slight preference for driving in the middle lane,
+not changing lanes too often, and so on . . . . To specify
+a reward function for the driving task, we would have
+to assign a set of weights stating exactly how we would
+like to trade o(cid:11) these di(cid:11)erent factors. Despite being
+able to drive competently, the authors do not believe
+they can con(cid:12)dently specify a speci(cid:12)c reward function
+for the task of \driving well."1
+In practice, this means that the reward function is of-
+ten manually tweaked (cf. reward shaping, Ng et al.,
+1999) until the desired behavior is obtained. From con-
+versations with engineers in industry and our own ex-
+perience in applying reinforcement learning algorithms
+to several robots, we believe that, for many problems,
+the di(cid:14)culty of manually specifying a reward function
+represents a signi(cid:12)cant barrier to the broader appli-
+cability of reinforcement learning and optimal control
+algorithms.
+When teaching a young adult to drive, rather than
+telling them what the reward function is, it is much
+easier and more natural to demonstrate driving to
+them, and have them learn from the demonstration.
+The task of learning from an expert is called appren-
+ticeship learning (also learning by watching, imitation
+learning, or learning from demonstration).
+A number of approaches have been proposed for ap-
+prenticeship learning in various applications. Most of
+these methods try to directly mimic the demonstrator
+by applying a supervised learning algorithm to learn a
+direct mapping from the states to the actions. This
+literature is too wide to survey here, but some ex-
+amples include Sammut et al.
+(1992); Kuniyoshi et
+al. (1994); Demiris & Hayes (1994); Amit & Mataric
+(2002); Pomerleau (1989). One notable exception is
+given in Atkeson & Schaal (1997). They considered the
+
+1We note that this is true even though the reward func-
+tion may often be easy to state in English. For instance,
+the \true" reward function that we are trying to maximize
+when driving is, perhaps, our \personal happiness." The
+practical problem however is how to model this (i.e., our
+happiness) explicitly as a function of the problems states,
+so that a reinforcement learning algorithm can be applied.
+
+problem of having a robot arm follow a demonstrated
+trajectory, and used a reward function that quadrat-
+ically penalizes deviation from the desired trajectory.
+Note however, that this method is applicable only to
+problems where the task is to mimic the experts tra-
+jectory. For highway driving, blindly following the ex-
+perts trajectory would not work, because the pattern
+of tra(cid:14)c encountered is di(cid:11)erent each time.
+Given that the entire (cid:12)eld of reinforcement learning is
+founded on the presupposition that the reward func-
+tion, rather than the policy or the value function, is
+the most succinct, robust, and transferable de(cid:12)nition
+of the task, it seems natural to consider an approach to
+apprenticeship learning whereby the reward function is
+learned.2
+The problem of deriving a reward function from ob-
+served behavior is referred to as inverse reinforcement
+learning (Ng & Russell, 2000).
+In this paper, we
+assume that the expert is trying (without necessar-
+ily succeeding) to optimize an unknown reward func-
+tion that can be expressed as a linear combination of
+known \features." Even though we cannot guarantee
+that our algorithms will correctly recover the experts
+true reward function, we show that our algorithm will
+nonetheless (cid:12)nd a policy that performs as well as the
+expert, where performance is measured with respect
+to the experts unknown reward function.
+
+2. Preliminaries
+A ((cid:12)nite-state) Markov decision process (MDP) is a tu-
+ple (S; A; T; (cid:13); D; R), where S is a (cid:12)nite set of states; A
+is a set of actions; T = fPsag is a set of state transition
+probabilities (here, Psa is the state transition distribu-
+tion upon taking action a in state s); (cid:13) 2 [0; 1) is a
+discount factor; D is the initial-state distribution, from
+which the start state s0 is drawn; and R : S 7! A is
+the reward function, which we assume to be bounded
+in absolute value by 1. We let MDPnR denote an
+MDP without a reward function, i.e., a tuple of the
+form (S; A; T; (cid:13); D).
+We assume that there is some vector of features (cid:30) :
+S ! [0; 1]k over states, and that there is some \true"
+reward function R(cid:3)(s) = w(cid:3) (cid:1) (cid:30)(s), where w(cid:3) 2 Rk. 3
+
+2A related idea is also seen in the biomechanics and cog-
+nitive science, where researchers have pointed out that sim-
+ple reward functions (usually ones constructed by hand) of-
+ten su(cid:14)ce to explain complicated behavior (policies). Ex-
+amples include the minimum jerk principle to explain limb
+movement in primates (Hogan, 1984), and the minimum
+torque-change model to explain trajectories in human mul-
+tijoint arm movement.(Uno et al., 1989) Related examples
+are also found in economics and some other literatures.
+(See the discussion in Ng & Russell, 2000.)
+
+3The case of state-action rewards R(s; a) o(cid:11)ers no ad-
+ditional di(cid:14)culties; using features of the form (cid:30) : S (cid:2) A !
+[0; 1]k, and our algorithms still apply straightforwardly.
+
+In order to ensure that the rewards are bounded by 1,
+we also assume kw(cid:3)k1 (cid:20) 1. In the driving domain, (cid:30)
+might be a vector of features indicating the di(cid:11)erent
+desiderata in driving that we would like to trade o(cid:11),
+such as whether we have just collided with another
+car, whether were driving in the middle lane, and so
+on. The (unknown) vector w(cid:3) speci(cid:12)es the relative
+weighting between these desiderata.
+A policy (cid:25) is a mapping from states to probability
+distributions over actions. The value of a policy (cid:25) is
+
+Es0(cid:24)D[V (cid:25)(s0)] = E[P1
+= E[P1
+= w (cid:1) E[P1
+
+t=0 (cid:13)tR(st)j(cid:25)]
+t=0 (cid:13)tw (cid:1) (cid:30)(st)j(cid:25)]
+t=0 (cid:13)t(cid:30)(st)j(cid:25)]
+
+(1)
+(2)
+(3)
+
+Here, the expectation is taken with respect to the ran-
+dom state sequence s0; s1; : : : drawn by starting from
+a state s0 (cid:24) D, and picking actions according to (cid:25).
+We de(cid:12)ne the expected discounted accumulated fea-
+ture value vector (cid:22)((cid:25)), or more succinctly the feature
+expectations, to be
+
+(cid:22)((cid:25)) = E[P1
+
+t=0 (cid:13)t(cid:30)(st)j(cid:25)] 2 Rk:
+
+(4)
+
+Using this notation, the value of a policy may be writ-
+ten Es0(cid:24)D[V (cid:25)(s0)] = w (cid:1) (cid:22)((cid:25)). Given that the reward
+R is expressible as a linear combination of the fea-
+tures (cid:30), the feature expectations for a given policy (cid:25)
+completely determine the expected sum of discounted
+rewards for acting according to that policy.
+Let (cid:5) denote the set of stationary policies for an MDP.
+Given two policies (cid:25)1; (cid:25)2 2 (cid:5), we can construct a new
+policy (cid:25)3 by mixing them together. Speci(cid:12)cally, imag-
+ine that (cid:25)3 operates by (cid:13)ipping a coin with bias (cid:21), and
+with probability (cid:21) picks and always acts according to
+(cid:25)1, and with probability 1 (cid:0) (cid:21) always acts according
+to (cid:25)2. From linearity of expectation, clearly we have
+that (cid:22)((cid:25)3) = (cid:21)(cid:22)((cid:25)1) + (1 (cid:0) (cid:21))(cid:22)((cid:25)2). Note that the
+randomization step selecting between (cid:25)1 and (cid:25)2 occurs
+only once at the start of a trajectory, and not on ev-
+ery step taken in the MDP. More generally, if we have
+found some set of policies (cid:25)1; : : : ; (cid:25)d, and want to (cid:12)nd
+a new policy whose feature expectations vector is a
+convex combination Pn
+i=1 (cid:21)i(cid:22)((cid:25)i) ((cid:21)i (cid:21) 0;Pi (cid:21)i = 1)
+of these policies, then we can do so by mixing together
+the policies (cid:25)1; : : : ; (cid:25)d, where the probability of picking
+(cid:25)i is given by (cid:21)i.
+We assume access to demonstrations by some expert
+(cid:25)E. Speci(cid:12)cally, we assume the ability to observe
+trajectories (state sequences) generated by the expert
+starting from s0 (cid:24) D and taking actions according to
+(cid:25)E. It may be helpful to think of the (cid:25)E as the optimal
+policy under the reward function R(cid:3) = w(cid:3)T (cid:30), though
+we do not require this to hold.
+For our algorithm, we will require an estimate of the
+experts feature expectations (cid:22)E = (cid:22)((cid:25)E). Speci(cid:12)-
+
+cally, given a set of m trajectories fs(i)
+1 ; : : :gm
+i=1
+generated by the expert, we denote the empirical esti-
+mate for (cid:22)E by4
+
+0 ; s(i)
+
+m E
+
+w (3)
+
+m (p
+
+(1) )
+
+w(2)
+
+p(
+
+(2)
+
+)
+
+^(cid:22)E = 1
+
+m Pm
+
+i=1 P1
+
+t=0 (cid:13)t(cid:30)(s(i)
+t ):
+
+(5)
+
+w(1)
+m (p
+
+(0) )
+
+In the sequel, we also assume access to a reinforcement
+learning (RL) algorithm that can be used to solve an
+MDPnR augmented with a reward function R = wT (cid:30).
+For simplicity of exposition, we will assume that the
+RL algorithm returns the optimal policy. The general-
+ization to approximate RL algorithms o(cid:11)ers no special
+di(cid:14)culties; see the full paper. (Abbeel & Ng, 2004)
+
+3. Algorithm
+The problem is the following: Given an MDPnR, a
+feature mapping (cid:30) and the experts feature expecta-
+tions (cid:22)E, (cid:12)nd a policy whose performance is close to
+that of the experts, on the unknown reward function
+R(cid:3) = w(cid:3)T (cid:30). To accomplish this, we will (cid:12)nd a policy
+~(cid:25) such that k(cid:22)(~(cid:25)) (cid:0) (cid:22)Ek2 (cid:20) (cid:15). For such a ~(cid:25), we would
+have that for any w 2 Rk (kwk1 (cid:20) 1),
+
+t=0 (cid:13)tR(st)j~(cid:25)]j
+
+jE[P1
+
+t=0 (cid:13)tR(st)j(cid:25)E] (cid:0) E[P1
+= jwT (cid:22)(~(cid:25)) (cid:0) wT (cid:22)Ej
+(cid:20) kwk2k(cid:22)(~(cid:25)) (cid:0) (cid:22)Ek2
+(cid:20) 1 (cid:1) (cid:15) = (cid:15)
+
+(6)
+
+(7)
+(8)
+(9)
+
+The (cid:12)rst inequality follows from the fact that jxT yj (cid:20)
+kxk2kyk2, and the second from kwk2 (cid:20) kwk1 (cid:20) 1.
+So the problem is reduced to (cid:12)nding a policy ~(cid:25) that
+induces feature expectations (cid:22)(~(cid:25)) close to (cid:22)E. Our
+apprenticeship learning algorithm for (cid:12)nding such a
+policy ~(cid:25) is as follows:
+
+1. Randomly pick some policy (cid:25)(0), compute (or approx-
+imate via Monte Carlo) (cid:22)(0) = (cid:22)((cid:25)(0)), and set i = 1.
+2. Compute t(i) = maxw:kwk2(cid:20)1 minj2f0::(i(cid:0)1)g wT ((cid:22)E (cid:0)
+(cid:22)(j)), and let w(i) be the value of w that attains this
+maximum.
+
+3. If t(i) (cid:20) (cid:15), then terminate.
+4. Using the RL algorithm, compute the optimal policy
+
+(cid:25)(i) for the MDP using rewards R = (w(i))T (cid:30).
+
+5. Compute (or estimate) (cid:22)(i) = (cid:22)((cid:25)(i)).
+
+6. Set i = i + 1, and go back to step 2.
+
+Upon termination, the algorithm returns f(cid:25)(i) : i =
+0 : : : ng.
+Let us examine the algorithm in detail. On iteration
+i, we have already found some policies (cid:25)(0); : : : ; (cid:25)(i(cid:0)1).
+The optimization in step 2 can be viewed as an inverse
+reinforcement learning step in which we try to guess
+
+4In practice we truncate the trajectories after a (cid:12)nite
+If H = H(cid:15) = log(cid:13)((cid:15)(1 (cid:0) (cid:13))) is the
+number H of steps.
+(cid:15)-horizon time, then this introduces at most (cid:15) error into
+the approximation.
+
+Figure 1. Three iterations for max-margin algorithm.
+
+the reward function being optimized by the expert.
+The maximization in that step is equivalently written
+
+maxt;w t
+
+s:t:
+
+wT (cid:22)E (cid:21) wT (cid:22)(j) + t; j = 0; : : : ; i (cid:0) 1
+jjwjj2 (cid:20) 1
+
+(10)
+
+(11)
+(12)
+
+(s0)] + t.
+
+From Eq. (11), we see the algorithm is trying to
+(cid:12)nd a reward function R = w(i) (cid:1) (cid:30) such that
+Es0(cid:24)D[V (cid:25)E (s0)] (cid:21) Es0(cid:24)D[V (cid:25)(i)
+I.e., a re-
+ward on which the expert does better, by a \margin"
+of t, than any of the i policies we had found previously.
+This step is similar to one used in (Ng & Russell, 2000),
+but unlike the algorithms given there, because of the
+2-norm constraint on w it cannot be posed as a linear
+program (LP), but only as a quadratic program.5
+Readers
+familiar with support vector machines
+(SVMs) will also recognize this optimization as be-
+ing equivalent to (cid:12)nding the maximum margin hyper-
+plane separating two sets of points. (Vapnik, 1998) The
+equivalence is obtained by associating a label 1 with
+the experts feature expectations (cid:22)E, and a label (cid:0)1
+with the feature expectations f(cid:22)((cid:25)(j)) : j = 0::(i(cid:0)1)g.
+The vector w(i) we want is the unit vector orthogonal
+to the maximum margin separating hyperplane. So, an
+SVM solver can also be used to (cid:12)nd w(i). (The SVM
+problem is a quadratic programming problem (QP), so
+we can also use any generic QP solver.)
+In Figure 1 we show an example of what the (cid:12)rst
+three iterations of the algorithm could look like geo-
+metrically. Shown are several example (cid:22)((cid:25)(i)), and the
+w(i)s given by di(cid:11)erent iterations of the algorithm.
+Now, suppose the algorithm terminates, with t(n+1) (cid:20)
+(cid:15). (Whether the algorithm terminates is discussed in
+Section 4.) Then directly from Eq. (10-12) we have:
+
+8w with kwk2 (cid:20) 1 9i s.t. wT (cid:22)(i) (cid:21) wT (cid:22)E (cid:0) (cid:15):
+
+(13)
+
+Since jjw(cid:3)jj2 (cid:20) jjw(cid:3)jj1 (cid:20) 1, this means that there is
+at least one policy from the set returned by the al-
+gorithm, whose performance under R(cid:3) is at least as
+good as the experts performance minus (cid:15). Thus, at
+this stage, we can ask the agent designer to manually
+test/examine the policies found by the algorithm, and
+
+5Although we previously assumed that the w(cid:3) specify-
+ing the \true" rewards statisfy kw(cid:3)k1 (cid:20) 1 (and our theo-
+retical results will use this assumption), we still implement
+the algorithm using kwk2 (cid:20) 1, as in Eq. (12).
+
+m
+pick one with acceptable performance. A slight exten-
+sion of this method ensures that the agent designer
+has to examine at most k + 1, rather than all n + 1,
+di(cid:11)erent policies (see footnote 6).
+If we do not wish to ask for human help to select a
+policy, alternatively we can (cid:12)nd the point closest to
+(cid:22)E in the convex closure of (cid:22)(0); : : : ; (cid:22)(n) by solving
+the following QP:
+
+min jj(cid:22)E (cid:0) (cid:22)jj2; s:t: (cid:22) = Pi (cid:21)i(cid:22)(i); (cid:21)i (cid:21) 0;Pi (cid:21)i = 1:
+Because (cid:22)E is \separated" from the points (cid:22)(i) by a
+margin of at most (cid:15), we know that for the solution (cid:22)
+we have jj(cid:22)E (cid:0)(cid:22)jj2 (cid:20) (cid:15). Further, by \mixing" together
+the policies (cid:25)(i) according to the mixture weights (cid:21)i as
+discussed previously, we obtain a policy whose feature
+expectations are given by (cid:22). Following our previous
+discussion (Eq. 6-9), this policy attains performance
+near that of the experts on the unknown reward func-
+tion.6
+Note that although we called one step of our algorithm
+an inverse RL step, our algorithm does not necessarily
+recover the underlying reward function correctly. The
+performance guarantees of our algorithm only depend
+on (approximately) matching the feature expectations,
+not on recovering the true underlying reward function.
+
+3.1. A simpler algorithm
+The algorithm described above requires access to a
+QP (or SVM) solver.
+It is also possible to change
+the algorithm so that no QP solver is needed. We
+will call the previous, QP-based, algorithm the max-
+margin method, and the new algorithm the projec-
+tion method. Brie(cid:13)y, the projection method replaces
+step 2 of the algorithm with the following:
+
+- Set (cid:22)(cid:22)(i(cid:0)1) =
+
+(cid:22)(cid:22)(i(cid:0)2) + ((cid:22)(i(cid:0)1)(cid:0) (cid:22)(cid:22)(i(cid:0)2))T ((cid:22)E(cid:0) (cid:22)(cid:22)(i(cid:0)2))
+((cid:22)(i(cid:0)1)(cid:0) (cid:22)(cid:22)(i(cid:0)2))
+((cid:22)(i(cid:0)1)(cid:0) (cid:22)(cid:22)(i(cid:0)2))T ((cid:22)(i(cid:0)1)(cid:0) (cid:22)(cid:22)(i(cid:0)2))
+(This computes the orthogonal projection of (cid:22)E onto
+the line through (cid:22)(cid:22)(i(cid:0)2) and (cid:22)(i(cid:0)1).)
+- Set w(i) = (cid:22)E (cid:0) (cid:22)(cid:22)(i(cid:0)1)
+- Set t(i) = k(cid:22)E (cid:0) (cid:22)(cid:22)(i(cid:0)1)k2
+
+In the (cid:12)rst iteration, we also set w(1) = (cid:22)E (cid:0) (cid:22)(0) and
+(cid:22)(cid:22)(0) = (cid:22)(0). The full justi(cid:12)cation for this method is
+deferred to the full paper (Abbeel and Ng, 2004), but
+in Sections 4 and 5 we will also give convergence results
+for it, and empirically compare it to the max-margin
+
+6In k-dimensional space, any point that is a convex
+combination of a set of N points, with N > k + 1, can
+be written as a convex combination of a subset of only
+k + 1 points of the original N points (Caratheodorys
+Theorem, Rockafeller, 1970). Applying this to (cid:22) =
+arg min(cid:22)2Cof(cid:22)((cid:25)(i))gn
+i=0 we ob-
+tain a set of k + 1 policies which is equally close to the
+experts feature expectations and thus have same perfor-
+mance guarantees. (Co denotes convex hull.)
+
+i=0 jj(cid:22)E (cid:0) (cid:22)jj2 and f(cid:22)((cid:25)(i))gn
+
+m (p
+
+(1) )
+
+m E
+
+w(2)
+
+(1)
+
+w(3)
+
+(2)
+w(1)
+
+(0) )=m
+
+(
+
+(0)
+
+p(
+
+(2) )
+
+Figure 2. Three iterations for projection algorithm.
+
+algorithm. An example showing three iterations of the
+projection method is shown in Figure 2.
+
+4. Theoretical results
+Most of the results in the previous section were predi-
+cated on the assumption that the algorithm terminates
+with t (cid:20) (cid:15). If the algorithm sometimes does not ter-
+minate, or if it sometimes takes a very (perhaps ex-
+ponentially) large number of iterations to terminate,
+then it would not be useful. The following shows that
+this is not the case.
+Theorem 1. Let an MDPnR, features (cid:30) : S 7! [0; 1]k,
+and any (cid:15) > 0 be given. Then the apprenticeship learn-
+ing algorithm (both max-margin and projection ver-
+sions) will terminate with t(i) (cid:20) (cid:15) after at most
+
+n = O (cid:16)
+
+k
+
+(1(cid:0)(cid:13))2(cid:15)2 log
+
+k
+
+(1(cid:0)(cid:13))(cid:15)(cid:17)
+
+(14)
+
+iterations.
+
+The previous result (and all of Section 3) had assumed
+that (cid:22)E was exactly known or calculated.
+In prac-
+tice, it has to be estimated from Monte Carlo samples
+(Eq. 5). We can thus ask about the sample complex-
+ity of this algorithm; i.e., how many trajectories m we
+must observe of the expert before we can guarantee we
+will approach its performance.
+Theorem 2. Let an MDPnR, features (cid:30) : S 7! [0; 1]k,
+and any (cid:15) > 0; (cid:14) > 0 be given. Suppose the appren-
+ticeship learning algorithm (either max-margin or pro-
+jection version) is run using an estimate ^(cid:22)E for (cid:22)E
+obtained by m Monte Carlo samples. In order to en-
+sure that with probability at least 1 (cid:0) (cid:14) the algorithm
+terminates after at most a number of iterations n given
+by Eq. (14), and outputs a policy ~(cid:25) so that for any true
+reward R(cid:3)(s) = w(cid:3)T (cid:30)(s) (kw(cid:3)k1 (cid:20) 1) we have
+E[P1
+it su(cid:14)ces that
+
+t=0 (cid:13)tR(cid:3)(st)j~(cid:25)] (cid:21) E[P1
+
+t=0 (cid:13)tR(cid:3)(st)j(cid:25)E](cid:0)(cid:15); (15)
+
+m (cid:21)
+
+2k
+
+((cid:15)(1(cid:0)(cid:13)))2 log 2k
+(cid:14) :
+
+The proofs of these theorems are in Appendix A.
+In the case where the true reward function R(cid:3) does
+not lie exactly in the span of the basis functions (cid:30), the
+algorithm still enjoys a graceful degradation of perfor-
+mance. Speci(cid:12)cally, if R(cid:3)(s) = w(cid:3) (cid:1) (cid:30)(s) + "(s) for
+
+p
+m
+m
+m
+m
+some residual (error) term "(s), then our algorithm
+will have performance that is worse than the experts
+by no more than O(k"k1).
+
+5. Experiments
+
+5.1. Gridworld
+In our (cid:12)rst set of experiments, we used 128 by 128
+gridworlds with multiple/sparse rewards. The reward
+is not known to the algorithm, but we can sample tra-
+jectories from an experts (optimal) policy. The agent
+has four actions to try to move in each of the four com-
+pass directions, but with 30% chance an action fails
+and results in a random move. The grid is divided into
+non-overlapping regions of 16 by 16 cells; we call these
+16x16 regions \macrocells." A small number of the re-
+sulting 64 macrocells have positive rewards. For each
+value of i = 1; : : : ; 64, there is one feature (cid:30)i(s) indi-
+cating whether that state s is in macrocell i. Thus, the
+rewards may be written R(cid:3) = (w(cid:3))T (cid:30). The weights w(cid:3)
+are generated randomly so as to give sparse rewards,
+which leads to fairly interesting/rich optimal policies.7
+In the basic version, the algorithm is run using the
+64-dimensional features (cid:30). We also tried a version in
+which the algorithm knows exactly which macrocells
+have non-zero rewards (but not their values), so that
+the dimension of (cid:30) is reduced to contain only features
+corresponding to non-zero rewards.
+In Figure 3, we compare the max-margin and projec-
+tion versions of the algorithm, when (cid:22)E is known ex-
+actly. We plot the margin t(i) (distance to experts pol-
+icy) vs. the number of iterations, using all 64 macro-
+cells as features. The experts policy is the optimal
+policy with respect to the given MDP. The two al-
+gorithms exhibited fairly similar rates of convergence,
+with the projection version doing slightly better.
+The second set of experiments illustrates the perfor-
+mance of the algorithm as we vary the number m of
+sampled expert trajectories used to estimate (cid:22)E. The
+performance measure is the value of the best policy
+in the set output by the algorithm. We ran the al-
+gorithm once using all 64 features, and once using
+only the features that truly correspond to non-zero
+rewards.8 We also report on the performance of three
+
+7Details: We used (cid:13) = 0:99, so the expected horizon is
+of the order of the gridsize. The true reward function was
+generated as follows: For each macrocell i (i = 1; : : : ; 64),
+with probability 0.9 the reward there is zero (w(cid:3)i = 0),
+and with probability 0.1 a weight w(cid:3)i is sampled uniformly
+from [0,1]. Finally, w(cid:3) is renormalized so that kw(cid:3)k1 =
+Instances with fewer than two non-zero entries in w(cid:3)
+1.
+are non-interesting and were discarded. The initial state
+distribution is uniform over all states.
+
+8Note that, as in the text, our apprenticeship learning
+algorithm assumes the ability to call a reinforcement learn-
+ing subroutine (in this case, an exact MDP solver using
+value iteration).
+In these experiments, we are interested
+
+0.04
+
+0.035
+
+n
+o
+
+i
+t
+
+max margin
+projection
+
+u
+b
+i
+r
+t
+s
+d
+e
+r
+u
+
+
+
+i
+
+t
+
+a
+e
+
+f
+
+t
+r
+e
+p
+x
+e
+
+
+
+o
+
+t
+
+
+e
+c
+n
+a
+t
+s
+D
+
+i
+
+0.03
+
+0.025
+
+0.02
+
+0.015
+
+0.01
+
+0.005
+
+0
+0
+
+5
+
+10
+
+Number of iterations
+
+15
+
+20
+
+25
+
+30
+
+Figure 3. A comparison of the convergence speeds of the
+max-margin and projection versions of the algorithm on a
+128x128 grid. Euclidean distance to the experts feature
+expectations is plotted as a function of the number of it-
+erations. We rescaled the feature expectations by (1 (cid:0) (cid:13))
+such that they are in [0; 1]k. The plot shows averages over
+40 runs, with 1 s.e. errorbars.
+
+1
+
+0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+t
+r
+e
+p
+x
+e
+
+
+f
+
+o
+
+
+
+e
+c
+n
+a
+m
+r
+o
+
+f
+r
+e
+p
+
+/
+
+e
+c
+n
+a
+m
+r
+o
+
+f
+r
+e
+p
+
+0
+0
+
+irl only nonzero weight features
+irl all features
+parameterized policy stochastic
+parameterized policy majority vote
+mimic the expert
+3
+2
+
+1
+4
+log10 (number of sample trajectories)
+
+5
+
+Figure 4. Plot of performance vs. number of sampled tra-
+jectories from the expert.
+(Shown in color, where avail-
+able.) Averages over 20 instances are plotted, with 1 s.e.
+errorbars. Note the base-10 logarithm scale on the x-axis.
+
+other simple algorithms. The \mimic the expert" al-
+gorithm picks whatever action the expert had taken
+if it (cid:12)nds itself in a state in which it had previously
+observed the expert, and picks an action randomly oth-
+erwise. The \parameterized policy stochastic" uses a
+stochastic policy, with the probability of each action
+constant over each macrocell and set to the empiri-
+cal frequency observed for the expert in the macrocell.
+The \parameterized policy majority vote" algorithm
+takes deterministically the most frequently observed
+action in the macrocell. Results are shown in Fig-
+ure 4. Using our algorithm, only a few sampled expert
+trajectories|far fewer than for the other methods|
+are needed to attain performance approaching that of
+(Note log scale on x-axis.)9 Thus, by
+the expert.
+
+mainly in the question of how many times an expert must
+demonstrate a task before we learn to perform the same
+task. In particular, we do not rely on the experts demon-
+strations to learn the state transition probabilities.
+
+9The parameterized policies never reach the experts
+performance, because their policy class is not rich enough.
+Their restricted policy class is what makes them do better
+
+with other cars; we also prefer the right lane over
+the middle lane over the left lane, over driving
+o(cid:11)-road.
+
+2. Nasty: Hit as many other cars as possible.
+
+3. Right lane nice: Drive in the right lane, but go
+
+o(cid:11)-road to avoid hitting cars in the right lane.
+
+4. Right lane nasty: Drive o(cid:11)-road on the right, but
+get back onto the road to hit cars in the right lane.
+
+5. Middle lane: Drive in the middle lane, ignoring
+all other cars (thus crashing into all other cars in
+the middle lane).
+
+After each style was demonstrated to the algorithm
+(by one of the authors driving in the simulator for 2
+minutes), apprenticeship learning was used to try to
+(cid:12)nd a policy that mimics demonstrated style. Videos
+of the demonstrations and of the resulting learned poli-
+cies are available at
+
+http://www.cs.stanford.edu/~pabbeel/irl/
+
+In every instance, the algorithm was qualitatively able
+to mimic the demonstrated driving style. Since no
+\true" reward was ever speci(cid:12)ed or used in the experi-
+ments, we cannot report on the results of the algorithm
+according to R(cid:3). However, Table 1 shows, for each of
+the (cid:12)ve driving styles, the feature expectations of the
+expert (as estimated from the 2 minute demonstra-
+tion), and the feature expectations of the learned con-
+troller for the more interesting features. Also shown
+are the weights w used to generate the policy shown.
+While our theory makes no guarantee about any set of
+weights w found, we note that the values there gener-
+ally make intuitive sense. For instance, in the (cid:12)rst
+driving style, we see negative rewards for collisions
+and for driving o(cid:11)road, and larger positive rewards
+for driving in the right lane than for the other lanes.
+
+6. Discussion and Conclusions
+We assumed access to demonstrations by an expert
+that is trying to maximize a reward function express-
+ible as a linear combination of known features, and pre-
+sented an algorithm for apprenticeship learning. Our
+method is based on inverse reinforcement learning, ter-
+minates in a small number of iterations, and guaran-
+tees that the policy found will have performance com-
+parable to or better than that of the expert, on the
+experts unknown reward function.
+Our algorithm assumed the reward function is express-
+ible as a linear function of known features. If the set
+of features is su(cid:14)ciently rich, this assumption is fairly
+unrestrictive. (In the extreme case where there is a
+separate feature for each state-action pair, fully gen-
+eral reward functions can be learned.) However, it
+remains an important problem to develop methods for
+learning reward functions that may be non-linear func-
+tions of the features, and to incorporate automatic fea-
+
+Figure 5. Screenshot of driving simulator.
+
+learning a compact representation of the reward func-
+tion, our algorithm signi(cid:12)cantly outperforms the other
+methods. We also observe that when the algorithm is
+told in advance which features have non-zero weight
+in the true reward function, it is able to learn using
+fewer expert trajectories.
+
+5.2. Car driving simulation
+For our second experiment, we implemented a car-
+driving simulation, and applied apprenticeship learn-
+ing to try to learn di(cid:11)erent \driving styles." A screen-
+shot of our simulator is shown in Figure 5. We are
+driving on a highway at 25m/s (56mph), which is faster
+than all the other cars. The MDP has (cid:12)ve di(cid:11)erent ac-
+tions, three of which cause the car to steer smoothly
+to one of the lanes, and two of which cause us to drive
+o(cid:11) (but parallel to) the road, on either the left or the
+right side. Because our speed is (cid:12)xed, if we want to
+avoid hitting other cars it is sometimes necessary to
+drive o(cid:11) the road.
+The simulation runs at 10Hz, and in the experiments
+that follow, the experts features were estimated from
+a single trajectory of 1200 samples (corresponding to
+2 minutes of driving time). There were features in-
+dicating what lane the car is currently in (including
+o(cid:11)road-left and o(cid:11)road-right, for a total of (cid:12)ve fea-
+tures), and the distance of the closest car in the current
+lane.10 Note that a distance of 0 from the nearest car
+implies a collision. When running the apprenticeship
+learning algorithm, the step in which reinforcement
+learning was required was implemented by solving a
+discretized version of the problem. In all of our exper-
+iments, the algorithm was run for 30 iterations, and a
+policy was selected by inspection (per the discussion
+in Section 3).
+We wanted to demonstrate a variety of di(cid:11)erent driv-
+ing styles (some corresponding to highly unsafe driv-
+ing) to see if the algorithm can mimic the same \style"
+in every instance. We considered (cid:12)ve styles:
+
+1. Nice: The highest priority is to avoid collisions
+
+than the \mimic the expert" algorithm initially.
+
+10More precisely, we used the distance to the single clos-
+est car in its current lane, discretized to the nearest car
+length between -7 to +2, for a total of 10 features.
+
+Table 1. Feature expectations of teacher ^(cid:22)E and of selected/learned policy (cid:22)(~(cid:25)) (as estimated by Monte Carlo). and
+weights w corresponding to the reward function that had been used to generate the policy shown. (Note for compactness,
+only 6 of the more interesting features, out of a total of 15 features, are shown here.)
+
+1
+
+2
+
+3
+
+4
+
+5
+
+^(cid:22)E
+(cid:22)(~(cid:25))
+~w
+^(cid:22)E
+(cid:22)(~(cid:25))
+~w
+^(cid:22)E
+(cid:22)(~(cid:25))
+~w
+^(cid:22)E
+(cid:22)(~(cid:25))
+~w
+^(cid:22)E
+(cid:22)(~(cid:25))
+~w
+
+Collision O(cid:11)road Left
+0.0000
+0.0004
+-0.0439
+0.0000
+0.0000
+-0.1098
+0.0000
+0.0000
+-0.0051
+0.0000
+0.0000
+-0.0001
+0.0000
+0.0000
+-0.0108
+
+0.0000
+0.0001
+-0.0767
+0.1167
+0.1332
+0.2340
+0.0000
+0.0000
+-0.1056
+0.0600
+0.0569
+0.1079
+0.0600
+0.0542
+0.0094
+
+LeftLane MiddleLane
+0.2033
+0.2287
+0.0078
+0.4667
+0.3196
+0.0487
+0.0033
+0.0000
+-0.0386
+0.0033
+0.0000
+-0.0666
+1.0000
+1.0000
+0.8126
+
+0.1325
+0.0904
+0.0077
+0.0633
+0.1045
+0.0092
+0.0000
+0.0000
+-0.0573
+0.0000
+0.0000
+-0.0487
+0.0000
+0.0000
+-0.2765
+
+RightLane O(cid:11)road Right
+0.0658
+0.0764
+-0.0035
+0.0000
+0.0000
+-0.0056
+0.2908
+0.2554
+0.0081
+0.7058
+0.7334
+0.0564
+0.0000
+0.0000
+-0.0154
+
+0.5983
+0.6041
+0.0318
+0.4700
+0.5759
+0.0576
+0.7058
+0.7447
+0.0929
+0.2908
+0.2666
+0.0590
+0.0000
+0.0000
+-0.5099
+
+ture construction and feature selection ideas into our
+algorithms.
+It might also be possible to derive an alternative ap-
+prenticeship learning algorithm using the dual to the
+LP that is used to solve Bellmans equations. (Manne,
+1960) Speci(cid:12)cally,
+in this LP the variables are the
+state/action visitation rates, and it is possible to place
+constraints on the learned policys stationary distribu-
+tion directly. While there are few algorithms for ap-
+proximating this dual (as opposed to primal) LP for
+large MDPs and exact solutions would be feasible only
+for small MDPs, we consider this an interesting direc-
+tion for future work.
+Acknowledgements. This work was supported by
+the Department of the Interior/DARPA under con-
+tract number NBCHD030010.
+

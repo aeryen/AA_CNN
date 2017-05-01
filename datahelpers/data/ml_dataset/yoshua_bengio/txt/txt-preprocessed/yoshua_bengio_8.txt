@@ -1,0 +1,994 @@
+Abstract
+
+Whereas before 2006 it appears that deep multi-
+layer neural networks were not successfully
+trained, since then several algorithms have been
+shown to successfully train them, with experi-
+mental results showing the superiority of deeper
+vs less deep architectures. All these experimen-
+tal results were obtained with new initialization
+or training mechanisms. Our objective here is to
+understand better why standard gradient descent
+from random initialization is doing so poorly
+with deep neural networks, to better understand
+these recent relative successes and help design
+better algorithms in the future. We rst observe
+the inuence of the non-linear activations func-
+tions. We nd that the logistic sigmoid activation
+is unsuited for deep networks with random ini-
+tialization because of its mean value, which can
+drive especially the top hidden layer into satu-
+ration. Surprisingly, we nd that saturated units
+can move out of saturation by themselves, albeit
+slowly, and explaining the plateaus sometimes
+seen when training neural networks. We nd that
+a new non-linearity that saturates less can often
+be benecial. Finally, we study how activations
+and gradients vary across layers and during train-
+ing, with the idea that training may be more dif-
+cult when the singular values of the Jacobian
+associated with each layer are far from 1. Based
+on these considerations, we propose a new ini-
+tialization scheme that brings substantially faster
+convergence.
+
+1 Deep Neural Networks
+
+Deep learning methods aim at learning feature hierarchies
+with features from higher levels of the hierarchy formed
+by the composition of lower level features. They include
+
+Appearing in Proceedings of the 13th International Conference
+on Articial Intelligence and Statistics (AISTATS) 2010, Chia La-
+guna Resort, Sardinia, Italy. Volume 9 of JMLR: W&CP 9. Copy-
+right 2010 by the authors.
+
+learning methods for a wide array of deep architectures,
+including neural networks with many hidden layers (Vin-
+cent et al., 2008) and graphical models with many levels of
+hidden variables (Hinton et al., 2006), among others (Zhu
+et al., 2009; Weston et al., 2008). Much attention has re-
+cently been devoted to them (see (Bengio, 2009) for a re-
+view), because of their theoretical appeal, inspiration from
+biology and human cognition, and because of empirical
+success in vision (Ranzato et al., 2007; Larochelle et al.,
+2007; Vincent et al., 2008) and natural language process-
+ing (NLP) (Collobert & Weston, 2008; Mnih & Hinton,
+2009). Theoretical results reviewed and discussed by Ben-
+gio (2009), suggest that in order to learn the kind of com-
+plicated functions that can represent high-level abstractions
+(e.g.
+in vision, language, and other AI-level tasks), one
+may need deep architectures.
+Most of the recent experimental results with deep archi-
+tecture are obtained with models that can be turned into
+deep supervised neural networks, but with initialization or
+training schemes different from the classical feedforward
+neural networks (Rumelhart et al., 1986). Why are these
+new algorithms working so much better than the standard
+random initialization and gradient-based optimization of a
+supervised training criterion? Part of the answer may be
+found in recent analyses of the effect of unsupervised pre-
+training (Erhan et al., 2009), showing that it acts as a regu-
+larizer that initializes the parameters in a better basin of
+attraction of the optimization procedure, corresponding to
+an apparent local minimum associated with better general-
+ization. But earlier work (Bengio et al., 2007) had shown
+that even a purely supervised but greedy layer-wise proce-
+dure would give better results. So here instead of focus-
+ing on what unsupervised pre-training or semi-supervised
+criteria bring to deep architectures, we focus on analyzing
+what may be going wrong with good old (but deep) multi-
+layer neural networks.
+Our analysis is driven by investigative experiments to mon-
+itor activations (watching for saturation of hidden units)
+and gradients, across layers and across training iterations.
+We also evaluate the effects on these of choices of acti-
+vation function (with the idea that it might affect satura-
+tion) and initialization procedure (since unsupervised pre-
+training is a particular form of initialization and it has a
+drastic impact).
+
+249Understanding the difculty of training deep feedforward neural networks
+
+2 Experimental Setting and Datasets
+
+Code to produce the new datasets introduced in this section
+is available from: http://www.iro.umontreal.
+ca/lisa/twiki/bin/view.cgi/Public/
+DeepGradientsAISTATS2010.
+
+2.1 Online Learning on an Innite Dataset:
+
+Shapeset-3  2
+
+Recent work with deep architectures (see Figure 7 in Ben-
+gio (2009)) shows that even with very large training sets
+or online learning, initialization from unsupervised pre-
+training yields substantial improvement, which does not
+vanish as the number of training examples increases. The
+online setting is also interesting because it focuses on the
+optimization issues rather than on the small-sample regu-
+larization effects, so we decided to include in our experi-
+ments a synthetic images dataset inspired from Larochelle
+et al. (2007) and Larochelle et al. (2009), from which as
+many examples as needed could be sampled, for testing the
+online learning scenario.
+We call this dataset the Shapeset-3  2 dataset, with ex-
+ample images in Figure 1 (top). Shapeset-3  2 con-
+tains images of 1 or 2 two-dimensional objects, each taken
+from 3 shape categories (triangle, parallelogram, ellipse),
+and placed with random shape parameters (relative lengths
+and/or angles), scaling, rotation, translation and grey-scale.
+We noticed that for only one shape present in the image the
+task of recognizing it was too easy. We therefore decided
+to sample also images with two objects, with the constraint
+that the second object does not overlap with the rst by
+more than fty percent of its area, to avoid hiding it en-
+tirely. The task is to predict the objects present (e.g. trian-
+gle + ellipse, parallelogram + parallelogram, triangle alone,
+etc.) without having to distinguish between the foreground
+shape and the background shape when they overlap. This
+therefore denes nine conguration classes.
+The task is fairly difcult because we need to discover in-
+variances over rotation, translation, scaling, object color,
+occlusion and relative position of the shapes. In parallel we
+need to extract the factors of variability that predict which
+object shapes are present.
+The size of the images are arbitrary but we xed it to 3232
+in order to work with deep dense networks efciently.
+
+2.2 Finite Datasets
+
+The MNIST digits (LeCun et al., 1998a), dataset has
+50,000 training images, 10,000 validation images (for
+hyper-parameter selection), and 10,000 test images, each
+showing a 2828 grey-scale pixel image of one of the 10
+digits.
+CIFAR-10 (Krizhevsky & Hinton, 2009) is a labelled sub-
+
+Figure 1: Top: Shapeset-32 images at 6464 resolution.
+The examples we used are at 3232 resolution. The learner
+tries to predict which objects (parallelogram, triangle, or el-
+lipse) are present, and 1 or 2 objects can be present, yield-
+ing 9 possible classications. Bottom: Small-ImageNet
+images at full resolution.
+
+set of the tiny-images dataset that contains 50,000 training
+examples (from which we extracted 10,000 as validation
+data) and 10,000 test examples. There are 10 classes cor-
+responding to the main object in each image: airplane, au-
+tomobile, bird, cat, deer, dog, frog, horse, ship, or truck.
+The classes are balanced. Each image is in color, but is
+just 32  32 pixels in size, so the input is a vector of
+32  32  3 = 3072 real values.
+Small-ImageNet which is a set of tiny 3737 gray level
+images dataset computed from the higher-resolution and
+larger set at http://www.image-net.org, with la-
+bels from the WordNet noun hierarchy. We have used
+90,000 examples for training, 10,000 for the validation set,
+and 10,000 for testing. There are 10 balanced classes: rep-
+tiles, vehicles, birds, mammals, sh, furniture, instruments,
+tools, owers and fruits Figure 1 (bottom) shows randomly
+chosen examples.
+
+2.3 Experimental Setting
+
+We optimized feedforward neural networks with one to
+ve hidden layers, with one thousand hidden units per
+layer, and with a softmax logistic regression for the out-
+put layer. The cost function is the negative log-likelihood
+ log P (y|x), where (x, y) is the (input image, target class)
+pair. The neural networks were optimized with stochastic
+back-propagation on mini-batches of size ten, i.e., the av-
+erage g of log P (y|x)
+was computed over 10 consecutive
+
+
+
+250Xavier Glorot, Yoshua Bengio
+
+training pairs (x, y) and used to update parameters  in that
+direction, with     g. The learning rate  is a hyper-
+parameter that is optimized based on validation set error
+after a large number of updates (5 million).
+We varied the type of non-linear activation function in the
+the sigmoid 1/(1 + ex), the hyperbolic
+hidden layers:
+tangent tanh(x), and a newly proposed activation func-
+tion (Bergstra et al., 2009) called the softsign, x/(1 + |x|).
+The softsign is similar to the hyperbolic tangent (its range
+is -1 to 1) but its tails are quadratic polynomials rather
+than exponentials, i.e., it approaches its asymptotes much
+slower.
+In the comparisons, we search for
+the best hyper-
+parameters (learning rate and depth) separately for each
+model. Note that the best depth was always ve for
+Shapeset-3  2, except for the sigmoid, for which it was
+four.
+We initialized the biases to be 0 and the weights Wij at
+each layer with the following commonly used heuristic:
+
+Wij  U
+
+,
+
+n
+
+(1)
+where U[a, a] is the uniform distribution in the interval
+(a, a) and n is the size of the previous layer (the number
+of columns of W ).
+3 Effect of Activation Functions and
+
+h  1
+
+i
+
+1
+n
+
+,
+
+Saturation During Training
+
+Two things we want to avoid and that can be revealed from
+the evolution of activations is excessive saturation of acti-
+vation functions on one hand (then gradients will not prop-
+agate well), and overly linear units (they will not compute
+something interesting).
+
+3.1 Experiments with the Sigmoid
+
+The sigmoid non-linearity has been already shown to slow
+down learning because of its none-zero mean that induces
+important singular values in the Hessian (LeCun et al.,
+1998b). In this section we will see another symptomatic
+behavior due to this activation function in deep feedforward
+networks.
+We want to study possible saturation, by looking at the evo-
+lution of activations during training, and the gures in this
+section show results on the Shapeset-3  2 data, but sim-
+ilar behavior is observed with the other datasets. Figure 2
+shows the evolution of the activation values (after the non-
+linearity) at each hidden layer during training of a deep ar-
+chitecture with sigmoid activation functions. Layer 1 refers
+to the output of rst hidden layer, and there are four hidden
+layers. The graph shows the means and standard deviations
+of these activations. These statistics along with histograms
+are computed at different times during learning, by looking
+at activation values for a xed set of 300 test examples.
+
+Figure 2: Mean and standard deviation (vertical bars) of the
+activation values (output of the sigmoid) during supervised
+learning, for the different hidden layers of a deep archi-
+tecture. The top hidden layer quickly saturates at 0 (slow-
+ing down all learning), but then slowly desaturates around
+epoch 100.
+
+We see that very quickly at the beginning, all the sigmoid
+activation values of the last hidden layer are pushed to their
+lower saturation value of 0.
+Inversely, the others layers
+have a mean activation value that is above 0.5, and decreas-
+ing as we go from the output layer to the input layer. We
+have found that this kind of saturation can last very long in
+deeper networks with sigmoid activations, e.g., the depth-
+ve model never escaped this regime during training. The
+big surprise is that for intermediate number of hidden lay-
+ers (here four), the saturation regime may be escaped. At
+the same time that the top hidden layer moves out of satura-
+tion, the rst hidden layer begins to saturate and therefore
+to stabilize.
+We hypothesize that this behavior is due to the combina-
+tion of random initialization and the fact that an hidden unit
+output of 0 corresponds to a saturated sigmoid. Note that
+deep networks with sigmoids but initialized from unsuper-
+vised pre-training (e.g.
+from RBMs) do not suffer from
+this saturation behavior. Our proposed explanation rests on
+the hypothesis that the transformation that the lower layers
+of the randomly initialized network computes initially is
+not useful to the classication task, unlike the transforma-
+tion obtained from unsupervised pre-training. The logistic
+layer output softmax(b+ W h) might initially rely more on
+its biases b (which are learned very quickly) than on the top
+hidden activations h derived from the input image (because
+h would vary in ways that are not predictive of y, maybe
+correlated mostly with other and possibly more dominant
+variations of x). Thus the error gradient would tend to
+push W h towards 0, which can be achieved by pushing
+h towards 0. In the case of symmetric activation functions
+like the hyperbolic tangent and the softsign, sitting around
+0 is good because it allows gradients to ow backwards.
+However, pushing the sigmoid outputs to 0 would bring
+them into a saturation regime which would prevent gradi-
+ents to ow backward and prevent the lower layers from
+learning useful features. Eventually but slowly, the lower
+layers move toward more useful features and the top hidden
+layer then moves out of the saturation regime. Note how-
+ever that, even after this, the network moves into a solution
+that is of poorer quality (also in terms of generalization)
+
+251Understanding the difculty of training deep feedforward neural networks
+
+then those found with symmetric activation functions, as
+can be seen in gure 11.
+
+where the gradients would ow well.
+
+3.2 Experiments with the Hyperbolic tangent
+
+h 1
+
+As discussed above, the hyperbolic tangent networks do not
+suffer from the kind of saturation behavior of the top hid-
+den layer observed with sigmoid networks, because of its
+symmetry around 0. However, with our standard weight
+initialization U
+, we observe a sequentially oc-
+curring saturation phenomenon starting with layer 1 and
+propagating up in the network, as illustrated in Figure 3.
+Why this is happening remains to be understood.
+
+i
+
+n , 1
+
+n
+
+Figure 4: Activation values normalized histogram at the
+end of learning, averaged across units of the same layer and
+across 300 test examples. Top: activation function is hyper-
+bolic tangent, we see important saturation of the lower lay-
+ers. Bottom: activation function is softsign, we see many
+activation values around (-0.6,-0.8) and (0.6,0.8) where the
+units do not saturate but are non-linear.
+
+4 Studying Gradients and their Propagation
+
+4.1 Effect of the Cost Function
+
+We have found that the logistic regression or conditional
+log-likelihood cost function ( log P (y|x) coupled with
+softmax outputs) worked much better (for classication
+problems) than the quadratic cost which was tradition-
+ally used to train feedforward neural networks (Rumelhart
+et al., 1986). This is not a new observation (Solla et al.,
+1988) but we nd it important to stress here. We found that
+the plateaus in the training criterion (as a function of the pa-
+rameters) are less present with the log-likelihood cost func-
+tion. We can see this on Figure 5, which plots the training
+criterion as a function of two weights for a two-layer net-
+work (one hidden layer) with hyperbolic tangent units, and
+a random input and target signal. There are clearly more
+severe plateaus with the quadratic cost.
+
+4.2 Gradients at initialization
+4.2.1 Theoretical Considerations and a New
+
+Normalized Initialization
+
+We study the back-propagated gradients, or equivalently
+the gradient of the cost function on the inputs biases at each
+layer. Bradley (2009) found that back-propagated gradients
+were smaller as one moves from the output layer towards
+the input layer, just after initialization. He studied networks
+with linear activation at each layer, nding that the variance
+of the back-propagated gradients decreases as we go back-
+wards in the network. We will also start by studying the
+linear regime.
+
+Figure 3: Top:98 percentiles (markers alone) and standard
+deviation (solid lines with markers) of the distribution of
+the activation values for the hyperbolic tangent networks in
+the course of learning. We see the rst hidden layer satu-
+rating rst, then the second, etc. Bottom: 98 percentiles
+(markers alone) and standard deviation (solid lines with
+markers) of the distribution of activation values for the soft-
+sign during learning. Here the different layers saturate less
+and do so together.
+
+3.3 Experiments with the Softsign
+The softsign x/(1+|x|) is similar to the hyperbolic tangent
+but might behave differently in terms of saturation because
+of its smoother asymptotes (polynomial instead of expo-
+nential). We see on Figure 3 that the saturation does not
+occur one layer after the other like for the hyperbolic tan-
+gent.
+It is faster at the beginning and then slow, and all
+layers move together towards larger weights.
+We can also see at the end of training that the histogram
+of activation values is very different from that seen with
+the hyperbolic tangent (Figure 4). Whereas the latter yields
+modes of the activations distribution mostly at the extremes
+(asymptotes -1 and 1) or around 0, the softsign network has
+modes of activations around its knees (between the linear
+regime around 0 and the at regime around -1 and 1). These
+are the areas where there is substantial non-linearity but
+
+252Xavier Glorot, Yoshua Bengio
+
+From a forward-propagation point of view, to keep infor-
+mation owing we would like that
+
+(i, i0), V ar[zi] = V ar[zi0
+
+].
+
+(8)
+
+=
+
+nV ar[W ]
+
+V ar[x]
+
+(13)
+
+h Cost
+
+i
+
+sd
+
+From a back-propagation point of view we would similarly
+like to have
+
+h Cost
+
+i
+
+si
+
+h Cost
+
+i
+
+si0
+
+(i, i0), V ar
+
+= V ar
+
+These two conditions transform to:
+
+.
+
+(9)
+
+(10)
+
+i, niV ar[W i] = 1
+i, ni+1V ar[W i] = 1
+
+(11)
+As a compromise between these two constraints, we might
+want to have
+
+i, V ar[W i] =
+
+2
+
+ni + ni+1
+
+(12)
+
+Note how both constraints are satised when all layers have
+the same width. If we also have the same initialization for
+the weights we could get the following interesting proper-
+ties:
+
+h
+
+i, V ar
+
+h Cost
+i
+h Cost
+
+si
+
+i
+h
+
+i, V ar
+
+wi
+
+idi
+
+id
+
+=
+
+nV ar[W ]
+
+V ar[x]V ar
+
+(14)
+We can see that the variance of the gradient on the weights
+is the same for all layers, but the variance of the back-
+propagated gradient might still vanish or explode as we
+consider deeper networks. Note how this is reminis-
+cent of issues raised when studying recurrent neural net-
+works (Bengio et al., 1994), which can be seen as very deep
+networks when unfolded through time.
+The standard initialization that we have used (eq.1) gives
+rise to variance with the following property:
+
+nV ar[W ] =
+
+1
+3
+
+(15)
+
+where n is the layer size (assuming all layers of the same
+size). This will cause the variance of the back-propagated
+gradient to be dependent on the layer (and decreasing).
+The normalization factor may therefore be important when
+initializing deep networks because of the multiplicative ef-
+fect through layers, and we suggest the following initializa-
+tion procedure to approximately satisfy our objectives of
+maintaining activation variances and back-propagated gra-
+dients variance as one moves up or down the network. We
+call it the normalized initialization:
+
+
+h 
+
+W  U
+
+(16)
+
+i
+
+
+
+
+
+
+
+6
+
+6
+
+,
+
+nj + nj+1
+
+nj + nj+1
+
+Figure 5: Cross entropy (black, surface on top) and
+quadratic (red, bottom surface) cost as a function of two
+weights (one at each layer) of a network with two layers,
+W1 respectively on the rst layer and W2 on the second,
+output layer.
+
+For a dense articial neural network using symmetric acti-
+vation function f with unit derivative at 0 (i.e. f0(0) = 1),
+if we write zi for the activation vector of layer i, and si
+the argument vector of the activation function at layer i,
+we have si = ziW i + bi and zi+1 = f(si). From these
+denitions we obtain the following:
+
+Cost
+
+si
+k
+
+= f0(si
+
+k)W i+1
+k,
+
+Cost
+si+1
+
+Cost
+wi
+
+l,k
+
+= zi
+l
+
+Cost
+
+si
+k
+
+(2)
+
+(3)
+
+The variances will be expressed with respect to the input,
+outpout and weight initialization randomness. Consider
+the hypothesis that we are in a linear regime at the initial-
+ization, that the weights are initialized independently and
+that the inputs features variances are the same (= V ar[x]).
+Then we can say that, with ni the size of layer i and x the
+network input,
+
+f0(si
+
+k)  1,
+i1Y
+
+i0=0
+
+V ar[zi] = V ar[x]
+
+ni0V ar[W i0
+
+(4)
+
+(5)
+
+],
+
+We write V ar[W i0] for the shared scalar variance of all
+weights at layer i0. Then for a network with d layers,
+ni0+1V ar[W i0
+
+h Cost
+
+= V ar
+
+], (6)
+
+V ar
+
+h Cost
+i
+i
+h Cost
+
+si
+
+wi
+
+i0=i
+
+i dY
+d1Y
+h Cost
+
+i0=i
+
+]
+
+sd
+
+i
+
+sd
+
+i1Y
+
+i0=0
+ V ar[x]V ar
+
+V ar
+
+=
+
+ni0V ar[W i0
+
+ni0+1V ar[W i0
+
+]
+
+.
+
+(7)
+
+253Understanding the difculty of training deep feedforward neural networks
+
+4.2.2 Gradient Propagation Study
+To empirically validate the above theoretical ideas, we have
+plotted some normalized histograms of activation values,
+weight gradients and of the back-propagated gradients at
+initialization with the two different initialization methods.
+The results displayed (Figures 6, 7 and 8) are from exper-
+iments on Shapeset-3  2, but qualitatively similar results
+were obtained with the other datasets.
+We monitor the singular values of the Jacobian matrix as-
+sociated with layer i:
+
+J i = zi+1
+zi
+
+(17)
+
+When consecutive layers have the same dimension, the av-
+erage singular value corresponds to the average ratio of in-
+nitesimal volumes mapped from zi to zi+1, as well as
+to the ratio of average activation variance going from zi
+to zi+1. With our normalized initialization, this ratio is
+around 0.8 whereas with the standard initialization, it drops
+down to 0.5.
+
+Figure 6: Activation values normalized histograms with
+hyperbolic tangent activation, with standard (top) vs nor-
+malized initialization (bottom). Top: 0-peak increases for
+higher layers.
+4.3 Back-propagated Gradients During Learning
+
+The dynamic of learning in such networks is complex and
+we would like to develop better tools to analyze and track
+it. In particular, we cannot use simple variance calculations
+in our theoretical analysis because the weights values are
+not anymore independent of the activation values and the
+linearity hypothesis is also violated.
+As rst noted by Bradley (2009), we observe (Figure 7) that
+at the beginning of training, after the standard initializa-
+tion (eq. 1), the variance of the back-propagated gradients
+gets smaller as it is propagated downwards. However we
+nd that this trend is reversed very quickly during learning.
+Using our normalized initialization we do not see such de-
+creasing back-propagated gradients (bottom of Figure 7).
+
+Figure 7: Back-propagated gradients normalized his-
+tograms with hyperbolic tangent activation, with standard
+(top) vs normalized (bottom) initialization. Top: 0-peak
+decreases for higher layers.
+
+What was initially really surprising is that even when the
+back-propagated gradients become smaller (standard ini-
+tialization), the variance of the weights gradients is roughly
+constant across layers, as shown on Figure 8. However, this
+is explained by our theoretical analysis above (eq. 14). In-
+terestingly, as shown in Figure 9, these observations on the
+weight gradient of standard and normalized initialization
+change during training (here for a tanh network). Indeed,
+whereas the gradients have initially roughly the same mag-
+nitude, they diverge from each other (with larger gradients
+in the lower layers) as training progresses, especially with
+the standard initialization. Note that this might be one of
+the advantages of the normalized initialization, since hav-
+ing gradients of very different magnitudes at different lay-
+ers may yield to ill-conditioning and slower training.
+Finally, we observe that the softsign networks share simi-
+larities with the tanh networks with normalized initializa-
+tion, as can be seen by comparing the evolution of activa-
+tions in both cases (resp. Figure 3-bottom and Figure 10).
+5 Error Curves and Conclusions
+The nal consideration that we care for is the success
+of training with different strategies, and this is best il-
+lustrated with error curves showing the evolution of test
+error as training progresses and asymptotes. Figure 11
+shows such curves with online training on Shapeset-3  2,
+while Table 1 gives nal test error for all the datasets
+studied (Shapeset-3  2, MNIST, CIFAR-10, and Small-
+ImageNet). As a baseline, we optimized RBF SVM mod-
+els on one hundred thousand Shapeset examples and ob-
+tained 59.47% test error, while on the same set we obtained
+50.47% with a depth ve hyperbolic tangent network with
+normalized initialization.
+These results illustrate the effect of the choice of activa-
+tion and initialization. As a reference we include in Fig-
+
+254Xavier Glorot, Yoshua Bengio
+
+Figure 8: Weight gradient normalized histograms with hy-
+perbolic tangent activation just after initialization, with
+standard initialization (top) and normalized initialization
+(bottom), for different layers. Even though with standard
+initialization the back-propagated gradients get smaller, the
+weight gradients do not!
+
+Figure 9: Standard deviation intervals of the weights gradi-
+ents with hyperbolic tangents with standard initialization
+(top) and normalized (bottom) during training. We see
+that the normalization allows to keep the same variance
+of the weights gradient across layers, during training (top:
+smaller variance for higher layers).
+
+Table 1: Test error with different activation functions and
+initialization schemes for deep networks with 5 hidden lay-
+ers. N after the activation function name indicates the use
+of normalized initialization. Results in bold are statistically
+different from non-bold ones under the null hypothesis test
+with p = 0.005.
+
+TYPE
+
+Shapeset MNIST CIFAR-10
+
+ImageNet
+
+Softsign
+Softsign N
+Tanh
+Tanh N
+Sigmoid
+
+16.27
+16.06
+27.15
+15.60
+82.61
+
+1.64
+1.72
+1.76
+1.64
+2.21
+
+55.78
+53.8
+55.9
+52.92
+57.28
+
+69.14
+68.13
+70.58
+68.57
+70.66
+
+ure 11 the error curve for the supervised ne-tuning from
+the initialization obtained after unsupervised pre-training
+with denoising auto-encoders (Vincent et al., 2008). For
+each network the learning rate is separately chosen to min-
+imize error on the validation set. We can remark that on
+Shapeset-3  2, because of the task difculty, we observe
+important saturations during learning, this might explain
+that the normalized initialization or the softsign effects are
+more visible.
+Several conclusions can be drawn from these error curves:
+ The more classical neural networks with sigmoid or
+hyperbolic tangent units and standard initialization
+fare rather poorly, converging more slowly and appar-
+ently towards ultimately poorer local minima.
+
+ The softsign networks seem to be more robust to the
+initialization procedure than the tanh networks, pre-
+sumably because of their gentler non-linearity.
+
+ For tanh networks, the proposed normalized initial-
+ization can be quite helpful, presumably because the
+layer-to-layer transformations maintain magnitudes of
+
+Figure 10: 98 percentile (markers alone) and standard de-
+viation (solid lines with markers) of the distribution of ac-
+tivation values for hyperbolic tangent with normalized ini-
+tialization during learning.
+
+activations (owing upward) and gradients (owing
+backward).
+
+Others methods can alleviate discrepancies between lay-
+ers during learning, e.g., exploiting second order informa-
+tion to set the learning rate separately for each parame-
+ter. For example, we can exploit the diagonal of the Hes-
+sian (LeCun et al., 1998b) or a gradient variance estimate.
+Both those methods have been applied for Shapeset-3  2
+with hyperbolic tangent and standard initialization. We ob-
+served a gain in performance but not reaching the result ob-
+tained from normalized initialization. In addition, we ob-
+served further gains by combining normalized initialization
+with second order methods: the estimated Hessian might
+then focus on discrepancies between units, not having to
+correct important initial discrepancies between layers.
+In all reported experiments we have used the same num-
+ber of units per layer. However, we veried that we obtain
+the same gains when the layer size increases (or decreases)
+with layer number.
+The other conclusions from this study are the following:
+
+ Monitoring activations and gradients across layers and
+
+255Understanding the difculty of training deep feedforward neural networks
+
+Bengio, Y., Lamblin, P., Popovici, D., & Larochelle, H. (2007).
+Greedy layer-wise training of deep networks. NIPS 19 (pp.
+153160). MIT Press.
+
+Bengio, Y., Simard, P., & Frasconi, P. (1994). Learning long-term
+dependencies with gradient descent is difcult. IEEE Transac-
+tions on Neural Networks, 5, 157166.
+
+Bergstra, J., Desjardins, G., Lamblin, P., & Bengio, Y. (2009).
+Quadratic polynomials learn better image features (Technical
+Report 1337). Departement dInformatique et de Recherche
+Operationnelle, Universite de Montreal.
+
+Bradley, D. (2009). Learning in modular systems. Doctoral dis-
+sertation, The Robotics Institute, Carnegie Mellon University.
+
+Collobert, R., & Weston, J. (2008). A unied architecture for nat-
+ural language processing: Deep neural networks with multitask
+learning. ICML 2008.
+
+Erhan, D., Manzagol, P.-A., Bengio, Y., Bengio, S., & Vincent,
+P. (2009). The difculty of training deep architectures and the
+effect of unsupervised pre-training. AISTATS2009 (pp. 153
+160).
+
+Hinton, G. E., Osindero, S., & Teh, Y. (2006). A fast learning
+algorithm for deep belief nets. Neural Computation, 18, 1527
+1554.
+
+Krizhevsky, A., & Hinton, G. (2009). Learning multiple layers
+of features from tiny images (Technical Report). University of
+Toronto.
+
+Larochelle, H., Bengio, Y., Louradour, J., & Lamblin, P. (2009).
+Exploring strategies for training deep neural networks. The
+Journal of Machine Learning Research, 10, 140.
+
+Larochelle, H., Erhan, D., Courville, A., Bergstra, J., & Bengio,
+Y. (2007). An empirical evaluation of deep architectures on
+problems with many factors of variation. ICML 2007.
+
+LeCun, Y., Bottou, L., Bengio, Y., & Haffner, P. (1998a).
+Gradient-based learning applied to document recognition. Pro-
+ceedings of the IEEE, 86, 22782324.
+
+LeCun, Y., Bottou, L., Orr, G. B., & Muller, K.-R. (1998b). Ef-
+cient backprop. In Neural networks, tricks of the trade, Lecture
+Notes in Computer Science LNCS 1524. Springer Verlag.
+
+Mnih, A., & Hinton, G. E. (2009). A scalable hierarchical dis-
+
+tributed language model. NIPS 21 (pp. 10811088).
+
+Ranzato, M., Poultney, C., Chopra, S., & LeCun, Y. (2007). Ef-
+cient learning of sparse representations with an energy-based
+model. NIPS 19.
+
+Rumelhart, D. E., Hinton, G. E., & Williams, R. J. (1986). Learn-
+ing representations by back-propagating errors. Nature, 323,
+533536.
+
+Solla, S. A., Levin, E., & Fleisher, M. (1988). Accelerated learn-
+ing in layered neural networks. Complex Systems, 2, 625639.
+
+Vincent, P., Larochelle, H., Bengio, Y., & Manzagol, P.-A. (2008).
+Extracting and composing robust features with denoising au-
+toencoders. ICML 2008.
+
+Weston, J., Ratle, F., & Collobert, R. (2008). Deep learning
+via semi-supervised embedding. ICML 2008 (pp. 11681175).
+New York, NY, USA: ACM.
+
+Zhu, L., Chen, Y., & Yuille, A. (2009). Unsupervised learning
+of probabilistic grammar-markov models for object categories.
+IEEE Transactions on Pattern Analysis and Machine Intelli-
+gence, 31, 114128.
+
+Figure 11: Test error during online training on the
+Shapeset-32 dataset, for various activation functions and
+initialization schemes (ordered from top to bottom in de-
+creasing nal error). N after the activation function name
+indicates the use of normalized initialization.
+
+Figure 12: Test error curves during training on MNIST and
+CIFAR10, for various activation functions and initialization
+schemes (ordered from top to bottom in decreasing nal
+error). N after the activation function name indicates the
+use of normalized initialization.
+
+training iterations is a powerful investigative tool for
+understanding training difculties in deep nets.
+
+ Sigmoid activations (not symmetric around 0) should
+be avoided when initializing from small random
+weights, because they yield poor learning dynamics,
+with initial saturation of the top hidden layer.
+
+ Keeping the layer-to-layer transformations such that
+both activations and gradients ow well (i.e. with a Ja-
+cobian around 1) appears helpful, and allows to elim-
+inate a good part of the discrepancy between purely
+supervised deep networks and ones pre-trained with
+unsupervised learning.
+
+ Many of our observations remain unexplained, sug-
+gesting further investigations to better understand gra-
+dients and training dynamics in deep architectures.
+

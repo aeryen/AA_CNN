@@ -1,0 +1,821 @@
+Abstract. We address the problem of learning good features for under-
+standing video data. We introduce a model that learns latent represen-
+tations of image sequences from pairs of successive images. The convolu-
+tional architecture of our model allows it to scale to realistic image sizes
+whilst using a compact parametrization. In experiments on the NORB
+dataset, we show our model extracts latent ow elds which correspond
+to the transformation between the pair of input frames. We also use our
+model to extract low-level motion features in a multi-stage architecture
+for action recognition, demonstrating competitive performance on both
+the KTH and Hollywood2 datasets.
+
+Key words: unsupervised learning, restricted Boltzmann machines, con-
+volutional nets, optical ow, video analysis, activity recognition
+
+1
+
+Introduction
+
+While the dominant methodology for visual recognition from images and video
+relies on hand-crafted features, there has been a growing interest in methods that
+learn low-level and mid-level features, either in supervised [1], unsupervised [2
+4], or semi-supervised settings [5]. In recent years, feature-learning methods have
+focused on learning multiple layers of feature hierarchies to extract increasingly
+abstract representations at each stage. This has been generally done by compos-
+ing modules of the same architecture such as Restricted Boltzmann Machines
+(RBM) [2], autoencoders [3], or various forms of encoder-decoder networks [4,
+6, 7] each of which are trained unsupervised and therefore can take advantage
+of large amounts of unlabeled image data. The resulting deep architectures
+are then globally trained discriminatively, with the idea that the rst phase of
+unsupervised feature learning has provided an initialization that is much more
+salient for high-level tasks than the usual random initialization.
+
+Most of the above methods do not exploit the pictorial nature of the input,
+and have been applied to relatively small image patches (typically less than
+6464 pixels), because they do not scale well with the size of the input. This can
+be addressed by using a convolutional architecture [1], which exploits the fact that
+salient motifs can appear anywhere in the image. This idea has been recently used
+in the context of RBMs [8, 9]. By employing successive stages of weight-sharing
+
+2
+
+Graham W. Taylor, Rob Fergus, Yann LeCun, and Christoph Bregler
+
+and feature-pooling, deep convolutional architectures can achieve stable latent
+representations at each layer, that preserve locality, provide invariance to small
+variations of the input, and drastically reduce the number of free parameters.
+
+To date, most of the work on unsupervised feature extraction has focused
+on static images but little attention has been given to learning about the way
+that images from videos change over time. The few works that address the prob-
+lem (e.g. [10, 6]) are trained on isolated patches (not convolutionally), and suer
+from the same limitations as static methods. In this paper, we propose a model
+that can extract motion-sensitive features from pairs of images (i.e. neighbour-
+ing frames of video). The features can capture both static and dynamic content.
+Our model is trained convolutionally which enables it to work on high-resolution
+images. We rst apply it to synthetic data and show that it learns to represent
+ow-like features when the type of transformations are restricted. We then use it
+to extract useful features for human activity recognition in a multi-stage archi-
+tecture that achieves state-of-the-art performance on the KTH actions dataset.
+Results are also shown on the challenging Hollywood2 action recognition dataset.
+
+2 Related work
+
+Our work extends the Gated RBM (GRBM) model proposed by Memisevic and
+Hinton [10]. The GRBM is able to extract distributed, domain-specic represen-
+tations of image patch transformations. Due to its tensor parameterization, it is
+not practical to apply this model to patches larger than about pN  32q32 since
+the number of parameters grows as OpN 4q. Therefore, it has only been applied
+to low-resolution synthetic images of shifting pixels or PCA-reduced samples of
+low-resolution video. While the model has been shown to improve digit classi-
+cation by learning the types of transformations to which the classier should
+remain invariant, we are not aware of is application to a discriminative task on
+real video. Memisevic and Hinton have recently proposed a factored form of the
+GRBM [11] that drastically reduces the number of free parameters by replac-
+ing the three-way weight tensor with three low-rank matrices. In the present
+work, we take an alternative convolutional approach to scaling up the model,
+which achieves the additional benet of translation invariance. Sutskever and
+Hinton [12] proposed a type of temporal RBM for video. Using synthetic videos
+of bouncing balls, they trained a model which was then able to generate similar
+videos, but did not apply their work to discriminative tasks. The signal from the
+past only provides a type of temporal bias to the hidden variables, which is
+fundamentally dierent from our third-order RBM, where past inputs modulate
+the interactions between the current input and the latent feature representation.
+Building on the rapidly growing literature on sparse over-complete decompo-
+sitions of image patches [13], Cadieu and Olshausen [6] have proposed a two-layer
+probabilistic model that learns complex motion features from video. In contrast
+to our model, they explicitly separate static amplitude and dynamic phase at
+the rst layer. The second layer then learns high-order dependencies among the
+phase variables. Dean et al. [14] have recently proposed learning spatio-temporal
+
+Convolutional Learning of Spatio-temporal Features
+
+3
+
+descriptors by recursively applying the feature-sign sparse coding algorithm [15]
+to 3D patches of videos extracted at detected interest points. Like our work,
+their descriptors are adaptive, but their method is trained at the patch level.
+
+State-of-the-art methods for activity recognition use engineered motion and
+texture descriptors extracted around interest points detected by spatio-temporal
+corner detectors. The descriptors are then vector-quantized, pooled over time and
+space into a bag, and fed to an SVM classier. Among the best performing
+methods are 1) Laptev et al.s spatio-temporal interest points (STIP) [16] used
+in conjunction with the HOG/HOF descriptor that computes histograms of
+spatial gradients and optic ow accumulated in local space-time neighbourhoods
+[17]; 2) Dollar et al.s Cuboids approach [18] used in conjunction with several
+dierent descriptor types; and 3) Willems et al.s approach [19] which uses the
+determinant of the Hessian as a saliency measure and computes a weighted sum
+of Haar wavelet responses within local rectangular sub-volumes.
+
+In contrast to these approaches, we perform a type of implicit, rather than
+explicit interest point detection and focus on learning descriptors rather than
+hand-crafting them. We also bypass the quantization step in favor of several
+additional layers of feature extraction that provide a distributed representation
+of each video. Jhuang et al. [20] propose an approach similar in spirit to ours,
+using multiple levels of feature detectors at increasing spatio-temporal scale.
+However, like [1719], they forgo learning until the very last stage: low and mid-
+level features are engineered.
+
+3 Unsupervised learning of spatio-temporal features
+
+We rst describe a related approach, the gated Restricted Boltzmann Machine,
+which models image patches but does not scale to realistic-sized images or video.
+We then describe our convolutional model.
+
+3.1 The gated Restricted Boltzmann Machine (GRBM)
+
+The gated Restricted Boltzmann Machine [10] diers from other conditional
+RBM architectures (e.g. [21, 12]) in that its inputs change the eective weights
+of the model instead of simply adjusting the eective biases of visible or latent
+variables (see Figure 1(left)). This is achieved by dening an energy function
+that captures third-order interactions among three types of binary stochastic
+variables: inputs, x, outputs, y, and latents, z:
+
+E py, z; xq   
+
+Wijkxiyjzk  
+
+bkzk  
+
+cjyj
+
+(1)
+
+ijk
+
+k
+
+j
+
+where Wijk are the components of a parameter tensor, W, which is learned. To
+model ane and not just linear dependencies, biases b and c are included.
+
+When learning from video, x and y are image patches (expressed as vectors)
+at identical spatial locations in sequential frames, and z is a latent representation
+
+4
+
+Graham W. Taylor, Rob Fergus, Yann LeCun, and Christoph Bregler
+
+Fig. 1. Left: A gated RBM. Right: A convolutional gated RBM using probabilistic
+max-pooling.
+
+of the transformation between x and y. The energy of any joint conguration
+ty, z; xu is converted to a conditional probability by normalizing:
+
+ppy, z|xq  exp pEpy, z; xqq {Zpxq
+
+(2)
+where the partition function, Zpxq  y,z exp pEpy, z; xqq is intractable to
+compute exactly since it involves a sum over all possible congurations of the
+output and latent variables. However, we do not need to compute this quantity
+to perform either inference or learning. Given an input-output pair of image
+patches, tx, yu, it follows from Eq. 1 and 2 that
+
+ppzk  1|x, yq  p
+
+Wijkxiyj  bkq
+
+(3)
+
+ij
+
+where pzq  1{p1  exppzqq is the logistic.
+
+Maximizing the marginal conditional likelihood, ppy|xq, over parameters  
+tW, b, cu is dicult for all but the smallest models due to the intractability of
+computing Z. Learning, however, still works well if we approximately follow the
+gradient of another function called the contrastive divergence (CD) [22].
+
+3.2 The convolutional gated Restricted Boltzmann Machine
+
+(convGRBM)
+
+GRBMs represent the input and output as a vector, and thus ignore the pictorial
+structure of images. Weights that encode a particular local transformation must
+be re-learned to detect that same transformation at multiple locations. We now
+describe a form of GRBM that shares weights at all locations in an image.
+Inference is performed eciently through convolution, so we refer to the model as
+a convolutional GRBM (convGRBM). The model is illustrated in Figure 1(right).
+In our description of the GRBM, we suggested that x and y were time-
+adjacent patches from video, but they could have been any arbitrary vectors.
+
+X (Input)Y (Output) ZkLatent featurelayer PkPoolinglayerNxNxNyNyNzNzNpNppkzkm,nNxwNxwNywNywWWX (Input)Y (Output) ZLatentsConvolutional Learning of Spatio-temporal Features
+
+5
+
+Here, we assume that x is a Nx  Nx binary image and y is a Ny  Ny binary
+image. We assume square, binary images to simplify the presentation but provide
+details of using real-valued images in the supplemental material. In the GRBM
+we had K binary latent variables. Now we have K Nz  Nz binary latent feature
+k1). Let m and n be spatial indices to each 2D feature map, such
+maps (z  tzkuK
+that a single feature is described as zk
+m,n. The indices m and n not only index a
+particular 2D feature, but they also dene 1) an N y
+w local region in y from
+w  N y
+w region of x which modulates
+which this feature receives input, and 2) a N x
+w  N x
+the interaction between all K features at location m, n and the N y
+w local
+region in y. Alternatively, we can think of each of the K features at index m, n
+w pixels in x
+as contributing a local log-linear patch model between the N x
+and the N y
+w pixels in y where the location of these local regions is specied
+by m, n. The number of local autoregressive models that can be blended is
+exponential in the number of feature maps.
+
+w  N y
+
+w  N x
+
+w  N y
+
+For the remainder of our discussion, we will make two assumptions: 1) the
+input and output images are the same dimensions, Nx  Ny (this holds true for
+neighbouring frames in video); and 2) the lter dimensions in the input and the
+w. These assumptions are not necessary, but they
+output are the same, N x
+greatly simplify bookkeeping and therefore the presentation that follows.
+
+w  N y
+
+The convGRBM has the following energy function:
+
+E py, z; xq  
+
+K
+
+
+k1
+
+Nz
+
+m,n1
+
+N y
+w
+
+r,s1
+
+m,npxqk
+zk
+
+r,s,m,nymr1,ns1
+
+
+
+K
+
+
+k1
+
+bk
+
+Nz
+
+m,n1
+
+zk
+m,n  c
+
+Ny
+
+i,j1
+
+yi,j
+
+(4)
+
+where we use a per-map bias, bk, for the latent variables and single output bias,
+c. Eq. 4 is similar to the energy function of a convolutional RBM [8], except
+that what was previously a lter weight with 3 indices: r, s, k has been replaced
+by a conditional lter weight, pxqk
+r,s,u,vxmu1,nv1, with 5
+indices. The additional indices m, n denote the local region in x which modulates
+the lter. Note that while m, n index the entire feature map, u, v and r, s index
+within the local regions of x and y, respectively.
+
+r,s,m,n  N x
+
+u,v W k
+
+w
+
+As in the GRBM, the probability of jointly observing y and z given x is given
+
+by Eq. 2. The conditional distributions for z|y, x and y|z, x naturally follow:
+
+ppzk
+
+m,n  1|x, yq  p
+
+N y
+w
+
+r,s1
+
+pxqk
+
+r,s,m,nymr1,ns1  bkq
+
+(5)
+
+(6)
+
+ppyi,j  1|x, zq  p
+
+K
+
+N y
+w
+
+r,s1
+w  r  1 and s1  N y
+
+
+k1
+
+pxqk
+
+r1,s1,ir1,js1zk
+
+ir1,js1  cq
+
+where r1  N y
+w  s  1 represent a ipping of the lter
+indices (i.e. correlation rather than convolution), and z is the result of zero-
+padding z such that its rst N y
+w  1 rows and columns are zero. Note that in
+
+6
+
+Graham W. Taylor, Rob Fergus, Yann LeCun, and Christoph Bregler
+
+Eq. 5 an output unit yi,j makes a bottom-up contribution to several elements
+(m, n) in all K feature maps. Therefore, in top-down reconstruction (Eq. 6) we
+must ensure that each output unit receives input from all feature map elements
+to which it has contributed, through the same conditional lter weight that was
+used bottom-up. To account for border eects, it is convenient to dene pxq as
+a zero-padded version of pxq whose dimensions are N y
+w  Ny  Ny  K.
+As with convolutional RBMs, we can express both inference (Eq. 5) and
+reconstruction (Eq. 6) in terms of convolution operations (see the supplemental
+material for details). While inference in a convolutional RBM requires a single
+2D convolution of the data with the lters, inference in the convGRBM requires
+a 2D convolution of the output and data for each element of the conditioning
+window: i.e. N x
+w convolutions. The same holds true for reconstruction
+(replacing data with feature maps). Note, however, that a fully-connected (i.e.
+non-convolutional) GRBM requires Nx  Nx more operations during inference
+than a standard RBM. Restricting connections to be local clearly makes a huge
+dierence in eciency, especially when the ratio of pixels to lter size is high.
+
+w  N x
+
+w  N y
+
+Probabilistic max pooling Most object recognition systems use a pooling
+operation that combines nearby values in input or feature space through a max,
+average or histogram operator. This provides the system with some invariance to
+small local distortions and reduces the computational burden. Traditional pool-
+ing layers, however, are designed for feed-forward architectures like convolutional
+nets and do not support generative models such as RBMs that include top-down
+feedback. Lee et al. [8] thus introduced probabilistic max-pooling in the context
+of convolutional RBMs. We adopt their approach, and summarize it here.
+
+Recall that we have K feature maps connected to the visible input and out-
+put. We introduce a layer on top of the feature maps, called the pooling layer,
+which also has K maps, each connected 1-1 to a feature map. However, the maps
+of the pooling layer are reduced in spatial resolution by a constant factor C in
+each dimension (e.g. 2 or 4). More precisely, each feature map zk is partitioned
+into non-overlapping C C blocks, and each block is connected to exactly one
+, in the pooling layer (i.e. Np  Nz{C). Here, we have adopted
+binary unit, pk
+the notation of [8] where  indexes the pooling units and also dene a block
+formally as B  tpm, nq : zm,n belongs to the block u.
+
+The connection between pooling unit p and the features in block B is
+constrained such that at most one of the features in a block is on, and if any
+of the features in block B is on, then p must be on, otherwise p is o. This
+leads to a modied, constrained, energy function:
+
+E py, z; xq  
+
+K
+
+
+k1
+
+
+
+
+
+
+
+pm,nqPB
+
+N y
+w
+
+r,s1
+
+m,npxqk
+zk
+
+r,s,m,nymr1,ns1
+
+
+
+K
+
+
+k1
+
+bk
+
+Nz
+
+m,n1
+
+zk
+m,n  c
+
+Ny
+
+i,j1
+
+yi,j
+
+subject to: 
+
+m,n  1, @k, .
+zk
+
+(7)
+
+pm,nqPB
+
+Convolutional Learning of Spatio-temporal Features
+
+7
+
+Changing the energy function results in a change to the inference procedure.
+Note that each unit in feature map k receives the following bottom-up signal
+from the input and output:
+
+Ipzk
+
+m,nq 
+
+N y
+w
+
+r,s1
+
+pxqk
+
+r,s,m,nymr1,ns1  bk.
+
+(8)
+
+Due to the factorial form of Eq. 7, we can sample each of the blocks independently
+as a multinomial function of their inputs:
+
+ppzk
+
+m,n  1|x, yq  1exp Ipzk
+
+m,nq,
+
+(9)
+
+where the normalization constant is   1  pm1,n1qPB
+
+pppk
+
+  0|x, yq  1
+m1,n1 q.
+
+exp Ipzk
+
+4 Experiments on synthetic data: NORB
+
+One way to evaluate third-order RBMs is by experimenting in a domain where
+optical ow is controlled and regular (e.g. the shifting pixels experiments of
+[10]). In this section, we describe a domain for experimentation that is of in-
+creased complexity yet still controlled. The Small NORB dataset [23] has 5
+object categories (humans, airplanes, cards, trucks, animals), and 5 dierent ob-
+ject instances for each training and test. Each object instance has 18 azimuths,
+9 camera-elevations, and 6 illuminations, for a total of 24300 training samples
+and 24300 test samples. Traditionally NORB has been used to evaluate object
+recognition. Since our goal is to extract useful transformation features from
+pairs of images we use the dataset dierently than intended.
+
+The azimuth, elevation, and illumination changes in the NORB dataset are
+at xed intervals and corresponding labels for each image are available. There-
+fore, we created synthetic videos where an object underwent forward or reverse
+transformation in one of the dimensions while the others were held xed. Before
+generating the videos, we downsampled each image to 3232 pixels, and pre-
+processed it using local contrast normalization (LCN) as described in [24]. The
+LCN operation involves a 99 smoothing lter, so each resulting image is 2424.
+We then trained a convGRBM with real-valued outputs and 20 binary feature
+w  9. The model trained on all
+maps. The lter dimensions were N x
+azimuth changes of 20, and all camera elevation changes of 10. It was
+trained for 30 complete passes through the training set, using standard CD(1)
+learning. Figure 2 shows the result of performing 10 image analogies. Each
+analogy is represented by a group of six small greyscale images and one larger
+optical ow image. To perform an analogy, the model is presented with a pair
+of images each from an object instance it has never seen before, and asked to
+apply the same inferred transformation to a random target image, also which it
+has never seen before. We can also visualize the ow implicit in the hidden
+units and conditional on the pair, by drawing, for each input pixel, an arrow to
+the output pixel to which it is most strongly connected according to the learned
+lters, W (marginalized over the binary feature maps). Much information is
+
+w  N y
+
+8
+
+Graham W. Taylor, Rob Fergus, Yann LeCun, and Christoph Bregler
+
+potentially lost in this representation [10]: the transformation encoded by the
+feature maps can be much richer than what is expressed by optical ow alone.
+
+Fig. 2. Analogies. Each group of six greyscale images from left to right, top to bot-
+tom represent: input image; output image; models reconstruction of output; random
+target image; ground truth of random target (i.e. by searching for the example that
+corresponds to the transformation between image and output); inferred transformation
+applied to targets. Examples 1-6 show changes in azimuth; 7-10 show changes in camera
+elevation. A representation of inferred max ow elds is shown for each example.
+
+5 Experiments on human activity recognition
+
+Recognition of human activity from video is a challenging problem that has re-
+ceived an increasing amount of attention from the computer vision community in
+recent years. The ability to parse high-level visual information has wide-ranging
+applications that include surveillance and security, the aid of people with special
+needs and the understanding and interpretation of non-verbal communication.
+
+Convolutional Learning of Spatio-temporal Features
+
+9
+
+Fig. 3. An overview of our multi-stage architecture for human activity recognition. See
+text for a description of each stage.
+
+We approach the problem with a multi-stage architecture (see Figure 3) that
+combines convolutional and fully-connected layers. At the lowest layer, a con-
+volutional GRBM extracts features from every successive pair of frames. We
+observe that most features are motion-sensitive, but others capture static in-
+formation. This is particularly useful in providing context in more challenging
+datasets [25] and will aid in applying our method to other tasks, such as scene
+recognition from video. A subset of the feature maps inferred from the KTH
+actions dataset are shown in Figure 4. The features are extremely diverse: many
+capture limb movement, others capture edge content, and one seems particu-
+larly apt at segmenting person from background (we note that the background
+is generally uniformly textured in KTH).
+
+To capture mid-level spatio-temporal cues, we apply a traditional (i.e. feed-
+forward) convolutional layer that uses 3D spatio-temporal lters. A connectivity
+table indicates which of the 3D convolutional layer output maps are connected
+to each convGRBM pooling map. Our convolutional layer is a 3D extension of
+the architecture advocated by Jarrett et al. [7]: ltering, followed by a tanh
+nonlinearity, followed by absolute value rectication, followed by a local con-
+trast normalization layer, followed by average pooling and subsampling. Both
+the abspq and tanhpq are performed element-wise, so their extension to 3D is
+straightforward. The LCN and pooling/subsampling layers each employ a lter-
+ing operation, which we perform in 3D instead of 2D.
+
+The output of the second convolutional layer is a series of 3D feature maps.
+To cope with variable-length sequences, we perform an additional max pooling in
+the temporal dimension. This ensures that the mid-level features can be reduced
+to a vector of consistent size. This representation is followed by one or more
+fully-connected layers (we use 1 or 2 in our experiments). The topmost layer is a
+softmax (multinomial) layer corresponding to discrete activity labels, and inter-
+mediate layers use a tanh nonlinearity. The convGRBM is trained unsupervised
+using CD, while the upper layers are trained by backpropagation. We do not
+backpropagate through the rst layer following unsupervised training, though
+this could be done to make the low-level features more discriminative.
+
+5.1 KTH actions dataset
+
+The KTH actions dataset [26] is the most commonly used dataset in evaluating
+human action recognition. It consists of 25 subjects performing six actions: walk-
+ing, jogging, running, boxing, hand waving, and hand clapping under 4 scenarios
+
+convGRBM3-DconvolutionAbsRecti(cid:31)cationLocalcontrast norm.Averagespatial poolingMax temporalpoolingFullyconnectedActivity labelImagepairs10
+
+Graham W. Taylor, Rob Fergus, Yann LeCun, and Christoph Bregler
+
+(outdoors, outdoors with scale variation, outdoors with dierent clothes and in-
+doors). Each sequence is further divided into shorter clips for a total of 2391
+sequences. We use the original evaluation methodology: assigning 8 subjects to
+a training set, 8 to a validation set, and the remaining 9 subjects to a test set so
+that our results are directly comparable to the recent survey by Wang et al. [27].
+Preprocessing We maintained the original frame rate (25fps) and spatial
+resolution 160120 in all of our experiments. All videos then underwent 3D local
+contrast normalization (an extension of [24]).
+
+x  N y
+
+Unsupervised Learning. We trained a convGRBM with Nz  32 feature
+maps and a pooling factor of C  4. Filter sizes were N x
+x  16. We chose
+16 as it was a number amenable to GPU-based computing, and it was close to
+the minimal patch size (18  18) suggested by Wang et al. [27]. We have not
+tried other patch sizes. Weights were updated in mini-batches of 128 pairs of
+subsequent frames (the order of pairs was randomly permuted as to balance the
+mini-batches). We made 30 complete passes over all videos in the training set.
+Supervised Learning We trained a convolutional net with 128 999 l-
+ters (randomly initialized) on top of the features extracted by the convGRBM.
+Each feature map of the convolutional net received input from 4 randomly cho-
+sen pooling maps from the rst layer. Architectural choices were motivated by a
+desire to extract mid-level spatio-temporal features; the local connectivity used
+is standard practice [1]. The nonlinearities we used were identical to those in [7]
+with the exception of extending contrast normalization and downsampling to 3D:
+LCN was performed using a 999 smoothing lter, followed by 444 average
+downsampling. We also tried a more traditional network architecture which did
+not use absolute value rectication and LCN. We found that it slightly decreased
+accuracy (by about 1%; less drastic than reported in [7] for static object recogni-
+tion). The pooling layer was then subjected to a further max-pooling over time,
+the output was vectorized and connected to one or two fully-connected layers.
+All layers (except the convGRBM) used online backpropagation1. We made 30
+complete passes through the training set.
+
+Table 1 compares our approach to the prior art using dense sampling (i.e. no
+interest-point detection) and K-means quantization. We report mean accuracy
+over all six actions. Our method, to the best of our knowledge, gives the best
+mean accuracy on KTH amongst methods that do not use interest-point de-
+tection. The currently best performing method [17] uses the STIP interest-point
+detector and HOG/HOF or HOF descriptors (91.8 and 92.1%, respectively). Due
+to the high ratio of background pixels to subject pixels in KTH, and the limited
+number of actions (that dont require context information), interest-point meth-
+ods tend to perform extremely well on KTH. Evidence already indicates that
+dense-sampling outperforms interest-points on more challenging datasets [27].
+
+To demonstrate the advantage of low-level feature extraction with convGRBMs,
+
+we have replaced the rst layer with a standard 3D convolutional layer (32F16162
+
+CSG
+
+1 The choice of using online learning here was simply a matter of convenience due to
+variable sequence lengths. Since the convGRBM is trained on pairs of frames (rather
+than whole sequences) it is easier to train in mini-batches.
+
+Convolutional Learning of Spatio-temporal Features
+
+11
+
+Table 1. KTH action dataset: classication performance using dense sampling. Integers
+preceding a module indicate the number of feature maps in that module. Superscripts
+indicate lter sizes or downsampling ratio (chosen by context). convGRBM is our
+proposed method, trained unsupervised. FCSG is a standard convolutional layer: a
+set of convolution lters (C) followed by a sigmoid/tanh nonlinearity (S), and gain
+coecients (G). R/N/PA is abs rectication, followed by local contrast normalization,
+followed by average pooling. The number of fully-connected layers are either 1 which
+corresponds to logistic regression (log reg) or 2, which corresponds to a multi-layer
+perceptron (mlp).
+
+Prior Art
+HOG3D-KM-SVM
+HOG/HOF-KM-SVM
+HOG-KM-SVM
+HOF-KM-SVM
+
+Accuracy Convolutional architectures
+85.3 32convGRBM1616-128F999
+86.1 32convGRBM1616-128F999
+79.0 32F16162
+88.0 32F16162
+
+CSG -R/N/P444
+CSG -R/N/P444
+
+CSG -R/N/P444
+CSG -R/N/P444
+-128F999
+-128F999
+
+-log reg
+-mlp
+CSG -R/N/P444
+CSG -R/N/P444
+
+A
+
+A
+
+A
+
+A
+
+A
+
+A
+
+Accuracy
+88.9
+90.0
+79.4
+79.5
+
+-log reg
+-mlp
+
+- see Table 1). By using lters of size 16162 and a 444 pooling layer, we
+have matched the architecture of the convGRBM as best as possible to perform
+this comparison. The entire network is trained by backpropagation. We note
+that this fully feed-forward approach performs considerably worse.
+
+5.2 Hollywood2 dataset
+
+The Hollywood2 dataset [25] consists
+of a collection of video clips contain-
+ing 12 classes of human action ex-
+tracted from 69 movies. It totals ap-
+proximately 20.1 hours of video and
+contains approximately 150 samples
+per action. It provides a more real-
+istic and challenging environment for
+human action recognition by contain-
+ing varying spatial resolution, camera
+zoom, scene cuts and compression ar-
+tifacts.
+
+Table 2. Hollywood2 dataset: average
+precision (AP) using dense sampling.
+
+AP
+
+Method
+Prior Art [27]:
+HOG3D+KM+SVM
+45.3
+HOG/HOF+KM+SVM 47.4
+HOG+KM+SVM
+39.4
+HOF+KM+SVM
+45.5
+convGRBM+SC+SVM 46.6
+
+Performance is evaluated as suggested by Marszalek et al. [25]: by computing
+the average precision (AP) for each of the action classes and reporting mean AP
+over all actions. Following [27], we downsampled the spatial resolution of every
+video clip (which varies between clips) by a factor of 2. Videos were then zero-
+padded to have a constant spatial resolution. We did no temporal downsampling.
+All videos then underwent 3D local contrast normalization.
+
+Similar to the KTH dataset, we trained a convGRBM with Nz  32 feature
+x  16. The
+maps and a pooling factor of C  4. Filter sizes were N x
+convGRBM was trained for 50 complete passes over all videos in the training
+dataset and used a sparsity regularization term in the CD updates [28] that
+encouraged the hidden units to have a mean activation of 0.1.
+
+x  N y
+
+12
+
+Graham W. Taylor, Rob Fergus, Yann LeCun, and Christoph Bregler
+
+Instead of applying a convolutional network to extract mid-level features, we
+sampled the feature maps of the convGRBM with a stride of 8 pixels in each
+direction, and formed local temporal groups of 10 frames. We then used the
+method described in [29] to learn a dictionary of 4000 basis vectors, and encode
+the temporal groups as sparse linear coecients of the bases. Each video then
+yielded a varying number of sparse vectors (given dierent lengths) so we applied
+max-pooling over the temporal dimension. A SVM (with RBF kernel) was then
+trained (per-activity) on the top-level representation. Since Hollywood2 videos
+may contain more than one activity, this approach allowed us to avoid training
+a separate 3D convolutional net per-activity.
+
+We achieve a mean AP of 46.6% using dense sampling, learned convGRBM
+low-level features and sparse coding with 4000 elements. To the best of our
+knowledge, the only superior published result is 47.4% which uses dense sampling
+with HOG/HOF features and quantization [27]. However, our result outperforms
+other popular methods such as Cuboids (45.0%) and Willems et al. (38.2%)
+(published in [27]). We also expect that an approach that combined our learned
+features with HOG/HOF descriptors could perform well.
+
+6 Conclusion
+
+Gated RBMs extract latent representations that are useful for video understand-
+ing tasks. However, they do not scale well to realistic resolutions and must learn
+separate feature detectors at all locations in a frame. In the spirit of recent work
+exploring convolutional deep architectures, we have introduced the convolutional
+gated RBM. We showed that it learned to represent optical ow and performed
+image analogies in a controlled, synthetic environment. In a more challenging set-
+ting, human activity recognition, it extracted useful motion-sensitive features,
+as well as segmentation and edge-detection operators that allowed it to perform
+competitively against the state-of-the-art as part of a multi-stage architecture.
+
+Acknowledgments. We thank the Oce Of Naval Research (ONR N000140910789,
+ONR N000140910076), and Google for supporting this research.
+

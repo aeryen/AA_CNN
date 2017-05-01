@@ -1,0 +1,1338 @@
+Abstract
+
+We introduce DropConnect, a generalization
+of Dropout (Hinton et al., 2012), for regular-
+izing large fully-connected layers within neu-
+ral networks. When training with Dropout,
+a randomly selected subset of activations are
+set to zero within each layer. DropCon-
+nect instead sets a randomly selected sub-
+set of weights within the network to zero.
+Each unit thus receives input from a ran-
+dom subset of units in the previous layer.
+We derive a bound on the generalization per-
+formance of both Dropout and DropCon-
+nect. We then evaluate DropConnect on a
+range of datasets, comparing to Dropout, and
+show state-of-the-art results on several image
+recognition benchmarks by aggregating mul-
+tiple DropConnect-trained models.
+
+1. Introduction
+
+Neural network (NN) models are well suited to do-
+mains where large labeled datasets are available, since
+their capacity can easily be increased by adding more
+layers or more units in each layer. However, big net-
+works with millions or billions of parameters can easily
+overt even the largest of datasets. Correspondingly,
+a wide range of techniques for regularizing NNs have
+been developed. Adding an (cid:96)2 penalty on the network
+weights is one simple but eective approach. Other
+forms of regularization include: Bayesian methods
+(Mackay, 1995), weight elimination (Weigend et al.,
+1991) and early stopping of training. In practice, us-
+ing these techniques when training big networks gives
+superior test performance to smaller networks trained
+without regularization.
+
+Proceedings of the 30 th International Conference on Ma-
+chine Learning, Atlanta, Georgia, USA, 2013.
+JMLR:
+W&CP volume 28. Copyright 2013 by the author(s).
+
+Recently, Hinton et al. proposed a new form of regular-
+ization called Dropout (Hinton et al., 2012). For each
+training example, forward propagation involves ran-
+domly deleting half the activations in each layer. The
+error is then backpropagated only through the remain-
+ing activations. Extensive experiments show that this
+signicantly reduces over-tting and improves test per-
+formance. Although a full understanding of its mech-
+anism is elusive, the intuition is that it prevents the
+network weights from collaborating with one another
+to memorize the training examples.
+
+In this paper, we propose DropConnect which general-
+izes Dropout by randomly dropping the weights rather
+than the activations. Like Dropout, the technique is
+suitable for fully connected layers only. We compare
+and contrast the two methods on four dierent image
+datasets.
+
+2. Motivation
+
+To demonstrate our method we consider a fully con-
+nected layer of a neural network with input v =
+[v1, v2, . . . , vn]T and weight parameters W (of size
+d  n). The output of this layer, r = [r1, r2, . . . , rd]T
+is computed as a matrix multiply between the input
+vector and the weight matrix followed by a non-linear
+activation function, a, (biases are included in W with
+a corresponding xed input of 1 for simplicity):
+
+2.1. Dropout
+
+r = a(u) = a(W v)
+
+(1)
+
+Dropout was proposed by (Hinton et al., 2012) as
+a form of regularization for fully connected neural
+network layers. Each element of a layers output is
+kept with probability p, otherwise being set to 0 with
+probability (1  p). Extensive experiments show that
+Dropout improves the networks generalization ability,
+giving improved test performance.
+
+When Dropout is applied to the outputs of a fully con-
+
+Regularization of Neural Networks using DropConnect
+
+Figure 1. (a): An example model layout for a single DropConnect layer. After running feature extractor g() on input x, a
+random instantiation of the mask M (e.g. (b)), masks out the weight matrix W . The masked weights are multiplied with
+this feature vector to produce u which is the input to an activation function a and a softmax layer s. For comparison, (c)
+shows an eective weight mask for elements that Dropout uses when applied to the previous layers output (red columns)
+and this layers output (green rows). Note the lack of structure in (b) compared to (c).
+
+nected layer, we can write Eqn. 1 as:
+
+r = m (cid:63) a(W v)
+
+(2)
+where (cid:63) denotes element wise product and m is a bi-
+nary mask vector of size d with each element, j, drawn
+independently from mj  Bernoulli(p).
+Many commonly used activation functions such as
+tanh, centered sigmoid and relu (Nair and Hinton,
+2010), have the property that a(0) = 0. Thus, Eqn. 2
+could be re-written as, r = a(m (cid:63) W v), where Dropout
+is applied at the inputs to the activation function.
+
+2.2. DropConnect
+
+DropConnect is the generalization of Dropout in which
+each connection, rather than each output unit, can
+be dropped with probability 1  p. DropConnect is
+similar to Dropout as it introduces dynamic sparsity
+within the model, but diers in that the sparsity is
+on the weights W , rather than the output vectors of a
+layer. In other words, the fully connected layer with
+DropConnect becomes a sparsely connected layer in
+which the connections are chosen at random during
+the training stage. Note that this is not equivalent to
+setting W to be a xed sparse matrix during training.
+
+For a DropConnect layer, the output is given as:
+
+r = a ((M (cid:63) W ) v)
+
+(3)
+
+where M is a binary matrix encoding the connection
+information and Mij  Bernoulli(p). Each element
+of the mask M is drawn independently for each exam-
+ple during training, essentially instantiating a dier-
+ent connectivity for each example seen. Additionally,
+
+the biases are also masked out during training. From
+Eqn. 2 and Eqn. 3, it is evident that DropConnect is
+the generalization of Dropout to the full connection
+structure of a layer1.
+
+The paper structure is as follows: we outline details on
+training and running inference in a model using Drop-
+Connect in section 3, followed by theoretical justica-
+tion for DropConnect in section 4, GPU implementa-
+tion specics in section 5, and experimental results in
+section 6.
+
+3. Model Description
+
+We consider a standard model architecture composed
+of four basic components (see Fig. 1a):
+
+1. Feature Extractor: v = g(x; Wg) where v are the out-
+put features, x is input data to the overall model,
+and Wg are parameters for the feature extractor. We
+choose g() to be a multi-layered convolutional neural
+network (CNN) (LeCun et al., 1998), with Wg being
+the convolutional lters (and biases) of the CNN.
+
+2. DropConnect Layer: r = a(u) = a((M (cid:63) W )v) where
+v is the output of the feature extractor, W is a fully
+connected weight matrix, a is a non-linear activation
+function and M is the binary mask matrix.
+
+3. Softmax Classication Layer: o = s(r; Ws) takes as
+input r and uses parameters Ws to map this to a k
+dimensional output (k being the number of classes).
+
+4. Cross Entropy Loss: A(y, o) = (cid:80)k
+
+i=1 yilog(oi) takes
+probabilities o and the ground truth labels y as input.
+
+1This holds when a(0) = 0, as is the case for tanh and
+
+relu functions.
+
+DropConnect weights W (d x n) b) DropConnect mask M  Features  v (n x 1) u (d x 1) a) Model Layout Activation  function a(u) Outputs  r (d x 1) Feature  extractor g(x;Wg)  Input  x Softmax  layer s(r;Ws) Predictions  o (k x 1) c) Effective Dropout mask M Previous layer mask Current layer output mask Regularization of Neural Networks using DropConnect
+
+(cid:88)
+
+The overall model f (x; , M ) therefore maps input
+data x to an output o through a sequence of operations
+given the parameters  = {Wg, W, Ws} and randomly-
+drawn mask M . The correct value of o is obtained by
+summing out over all possible masks M :
+
+o = EM [f (x; , M )] =
+
+p(M )f (x; , M )
+
+(4)
+
+M
+
+This reveals the mixture model interpretation of Drop-
+Connect (and Dropout), where the output is a mixture
+of 2|M| dierent networks, each with weight p(M ).
+If p = 0.5, then these weights are equal and o =
+1|M|
+
+M s(a((M (cid:63) W )v); Ws)
+
+M f (x; , M ) = 1|M|
+
+(cid:80)
+
+(cid:80)
+
+3.1. Training
+
+Training the model described in Section 3 begins by
+selecting an example x from the training set and ex-
+tracting features for that example, v. These features
+are input to the DropConnect layer where a mask ma-
+trix M is rst drawn from a Bernoulli(p) distribution
+to mask out elements of both the weight matrix and
+the biases in the DropConnect layer. A key compo-
+nent to successfully training with DropConnect is the
+selection of a dierent mask for each training exam-
+ple. Selecting a single mask for a subset of training
+examples, such as a mini-batch of 128 examples, does
+not regularize the model enough in practice. Since the
+memory requirement for the M s now grows with the
+size of each mini-batch, the implementation needs to
+be carefully designed as described in Section 5.
+
+Once a mask is chosen, it is applied to the weights and
+biases in order to compute the input to the activa-
+tion function. This results in r, the input to the soft-
+max layer which outputs class predictions from which
+cross entropy between the ground truth labels is com-
+puted. The parameters throughout the model  then
+can be updated via stochastic gradient descent (SGD)
+by backpropagating gradients of the loss function with
+respect to the parameters, A(cid:48)
+. To update the weight
+matrix W in a DropConnect layer, the mask is ap-
+plied to the gradient to update only those elements
+that were active in the forward pass. Additionally,
+when passing gradients down to the feature extractor,
+the masked weight matrix M (cid:63) W is used. A summary
+of these steps is provided in Algorithm 1.
+
+3.2. Inference
+
+1/|M|(cid:80)
+proximation: (cid:80)
+
+At
+inference time, we need to compute r =
+M a((M (cid:63) W )v), which naively requires the
+evaluation of 2|M| dierent masks  plainly infeasible.
+The Dropout work (Hinton et al., 2012) made the ap-
+M (M (cid:63) W )v),
+
+M a((M (cid:63) W )v)  a((cid:80)
+
+Algorithm 1 SGD Training with DropConnect
+
+Input: example x, parameters t1 from step t 1,
+learning rate 
+Output: updated parameters t
+Forward Pass:
+Extract features: v  g(x; Wg)
+Random sample M mask: Mij  Bernoulli(p)
+Compute activations: r = a((M (cid:63) W )v)
+Compute output: o = s(r; Ws)
+Backpropagate Gradients:
+Dierentiate loss A(cid:48)
+Update softmax layer: Ws = Ws  A(cid:48)
+Update DropConnect layer: W = W  (M (cid:63) A(cid:48)
+Update feature extractor: Wg = Wg  A(cid:48)
+
+ with respect to parameters :
+
+W )
+
+Ws
+
+Wg
+
+Algorithm 2 Inference with DropConnect
+
+Input: example x, parameters , # of samples Z.
+Output: prediction u
+Extract features: v  g(x; Wg)
+Moment matching of u:
+
+  EM [u]
+
+2  VM [u]
+
+for z = 1 : Z do %% Draw Z samples
+
+for i = 1 : d do %% Loop over units in r
+
+Sample from 1D Gaussian ui,z  N (i, 2
+i )
+ri,z  a(ui,z)
+
+end for
+
+Pass result r =(cid:80)Z
+
+end for
+
+z=1 rz/Z to next layer
+
+i.e. averaging before the activation rather than after.
+Although this seems to work in practice, it is not jus-
+tied mathematically, particularly for the relu activa-
+tion function.2
+
+(cid:80)
+
+We take a dierent approach. Consider a single
+unit ui before the activation function a(): ui =
+j(Wijvj)Mij. This is a weighted sum of Bernoulli
+variables Mij, which can be approximated by a Gaus-
+sian via moment matching. The mean and variance
+of the units u are: EM [u] = pW v and VM [u] =
+p(1  p)(W (cid:63) W )(v (cid:63) v). We can then draw samples
+from this Gaussian and pass them through the activa-
+tion function a() before averaging them and present-
+ing them to the next layer. Algorithm 2 summarizes
+the method. Note that the sampling can be done ef-
+ciently, since the samples for each unit and exam-
+ple can be drawn in parallel. This scheme is only an
+approximation in the case of multi-layer network, it
+works well in practise as shown in Experiments.
+
+2Consider u  N (0, 1), with a(u) = max(u, 0).
+
+a(EM (u)) = 0 but EM (a(u)) = 1/
+
+
+
+2  0.4.
+
+Regularization of Neural Networks using DropConnect
+
+Implementation
+
+Mask Weight
+
+Time(ms)
+
+CPU
+CPU
+GPU
+GPU
+GPU
+GPU(Lower Bound)
+
+oat
+bit
+oat(global memory)
+oat(tex1D memory)
+bit(tex2D aligned memory)
+cuBlas + read mask weight
+
+fprop
+480.2
+392.3
+21.6
+15.1
+2.4
+0.3
+
+bprop acts
+1228.6
+679.1
+6.2
+6.1
+2.7
+0.3
+
+bprop weights
+1692.8
+759.7
+7.2
+6.0
+3.1
+0.2
+
+total
+3401.6
+1831.1
+35.0
+27.2
+8.2
+0.8
+
+Speedup
+1.0 
+1.9 
+97.2 
+126.0 
+414.8 
+
+Table 1. Performance comparison between dierent implementations of our DropConnect layer on NVidia GTX580 GPU
+relative to a 2.67Ghz Intel Xeon (compiled with -O3 ag). Input dimension and Output dimension are 1024 and mini-batch
+size is 128. As reference we provide traditional matrix multiplication using the cuBlas library.
+
+
+
+kdBsn
+
+dBh
+
+(cid:16)
+
+R(cid:96)(F)  p
+
+(cid:17) R(cid:96)(G)
+
+4. Model Generalization Bound
+We now show a novel bound for the Rademacher com-
+plexity of the model R(cid:96)(F) on the training set (see
+appendix for derivation):
+
+2
+
+(5)
+where max|Ws|  Bs, max|W|  B, k is the num-
+ber of classes, R(cid:96)(G) is the Rademacher complexity of
+the feature extractor, n and d are the dimensionality
+of the input and output of the DropConnect layer re-
+spectively. The important result from Eqn. 5 is that
+the complexity is a linear function of the probability p
+of an element being kept in DropConnect or Dropout.
+When p = 0, the model complexity is zero, since the
+input has no inuence on the output. When p = 1, it
+returns to the complexity of a standard model.
+
+5. Implementation Details
+
+Our system involves three components implemented
+on a GPU: 1) a feature extractor, 2) our DropConnect
+layer, and 3) a softmax classication layer. For 1 and
+3 we utilize the Cuda-convnet package (Krizhevsky,
+2012), a fast GPU based convolutional network library.
+We implement a custom GPU kernel for performing
+the operations within the DropConnect layer. Our
+code is available at http:///cs.nyu.edu/~wanli/
+dropc.
+
+A typical fully connected layer is implemented as a
+matrix-matrix multiplication between the input vec-
+tors for a mini-batch of training examples and the
+weight matrix. The diculty in our case is that each
+training example requires its own random mask ma-
+trix applied to the weights and biases of the DropCon-
+nect layer. This leads to several complications:
+
+1. For a weight matrix of size d  n, the corresponding
+mask matrix is of size d  n  b where b is the size of
+the mini-batch. For a 40964096 fully connected layer
+with mini-batch size of 128, the matrix would be too
+large to t into GPU memory if each element is stored
+as a oating point number, requiring 8G of memory.
+
+2. Once a random instantiation of the mask is created, it
+is non-trivial to access all the elements required during
+the matrix multiplications so as to maximize perfor-
+mance.
+
+The rst problem is not hard to address. Each ele-
+ment of the mask matrix is stored as a single bit to
+encode the connectivity information rather than as a
+oat. The memory cost is thus reduced by 32 times,
+which becomes 256M for the example above. This not
+only reduces the memory footprint, but also reduces
+the bandwidth required as 32 elements can be accessed
+with each 4-byte read. We overcome the second prob-
+lem using an ecient memory access pattern using 2D
+texture aligned memory. These two improvements are
+crucial for an ecient GPU implementation of Drop-
+Connect as shown in Table 1. Here we compare to a
+naive CPU implementation with oating point masks
+and get a 415 speedup with our ecient GPU design.
+
+6. Experiments
+
+We evaluate our DropConnect model for regularizing
+deep neural networks trained for image classication.
+All experiments use mini-batch SGD with momentum
+on batches of 128 images with the momentum param-
+eter xed at 0.9.
+
+We use the following protocol for all experiments un-
+less otherwise stated:
+
+ Augment the dataset by:
+
+tions of the training sequence.
+
+1) randomly selecting
+cropped regions from the images, 2) ipping images
+horizontally, 3) introducing 15% scaling and rotation
+variations.
+ Train 5 independent networks with random permuta-
+ Manually decrease the learning rate if the network
+stops improving as in (Krizhevsky, 2012) according to
+a schedule determined on a validation set.
+ Train the fully connected layer using Dropout, Drop-
+ At inference time for DropConnect we draw Z = 1000
+
+Connect, or neither (No-Drop).
+
+Regularization of Neural Networks using DropConnect
+
+samples at the inputs to the activation function of the
+fully connected layer and average their activations.
+
+neuron
+
+model
+
+relu
+
+No-Drop
+Dropout
+DropConnect
+
+sigmoid No-Drop
+Dropout
+DropConnect
+No-Drop
+Dropout
+DropConnect
+
+tanh
+
+error(%)
+5 network
+1.62 0.037
+1.28 0.040
+1.20 0.034
+1.78 0.037
+1.38 0.039
+1.55 0.046
+1.65 0.026
+1.58 0.053
+1.36 0.054
+
+voting
+error(%)
+1.40
+1.20
+1.12
+1.74
+1.36
+1.48
+1.49
+1.55
+1.35
+
+To anneal the initial learning rate we choose a xed
+multiplier for dierent stages of training. We report
+three numbers of epochs, such as 600-400-200 to dene
+our schedule. We multiply the initial rate by 1 for the
+rst such number of epochs. Then we use a multiplier
+of 0.5 for the second number of epochs followed by
+0.1 again for this second number of epochs. The third
+number of epochs is used for multipliers of 0.05, 0.01,
+0.005, and 0.001 in that order, after which point we
+report our results. We determine the epochs to use for
+our schedule using a validation set to look for plateaus
+in the loss function, at which point we move to the
+next multiplier. 3
+
+Once the 5 networks are trained we report two num-
+bers: 1) the mean and standard deviation of the classi-
+cation errors produced by each of the 5 independent
+networks, and 2) the classication error that results
+when averaging the output probabilities from the 5
+networks before making a prediction. We nd in prac-
+tice this voting scheme, inspired by (Ciresan et al.,
+2012), provides signicant performance gains, achiev-
+ing state-of-the-art results in many standard bench-
+marks when combined with our DropConnect layer.
+
+6.1. MNIST
+
+The MNIST handwritten digit classication task (Le-
+Cun et al., 1998) consists of 2828 black and white im-
+ages, each containing a digit 0 to 9 (10-classes). Each
+digit in the 60, 000 training images and 10, 000 test
+images is normalized to t in a 20 20 pixel box while
+preserving their aspect ratio. We scale the pixel values
+to the [0, 1] range before inputting to our models.
+
+For our rst experiment on this dataset, we train mod-
+els with two fully connected layers each with 800 out-
+put units using either tanh, sigmoid or relu activation
+functions to compare to Dropout in (Hinton et al.,
+2012). The rst layer takes the image pixels as input,
+while the second layers output is fed into a 10-class
+softmax classication layer. In Table 2 we show the
+performance of various activations functions, compar-
+ing No-Drop, Dropout and DropConnect in the fully
+connected layers. No data augmentation is utilized in
+this experiment. We use an initial learning rate of 0.1
+and train for 600-400-20 epochs using our schedule.
+
+From Table 2 we can see that both Dropout and Drop-
+3In all experiments the bias learning rate is 2 the
+learning rate for the weights. Additionally weights are ini-
+tialized with N (0, 0.1) random values for fully connected
+layers and N (0, 0.01) for convolutional layers.
+
+Table 2. MNIST classication error rate for models with
+two fully connected layers of 800 neurons each. No data
+augmentation is used in this experiment.
+
+Connect perform better than not using either method.
+DropConnect mostly performs better than Dropout in
+this task, with the gap widening when utilizing the
+voting over the 5 models.
+
+To further analyze the eects of DropConnect, we
+show three explanatory experiments in Fig. 2 using a 2-
+layer fully connected model on MNIST digits. Fig. 2a
+shows test performance as the number of hidden units
+in each layer varies. As the model size increases, No-
+Drop overts while both Dropout and DropConnect
+improve performance. DropConnect consistently gives
+a lower error rate than Dropout. Fig. 2b shows the ef-
+fect of varying the drop rate p for Dropout and Drop-
+Connect for a 400-400 unit network. Both methods
+give optimal performance in the vicinity of 0.5, the
+value used in all other experiments in the paper. Our
+sampling approach gives a performance gain over mean
+inference (as used by Hinton (Hinton et al., 2012)),
+but only for the DropConnect case.
+In Fig. 2c we
+plot the convergence properties of the three methods
+throughout training on a 400-400 network. We can
+see that No-Drop overts quickly, while Dropout and
+DropConnect converge slowly to ultimately give supe-
+rior test performance. DropConnect is even slower to
+converge than Dropout, but yields a lower test error
+in the end.
+
+In order to improve our classication result, we choose
+a more powerful feature extractor network described in
+(Ciresan et al., 2012) (relu is used rather than tanh).
+This feature extractor consists of a 2 layer CNN with
+32-64 feature maps in each layer respectively. The
+last layers output is treated as input to the fully con-
+nected layer which has 150 relu units on which No-
+Drop, Dropout or DropConnect are applied. We re-
+port results in Table 3 from training the network on
+a) the original MNIST digits, b) cropped 24  24 im-
+ages from random locations, and c) rotated and scaled
+versions of these cropped images. We use an initial
+
+Regularization of Neural Networks using DropConnect
+
+Figure 2. Using the MNIST dataset, in a) we analyze the ability of Dropout and DropConnect to prevent overtting
+as the size of the 2 fully connected layers increase. b) Varying the drop-rate in a 400-400 network shows near optimal
+performance around the p = 0.5 proposed by (Hinton et al., 2012). c) we show the convergence properties of the train/test
+sets. See text for discussion.
+
+learning rate of 0.01 with a 700-200-100 epoch sched-
+ule, no momentum and preprocess by subtracting the
+image mean.
+
+crop rotation
+
+scaling
+no
+
+no
+
+yes
+
+no
+
+yes
+
+yes
+
+model
+
+error(%)
+5 network
+0.770.051
+No-Drop
+0.590.039
+Dropout
+DropConnect 0.630.035
+0.500.098
+No-Drop
+0.390.039
+Dropout
+DropConnect 0.390.047
+0.300.035
+No-Drop
+0.280.016
+Dropout
+DropConnect 0.280.032
+
+voting
+error(%)
+0.67
+0.52
+0.57
+0.38
+0.35
+0.32
+0.21
+0.27
+0.21
+
+Table 3. MNIST classication error. Previous state of the
+art is 0 .47 % (Zeiler and Fergus, 2013) for a single model
+without elastic distortions and 0.23% with elastic distor-
+tions and voting (Ciresan et al., 2012).
+
+We note that our approach surpasses the state-of-the-
+art result of 0.23% (Ciresan et al., 2012), achieving a
+0.21% error rate, without the use of elastic distortions
+(as used by (Ciresan et al., 2012)).
+
+6.2. CIFAR-10
+
+CIFAR-10 is a data set of natural 32x32 RGB images
+(Krizhevsky, 2009) in 10-classes with 50, 000 images
+for training and 10, 000 for testing. Before inputting
+these images to our network, we subtract the per-pixel
+mean computed over the training set from each image.
+
+The rst experiment on CIFAR-10 (summarized in
+Table 4) uses the simple convolutional network fea-
+ture extractor described in (Krizhevsky, 2012)(layers-
+80sec.cfg) that is designed for rapid training rather
+than optimal performance. On top of the 3-layer
+feature extractor we have a 64 unit fully connected
+layer which uses No-Drop, Dropout, or DropConnect.
+No data augmentation is utilized for this experiment.
+
+Since this experiment is not aimed at optimal perfor-
+mance we report a single models performance with-
+out voting. We train for 150-0-0 epochs with an ini-
+tial learning rate of 0.001 and their default weight de-
+cay. DropConnect prevents overtting of the fully con-
+nected layer better than Dropout in this experiment.
+
+model
+No-Drop
+Dropout
+DropConnect
+
+error(%)
+23.5
+19.7
+18.7
+
+Table 4. CIFAR-10 classication error using the simple
+feature extractor described in (Krizhevsky, 2012)(layers-
+80sec.cfg) and with no data augmentation.
+
+Table 5 shows classication results of the network us-
+ing a larger feature extractor with 2 convolutional
+layers and 2 locally connected layers as described
+in (Krizhevsky, 2012)(layers-conv-local-11pct.cfg). A
+128 neuron fully connected layer with relu activations
+is added between the softmax layer and feature extrac-
+tor. Following (Krizhevsky, 2012), images are cropped
+to 24x24 with horizontal ips and no rotation or scal-
+ing is performed. We use an initial learning rate of
+0.001 and train for 700-300-50 epochs with their de-
+fault weight decay. Model voting signicantly im-
+proves performance when using Dropout or DropCon-
+nect, the latter reaching an error rate of 9.41%. Ad-
+ditionally, we trained a model with 12 networks with
+DropConnect and achieved a state-of-the-art result of
+9.32%, indicating the power of our approach.
+
+6.3. SVHN
+
+The Street View House Numbers (SVHN) dataset in-
+cludes 604, 388 images (both training set and extra set)
+and 26, 032 testing images (Netzer et al., 2011). Simi-
+lar to MNIST, the goal is to classify the digit centered
+in each 32x32 RGB image. Due to the large variety of
+colors and brightness variations in the images, we pre-
+
+20040080016001.11.21.31.41.51.61.71.81.922.1Hidden Units% Test Error  NoDropDropoutDropConnect00.10.20.30.40.50.60.70.80.91.21.41.61.822.22.4% of Elements Kept% Test Error  Dropout (mean)DropConnect (mean)Dropout (sampling)DropConnect (sampling)100200300400500600700800900103102EpochCross Entropy  NoDrop TrainNoDrop TestDropout TrainDropout TestDropConnect TrainDropConnect TestRegularization of Neural Networks using DropConnect
+
+model
+
+No-Drop
+Dropout
+DropConnect
+
+error(%) 5 network
+11.18 0.13
+11.52 0.18
+11.10 0.13
+
+voting
+error(%)
+10.22
+9.83
+9.41
+
+Table 5. CIFAR-10 classication error using a larger fea-
+ture extractor. Previous state-of-the-art is 9.5% (Snoek
+et al., 2012). Voting with 12 DropConnect networks pro-
+duces an error rate of 9.32%, signicantly beating the
+state-of-the-art.
+process the images using local contrast normalization
+as in (Zeiler and Fergus, 2013). The feature extractor
+is the same as the larger CIFAR-10 experiment, but
+we instead use a larger 512 unit fully connected layer
+with relu activations between the softmax layer and
+the feature extractor. After contrast normalizing, the
+training data is randomly cropped to 28  28 pixels
+and is rotated and scaled. We do not do horizontal
+ips. Table 6 shows the classication performance for
+5 models trained with an initial learning rate of 0.001
+for a 100-50-10 epoch schedule.
+
+Due to the large training set size both Dropout and
+DropConnect achieve nearly the same performance as
+No-Drop. However, using our data augmentation tech-
+niques and careful annealing, the per model scores eas-
+ily surpass the previous 2.80% state-of-the-art result
+of (Zeiler and Fergus, 2013). Furthermore, our vot-
+ing scheme reduces the relative error of the previous
+state-of-to-art by 30% to achieve 1.94% error.
+
+model
+
+No-Drop
+Dropout
+DropConnect
+
+error(%) 5 network
+2.26  0.072
+2.25  0.034
+2.23  0.039
+
+voting
+error(%)
+1.94
+1.96
+1.94
+
+Table 6. SVHN classication error. The previous state-of-
+the-art is 2.8% (Zeiler and Fergus, 2013).
+
+6.4. NORB
+
+In the nal experiment we evaluate our models on
+the 2-fold NORB (jittered-cluttered) dataset (LeCun
+et al., 2004), a collection of stereo images of 3D mod-
+els. For each image, one of 6 classes appears on a
+random background. We train on 2-folds of 29, 160
+images each and the test on a total of 58, 320 images.
+The images are downsampled from 108108 to 4848
+as in (Ciresan et al., 2012).
+
+We use the same feature extractor as the larger
+CIFAR-10 experiment. There is a 512 unit fully con-
+nected layer with relu activations placed between the
+softmax layer and feature extractor. Rotation and
+scaling of the training data is applied, but we do not
+crop or ip the images as we found that to hurt per-
+
+model
+
+No-Drop
+Dropout
+DropConnect
+
+error(%)
+5 network
+4.48  0.78
+3.96  0.16
+4.14  0.06
+
+voting
+error(%)
+3.36
+3.03
+3.23
+
+Table 7. NORM classication error for the jittered-
+cluttered dataset, using 2 training folds. The previous
+state-of-art is 3.57% (Ciresan et al., 2012).
+formance on this dataset. We trained with an initial
+learning rate of 0.001 and anneal for 100-40-10 epochs.
+
+In this experiment we beat the previous state-of-the-
+art result of 3.57% using No-Drop, Dropout and Drop-
+Connect with our voting scheme. While Dropout sur-
+passes DropConnect slightly, both methods improve
+over No-Drop in this benchmark as shown in Table 7.
+
+7. Discussion
+
+We have presented DropConnect, which generalizes
+Hinton et al. s Dropout (Hinton et al., 2012) to the en-
+tire connectivity structure of a fully connected neural
+network layer. We provide both theoretical justica-
+tion and empirical results to show that DropConnect
+helps regularize large neural network models. Results
+on a range of datasets show that DropConnect often
+outperforms Dropout. While our current implementa-
+tion of DropConnect is slightly slower than No-Drop or
+Dropout, in large models models the feature extractor
+is the bottleneck, thus there is little dierence in over-
+all training time. DropConnect allows us to train large
+models while avoiding overtting. This yields state-
+of-the-art results on a variety of standard benchmarks
+using our ecient GPU implementation of DropCon-
+nect.
+
+8. Appendix
+
+8.1. Preliminaries
+
+Denition 1 (DropConnect Network). Given data
+{x1, x2, . . . , x(cid:96)} with labels
+set S with (cid:96) entries:
+{y1, y2, . . . , y(cid:96)}, we dene the DropConnect network
+M p(M )f (x; , M ) =
+
+as a mixture model: o = (cid:80)
+
+EM [f (x; , M )]
+
+Each network f (x; , M ) has weights p(M ) and net-
+work parameters are  = {Ws, W, Wg}. Ws are the
+softmax layer parameters, W are the DropConnect
+layer parameters and Wg are the feature extractor pa-
+rameters. Further more, M is the DropConnect layer
+mask.
+
+Now we reformulate the cross-entropy loss on top of
+the softmax into a single parameter function that com-
+bines the softmax output and labels, as a logistic.
+
+Regularization of Neural Networks using DropConnect
+
+Denition 2 (Logistic Loss). The following loss func-
+tion dened on k-class classication is call the logistic
+loss function:
+
+Ay(o) = (cid:88)
+
+(cid:80)
+
+yi ln
+
+i
+
+exp oi
+j exp(oj)
+
+= oi + ln
+
+(cid:88)
+
+j
+
+layer has the linear transformation function H and ac-
+tivation function a. By Lemma 4 and Lemma 5, we
+know the network complexity is bounded by:
+
+exp(oj)
+
+R(cid:96)(H  G)  c
+
+dB R(cid:96)(F)
+
+
+
+where c = 1 for identity neuron and c = 2 for others.
+Lemma 6. Let FM be the class of real functions that
+depend on M , then R(cid:96)(EM [FM ])  EM
+(cid:105)
+(cid:80)
+
+(cid:104) R(cid:96)(FM )
+(cid:105)
+(cid:1)
+(cid:104) R(cid:96)(FM )
+
+R(cid:96)(p(m)FM )  (cid:80)
+
+(cid:0)(cid:80)
+M p (m)FM
+
+Proof. R(cid:96)(EM [FM ])
+
+M |p(m)| R(cid:96)(FM ) = EM
+
+R(cid:96)
+
+
+
+=
+
+M
+
+Theorem 1 (DropConnect Network Complexity).
+Consider the DropConnect neural network dened in
+Denition 1. Let R(cid:96)(G) be the empirical Rademacher
+complexity of the feature extractor and R(cid:96)(F) be the
+empirical Rademacher complexity of the whole net-
+work. In addition, we assume:
+1. weight parameter of DropConnect layer |W|  Bh
+2. weight parameter of s, i.e. |Ws|  Bs (L2-norm of
+dkBs).
+it is bounded by
+Then we have: R(cid:96)(F)  p
+
+
+2
+
+kdBsn
+
+(cid:16)
+
+dBh
+
+
+
+
+
+(cid:17) R(cid:96)(G)
+(cid:104) R(cid:96)(f (x; , M )
+
+(cid:105)
+
+(6)
+
+(7)
+
+(8)
+
+(cid:35)
+
+(cid:34)
+
+(cid:96)(cid:88)
+
+i=1
+
+y (o)  0.
+
+where y is binary vector with ith bit set on
+Lemma 1. Logistic loss function A has the following
+properties: 1) Ay(0) = ln k, 2) 1  A(cid:48)
+y(o)  1, and
+3)A(cid:48)(cid:48)
+Denition 3 (Rademacher complexity). For a sample
+S = {x1, . . . , x(cid:96)} generated by a distribution D on set
+X and a real-valued function class F in domain X, the
+empirical Rademacher complexity of F is the random
+variable:
+
+R(cid:96) (F) = E
+
+| 2
+(cid:96)
+
+sup
+fF
+
+if (xi)| | x1, . . . , x(cid:96)
+
+where sigma = {1, . . . , (cid:96)} are independent uniform
+{1}-valued (Rademacher) random variables. The
+Rademacher complexity of F is R(cid:96)(F) = ES
+.
+
+(cid:105)
+(cid:104) R(cid:96) (F)
+
+8.2. Bound Derivation
+Lemma 2 ((Ledoux and Talagrand, 1991)). Let F
+be class of real functions and H = [Fj]k
+j=1 be a k-
+dimensional function class. If A: Rk  R is a Lips-
+chitz function with constant L and satises A(0) = 0,
+then R(cid:96)(A  H)  2kL R(cid:96)(F)
+Lemma 3 (Classier Generalization Bound). Gener-
+alization bound of a k-class classier with logistic loss
+(cid:80)(cid:96)
+function is directly related Rademacher complexity of
+that classier:
+E[Ay(o)]  1
+i=1 Ayi(oi) + 2k R(cid:96)(F) + 3
+Lemma 4. For all neuron activations: sigmoid, tanh
+and relu, we have: R(cid:96)(a  F)  2 R(cid:96)(F)
+Lemma 5 (Network Layer Bound). Let G be the class
+of real functions Rd  R with input dimension F, i.e.
+j=1 and HB is a linear transform function
+G = [Fj]d
+parametrized by W with (cid:107)W(cid:107)2  B, then R(cid:96)(HG) 
+
+dB R(cid:96)(F)
+(cid:104)
+
+(cid:113) ln(2/)
+
+suphH,gG
+
+(cid:12)(cid:12)(cid:12)(cid:105)
+
+2(cid:96)
+
+(cid:96)
+
+(cid:80)(cid:96)
+
+W, 2
+(cid:96)
+
+i=1 ig(xi)
+
+(cid:80)(cid:96)
+(cid:69)(cid:12)(cid:12)(cid:12)(cid:105)
+i=1 ih  g(xi)
+(cid:13)(cid:13)(cid:13)(cid:13)(cid:21)
+
+(cid:20)
+
+Proof. R(cid:96)(HG) = E
+= E
+ BE
+
+
+supgG,(cid:107)W(cid:107)B
+
+supf jF
+
+(cid:104)
+
+(cid:13)(cid:13)(cid:13)(cid:13)(cid:104) 2
+(cid:12)(cid:12)(cid:12) 2
+
+supfF
+
+dE
+
+= B
+
+(cid:96)
+
+(cid:96)
+
+(cid:104)
+(cid:12)(cid:12)(cid:12)(cid:68)
+(cid:80)(cid:96)
+(cid:80)(cid:96)
+
+(cid:96)
+
+(cid:12)(cid:12)(cid:12) 2
+(cid:105)d
+(cid:12)(cid:12)(cid:12)(cid:105)
+
+
+
+j=1
+
+=
+
+dB R(cid:96)(F)
+
+i=1 j
+
+i f j(xi)
+
+i=1 if (xi)
+
+Remark 1. Given a layer in our network, we denote
+the function of all layers before as G = [Fj]d
+j=1. This
+
+Proof.
+R(cid:96)(F) = R(cid:96)(EM [f (x; , M ])  EM
+
+ (
+
+
+dkBs)
+
+= 2
+
+kdBsEM
+
+
+dEM
+
+(cid:105)
+
+(cid:104) R(cid:96)(a  hM  g)
+(cid:104) R(cid:96)(hM  g)
+
+(cid:105)
+
+where hM = (M (cid:63) W )v. Equation (6) is based on
+Lemma 6, Equation (7) is based on Lemma 5 and
+Equation (8) follows from Lemma 4.
+
+EM
+
+(cid:96)
+
+(cid:96)(cid:88)
+
+sup
+
+hH,gG
+
+(cid:104) R(cid:96)(hM  g)
+(cid:105)
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12) 2
+(cid:34)
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+(cid:42)
+(cid:34)
+(cid:107)DM W(cid:107)(cid:105)
+(cid:16)
+(cid:17)
+
+max
+
+
+hH,gG
+
+(cid:104)
+
+sup
+
+i=1
+
+W
+
+n R(cid:96)(G)
+
+nd
+
+ EM
+
+ Bhp
+
+(cid:35)
+(cid:43)(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+(cid:35)
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)
+(cid:96)(cid:88)
+
+2
+(cid:96)
+
+(cid:96)(cid:88)
+(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+ sup
+
+i=1
+
+(cid:34)
+
+2
+(cid:96)
+
+igj(xi)
+
+E
+
+gjG
+
+dBh R(cid:96)(G)
+
+i=1
+
+= pn
+
+(9)
+
+(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+(10)
+
+(cid:35)n
+
+j=1
+
+= EM,
+
+iW T DM g(xi)
+
+= EM,
+
+DM W,
+
+ig(xi)
+
+where DM in Equation (9) is an diagonal matrix
+with diagonal elements equal to m and inner prod-
+uct properties lead to Equation (10). Thus, we have:
+R(cid:96)(F)  p
+
+(cid:17) R(cid:96)(G)
+
+
+2
+
+kdBsn
+
+(cid:16)
+
+dBh
+
+
+
+Regularization of Neural Networks using DropConnect
+
+A. S. Weigend, D. E. Rumelhart, and B. A. Huberman.
+Generalization by weight-elimination with applica-
+tion to forecasting. In NIPS, 1991.
+
+M. D. Zeiler and R. Fergus. Stochastic pooling for
+regualization of deep convolutional neural networks.
+In ICLR, 2013.
+

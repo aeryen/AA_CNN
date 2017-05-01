@@ -1,0 +1,3866 @@
+Abstract
+
+We present a class of algorithms for independent component analysis (ICA) which use
+contrast functions based on canonical correlations in a reproducing kernel Hilbert space.
+On the one hand, we show that our contrast functions are related to mutual information
+and have desirable mathematical properties as measures of statistical dependence. On the
+other hand, building on recent developments in kernel methods, we show that these criteria
+and their derivatives can be computed eciently. Minimizing these criteria leads to (cid:176)exible
+and robust algorithms for ICA. We illustrate with simulations involving a wide variety of
+source distributions, showing that our algorithms outperform many of the presently known
+algorithms.
+Keywords:
+kernel methods, independent component analysis, blind source separation,
+mutual information, Gram matrices, canonical correlations, semiparametric models, inte-
+gral equations, Stiefel manifold, incomplete Cholesky decomposition
+
+1. Introduction
+
+Independent component analysis (ICA) is the problem of recovering a latent random vector
+x = (x1; : : : ; xm)> from observations of m unknown linear functions of that vector. The
+components of x are assumed to be mutually independent. Thus, an observation y =
+(y1; : : : ; ym)> is modeled as:
+
+y = Ax;
+
+(1)
+
+where x is a latent random vector with independent components, and where A is an mm
+matrix of parameters. Given N independently, identically distributed observations of y,
+we hope to estimate A and thereby to recover the latent vector x corresponding to any
+particular y by solving a linear system.
+
+By specifying distributions for the components xi, one obtains a parametric model
+that can be estimated via maximum likelihood (Bell and Sejnowski, 1995, Cardoso, 1999).
+Working with W = A1 as the parameterization, one readily obtains a gradient or xed-
+point algorithm that yields an estimate ^W and provides estimates of the latent components
+via ^x = ^W y (Hyvarinen et al., 2001).
+
+c(cid:176)2002 Francis R. Bach and Michael I. Jordan.
+
+Bach and Jordan
+
+In practical applications, however, one does not generally know the distributions of the
+components xi, and it is preferable to view the ICA model in Eq. (1) as a semiparamet-
+ric model in which the distributions of the components of x are left unspecied (Bickel
+et al., 1998). Maximizing the likelihood in the semiparametric ICA model is essentially
+equivalent to minimizing the mutual information between the components of the estimate
+^x = ^W y (Cardoso, 1999). Thus it is natural to view mutual information as a contrast
+function to be minimized in estimating the ICA model. Moreover, given that the mutual
+information of a random vector is nonnegative, and zero if and only if the components of
+the vector are independent, the use of mutual information as a function to be minimized is
+well motivated, quite apart from the link to maximum likelihood (Comon, 1994).
+
+Unfortunately, the mutual information is dicult to approximate and optimize on the
+basis of a nite sample, and much research on ICA has focused on alternative contrast
+functions (Amari et al., 1996, Comon, 1994, Hyvarinen and Oja, 1997). These have either
+been derived as expansion-based approximations to the mutual information, or have had
+a looser relationship to the mutual information, essentially borrowing its key property of
+being equal to zero if and only if the arguments to the function are independent.
+
+The earliest ICA algorithms were (in retrospect) based on contrast functions dened in
+terms of expectations of a single xed nonlinear function, chosen in an ad-hoc manner (Jut-
+ten and Herault, 1991). More sophisticated algorithms have been obtained by careful choice
+of a single xed nonlinear function, such that the expectations of this function yield a ro-
+bust approximation to the mutual information (Hyvarinen and Oja, 1997). An interesting
+feature of this approach is that links can be made to the parametric maximum likelihood
+formulation, in which the nonlinearities in the contrast function are related to the assumed
+densities of the independent components. All of these developments have helped to focus
+attention on the choice of particular nonlinearities as the key to the ICA problem.
+
+In the current paper, we provide a new approach to the ICA problem based not on a
+single nonlinear function, but on an entire function space of candidate nonlinearities. In
+particular, we work with the functions in a reproducing kernel Hilbert space, and make use
+of the \kernel trick" to search over this space eciently. The use of a function space makes
+it possible to adapt to a variety of sources and thus makes our algorithms more robust to
+varying source distributions, as illustrated in Section 7.
+
+We dene a contrast function in terms of a rather direct measure of the dependence
+of a set of random variables. Considering the case of two univariate random variables x1
+and x2, for simplicity, and letting F be a vector space of functions from R to R, dene
+the F-correlation F as the maximal correlation between the random variables f1(x1) and
+f2(x2), where f1 and f2 range over F:
+
+F = max
+f1;f22F
+
+corr(f1(x1); f2(x2)) = max
+f1;f22F
+
+cov(f1(x1); f2(x2))
+
+(var f1(x1))1=2(var f2(x2))1=2
+
+:
+
+Clearly, if the variables x1 and x2 are independent, then the F-correlation is equal to zero.
+Moreover, if the set F is large enough, the converse is also true. For example, it is well
+known that if F contains the Fourier basis (all functions of the form x 7! ei!x where ! 2 R),
+then F = 0 implies that x1 and x2 are independent.
+To obtain a computationally tractable implementation of the F-correlation, we make use
+of reproducing kernel Hilbert space (RKHS) ideas. Let F be an RKHS on R, let K(x; y) be
+
+2
+
+Kernel Independent Component Analysis
+
+the associated kernel, and let '(x) = K(; x) be the feature map, where K(; x) is a function
+in F for each x. We then have the well-known reproducing property (Saitoh, 1988):
+
+f (x) = h'(x); fi;
+
+8f 2 F; 8x 2 R:
+
+This implies:
+
+corr(f1(x1); f2(x2)) = corr (h'(x1); f1i;h'(x2); f2i) :
+
+Consequently, the F-correlation is the maximal possible correlation between one-dimensional
+linear projections of '(x1) and '(x2). This is exactly the denition of the rst canonical
+correlation between '(x1) and '(x2) (Hotelling, 1936). This suggests that we can base an
+ICA contrast function on the computation of a canonical correlation in function space.
+
+Canonical correlation analysis (CCA) is a multivariate statistical technique similar in
+spirit to principal component analysis (PCA). While PCA works with a single random
+vector and maximizes the variance of projections of the data, CCA works with a pair of
+random vectors (or in general with a set of m random vectors) and maximizes correlation
+between sets of projections. While PCA leads to an eigenvector problem, CCA leads to a
+generalized eigenvector problem. Finally, just as PCA can be carried out eciently in an
+RKHS by making use of the \kernel trick" (Scholkopf et al., 1998), so too can CCA (as
+we show in Section 3.2). Thus we can employ a \kernelized" version of CCA to compute a
+(cid:176)exible contrast function for ICA.
+
+There are several issues that must be faced in order to turn this line of reasoning into
+an ICA algorithm. First, we must show that the F-correlation in fact has the properties
+that are required of a contrast function; we do this in Section 3.1. Second, we must show
+how to formulate the canonical correlation problem with m random variables, and show
+how to solve the problem eciently using kernel functions. This is easily done, as we show
+in Section 3.2. Third, our method turns out to require the computation of generalized
+eigenvectors of matrices of size mNmN . A naive implementation of our algorithm would
+therefore require O(m3N 3) operations. As we show in Section 4, however, by making use
+of incomplete Cholesky decomposition we are able to solve the kernelized CCA problem in
+time O(N (h(N=))2), where  is a precision parameter and h(t) is a slowly growing function
+of t. Moreover, in computing the contrast function, the precision  need only be linear in
+N ; consequently, we have a linear time algorithm. Finally, our goal is not simply that of
+computing the contrast function, but of optimizing it, and for this we require derivatives of
+the contrast function. Although incomplete Cholesky factorization cannot be used directly
+for computing these derivatives, we are able to derive an algorithm for computing derivatives
+with similar linear complexity in N (see Section 4.6).
+
+There are a number of other interesting relationships between CCA and ICA that we
+explore in this paper.
+In particular, for Gaussian variables the CCA spectrum (i.e., all
+of the eigenvalues of the generalized eigenvector problem) can be used to compute the
+mutual information (essentially as a product of these eigenvalues). This suggests a general
+connection between our contrast function and the mutual information, and it also suggests
+an alternative contrast function for ICA, one based on all of the eigenvalues and not simply
+the maximal eigenvalue. We discuss this connection in Section 3.4.
+
+The remainder of the paper is organized as follows. In Section 2, we present background
+material on CCA, RKHS methods, and ICA. Section 3 provides a discussion of the contrast
+
+3
+
+Bach and Jordan
+
+functions underlying our new approach to ICA, as well as a high-level description of our
+ICA algorithms. We discuss the numerical linear algebra underlying our algorithms in
+Section 4, the optimization methods in Section 5, and the computational complexity in
+Section 6. Finally, comparative empirical results are presented in Section 7, and we conclude
+in Section 8.
+
+2. Background
+
+In this section we provide enough basic background on canonical correlation, kernel methods
+and ICA so as to make the paper self-contained. For additional discussion of CCA see Borga
+et al. (1997), for kernel methods see Scholkopf and Smola (2001), and for ICA see Hyvarinen
+et al. (2001).
+
+2.1 Canonical correlation
+
+Given a random vector x, principal component analysis (PCA) is concerned with nding a
+linear transformation such that the components of the transformed vector are uncorrelated.
+Thus PCA diagonalizes the covariance matrix of x. Similarly, given two random vectors,
+x1 and x2, of dimension p1 and p2, canonical correlation analysis (CCA) is concerned
+with nding a pair of linear transformations such that one component within each set of
+transformed variables is correlated with a single component in the other set. Thus, the
+correlation matrix between x1 and x2 is reduced to a block diagonal matrix with blocks of
+
+size two, where each block is of the form (cid:181) 1
+
+i
+
+which are nonzero, are called the canonical correlations.
+
+i
+
+1 . The i, at most p = minfp1; p2g of
+
+As in the case of PCA, CCA can be dened recursively, component by component.
+Indeed, the rst canonical correlation can be dened as the maximum possible correlation
+between the two projections >1 x1 and >2 x2 of x1 and x2:
+
+(x1; x2) = max
+1;2
+
+corr(>1 x1; >2 x2)
+
+= max
+1;2
+
+= max
+1;2
+
+cov(>1 x1; >2 x2)
+
+var >1 x11=2var >2 x21=2
+>1 C1111=2>2 C2221=2
+
+>1 C122
+
+;
+
+where C = (cid:181) C11 C12
+
+C21 C22  denotes the covariance matrix of (x1; x2). Taking derivatives
+
+with respect to 1 and 2, we obtain:
+
+and
+
+C122 =
+
+>1 C122
+>1 C111
+
+C111
+
+C211 =
+
+>1 C122
+>2 C222
+
+C222:
+
+4
+
+Kernel Independent Component Analysis
+
+Normalizing the vectors 1 and 2 by letting >1 C111 = 1 and >2 C222 = 1, we see that
+CCA reduces to the following generalized eigenvalue problem:
+
+(cid:181) 0
+
+C21
+
+C12
+
+0 (cid:181) 1
+
+2  = (cid:181) C11
+
+0
+
+0
+
+C22 (cid:181) 1
+2  :
+
+(2)
+
+This problem has p1 + p2 eigenvalues: f1;1; : : : ; p;p; 0; : : : ; 0g.
+form:
+
+Note that the generalized eigenvector problem in Eq. (2) can also be written in following
+
+C21 C22 (cid:181) 1
+(cid:181) C11 C12
+
+2  = (1 + )(cid:181) C11
+
+0
+
+0
+
+C22 (cid:181) 1
+2  ;
+
+with eigenvalues f1 + 1; 1  1; : : : ; 1 + p; 1  p; 1; : : : ; 1g. Note, moreover, that the
+problem of nding the maximal generalized eigenvalue, max = 1 + max, where max is
+the rst canonical correlation, is equivalent to nding the minimal generalized eigenvalue,
+min = 1  max.
+In fact, this latter quantity is bounded between zero and one, and
+turns out to provide a more natural upgrade path when we consider the generalization to
+more than two variables. Thus henceforth our computational task will be that of nding
+minimum generalized eigenvalues.
+
+2.1.1 Generalizing to more than two variables
+
+There are several ways to generalize CCA to more than two sets of variables (Kettenring,
+1971). The generalization that we consider in this paper, justied in Appendix A, is the fol-
+lowing. Given m multivariate random variables, x1; : : : ; xm, we nd the smallest generalized
+eigenvalue (x1; : : : ; xm) of the following problem:
+
+;
+
+(3)
+
+or, in short, C = D, where C is the covariance matrix of (x1; x2; : : : ; xm) and D is the
+block-diagonal matrix of covariances of the individual vectors xi.
+
+As we discuss in Appendix A, the minimal generalized eigenvalue has the xed range
+[0; 1], whereas the maximal generalized eigenvalue has a range dependent on the dimen-
+sions of the variables. Thus the minimal generalized eigenvalue is more convenient for our
+purposes.
+
+2.2 Reproducing kernel Hilbert spaces
+Let K(x; y) be a Mercer kernel (Saitoh, 1988) on X = Rp, that is, a function for which the
+Gram matrix Kij = K(xi; xj) is positive semidenite for any collection fxigi=1;:::;N in X .
+Corresponding to any such kernel K there is a map ' from X to a feature space F, such
+that:
+
+That is, the kernel can be used to evaluate an inner product in the feature space. This is
+often referred to as the \kernel trick."
+
+K(x; y) = h'(x); '(y)i:
+
+5
+
+0BBB@
+
+C11 C12
+C21 C22
+...
+...
+Cm1 Cm2
+
+ C1m
+ C2m
+...
+
+ Cmm
+
+1CCCA
+
+0BBB@
+
+1
+2
+...
+m
+
+1CCCA
+
+= 0BBB@
+
+C11
+0
+...
+0
+
+0
+C22
+...
+0
+
+
+
+
+0
+0
+...
+
+ Cmm
+
+1CCCA
+
+0BBB@
+
+1
+2
+...
+m
+
+1CCCA
+
+Bach and Jordan
+
+One particularly attractive instantiation of such a feature space is the reproducing kernel
+Hilbert space (RKHS) associated with K. Consider the set of functions fK(; x) : x 2 Xg,
+where the dot represents the argument to a given function and x indexes the set of functions.
+Dene a linear function space as the span of such functions. Such a function space is unique
+and can always be completed into a Hilbert space (Saitoh, 1988). The crucial property of
+these Hilbert spaces is the \reproducing property" of the kernel:
+
+f (x) = hK(; x); fi 8f 2 F:
+
+(4)
+
+Note in particular that if we dene '(x) = K(; x) as a map from the input space into the
+RKHS, then we have:
+
+h'(x); '(y)i = hK(; x); K(; y)i = K(x; y);
+
+and thus '(x) = K(; x) is indeed an instantiation of the \kernel trick."
+For concreteness we restrict ourselves mostly to translation-invariant kernels in this
+paper; that is, to kernel functions of the form K(x; y) = k(x  y), where k is a function
+from Rp to R. In this case, the feature space F has innite dimension and the RKHS can be
+described succinctly using Fourier theory (Girosi et al., 1995). Indeed, for a given function
+k, F is composed of functions f 2 L2(Rp) such that:
+
+ZRp
+
+j ^f (!)j2
+(!)
+
+d! < 1;
+
+(5)
+
+where ^f (!) is the Fourier transform of f and (!) is the Fourier transform of k (which must
+be real and positive to yield a Mercer kernel). This interpretation shows that functions in
+the RKHS F have a Fourier transform that decays rapidly, implying that F is a space of
+smooth functions.
+
+Finally, consider the case of an isotropic Gaussian kernel in p dimensions:
+
+1
+
+K(x; y) = G(cid:190)(x  y) = exp(cid:181)
+
+2(cid:190)2jjx  yjj2 :
+2 jj!jj2, and the feature
+In this case the Fourier transform is (!) = (2(cid:190)2)p=2 exp (cid:190)2
+space F(cid:190) contains functions whose Fourier transform decays very rapidly. Alternatively,
+functions in F(cid:190) can be seen as convolutions of functions of L2(Rp) with a Gaussian kernel
+(cid:190)2jjxjj2. Note that, as (cid:190) increases from 0 to 1, the functions G(cid:190)=p2
+G(cid:190)=p2(x) = exp 1
+range from an impulse to a constant function, and the function spaces F(cid:190) decrease from
+L2(Rp) to ?.
+
+2.3 Independent component analysis
+
+The independent component analysis (ICA) problem that we consider in this paper is based
+on the following statistical model:
+
+(6)
+where x is a latent random vector with m independent components, A is an mm matrix
+of parameters, assumed invertible, and y is an observed vector with m components. Based
+
+y = Ax;
+
+6
+
+Kernel Independent Component Analysis
+
+on a set of N independent, identically distributed observations of the vector y, we wish to
+estimate the parameter matrix A.1 From the estimate of A we can estimate the values of x
+corresponding to any observed y by solving a linear system of equations. The distribution of
+x is assumed unknown, and we do not care to estimate this distribution. Thus we formulate
+ICA as a semiparametric model (Bickel et al., 1998).
+
+Our goal is to nd a maximum likelihood estimate of A. Let us rst consider the
+population version of ICA, in which p(y) denotes the true distribution of y, and p(y)
+denotes the model. We wish to minimize the Kullback-Leibler (KL) divergence between the
+distributions p and p: D(p(y) jj p(y)). Dene W = A1, so that x = W y. Since the KL
+divergence is invariant with respect to an invertible transformation, we can apply W to y
+in both arguments of the KL divergence, which implies our problem is equivalent to that of
+minimizing D(p(x) jj p(x)).
+Let ~p(x) denote the joint probability distribution obtained by taking the product of the
+marginals of p(x). We have the following decomposition of the KL divergence (see Cover
+and Thomas, 1991):
+
+D(p(x) jj p(x)) = D(p(x) jj ~p(x)) + D(~p(x) jj p(x));
+
+for any distribution p(x) with independent components. Consequently, for a given A, the
+minimum over all possible p(x) is attained precisely at p(x) = ~p(x), and the minimal value
+is D(p(x) jj ~p(x)), which is exactly the mutual information between the components of
+x = W y. Thus, the problem of maximizing the likelihood with respect to W is equivalent
+to the problem of minimizing the mutual information between the components of x = W y.
+ICA can be viewed as a generalization of principal components analysis (PCA). While
+PCA yields uncorrelated components, and is based solely on second moments, ICA yields
+independent components, and is based on the mutual information, which is in general a
+function of higher-order moments. Clearly an ICA solution is also a PCA solution, but the
+converse is not true. In practice, ICA algorithms often take advantage of this relationship,
+treating PCA as a preprocessing phase. Thus one whitens the random variable y, multiply-
+ing y by a matrix P such that ~y = P y has an identity covariance matrix (P can be chosen
+as the inverse of the square root of the covariance matrix of y). There is a computational
+advantage to this approach: once the data are whitened, the matrix W is necessarily or-
+thogonal (Hyvarinen et al., 2001). This reduces the number of parameters to be estimated,
+and, as we discuss in Section 5, enables the use of ecient optimization techniques based
+on the Stiefel manifold of orthogonal matrices.
+
+In practice we do not know p(y) and thus the estimation criteria|mutual informa-
+tion or KL divergence|must be replaced with empirical estimates. While in principle one
+could form an empirical mutual information or empirical likelihood, which is subsequently
+optimized with respect to W , the more common approach to ICA is to work with approx-
+imations to the mutual information (Amari et al., 1996, Comon, 1994, Hyvarinen, 1999),
+or to use alternative contrast functions (Jutten and Herault, 1991). For example, by using
+Edgeworth or Gram-Charlier expansions one can develop an approximation of the mutual
+
+1. The identiability of the ICA model has been discussed by Comon (1994). Brie(cid:176)y, the matrix A is
+identiable, up to permutation and scaling of its columns, if and only if at most one of the component
+distributions p(xi) is Gaussian.
+
+7
+
+Bach and Jordan
+
+information in terms of skew and kurtosis. Forming an empirical estimate of the skew and
+kurtosis via the method of moments, one obtains a function of W that can be optimized.
+
+We propose two new ICA contrast functions in this paper. The rst is based on the
+F-correlation, which, as we brie(cid:176)y discussed in Section 1, can be obtained by computing
+the rst canonical correlation in a reproducing kernel Hilbert space. The second is based on
+computing not only the rst canonical correlation, but the entire CCA spectrum, a quantity
+known as the \generalized variance." We describe both of these contrast functions, and their
+relationship to the mutual information, in the following section.
+
+3. Kernel independent component analysis
+
+We refer to our general approach to ICA, based on the optimization of canonical correla-
+tions in a reproducing kernel Hilbert space, as KernelICA. In this section we describe
+two contrast functions that exemplify our general approach, and we present the resulting
+KernelICA algorithms.
+
+3.1 The F-correlation
+We begin by studying the F-correlation in more detail. We restrict ourselves to two random
+variables in this section and present the generalization to m variables in Section 3.2.3.
+
+Theorem 1 Let x1 and x2 be random variables in X = Rp. Let K1 and K2 be Mercer
+kernels with feature maps '1, '2 and feature spaces F1, F2  RX . Then the canonical
+correlation F between '1(x1) and '2(x2), which is dened as
+
+F =
+
+max
+
+(f1;f2)2F1F2
+
+corr(h'1(x1); f1i;h'2(x2); f2i);
+
+is equal to
+
+F =
+
+max
+
+(f1;f2)2F1F2
+
+corr(f1(x1); f2(x2)):
+
+(7)
+
+Proof This is immediate from the reproducing property (4).
+
+The choice of kernels K1 and K2 species the sets F1 and F2 of functions that we use to
+characterize independence, via the correlation between f1(x1) and f2(x2). While in general
+we can use dierent kernels for x1 and x2, for notational simplicity we restrict ourselves in
+the remainder of the paper to cases in which the two kernels and the two feature spaces are
+equal, denoting them as K and F, respectively.
+Note that the larger F is, the larger the value of the F-correlation. In particular, for
+translation-invariant kernels, the F-correlation increases as (cid:190) decreases. But for any value
+of (cid:190), the F-correlation turns out to provide a sound basis for assessing independence, as
+the following theorem makes precise in the case of the univariate Gaussian kernel:
+
+Theorem 2 (Independence and F-correlation) If F is the RKHS corresponding to a
+Gaussian kernel on X = R, F = 0 if and only if the variables y1 and y2 are independent.
+
+8
+
+Kernel Independent Component Analysis
+
+Proof We mentioned earlier that the rst implication is trivial. Let us now assume that
+F = 0. Since F is a vector space, we have:
+
+F =
+
+max
+
+(f1;f2)2FF jcorr(f1(x1); f2(x2))j;
+
+which implies cov(f1(x1); f2(x2)) = 0, or, equivalently, E(f1(x1)f2(x2)) = E(f1(x1))E(f2(x2)),
+for all f1; f2 2 F. For any given !0 2 R and  > 0, the function x 7! ex2=2 2
+ei!0x has a
+Fourier transform equal to p2 e 2(!!0)2=2, and thus satises the condition in Eq. (5)
+as long as  > (cid:190)=p2. Consequently, if  > (cid:190)=p2, the function belongs to F and we have,
+
+for all real !1 and !2:
+
+Eei!1x1+i!2x2e(x2
+
+1+x2
+
+2)=2 2 = Eei!1x1ex2
+
+1=2 2 Eei!2x2ex2
+
+2=2 2 :
+
+Letting  tend to innity, we nd that for all !1 and !2:
+
+which implies that x1 and x2 are independent (Durrett, 1996).
+
+Eei!1x1+i!2x2 = Eei!1x1 Eei!2x2
+
+Note that when the function space has nite dimension, Theorem 2 does not hold.
+In particular, for polynomial kernels (e.g., Scholkopf and Smola, 2001), F is a nite-
+dimensional space of polynomials, and thus the F-correlation does not characterize in-
+dependence. Nonetheless, as we show in Section 5.3, polynomial kernels can still be usefully
+employed in the ICA setting to provide heuristic initialization procedures for optimizing a
+contrast function.
+
+3.2 Estimation of the F-correlation
+To employ the F-correlation as a contrast function for ICA, we need to be able to compute
+canonical correlations in feature space. We also need to be able to optimize the canonical
+correlation, but for now our focus is simply that of computing the canonical correlations in
+an RKHS. (We discuss the optimization problem in Section 5).
+
+In fact our goal is not solely computational, it is also statistical. While thus far we have
+dened F-correlation in terms of a population expectation, we generally do not have access
+to the population but rather to a nite sample. Thus we need to develop an empirical
+estimate of the F-correlation. Indeed, the problem of working in an RKHS and the issue
+of developing a statistical estimate of a functional dened in an RKHS are closely tied|
+by considering the empirical version of the F-correlation we work in a nite-dimensional
+subspace of the RKHS, and can exploit its useful geometric properties while avoiding issues
+having to do with its (possible) innite dimensionality.
+
+Thus we will develop a \kernelized" version of canonical correlation, which involves two
+aspects: working with an empirical sample, and working in a feature space. We proceed
+by rst presenting a naive \kernelization" of the population F-correlation. For reasons
+that we will discuss, this naive kernelization does not provide a generally useful estimator,
+but it does serve as a guide for developing a regularized kernelization that does provide a
+useful estimator. It is this regularized, kernelized canonical correlation that provides the
+foundation for the algorithms that we present in the remainder of the paper.
+
+9
+
+Bach and Jordan
+
+3.2.1 Kernelization of CCA
+
+In the case of two variables the goal is to maximize the correlation between projections of
+the data in the feature space. A direct implementation would simply map each data point
+to feature space and use CCA in the feature space. This is likely to be very inecient
+computationally, however, if not impossible, and we would prefer to perform all of our
+calculations in the input space.2
+
+1; : : : ; xN
+
+2; : : : ; xN
+1); : : : ; '(xN
+
+1 g and fx1
+Let fx1
+2 g denote sets of N empirical observations of x1 and x2,
+respectively, and let f'(x1
+1 )g and f'(x1
+2 )g denote the corresponding
+images in feature space. Suppose (momentarily) that the data are centered in feature space
+1) = PN
+(i.e., PN
+2) = 0). We let ^F (x1; x2) denote the empirical canonical
+correlation; that is, the canonical correlation based not on population covariances but on
+empirical covariances. Since, as we shall see, ^F (x1; x2) depends only on the Gram matri-
+ces K1 and K2 of these observations, we also use the notation ^F (K1; K2) to denote this
+canonical correlation.
+
+2); : : : ; '(xN
+
+k=1 '(xk
+
+k=1 '(xk
+
+As in kernel PCA (Scholkopf et al., 1998), the key point to notice is that we only need
+to consider the subspace of F that contains the span of the data. For xed f1 and f2, the
+empirical covariance of the projections in feature space can be written:
+
+dcov(h'(x1); f1i;h'(x2); f2i) =
+
+1
+N
+
+NXk=1D'(xk
+
+1); f1ED'(xk
+
+2); f2E :
+
+(8)
+
+Let S1 and S2 represent the linear spaces spanned by the '-images of the data points. Thus
+2) + f?2 , where f?1 and f?2 are
+orthogonal to S1 and S2, respectively. We have:
+
+k=1 k
+
+2'(xk
+
+1'(xk
+
+k=1 k
+
+we can write f1 =PN
+dcov(h'(x1); f1i;h'(x2); f2i) =
+
+1) + f?1 and f2 =PN
+NXk=1*'(xk
+NXi=1
+NXj=1
+NXi=1
+NXk=1
+
+1
+N
+
+1
+N
+
+1);
+
+=
+
+=
+
+>1 K1K22;
+
+1
+N
+
+i
+1'(xi
+
+1)+*'(xk
+
+2);
+
+j
+2'(xj
+
+2)+
+
+NXj=1
+
+i
+1K1(xi
+
+1; xk
+
+1)K2(xj
+
+2; xk
+
+2)j
+
+2
+
+where K1 and K2 are the Gram matrices associated with the data sets fxi
+respectively. We also obtain:
+
+1g and fxi
+
+2g,
+
+and
+
+cvar (h'(x1); f1i) =
+cvar (h'(x2); f2i) =
+
+1
+N
+
+1
+N
+
+>1 K1K11
+
+>2 K2K22:
+
+10
+
+2. Melzer et al. (2001) and Akaho (2001) have independently derived the kernelized CCA algorithm for
+two variables that we present in this section. A similar but not identical algorithm, also restricted to
+two variables, has been described by Fyfe and Lai (2000).
+
+Kernel Independent Component Analysis
+
+Putting these results together, our kernelized CCA problem becomes that of performing
+
+the following maximization:
+
+^F (K1; K2) = max
+
+1; 22RN
+
+>1 K1K22
+1 1)1=2(>2 K2
+
+(>1 K2
+
+2 2)1=2
+
+:
+
+(9)
+
+But this is equivalent to performing CCA on two vectors of dimension N , with covariance
+
+1 K1K2
+K2K1 K2
+
+2 . Thus we see that we can perform a kernelized version
+
+of CCA by solving the following generalized eigenvalue problem:
+
+K1K2
+
+0
+
+(cid:181) 1
+
+2  = (cid:181) K2
+
+0
+1
+0 K 2
+
+2 
+2 (cid:181) 1
+
+(10)
+
+matrix equal to(cid:181) K2
+(cid:181)
+
+0
+
+K2K1
+
+based on the Gram matrices K1 and K2.
+
+If the points '(xk
+
+i ) are not centered, then although it is impossible to actually cen-
+ter them in feature space, it is possible to nd the Gram matrix of the centered data
+points (Scholkopf et al., 1998). That is, if K is the NN Gram matrix of the non-centered
+data points, then the Gram matrix eK of the centered data points is eK = N0KN0 where
+N0 = I  1
+N 1 is a constant singular matrix.3 Whenever we use a Gram matrix, we assume
+that it has been centered in this way.
+
+3.2.2 Regularization
+
+Unfortunately, the kernelized CCA problem in Eq. (9) does not provide a useful estimate
+of the population canonical correlation in general. This can easily be seen by considering a
+geometric interpretation of Eq. (9). In particular, if we let V1 and V2 denote the subspaces
+of RN generated by the columns of K1 and K2, respectively, then we can rewrite Eq. (9)
+as:
+
+^F (K1; K2) = max
+
+v12V1;v22V2
+
+(v>1 v1)1=2(v>2 v2)1=2
+
+= max
+
+v12V1;v22V2
+
+cos(v1; v2);
+
+v>1 v2
+
+which is exactly the cosine of the angle between the two subspaces V1 and V2 (Golub and
+Loan, 1996). From this interpretation, it is obvious that if the matrices K1 and K2 were
+invertible, then the subspaces V1 and V2 would be equal to RN and thus the angle would
+always be equal to zero, whatever K1 and K2 are. The matrices K1 and K2 do not have
+full rank, because they are centered Gram matrices. However, centering is equivalent to
+projecting the column spaces V1 and V2 onto the subspace orthogonal to the vector composed
+of all ones; therefore, if the non-centered Gram matrices are invertible (which occurs, for
+example, if a Gaussian kernel is used, and the data points are distinct), the two column
+spaces are identical and the angle between them is still equal to zero, resulting in a canonical
+correlation estimate that is always equal to one.
+
+Thus the naive kernelization in Eq. (9) does not provide a useful estimator for general
+kernels. It does, however, provide a guide to the design of a useful regularized estimator, as
+we now discuss. Our regularization will penalize the RKHS norms of f1 and f2, and thus
+
+3. The matrix 1 is an N N matrix composed of ones. Note that 12 = N 1.
+
+11
+
+Bach and Jordan
+
+provide control over the statistical properties of KernelICA.4 In particular, we dene the
+regularized F-correlation  
+
+F as:
+
+ 
+F = max
+f1;f22F
+
+cov(f1(x1); f2(x2))
+
+(var f1(x1) + jjf1jj2
+F
+
+)1=2(var f2(x2) + jjf2jj2
+F
+
+;
+
+)1=2
+
+(11)
+
+where  is a small positive constant. Note that the regularized F-correlation inherits the
+independence characterization property of the F-correlation. In order to estimate it from
+a nite sample, we expand var f1(x1) + jjf1jj2
+
+F up to second order in , to obtain:
+
+var f1(x1) + jjf1jj2
+
+F =
+
+1
+N
+
+>1 K2
+
+1 1 + >1 K11 
+
+1
+N
+
+>1 (K1 +
+
+N 
+2
+
+I)21:
+
+Thus the regularized kernel CCA problem becomes:
+
+^ 
+F (K1; K2) = max
+
+1; 22RN
+
+>1 K1K22
+
+(>1 (K1 + N 
+
+2 I)21)1=2(>2 (K2 + N 
+
+2 I)22)1=2
+
+;
+
+(12)
+
+with its equivalent formulation as a generalized eigenvalue problem as follows:
+
+(cid:181)
+
+0
+
+K1K2
+
+K2K1
+
+0
+
+(cid:181) 1
+
+2  = (cid:181) (K1 + N 
+
+0
+
+2 I)2
+
+0
+
+2  :
+2 I)2 (cid:181) 1
+
+(K2 + N 
+
+(13)
+
+As we shall see in Section 4.3, the formulation of the regularized KCCA problem in Eq. (13)
+can be reduced to a (simple) eigenvalue problem that is well-behaved computationally. In
+addition, the regularized rst canonical correlation has an important statistical property
+that the unregularized canonical correlation does not have|it turns out to be a consistent
+estimator of the regularized F-correlation. (That is, when the number of samples N tends
+to innity, the estimate converges in probability to the population quantity. The proof of
+this result is beyond the scope of the paper).
+
+3.2.3 Generalizing to more than two variables
+
+The generalization of regularized kernelized canonical correlation to more than two sets
+of variables is straightforward, given our generalization of CCA to more than two sets of
+variables. We simply denote by K the mNmN matrix whose blocks are (K)ij = KiKj,
+for i 6= j, and (K)ii = (Ki + N 
+2 I)2, and we let D denote the mN mN block-diagonal
+
+4. Intuitively, without any restriction on jjf1jjF and jjf2jjF , it is possible to separate one data point xk0
+1
+from the other points fxk
+2 g with a function
+f2. For those f1 and f2, we get a correlation equal to one and thus obtain no information about the
+dependence of x1 and x2.
+
+1 g with a function f1, while separating xk0
+
+from the other fxk
+
+2
+
+12
+
+
+
+
+
+
+K1Km
+K2Km
+
+...
+
+(Km + N 
+
+(K2 + N 
+
+2 I)2
+
+2 I)2
+
+
+
+1CCCA
+
+0BBB@
+
+1
+2
+...
+m
+
+1CCCA
+
+0
+0
+...
+
+0
+
+...
+0
+
+
+
+(Km + N 
+
+2 I)2
+
+KmK2
+(K1 + N 
+
+2 I)2
+
+0
+...
+0
+
+= 0BBB@
+
+1CCCA
+
+0BBB@
+
+1
+2
+...
+m
+
+1CCCA
+
+;
+
+(14)
+
+Kernel Independent Component Analysis
+
+matrix with blocks (Ki + N 
+
+2 I)2. We obtain the following generalized eigenvalue problem:
+
+(K1 + N 
+K2K1
+
+2 I)2
+
+...
+
+K1K2
+(K2 + N 
+
+2 I)2
+
+...
+
+KmK1
+
+0BBB@
+
+or K = D for short. The minimal eigenvalue of this problem will be denoted
+^ 
+F (K1; : : : ; Km) and referred to as the rst kernel canonical correlation. We also extend
+our earlier terminology and refer to this eigenvalue as an (empirical) F-correlation.
+Note that in the two-variable case we dened a function F (x1; x2) that depends on the
+covariances of the random variables '(x1) and '(x2), and we obtained an empirical contrast
+function ^ 
+F (x1; x2) from F (x1; x2) by substituting empirical covariances for population co-
+variances and introducing regularization.5 In the m-variable case, we have (thus far) dened
+only the empirical function ^ 
+F (K1; : : : ; Km). In Appendix A.3, we study the properties of
+the population version of this quantity, F (x1; : : : ; xm), by relating F (x1; : : : ; xm) to a
+generalized notion of \correlation" among m variables. By using this denition, we show
+that F (x1; : : : ; xm) is always between zero and one, and is equal to one if and only if the
+variables x1; : : : ; xm are pairwise independent. Thus we obtain an analog of Theorem 2 for
+the m-variable case.
+
+For reasons that will become clear in Section 3.4, where we discuss a relationship be-
+tween canonical correlations and mutual information, it is convenient to dene our contrast
+functions in terms of the negative logarithm of canonical correlations. Thus we dene a con-
+trast function IF (x1; : : : ; xm) =  1
+2 log F (x1; : : : ; xm) and ask to minimize this function.
+The result alluded to in the preceding paragraph shows that this quantity is nonnegative,
+and equal to zero if and only if the variables x1; : : : ; xm are pairwise independent.
+
+For the empirical contrast function, we will use the notation ^IF (K1; : : : ; Km) =
+2 log ^ 
+ 1
+F (K1; : : : ; Km), emphasizing the fact that this contrast function depends on the
+data only through the Gram matrices.
+
+3.2.4 Relationship to ACE
+
+Given a response variable y and predictor variables x1; : : : ; xp, the alternating conditional
+expectation (ACE) algorithm (Breiman and Friedman, 1985) minimizes
+
+e =
+
+E[(cid:181)(y) Pp
+
+var (cid:181)(y)
+
+j=1 `j(xj)]2
+
+5. In fact the word \contrast function" is generally reserved for a quantity that depends only on data
+and parameters, and is to be extremized in order to obtain parameter estimates. Thus ^ 
+F (x1; x2) is a
+contrast function. By also refering to the population version F (x1; x2) as a \contrast function," we are
+abusing terminology. But this is a standard abuse in the ICA literature, where, for example, the mutual
+information is viewed as a \contrast function."
+
+13
+
+Bach and Jordan
+
+Algorithm KernelICA-KCCA
+
+Input: Data vectors y1; y2; : : : ; yN
+
+Kernel K(x; y)
+
+1. Whiten the data
+2. Minimize (with respect to W ) the contrast function C(W ) dened as:
+
+a. Compute the centered Gram matrices K1; K2; : : : ; Km of the estimated
+
+b. Dene ^ 
+
+sources fx1; x2; : : : ; xNg, where xi = W yi
+vector equation K = D
+
+c. Dene C(W ) = ^IF (K1; : : : ; Km) =  1
+
+F (K1; : : : ; Km) as the minimal eigenvalue of the generalized eigen-
+
+2 log ^ 
+
+F (K1; : : : ; Km)
+
+Output: W
+
+Figure 1: A high-level description of the KernelICA-KCCA algorithm for estimating the
+
+parameter matrix W in the ICA model.
+
+with respect to the real-valued functions (cid:181), `1; : : : ; `p. The transformations obtained pro-
+duce the best-tting additive models. For the bivariate case, p = 1, minimization of e can
+be shown to be equivalent to maximization of the correlation corr((cid:181)(y); `(x)). It is thus
+equivalent to the F-correlation problem. In the population case, the optimization can be
+done in L2(R), while in presence of a nite sample, the function spaces that are considered
+by Breiman and Friedman (1985) are smooth function spaces similar to the RKHS we use
+in this paper. A strong link exists between kernel CCA and ACE in this case: one step of
+the ACE algorithm is equivalent to one step of a power method algorithm for computing
+the largest generalized eigenvalue in Eq. (10) (Buja, 1990, Hastie and Tibshirani, 1990).6
+
+3.3 The KernelICA-KCCA algorithm
+
+Let us now apply the machinery that we have developed to the ICA problem. Given a set
+of data vectors y1; y2; : : : ; yN , and given a parameter matrix W , we set xi = W yi, for each
+i, and thereby form a set of estimated source vectors fx1; x2; : : : ; xNg. The m components
+of these vectors yield a set of m Gram matrices, K1; K2; : : : ; Km, and these Gram matrices
+(which depend on W ) dene the contrast function C(W ) = ^IF (K1; : : : ; Km). We obtain
+an ICA algorithm by minimizing this function with respect to W .
+
+A high-level description of the resulting algorithm, which we refer to as KernelICA-
+
+KCCA, is provided in Figure 1.
+
+6. We note in passing that the implementation of kernel CCA using low-rank approximations of Gram
+matrices that we present in Section 4.4 transfers readily to the general setting of generalized additive
+models based on kernel smoothers (Hastie and Tibshirani, 1990), thus enabling a fast implementation of
+the tting procedure for such models.
+
+14
+
+Kernel Independent Component Analysis
+
+Note that KernelICA-KCCA is not simply a \kernelization" of an extant ICA algo-
+rithm. Instead, we use kernel ideas to characterize independence and thus to dene a new
+contrast function for ICA. As with alternative approaches to ICA, we minimize this contrast
+function with respect to the demixing matrix W .
+
+We still have a signicant amount of work to do to turn the high-level description
+in Figure 1 into a practical algorithm. The numerical linear algebra and optimization
+procedures that complete our description of the algorithm are presented in Sections 4 and 5.
+Before turning to those details, however, we turn to the presentation of an alternative
+contrast function based on generalized variance.
+
+3.4 Kernel generalized variance
+
+As we have discussed, the mutual information provides a natural contrast function for ICA,
+because of its property of being equal to zero if and only if the components are independent,
+and because of the link to the semiparametric likelihood. As we show in this section, there
+is a natural generalization of the F-correlation that has a close relationship to the mutual
+information. We develop this generalization in this section, and use it to dene a second
+ICA contrast function.
+
+Our generalization is inspired by an interesting link that exists between canonical corre-
+lations and mutual information in the case of Gaussian variables. As we show in Appendix A,
+for jointly-Gaussian variables x1 and x2, the mutual information, I(x1; x2), can be written
+as follows:
+
+I(x1; x2) = 
+
+1
+2
+
+log(1  2
+i );
+
+pXi=1
+
+where i are the canonical correlations. Thus CCA can be used to compute the mutual
+information between a pair of Gaussian variables. Moreover, Appendix A also shows that
+this link can be extended to the mutual information between m variables. Thus, the m-
+way mutual information between m Gaussian random variables, I(x1; x2; : : : ; xm), can be
+obtained from the set of eigenvalues obtained from the generalized eigenvector problem
+C = D that we dened in Section 2.1.1. In particular, Appendix A shows the following:
+
+I(x1; x2; : : : ; xm) = 
+
+1
+2
+
+log
+
+det C
+det D
+
+1
+2
+
+= 
+
+log i;
+
+PXi=1
+
+(15)
+
+where i are the generalized eigenvalues of C = D.
+
+This result suggests that it may be worth considering a contrast function based on more
+than the rst canonical correlation, and holds open the possibility that such a contrast func-
+tion, if based on the nonlinearities provided by an RKHS, might provide an approximation
+to the mutual information between non-Gaussian variables.
+
+Let us dene the generalized variance associated with the generalized eigenvector prob-
+lem C = D as the ratio (det C)=(det D). The result in Eq. (15) shows that for Gaussian
+variables the mutual information is equal to minus one-half the logarithm of the generalized
+variance.
+
+We make an analogous denition in the kernelized CCA problem, dening the kernel
+generalized variance to be the product of the eigenvalues of the generalized eigenvector
+
+15
+
+Bach and Jordan
+
+1.5
+
+1
+
+0.5
+
+0
+
+0
+
+20
+
+40
+
+60
+
+80
+
+q
+
+Figure 2: The mutual information I(x1; x2) (dashed), the approximation IF (x1; x2) for
+(cid:190) = :25; :5; 1; 2; 4 (dotted), and the limit J(x1; x2) as (cid:190) tends to zero (solid).
+The abscissa is the angle of the rst independent component in a two-source ICA
+problem. As (cid:190) decreases, IF increases towards J. See the text for details.
+
+problem in Eq. (14), or equivalently the ratio of determinants of the matrices in this problem.
+That is, given the generalized eigenvector problem K = D of Eq. (14), we dene:
+
+^ 
+F (K1; : : : ; Km) =
+
+detK
+detD
+
+as the kernel generalized variance. We also dene a contrast function ^IF (K1; : : : ; Km):
+
+^IF (K1; : : : ; Km) = 
+
+1
+2
+
+log ^ 
+
+F (K1; : : : ; Km);
+
+by analogy with the mutual information for the Gaussian case.
+
+Although we have proceeded by analogy with the Gaussian case, which is of little interest
+in the ICA setting, it turns out that ^IF (K1; : : : ; Km) has as its population counterpart a
+function IF (x1; : : : ; xm) that is actually closely related to the mutual information between
+the original non-Gaussian variables in the input space. The proof of this result is sketched in
+Appendix B for the Gaussian kernel. In particular, in the case of two variables (m = 2), we
+show that, as (cid:190) tends to zero, IF (x1; : : : ; xm) tends to a limit J(x1; : : : ; xm) that is equal
+to the mutual information up to second order, when we expand the mutual information
+around distributions that factorize.
+
+Our result is illustrated in Figure 2. We compute the mutual information for a whitened
+ICA problem with two known sources and two components, as the angle (cid:181) of the estimated
+rst component ranges from 0 to 90 degrees, with the independent component occurring
+at 30 degrees. The graph plots the true mutual information I(x1; x2), the approximation
+IF (x1; x2), for various values of (cid:190), and the limit J(x1; x2). The close match of the shape
+of J(x1; x2) and the mutual information is noteworthy.
+
+16
+
+Kernel Independent Component Analysis
+
+Algorithm KernelICA-KGV
+
+Input: Data vectors y1; y2; : : : ; yN
+
+Kernel K(x; y)
+
+1. Whiten the data
+2. Minimize (with respect to W ) the contrast function C(W ) dened as:
+
+a. Compute the centered Gram matrices K1; K2; : : : ; Km of the estimated
+
+sources fx1; x2; : : : ; xNg, where xi = W yi
+b. Dene ^ 
+F (K1; : : : ; Km) = detK= detD
+c. Dene C(W ) = ^IF (K1; : : : ; Km) =  1
+
+2 log ^ 
+
+F (K1; : : : ; Km)
+
+Output: W
+
+Figure 3: A high-level description of the KernelICA-KGV algorithm for estimating the
+
+parameter matrix W in the ICA model.
+
+3.5 The KernelICA-KGV algorithm
+In the previous section, we dened an alternative contrast function, ^IF (x1; : : : ; xm), in
+terms of the generalized variance associated with the generalized eigenvector problem K =
+D. Essentially, instead of computing only the rst eigenvalue of this problem, as in
+the case of the F-correlation contrast function, we compute the entire spectrum. As we
+show in Section 6, this does not increase the practical running time complexity of the
+algorithm. Based on this contrast function, we dene a second KernelICA algorithm, the
+KernelICA-KGV algorithm outlined in Figure 3.
+
+In summary, we have dened two KernelICA algorithms, both based on contrast
+functions dened in terms of the eigenvalues of the generalized eigenvector problem K =
+D. We now turn to a discussion of the computational methods by which we evaluate
+and optimize these contrast functions.
+
+4. Computational issues
+
+The algorithms that we have presented involve nding generalized eigenvalues of matrices
+of dimension mN  mN , where N is the number of data points and m the number of
+sources. A naive implementation of these algorithms would therefore scale as O(m3N 3),
+a computational complexity whose cubic growth in the number of data points would be a
+serious liability in applications to large data sets. As noted by several researchers, however,
+the spectrum of Gram matrices tends to show rapid decay, and low-rank approximations of
+Gram matrices can therefore often provide sucient delity for the needs of kernel-based
+algorithms (Smola and Scholkopf, 2000, Williams and Seeger, 2001). Indeed, building on
+these observations, we describe an implementation of KernelICA whose computational
+complexity is linear in the number of data points.
+
+17
+
+Bach and Jordan
+
+We have two goals in this section. The rst is to overview theoretical results that
+support the use of low-rank approximations to Gram matrices. Our presentation of these
+results will be concise, with a detailed discussion deferred to Appendix C. Second, we
+present a KernelICA implementation based on low-rank approximations obtained from
+incomplete Cholesky decomposition. We show both how to compute the KernelICA
+contrast functions, and how to compute derivatives of the contrast functions.
+
+4.1 Theory
+
+In Appendix C, we present theoretical results that show that in order to achieve a given
+required precision , the rank M of an approximation to a Gram matrix K can be chosen
+as M = h(N=), where h(t) is a function that depends on the underlying distribution p(x)
+of the data. Moreover, the growth of h(t) as t tends to innity depends only on the decay
+of p(x) as jxj tends to innity. In particular, in the univariate case with a Gaussian kernel,
+when this decay is exponential (Gaussian-like), we have h(t) = O(log t). When the decay is
+polynomial, as xd, then h(t) = O(t1=d+"), for arbitrary " > 0.
+
+These results imply that if we require a constant precision , it suces to nd an
+approximation of rank M = O(log N ), for exponentially-decaying input distributions, and
+rank M = O(N 1=d+") for polynomially-decaying input distributions. These results are
+applicable to any method based on Gram matrices over input spaces of small dimension, and
+thus we can expect that kernel algorithms should generally be able to achieve a substantial
+reduction in complexity via approximations whose rank grows slowly with respect to N .
+
+We will show separately in Section 4.3, however, that in the context of F-correlation and
+the KGV, the precision  can be taken to be linear in N . This implies that the rank of the
+approximation can be taken to be bounded by a constant in the ICA setting, and provides
+an even stronger motivation for basing an implementation of KernelICA on low-rank
+approximations.
+
+4.2 Incomplete Cholesky decomposition
+We aim to nd low-rank approximations of Gram matrices of rank M  N . Note that
+even calculating a full Gram matrix is to be avoided because it is already an O(N 2) opera-
+tion. Fortunately, the fact that Gram matrices are positive semidenite is a rather strong
+constraint, allowing approximations to Gram matrices to be found in O(M 2N ) operations.
+Following Fine and Scheinberg (2001) and Cristianini et al. (2002), the particular tool that
+we employ here is the incomplete Cholesky decomposition, commonly used in implemen-
+tations of interior point methods for linear programming (Wright, 1999). Alternatives to
+incomplete Cholesky decomposition are provided by methods based on the Nystrom ap-
+proximation (Smola and Scholkopf, 2000, Williams and Seeger, 2001).
+
+A positive semidenite matrix K can always be factored as GG>, where G is an NN
+matrix. This factorization can be found via Cholesky decomposition (which is essentially a
+variant of Gaussian elimination). Our goal, however, is to nd a matrix eG of size N M ,
+for small M , such that the dierence K  eGeG> has norm less than a given value . This
+
+Incomplete Cholesky decomposition diers from standard Cholesky decomposition in
+that all pivots that are below a certain threshold are simply skipped. If M is the number
+
+can be achieved via incomplete Cholesky decomposition.
+
+18
+
+Kernel Independent Component Analysis
+
+of non-skipped pivots, then we obtain a lower triangular matrix eG with only M nonzero
+
+columns. Symmetric permutations of rows and columns are necessary during the factoriza-
+tion if we require the rank to be as small as possible (Golub and Loan, 1996). In that case,
+the stopping criterion involves the sum of remaining pivots.
+
+An algorithm for incomplete Cholesky decomposition is presented in Figure 4. The
+algorithm involves picking one column of K at a time, choosing the column to be added
+by greedily maximizing a lower bound on the reduction in the error of the approximation.
+
+overall complexity is O(M 2N ).
+
+ranking of the N  l vectors that might be added in the following step is done by comparing
+
+After l steps, we have an approximation of the form eKl = eGleG>l , where Gl is N l. The
+the diagonal elements of the remainder matrix K  eGleG>l . Each of these elements requires
+O(l) operations to compute. Moreover, the update of eGl has a cost of O(lN ), so that the
+
+The incomplete Cholesky method has many attractive features. Not only is its time
+complexity O(M 2N ), but also the only elements of K that are needed in memory are
+the diagonal elements (which are equal to one for Gaussian kernels7). Most of the other
+elements are never used and those that are needed can be computed on demand. The
+storage requirement is thus O(M N ). Also, the number M can be chosen online such that
+the approximation is as tight as desired.8
+
+4.3 Solving Kernel CCA
+
+Before turning to a discussion of how to use incomplete Cholesky decomposition to com-
+pute the eigenstructure needed for our ICA contrast functions, we discuss the generalized
+eigenvector problem of Eq. (14), K = D, in more detail.
+Owing to the regularization, we can apply a classical method for solving such a problem
+by nding a matrix C such that D = C>C, dening  = C, and thereby transforming
+the problem into a standard eigenvector problem C>KC1 = . Our kernelized CCA
+problem thus reduces to nding the smallest eigenvalue of the matrix:
+
+ KD1=2
+
+
+
+eK = D1=2
+
+=0BBB@
+
+I
+
+r(K2)r(K1)
+
+...
+
+r(Km)r(K1)
+
+I
+...
+
+
+
+
+
+
+r(K1)r(K2)
+
+r(K1)r(Km)
+r(K2)r(Km)
+
+1CCCA
+2 I)1Ki. If we have an eigenvector ~ of eK,
+
+2 I)1 ~i, with the same
+
+r(Km)r(K2)
+
+(16)
+
+...
+I
+
+where r(Ki) = Ki(Ki + N 
+then we have a generalized eigenvector dened by i = (Ki + N 
+
+2 I)1 = (Ki + N 
+
+eigenvalue. In the case of the KGV problem, we need to compute deteK.
+or one, via the function  7! =( + N 
+
+Our regularization scheme has the eect of shrinking each eigenvalue of Ki towards zero
+2 ). Consequently, all eigenvalues less than a small
+
+7. Centering, which would make the diagonal elements dierent from one and make the other elements
+
+harder to compute, can be done easily after the Cholesky decomposition.
+
+8. Note that no theoretical bound is available concerning the relation between M and the optimal rank
+M for a given precision. In our empirical work, however, we always obtained a rank very close to the
+optimal one. We believe this is due to the fact that our Gram matrices have a spectrum that decays
+very rapidly. Indeed, as pointed out by Wright (1999), a signicant eigengap ensures that incomplete
+Cholesky has small numerical error and yields a good approximation.
+
+19
+
+Bach and Jordan
+
+Algorithm IncompleteCholesky
+
+Input: NN semidenite positive matrix K
+
+precision parameter 
+
+j=i Gjj > 
+
+1. Initialization: i = 1, K0 = K, P = I, for j 2 [1; N ], Gjj = Kjj
+2. WhilePN
+
+ Find best new element: j = arg maxj2[i;N ] Gjj
+ Update permutation P :
+
+set Pii = 0, Pjj = 0 and Pij = 1, Pji = 1
+
+ Permute elements i and j in K0:
+
+column K01:N;i $ K01:N;j
+row K0i;1:N $ K0j;1:N
+
+ Update (due to new permutation) the already calculated elements
+
+of G: Gi;1:i $ Gj;1:i
+
+Gi+1:n;i = 1
+
+ Set Gii =pK0ii
+ Calculate ith column of G:
+
+ Update only diagonal elements:
+
+GiiK0i+1:N;i Pi1
+for j 2 [i + 1; N ], Gjj = Kjj Pi
+
+ i  i + 1
+
+j=1 Gi+1:N;jGij
+
+k=1 G2
+jk
+
+3. Output P , G and M = i  1
+
+Output: an NM lower triangular matrix G and a permutation matrix P such that
+
+jjP KP >  GG>jj 6 
+
+Figure 4: An algorithm for incomplete Cholesky decomposition. The notation Ga:b;c:d refers
+
+to the matrix extracted from G by taking the rows a to b and columns c to d.
+
+20
+
+Kernel Independent Component Analysis
+
+fraction of N 
+(we use the fraction 103 in our simulations) will numerically be discarded.
+2
+This implies that in our search for low-rank approximations, we need only keep eigenvalues
+greater than  = 103 N 
+2 . As detailed in Appendix C, this has the numerical eect of
+making our Gram matrices of constant numerical rank as N increases.
+
+4.4 Algorithms for KCCA and KGV
+
+We now show how to use incomplete Cholesky decomposition to solve the KCCA and KGV
+problems. As we have seen, these problems reduce to eigenvalue computations involving
+
+the regularized matrix eK in Eq. (16).
+Using the incomplete Cholesky decomposition, for each matrix Ki we obtain the fac-
+torization Ki  GiG>i , where Gi is an N Mi matrix with rank Mi, where Mi  N . We
+perform a singular value decomposition of Gi, in time O(M 2
+i N ), to obtain an NMi matrix
+Ui with orthogonal columns (i.e., such that U >i Ui = I), and an MiMi diagonal matrix i
+such that:
+
+Ki  GiG>i = UiiU>i :
+
+mPm
+
+Let M = 1
+
+i=1 Mi denote the average value of the ranks Mi.
+
+In order to study how to use these matrices to perform our calculations, let Vi denote
+the orthogonal complement of Ui, such that (Ui Vi) is an N  N orthogonal matrix. We
+have:
+
+If we now consider the regularized matrices r(Ki), we have:
+
+Ki  UiiU>i = (Ui Vi)(cid:181) i 0
+I)1Ki = (Ui Vi)(cid:181) Ri 0
+
+0  (Ui Vi)>
+0  (Ui Vi)> = UiRiU>i ;
+
+N 
+2
+
+0
+
+0
+
+r(Ki) = (Ki +
+
+where Ri is the diagonal matrix obtained from the diagonal matrix i by applying the
+function  7! 
++N =2 to its elements. As seen before, this function softly thresholds the
+eigenvalues less than N 
+
+2 . We now have the following decomposition:
+
+where U is mNmM , V is mN(mN  mM ), R is mMmM , and (U V) is orthogonal:
+
+I  (U V)>;
+
+0
+
+U =
+
+U1
+
+0
+. . .
+
+eK = UR U> + VV> = (U V)(cid:181) R 0
+0BBBB@
+0BBBB@
+R =0BBB@
+
+0
+
+...
+. . .
+. . .
+0
+0 Um
+
+RmU>mU1R1 RmU>mU2R2
+
+1CCCCA
+
+R2U>2 U1R1
+
+R1U>1 U2R2
+
+V =
+
+0
+...
+0
+
+V1
+
+0
+...
+0
+
+
+
+
+
+I
+
+...
+
+I
+...
+
+21
+
+0
+. . .
+
+
+
+
+. . .
+. . .
+0
+
+0
+...
+0
+Vm
+
+ R1U>1 UmRm
+ R2U>2 UmRm
+
+...
+I
+
+1CCCCA
+
+:
+
+1CCCA
+
+Bach and Jordan
+
+0
+
+This allows us to compute the KCCA criterion. For the KGV criterion, we trivially have
+
+The mN (nonnegative) eigenvalues of eK sum to tr(eK) = mN . If eK 6= I then at least one
+of these eigenvalues must be less than 1. Consequently, since eK is similar to(cid:181) R 0
+I ,
+the smallest eigenvalue of eK (with eigenvector  2 RmN ) is equal to the smallest eigenvalue
+of R (with eigenvector  2 RmM ), and the two eigenvectors are related through:
+deteK = det(cid:181) R 0
+reduced. In the case of the rst canonical correlation (the smallest eigenvalue of eK) we
+simply need to nd the smallest eigenvalue of R, which has a cost of O(m2M 2). In the case
+of the generalized variance, we need to compute deteK = detR, which costs O((mM )),
+where (s) is the complexity of multiplying two ss matrices, which is less than O(s3) when
+using Strassens algorithm (Cormen et al., 1990). Since in our situation we have M = O(1),
+the complexities are reduced to O(m2) and O((m)).
+
+We thus have reduced the size of our matrices from mN  mN to mM  mM . Once
+we have borne the cost of such a low-rank decomposition, the further complexity is greatly
+
+ = U )  = U>:
+
+I  = detR.
+
+0
+
+4.5 Free parameters
+
+The KernelICA algorithms have two free parameters: the regularization parameter  and
+the width (cid:190) of the kernel (assuming identical Gaussian kernels for each source).
+In our
+experimental work we found that the KernelICA algorithms were reasonably robust to
+the settings of these parameters. Our choices were to set  = 2  103, (cid:190) = 1=2 for large
+samples (N > 1000) and  = 2  102, (cid:190) = 1 for smaller samples (N 6 1000).
+For nite N , a value of (cid:190) that is overly small leads to diagonal Gram matrices and
+our criteria become trivial. On the other hand, for large N the KGV approaches the
+mutual information as (cid:190) tends to zero, and this suggests choosing (cid:190) as small as possible.
+Still another consideration, however, is computational|for small (cid:190) the spectra of the Gram
+matrices decay less rapidly and the computational complexity grows. This can be mitigated
+by an appropriate choice of ; in particular, the algorithm could choose  so that the number
+of retained eigenvalues for each Gram matrix is held constant. It is also possible to use cross-
+validation to set  (Leurgans et al., 1993). Clearly, there are several tradeos at play here,
+and the development of theoretical guidelines for the choice of the parameters is deferred
+to future work.
+
+4.6 Derivatives
+
+Our approach to ICA involves optimizing a contrast function dened in terms of a set of
+m Gram matrices, where m is the number of components. These matrices are functions
+of the weight matrix W , and thus our contrast functions are dened on a manifold of di-
+mension m(m  1)=2 (see Section 5). For small m (less than m = 8 in our simulations),
+the optimization can be based on simple techniques such as naive rst-dierence approx-
+imations of derivatives, or optimization methods that require only function evaluations.
+Such techniques are not viable for large problems, however, and in general we must turn to
+
+22
+
+Kernel Independent Component Analysis
+
+derivative-based optimization techniques, where it is required that derivatives are computed
+eciently.
+
+The derivatives of Gram matrices are not semidenite matrices in general, and thus we
+cannot directly invoke the low-rank decomposition algorithms that we have discussed in
+previous sections. Fortunately, however, in the case of Gaussian kernels, it is possible to
+express these matrix derivatives as a dierence between two low-rank positive semidenite
+matrices, and we can apply the incomplete Cholesky decomposition to each of these matrices
+separately. The details of this computation are provided in Appendix D.
+
+Another possibility to compute derivatives eciently is to use rst-dierence approxi-
+mations of derivatives, as mentioned earlier, but with the help of the particular structure of
+the problem. Indeed, a naive computation would require m(m  1)=2 computations of the
+objective function, and yield a complexity of O(m3N ). As shown in Appendix D, we man-
+age to reduce the complexity to O(m2N ) by reducing the number of incomplete Cholesky
+decompositions to be performed.
+
+5. Optimization
+
+An ICA contrast function is ultimately a function of the parameter matrix W . Estimating
+ICA parameters and independent components means minimizing the contrast function with
+respect to W . As noted by Amari (1998), the fact that W is an orthogonal matrix in the
+ICA problem (once the data are whitened) endows the parameter space with additional
+structure, and this structure can be exploited by optimization algorithms. The particular
+formalism that we pursue here is that of a Stiefel manifold. In this section, we rst review
+the properties of this manifold. We then discuss convergence properties of our algorithm.
+Finally, we present two ecient techniques to tame local minima problems.
+
+5.1 The Stiefel manifold
+The set of all m  m matrices W such that W >W = I is an instance of a Stiefel mani-
+fold (Edelman et al., 1999). Our optimization problem is thus the minimization of a function
+C(W ) on the Stiefel manifold. The familiar optimization algorithms of Euclidean spaces|
+gradient descent, steepest descent and conjugate gradient|can all be performed on a Stiefel
+manifold. The basic underlying quantities needed for optimization are the following:
+
+ The gradient of a function C(W ) is dened as
+
+rC =
+
+@C
+
+@W  W(cid:181) @C
+@W>
+
+W;
+
+where @C
+element (i; j) is @C
+@wij
+
+.
+
+@W is the derivative of C with respect to W ; that is, an m  m matrix whose
+
+ The tangent space is equal to the space of all matrices H such that W >H is skew-
+symmetric. It is of dimension m(m  1)=2 and equipped with the canonical metric
+jjHjjc = 1
+
+2 tr(H>H).
+
+23
+
+Bach and Jordan
+
+ The geodesic starting from W in the direction H (in the tangent space at W ) is deter-
+mined as GW;H (t) = W exp(tW >H), where the matrix exponential can be calculated
+eciently after having diagonalized (in the complex eld) the skew-symmetric matrix
+W >H.
+
+In the simulations that we report in Section 7, we used steepest descent, with line search
+along the geodesic. Note that in our case, the calculation of the gradient is more costly (from
+5 to 10 times) than the evaluation of the function C. Consequently, conjugate gradient
+techniques are particularly appropriate, because they save on the number of computed
+derivatives by computing more values of the functions.
+
+5.2 Convergence issues
+
+Since our algorithm is simply steepest descent (with line search) on an almost-everywhere
+dierentiable function C(W ), the algorithm converges to a local minimum of C(W ), for
+any starting point. However, the ICA contrast functions have multiple local minima, and
+restarts are generally necessary if we are to nd the global optimum. Empirically, the
+number of restarts that were needed was found to be small when the number of samples is
+suciently large so as to make the problem well-dened.
+
+We have also developed two initialization heuristics that have been found to be par-
+ticularly useful in practice for large-scale problems. These heuristics nd a matrix W0
+suciently close to the global optimum so that the direct optimization of C(W ) gives the
+desired optimum without the need for restarts. We describe these heuristics in the following
+two sections.
+
+5.3 Polynomial kernels
+
+In the case of the KernelICA-KCCA algorithm, the contrast function C(W ) that is
+minimized is itself obtained through a minimization of a functional over the feature space
+of functions F, as seen in the case of two variables in Eq. (7). This space of function is
+dened through the kernel K(x; y). Intuitively, the larger the space of functions F is, the
+less smooth the function C(W ) should be with respect to variations of W , since a larger F
+can more closely adapt to any W .
+Thus, by using a nite-dimensional feature space, we might hope that the optimization
+function will be smoother and thus local minima will disappear. As we noted in Section 3.1,
+objective functions based on kernels with nite-dimensional feature spaces do not charac-
+terize independence as well as kernels with innite-dimensional feature spaces, so we should
+expect inaccurate solutions. Nevertheless, we have found empirically that such solutions
+are often found in the basin of attraction of the global minima for the full KernelICA-
+KCCA or KernelICA-KGV algorithm. Thus we can use polynomial kernels to initialize
+the algorithm.
+
+The classical polynomial kernel is of the form K(x; y) = (r + sxy)d. Its RKHS Fd is the
+space of polynomials of degree less or equal to d and the RKHS norm jjfjj2 is a weighted
+k=0 kjakj2.
+sum of squares of the coecients of the polynomials:
+When a polynomial is considered as function in L2(R), the k-th coecient is equal to
+1
+k! dkf =dxk(0), so we can write for f 2 Fd, jjfjj2
+. Although
+Fd
+
+= Pd
+jjPd
+k=0 akxkjj2
+Fd
+(k!)2dkf =dxk(0)2
+= Pd
+
+k
+
+k=0
+
+24
+
+Kernel Independent Component Analysis
+
+Hermite polynomial kernel of order d, K(x; y) =Pd
+
+attractive computationally, we see that the traditional polynomial kernel does not lead to
+a natural norm for its RKHS. Instead, in our simulations, we use the Hermite polynomial
+kernels (Vapnik, 1998), which correspond to a more natural norm in a space of polynomials:
+If we let hk(x) denote the k-th Hermite polynomials (Szego, 1975), we dene the following
+. Using
+classical properties of orthogonal polynomials, this kernel can be computed as eciently as
+the traditional polynomial kernel. The RKHS associated with this kernel is the space of
+functions that can be written as ex2=2(cid:190)2
+P (x) where P (x) is a polynomial of degree less or
+equal to d, and the norm in that space is the L2 norm. In the simulations that we report in
+Section 7, when we use nite dimensional kernels as a rst step in the global optimization,
+we use Hermite polynomial kernels with (cid:190) = 1:5 and d = 3.
+
+k=0 ex2=2(cid:190)2
+
+ey2=2(cid:190)2 hk(x=(cid:190))hk(y=(cid:190))
+
+2kk!
+
+5.4 One-unit contrast functions
+
+One-unit contrast functions|objective functions similar to projection pursuit criteria that
+are designed to discover single components|have been usefully employed in the ICA set-
+ting (Hyvarinen et al., 2001). These functions involve optimization on the sphere (of di-
+mension m  1) rather than the orthogonal group (of dimension m(m  1)=2); this helps
+tame problems of local minima. In the KernelICA setting, the KCCA or KGV contrast
+between one univariate component and its orthogonal subspace provides a natural one-unit
+contrast function. Two issues still have to be resolved to implement such an approach:
+the choice of the kernel on the component of dimension m  1, and the combination of
+components obtained from one-unit contrasts into a full ICA solution.
+
+In this paper, we assume that we are given the same kernel K(x; y) for all desired
+univariate components. To dene a kernel on vectors of dimension m  1, two natural
+choices arise. The rst is to take the product of the m  1 univariate kernels. This is
+equivalent to choosing the feature space of functions on Rm1 to be the tensor product
+of the m  1 (identical) feature spaces of functions on R (Vapnik, 1998). In the case of a
+Gaussian kernel, this amounts to using an isotropic Gaussian kernel K(x; y) = ejjxyjj2=2(cid:190)2
+.
+This choice has the advantage that the kernel is invariant to (m1)-dimensional orthogonal
+transformations, so that the contrast function is invariant with respect to the choice of the
+basis of the orthogonal subspace. However, the spectrum of the Gram matrix decays more
+slowly than for the one-dimensional Gaussian, making this method impractical for large m.
+The other natural choice is to take the sum of the kernels; this is equivalent to letting
+each component of the m  1 vector have its own Gram matrix. Here, the decay of each of
+the m1 Gram matrices is fast, so that the computation of the contrast function scales well
+with m. However, care must be taken in the choice of the representative of the orthogonal
+subspace: to obtain a valid function it is necessary to dene a unique representative of
+the orthogonal subspace which depends continuously on the univariate component w. This
+is easily done by considering the image of the canonical basis (e1; : : : ; em) of Rm by the
+rotation that transforms the rst vector e1 of this basis into w, and reduces to identity on
+the orthogonal complement of the span of fw; e1g.
+
+To combine one-dimensional component into a full ICA solution we use a \de(cid:176)ation"
+technique similar to the one used by Hyvarinen and Oja (1997). We rst nd a m-
+dimensional component w1, then project the data into the subspace (of dimension m  1)
+
+25
+
+Bach and Jordan
+
+orthogonal to w1 and search for a component w2 in this subspace. This process is iterated
+until m  1 components are found (which implies that the m-th is also found by orthog-
+onality). A full ICA solution W is then obtained by combining the m one-dimensional
+components.
+
+6. Computational complexity
+
+Let N denote the number of samples, and let m denote the number of sources. M is the
+maximal rank considered by our low-rank decomposition algorithms for the kernels. We
+assume that m 6 N .
+
+ Performing PCA on the input variables is O(m2N )|calculating the covariance matrix
+is O(m2N ), diagonalizing the m  m matrix is O(m3) = O(m2N ), and scaling is
+O(m2N ).
+
+ KCCA using incomplete Cholesky decomposition is O(m2M 2N )|calculating the de-
+composition m times is m  O(N M 2), then forming the matrix R is m(m1)
+
+O(M 2N ) = O(m2M 2N ), and nding its smallest eigenvalue is O((mM )2). How-
+ever, in practice, the incomplete Cholesky decompositions are the bottleneck of these
+computations, so that the empirical complexity is in fact O(mM 2N ).
+
+2
+
+ KGV using incomplete Cholesky decomposition is O(m2M 2N + m3M 3), which is usu-
+ally O(m2M 2N ) because N is generally greater than mM |calculating the decompo-
+sition m times is m  O(M 2N ), then forming the matrix R is m(m1)
+ O(M 2N ) =
+O(m2M 2N ), and computing its determinant is O((mM )3). As for KCCA, the empir-
+ical complexity is O(mM 2N ).
+
+2
+
+ Computation of the derivatives is O(m2M 2N )|at most 3m2 incomplete Cholesky
+decompositions to perform, and then matrix multiplications with lower complexity, for
+the direct approach, while O(m2) computations of the contrast functions are needed
+for the rst-order dierence approach.
+
+7. Simulation results
+
+We have conducted an extensive set of simulation experiments using data obtained from a
+variety of source distributions. The sources that we used (see Figure 5) included subgaussian
+and supergaussian distributions, as well as distributions that are nearly Gaussian. We stud-
+ied unimodal, multimodal, symmetric, and nonsymmetric distributions. All distributions
+are scaled to have zero mean and unit variance.
+
+We also varied the number of components, from 2 to 16, the number of training samples,
+from 250 to 4000, and studied the robustness of the algorithms to varying numbers of
+outliers.
+
+Comparisons were made with three existing ICA algorithms: the FastICA algorithm
+(Hyvarinen and Oja, 1997), the JADE algorithm (Cardoso, 1999), and the extended Infomax
+algorithm (Lee et al., 1999).
+
+26
+
+Kernel Independent Component Analysis
+
+(a)   k= Inf
+
+(b)   k= 3.00
+
+(c)   k= 1.20
+
+(d)   k= 6.00
+
+(e)   k= 6.00
+
+(f)   k= 1.11
+
+(g)   k= 1.68
+
+(h)   k= 0.74
+
+(i)   k= 0.50
+
+(j)   k= 0.53
+
+(k)   k= 0.67
+
+(l)   k= 0.47
+
+(m)   k= 0.82
+
+(n)   k= 0.62
+
+(o)   k= 0.80
+
+(p)   k= 0.77
+
+(q)   k= 0.29
+
+(r)   k= 0.67
+
+Figure 5: Probability density functions of sources with their kurtoses: (a) Student with
+3 degrees of freedom; (b) double exponential; (c) uniform; (d) Student with
+5 degrees of freedom; (e) exponential; (f) mixture of two double exponentials;
+(g)-(h)-(i) symmetric mixtures of two Gaussians: multimodal, transitional and
+unimodal; (j)-(k)-(l) nonsymmetric mixtures of two Gaussians, multimodal, tran-
+sitional and unimodal; (m)-(n)-(o) symmetric mixtures of four Gaussians: mul-
+timodal, transitional and unimodal; (p)-(q)-(r) nonsymmetric mixtures of four
+Gaussians: multimodal, transitional and unimodal.
+
+27
+
+Bach and Jordan
+
+7.1 Experimental setup
+
+All of our experiments made use of the same basic procedure for generating data: (1) N
+samples of each of the m sources were generated according to their probability density
+functions (pdfs) and placed into an m  N matrix X, (2) a random mixing matrix A was
+
+chosen, with random but bounded condition number (between 1 and 2), (3) a matrix eY
+of dimension m  N was formed as the mixture eY = AX, (4) the data were whitened by
+multiplying eY by the inverse P of the square root of the sample covariance matrix, yielding
+
+an m  N matrix of whitened data Y . This matrix was the input to the ICA algorithms.
+Each of the ICA algorithms outputs a demixing matrix W which can be applied to the
+matrix Y to recover estimates of the independent components. To evaluate the performance
+of an algorithm, we compared W to the known truth, W0 = A1P 1, using the following
+metric:
+
+mXj=1(cid:181)Pm
+
+i=1 jaijj
+
+maxi jaijj  1 ;
+
+(17)
+
+d(V; W ) =
+
+1
+2m
+
+mXi=1Pm
+
+j=1 jaijj
+
+maxj jaijj  1! +
+
+1
+2m
+
+where aij = (V W 1)ij. This metric, introduced by (Amari et al., 1996), is invariant to
+permutation and scaling of the columns of V and W , is always between 0 and (m  1), and
+is equal to zero if and only if V and W represent the same components. We thus measure
+the performance of an algorithm by the value d(W; W0), which we refer to in the following
+sections as the \Amari error."
+
+7.2 ICA algorithms
+
+We brie(cid:176)y overview the other ICA algorithms that we used in our simulations. The FastICA
+algorithm (Hyvarinen and Oja, 1997) uses a de(cid:176)ation scheme to compute components se-
+quentially. For each component an one-unit contrast function, based on an approximation
+to the negentropy of a component, is maximized. This function can be viewed as a mea-
+sure of nongaussianity. The JADE algorithm (Cardoso, 1999) is a cumulant-based method
+that uses joint diagonalization of a set of fourth-order cumulant matrices. It uses algebraic
+properties of fourth-order cumulants to dene a contrast function that is minimized using
+Jacobi rotations. The extended Infomax algorithm (Lee et al., 1999) is a variation on the
+Infomax algorithm (Bell and Sejnowski, 1995) that can deal with either subgaussian or
+supergaussian components, by adaptively switching between two nonlinearities.
+
+The last three algorithms were used with their default settings. Thus, no ne tuning was
+performed to increase their performance according to the various sources that we tested.
+We did the same for the KernelICA algorithms9, xing the Gaussian kernel width to
+(cid:190) = 1 and the regularization parameter to  = 2  102 for samples N less than 1000 and
+using (cid:190) = 1=2,  = 2  103 for larger samples. We used the two initialization techniques
+presented in Section 5 in a rst stage (optimization of an one-unit contrast with a de(cid:176)ation
+scheme, with a Hermite polynomial kernel of degree d = 3 and width (cid:190) = 1:5) and initialized
+the second stage (optimization of the full m-way contrast functions based on the Gaussian
+kernel) with the result of the rst stage. For numbers of components m smaller than 16, the
+desired solution is reached with a limited number of restarts for the rst stage ( m=2 on
+average). For m = 16, however, the global minimum is not found consistently after a few
+
+9. A MATLAB implementation can be downloaded at http://www.cs.berkeley.edu/~fbach/.
+
+28
+
+Kernel Independent Component Analysis
+
+restarts. We obtained better results (results that are reported in the last line of Table 2)
+by using the three other algorithms to initialize our optimization procedure.
+
+7.3 In(cid:176)uence of source distributions
+
+In a rst series of experiments we tested the various algorithms on a two-component ICA
+problem, with 250 and 1000 samples, and with all 18 possible source distributions. We
+studied two kinds of ICA problem. In the rst ICA problem, the two source distributions
+were identical. For each of the 18 sources (a to r), we replicated the experiment 100 times
+and calculated the average Amari error. The results are reported in Table 1. The table
+also shows the average across these 18  100 simulations (the line denoted mean). In the
+second ICA problem, we chose two sources uniformly at random among the 18 possibilities.
+A total of 1000 replicates were performed, with the average over replications presented in
+the line denoted rand in Table 1.
+
+The results for the KernelICA algorithms show a consistent improvement, up to
+50%, over the other algorithms. Comparing just between the two KernelICA algo-
+rithms, KernelICA-KGV shows small but consistent performance improvements over
+KernelICA-KCCA.
+
+In addition, the performance of KernelICA is robust with respect to the source dis-
+tributions. Performance is similar across multimodal (f, g, j, m, p), unimodal (a, b, d, e,
+i, l, o, r) and transitional (c, h, k, n, q) distributions. The KernelICA algorithms are
+particularly insensitive to asymmetry of the pdf when compared to the other algorithms
+(see, e.g., case q).
+
+7.4 Increasing number of components
+
+In a second series of experiments, we tested the algorithms in simulations with 2, 4, 8 and
+16 components. Source distributions were chosen at random from the 18 possible sources
+in Figure 5. The results are presented in Table 2, where we see that KernelICA yields a
+smaller Amari error than the other ICA algorithms in all cases.
+
+7.5 Robustness to Gaussianity
+
+ICA algorithms are known to have diculties when the sources are nearly Gaussian. To
+address this issue, we studied two-component ICA problems with identical source distribu-
+tions. These distributions were chosen at random among a set of mixtures of Gaussians
+which are at various distances from Gaussianity. This set includes both supergaussian (pos-
+itive kurtosis) and subgaussian distributions (negative kurtosis). Figure 6 shows the average
+performance of the algorithms as the kurtosis approaches zero, from above and from be-
+low.10 We see that the performance of all algorithms degrades as the kurtosis approaches
+zero, and that the KernelICA algorithms are more robust to near-Gaussianity than the
+other algorithms.
+
+10. Although zero kurtosis does not characterize Gaussianity, kurtosis is often used to score the non-
+
+Gaussianity of distributions (e.g., Hyvarinen et al., 2001)
+
+29
+
+Bach and Jordan
+
+Imax KCCA KGV
+6.5
+50.0
+58.4
+7.1
+4.4
+15.2
+11.8
+54.3
+70.3
+3.3
+3.2
+9.5
+2.5
+19.2
+8.3
+29.7
+36.2
+21.6
+3.1
+52.1
+5.0
+28.4
+10.2
+35.0
+25.6
+10.6
+9.2
+34.3
+9.6
+24.6
+27.4
+6.2
+8.2
+40.6
+8.0
+33.9
+7.7
+35.8
+30.4
+5.4
+
+7.7
+7.9
+5.5
+13.8
+3.7
+3.4
+2.7
+9.8
+23.5
+3.2
+6.0
+12.6
+13.6
+15.1
+11.9
+8.1
+11.8
+9.0
+9.4
+6.9
+
+pdfs F-ica
+4.4
+5.8
+2.3
+6.4
+4.9
+3.6
+1.7
+5.5
+8.7
+6.7
+5.7
+12.1
+3.6
+5.4
+4.7
+4.1
+22.9
+6.6
+6.4
+5.3
+
+a
+b
+c
+d
+e
+f
+g
+h
+i
+j
+k
+l
+m
+n
+o
+p
+q
+r
+mean
+rand
+
+Jade
+3.7
+4.1
+1.9
+6.1
+3.9
+2.7
+1.4
+3.9
+7.2
+4.6
+4.0
+7.2
+2.9
+3.5
+3.3
+3.1
+15.8
+4.4
+4.6
+4.3
+
+a
+b
+c
+d
+e
+f
+g
+h
+i
+j
+k
+l
+m
+n
+o
+p
+q
+r
+
+pdfs F-ica
+7.2
+13.1
+4.7
+12.8
+8.8
+7.1
+3.4
+13.4
+24.9
+20.6
+13.4
+27.7
+8.6
+12.9
+9.6
+9.2
+41.2
+14.3
+
+Jade
+6.4
+11.0
+3.6
+10.9
+8.0
+5.2
+2.7
+9.1
+18.4
+16.5
+8.1
+20.0
+6.2
+9.1
+6.9
+6.0
+34.4
+9.2
+mean 14.1 10.6
+rand 10.8
+8.6
+
+Imax KCCA KGV
+3.0
+2.9
+2.4
+5.7
+1.5
+1.5
+1.3
+3.6
+6.5
+1.3
+2.6
+4.2
+4.6
+3.0
+4.3
+3.0
+3.9
+3.6
+3.3
+2.4
+
+1.8
+3.4
+2.0
+6.9
+3.2
+1.0
+0.5
+3.2
+6.8
+57.6
+3.5
+10.4
+4.2
+30.6
+4.4
+7.4
+40.9
+4.9
+10.7
+6.9
+
+3.7
+3.7
+2.7
+7.1
+1.7
+1.7
+1.4
+4.3
+7.8
+1.4
+3.2
+4.8
+6.3
+7.6
+5.1
+3.8
+5.1
+4.3
+4.2
+3.0
+
+Table 1: The Amari errors (multiplied by 100) for two-component ICA with 250 samples
+(left) and 1000 samples (right). For each pdf (from a to r), averages over 100
+replicates are presented. The overall mean is calculated in the row labeled mean.
+The rand row presents the average over 1000 replications when two (generally
+dierent) pdfs were chosen uniformly at random among the 18 possible pdfs.
+
+m
+2
+
+4
+
+8
+
+16
+
+N # repl F-ica
+11
+5
+18
+8
+26
+18
+42
+
+1000
+1000
+100
+100
+50
+50
+25
+
+250
+1000
+1000
+4000
+2000
+4000
+4000
+
+Jade
+9
+4
+13
+7
+22
+16
+38
+
+Imax KCCA KGV
+5
+2
+11
+4
+20
+8
+19
+
+30
+7
+25
+11
+123
+41
+130
+
+7
+3
+12
+6
+30
+16
+31
+
+Table 2: The Amari errors (multiplied by 100) for m components with N samples: m
+(generally dierent) pdfs were chosen uniformly at random among the 18 possible
+pdfs. The results are averaged over the stated number of replications.
+
+30
+
+Kernel Independent Component Analysis
+
+Jade
+Fastica
+Imax
+KernelICAkcca
+KernelICAkgv
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+0
+
+0.2
+
+0.4
+
+0.6
+
+0.8
+
+1
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0
+1
+
+Figure 6: Robustness to near-Gaussianity. The solid lines plot the Amari error of the Ker-
+nelICA algorithms as the kurtosis approaches zero. The dotted lines plot the
+performance of the other three algorithms.
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0
+
+0
+
+Jade
+Fastica (pow3)
+Fastica (tanh)
+Imax
+Fastica (gauss)
+KernelICAkcca
+KernelICAkgv
+
+5
+
+10
+
+15
+
+20
+
+Figure 7: Robustness to outliers. The abscissa displays the number of outliers and the
+
+ordinate shows the Amari error.
+
+31
+
+Bach and Jordan
+
+7.6 Robustness to outliers
+
+Outliers are also an important concern for ICA algorithms, given that ICA algorithms are
+based in one way or another on high-order statistics. Direct estimation of third and fourth
+degree polynomials can be particularly problematic in this regard, and many ICA algorithms
+are based on nonlinearities that are more robust to outliers. In particular, in the case of the
+FastICA algorithm, the hyperbolic tangent and Gaussian nonlinearities are recommended
+in place of the default polynomial when robustness is a concern (Hyvarinen and Oja, 1997).
+We simulated outliers by randomly choosing up to 25 data points to corrupt. This was
+done by adding the value +5 or 5 (chosen with probability 1/2) to a single component in
+each of the selected data points. We performed 100 replications using source distributions
+chosen uniformly at random from the 18 possible sources.
+
+The results are shown in Figure 7. We see that the KernelICA methods are signi-
+cantly more robust to outliers than the other ICA algorithms, including FastICA with the
+hyperbolic tangent and Gaussian nonlinearities.
+
+7.7 Running time
+
+The performance improvements that we have demonstrated in this section come at a com-
+putational cost|KernelICA is slower than the other algorithms we studied. The running
+time is, however, still quite reasonable in the examples that we studied. For example, for
+N = 1000 samples, and m = 2 components, it takes 0:05 seconds to evaluate our contrast
+functions, and 0:25 second to evaluate their derivatives (using Matlab with a Pentium 700
+MHz processor). Moreover, the expected scaling of O(mN ) for the computations of KCCA
+and KGV was observed empirically in our experiments.
+
+8. Conclusions
+
+We have presented a new approach to ICA based on kernel methods. While most current
+ICA algorithms are based on using a single nonlinear function|or a small parameterized
+set of functions|to measure departures from independence, our approach is a more (cid:176)exible
+one in which candidate nonlinear functions are chosen adaptively from a reproducing kernel
+Hilbert space. Our approach thus involves a search in this space, a problem which boils
+down to nding solutions to a generalized eigenvector problem. Such a search is not present
+in other ICA algorithms, and our approach to ICA is thus more demanding computationally
+than the alternative approaches. But the problem of measuring (and minimizing) departure
+from independence over all possible non-Gaussian source distributions is a dicult one, and
+we feel that the (cid:176)exibility provided by our approach is appropriately targeted. Moreover,
+our experimental results show that the approach is more robust than other ICA algorithms
+with regards to variations in source densities, degree of non-Gaussianity, and presence of
+outliers. Our algorithms are thus particularly appropriate in situations where little is known
+about the underlying sources. It is also worth noting that current algorithms can provide
+fast approximate solutions that can be improved by KernelICA.
+
+A number of ideas that are closely related to our own have been presented in recent
+work by other authors. Related work has been presented by Fyfe and Lai (2000), who
+propose the use of a kernelized version of canonical correlation analysis as an ICA algorithm
+
+32
+
+Kernel Independent Component Analysis
+
+(for two-component problems). Canonical correlation analysis in and of itself, however, is
+simply a feature extraction technique|it can be viewed as an extension of PCA to two
+variables. CCA does not dene an ICA contrast function and it should not be expected
+to nd independent components in general. Indeed, in the experiments presented by Fyfe
+and Lai (2000), independent components were not always present among the rst canonical
+variates. It is important to emphasize that in our approach, canonical correlation is used to
+dene an ICA contrast function, and this contrast function is subsequently optimized with
+respect to the parameters of the model to derive an ICA algorithm.
+
+Harmeling et al. (2002) have recently described work on kernel-based ICA methods
+whose focus is complementary to ours. They show how linear ICA methods in feature space
+can be used to solve nonlinear ICA problems (problems of the general form y = f (x), for
+nonlinear f ). Their method nds a certain number of candidate nonlinear functions of the
+data as purported independent components. These candidates, however, do not have any
+optimizing property in terms of an ICA contrast function that allows them to be ranked
+and evaluated, and in Harmeling et al. (2002) the authors simply pick those components
+that are closest to the known sources (in simulations in which these sources are known).
+A possible solution to this problem may lie in combining their approach with ours, using
+KernelICA in the subspace of feature space identied by their method, and identifying
+components sequentially.
+
+There are a number of other recent lines of work that are similar to KernelICA in
+being based on a (cid:176)exible treatment of the underlying source densities. These include meth-
+ods that represent estimated source densities via kernel density estimation (Vlassis and
+Motomura, 2001, Boscolo et al., 2001) and Gaussian mixtures (Attias, 1999, Welling and
+Weber, 2001), and methods that minimize asymptotic variances of estimators (Pham and
+Garat, 1997). These methods dier from KernelICA along various dimensions, including
+statistical foundations (frequentist vs. Bayesian, semiparametric vs. parametric), computa-
+tional requirements and extensibility, and further work will be needed to disentangle their
+relative advantages and disadvantages. All of these approaches, however, have in common
+with KernelICA the emphasis on source adaptivity as a key to the most challenging ICA
+problems.
+
+The current paper provides a general, (cid:176)exible foundation for algorithms that measure
+and minimize departure from independence, and can serve as a basis for exploring various
+extensions of the basic ICA methodology. There are several directions which we are currently
+exploring.
+
+First, our approach generalizes in a straightforward manner to multidimensional ICA (Car-
+
+doso, 1998), which is a variant of ICA with multivariate components. Indeed, the Gram
+matrices in our methods can be based on kernel functions computed on vector variables, and
+the rest of our approach goes through as before. A possible diculty is that the spectrum
+of such Gram matrices may not decay as fast as the univariate case, and this may impact
+the running time complexity.
+
+Second, we can take advantage of the versality of kernels to extend the current ICA
+model. Although the model we have presented here is based on an assumption of exchange-
+ability (that is, the samples can be randomly permuted without aecting the KernelICA
+contrast function), in applications where the data are clearly not exchangeable, such as
+speech processing, it is possible to dene kernels on \frames"|short overlapping sequences.
+
+33
+
+Bach and Jordan
+
+By using frames, the local temporal structure of speech or music is taken into account, and
+contrast functions that are much more discriminative can be designed. Also, kernels can
+be dened on data that are not necessarily numerical (e.g., the \string kernels" of Lodhi
+et al., 2002), and it is interesting to explore the possibility that our kernel-based approach
+may allow generalizations of ICA to problems involving more general notions of \sources"
+and \mixtures."
+
+Third, a more thoroughgoing study of the statistical properties of KernelICA is
+needed. In particular, while we have justied our contrast functions in terms of their math-
+ematical properties in the limiting case of an innite number of samples, we have not yet
+fully studied the nite-sample properties of these contrast functions, including the bias and
+variance of the resulting estimators of the parameters. Nor have we studied the statistical
+adaptivity of our method as a semiparametric estimation method, comparing its theoretical
+rate of convergence to that of a method which knows the exact source distributions. Such
+analyses are needed not only to provide deeper insight into the ICA problem and our pro-
+posed solution, but also to give guidance for choosing the values of the free parameters (cid:190)
+and  in our algorithm.
+
+Finally, in this paper, we establish a connection between kernel-based quantities and
+information-theoretic concepts, a connection that may extend beyond its utility for dening
+contrast functions for ICA. In particular, in recent work we have used the kernel generalized
+variance to provide a contrast function for a model in which the sources are no longer
+independent, but factorize according to a tree-structured graphical model (Bach and Jordan,
+2002).
+
+Appendix A. Canonical correlation and its generalizations
+
+In the following appendices, we expand on several of the topics discussed in the paper. This
+material should be viewed as optional, complementing and amplifying the ideas presented
+in the paper, but not necessary for a basic understanding of the KernelICA algorithms.
+This rst section provides additional background on canonical correlation, complement-
+ing the material in Section 2.1. In particular, we review the relationship between CCA and
+mutual information for Gaussian variables, and we motivate the generalization of CCA to
+more than two variables.
+
+A.1 CCA and mutual information
+
+For Gaussian random variables there is a simple relationship between canonical correla-
+tion analysis and the mutual information. Consider two multivariate Gaussian random
+
+variables x1 and x2, of dimension p1 and p2, with covariance matrix C =(cid:181) C11 C12
+C21 C22 .
+The mutual information, M (x1; x2) =R p(x1; x2) log[p(x1; x2)=p(x1)p(x2)]dx1dx2, is readily
+
+computed (Kullback, 1959):
+
+(18)
+
+M (x1; x2) = 
+
+1
+2
+
+log(cid:181)
+
+det C
+
+det C11 det C22 :
+
+The determinant ratio appearing in this expression, det C=(det C11 det C22), is known as the
+\generalized variance."
+
+34
+
+Kernel Independent Component Analysis
+
+As we discussed in Section 2.1, CCA reduces to the computation of eigenvalues of the
+
+following generalized eigenvector problem:
+
+(cid:181) C11 C12
+C21 C22 (cid:181) 1
+
+2  = (1 + )(cid:181) C11
+
+0
+
+0
+
+2  :
+C22 (cid:181) 1
+
+(19)
+
+The eigenvalues appear in pairs: f1  1; 1 + 1; : : : ; 1  p; 1 + p; 1; : : : ; 1g, where p =
+minfp1; p2g and where (1; : : : ; p) are the canonical correlations.
+For invertible B, the eigenvalues of a generalized eigenvector problem Ax = Bx are
+the same as the eigenvalues of the eigenvector problem B1Ax = x. Thus the ratio of
+determinants in Eq. (18) is equal to the product of the generalized eigenvalues of Eq. (19).
+This yields:
+
+M (x1; x2) = 
+
+1
+2
+
+log
+
+pYi=1
+
+(1  i)(1 + i) = 
+
+1
+2
+
+pXi=1
+
+log(1  2
+i ):
+
+(20)
+
+Thus we see that for Gaussian variables, the canonical correlations i obtained from CCA
+can be used to compute the mutual information.
+
+While Eq. (20) is an exact result (for Gaussian variables), it also motivates us to consider
+approximations to the mutual information. Noting that all of the terms in Eq. (20) are
+positive, suppose that we retain only the largest term in that sum, corresponding to the
+rst canonical correlation. The following theorem, which is easily proved, shows that this
+yields an approximation to the mutual information.
+
+Theorem 3 Let x1 and x2 be Gaussian random variables of dimension p1 and p2, respec-
+tively. Letting (x1; x2) denote the maximal canonical correlation between x1 and x2, and
+dening M(x1; x2) =  1
+
+2 log(1  2(x1; x2)), we have:
+
+M(x1; x2) 6 M (x1; x2) 6 minfp1; p2gM(x1; x2):
+
+(21)
+
+Moreover, M(x1; x2) is the maximal mutual information between one-dimensional linear
+projections of x1 and x2. Also, these bounds are tight|for each of the inequalities, one can
+nd x1 and x2 such that the inequality is an equality.
+
+A.2 Generalizing to more than two variables
+
+We generalize CCA to more than two variables by preserving the relationship that we
+have just discussed between mutual information and CCA for Gaussian variables.
+(For
+alternative generalizations of CCA, see Kettenring, 1971).
+
+Consider m multivariate Gaussian random variables, x1; : : : ; xm, where xi has dimension
+pi. Let Cij denote the pi  pj covariance matrix between xi and xj, and C the overall
+covariance matrix whose (i; j)th block is Cij. The mutual information, M (x1; : : : ; xm), is
+readily computed in terms of C (Kullback, 1959):
+
+M (x1; : : : ; xm) = 
+
+1
+2
+
+log(cid:181)
+
+det C
+
+det C11  det Cmm :
+
+(22)
+
+We again refer to the ratio appearing in this expression, det C=(det C11  det Cmm), as the
+\generalized variance."
+
+35
+
+Bach and Jordan
+
+As in the two-variable case, the generalized variance can be obtained as the product of
+the eigenvalues of a certain generalized eigenvector problem. In particular, we dene the
+following problem:
+
+0BBB@
+
+C11 C12
+C21 C22
+...
+...
+Cm1 Cm2
+
+ C1m
+ C2m
+...
+
+ Cmm
+
+1CCCA
+
+0BBB@
+
+1
+2
+...
+m
+
+1CCCA
+
+= 0BBB@
+
+C11
+0
+...
+0
+
+0
+C22
+...
+0
+
+
+
+
+0
+0
+...
+
+ Cmm
+
+1CCCA
+
+0BBB@
+
+1
+2
+...
+m
+
+1CCCA
+
+;
+
+(23)
+
+which we also write as C = D, where D is the block-diagonal matrix whose diagonal
+blocks are the Cii. Given the denition of C and D, the ratio of determinants of C and D
+is clearly equal to the generalized variance. Thus we have:
+
+M (x1; : : : ; xm) = 
+
+1
+2
+
+PXi=1
+
+log i;
+
+(24)
+
+where i are the generalized eigenvalues of C = D. Dening CCA as the solution of
+the generalized eigenvector problem C = D, we again obtain the mutual information in
+terms of a sum of functions of generalized eigenvalues.11
+
+If we wish to obtain a single \maximal canonical correlation," we can proceed by analogy
+to the two-variable case and take the largest (positive) term in the sum in Eq. (24). Thus,
+we dene the rst canonical correlation (x1; : : : ; xm) as the smallest generalized eigenvalue
+of C = D. We dene M(x1; : : : ; xm) =  1
+2 log (x1; : : : ; xm) as an approximation to
+the mutual information based on this eigenvalue. The following theorem, proved by making
+use of Jensens inequality, shows that this approximation yields upper and lower bounds on
+the mutual information, in the case of Gaussian variables:
+
+Theorem 4 Let (x1; : : : ; xm) be multivariate Gaussian random variables, where xi has di-
+mension pi. We have the following lower and upper bounds on the mutual information
+M = M (x1; : : : ; xm):
+
+M +
+
+  1
+
+2
+
+6 M 
+
+P  1
+
+2
+
+log
+
+P  
+P  1
+
+6 M 6 P M;
+
+(25)
+
+where M = M(x1; : : : ; xm),  = (x1; : : : ; xm), and P =Pi pi.
+
+Which of the properties of the classical denition of the rst canonical correlation gen-
+eralize to the m-variable denition? As we have already noted, the eigenvalues occur in
+pairs in the two-variable case, while they do not in the m-variable case. This implies that
+the specialization of the m-variable denition to m = 2, (x1; x2), does not reduce exactly
+to the classical denition, (x1; x2). But the dierence is unimportant; indeed, we have
+(x1; x2) = 1  (x1; x2). A more important aspect of the two-variable case is the fact (cf.
+Theorem 3) that there is a relationship between (x1; x2) and one-dimensional projections
+of x1 and x2. This relationship is an important one, lying at the heart of the properties of
+F-correlation. In the following section, we prove that such a relation exists in the m-way
+case as well.
+11. Note that the i are all nonnegative and sum to P =Pi pi. Note also that the i do not occur in pairs
+
+as they do in the two-variable case. Moreover, the terms in the sum in Eq. (24) are not all positive.
+
+36
+
+Kernel Independent Component Analysis
+
+A.3 F-correlation and independence
+
+Note that a correlation matrix is symmetric positive semidenite with trace equal to m,
+and thus the eigenvalues are nonnegative and sum to m. This implies that (y1; : : : ; ym)
+
+Let y1; : : : ; ym be univariate random variables, with correlation matrix eC, a matrix whose
+(i; j)th element is corr(yi; yj). We dene (y1; : : : ; ym) to be the minimal eigenvalue of eC.
+must always be between zero and one, and is equal to one if and only if eC = I. That is,
+
+(y1; : : : ; ym) = 1 if and only if the variables y1; : : : ; ym are uncorrelated. The function , a
+function of m univariate random variables, plays a similar role as the correlation between
+two random variables, as shown in the following theorem:
+
+Theorem 5 Let x1; : : : ; xm be m multivariate random variables. Let (x1; : : : ; xm) be
+the rst canonical correlation, dened as the smallest generalized eigenvalue of Eq. (23).
+Then (x1; : : : ; xm) is the minimal possible value of (y1; : : : ; ym), where y1; : : : ; ym are
+one-dimensional projections of x1; : : : ; xm:
+
+(x1; : : : ; xm) = min
+1;:::;m
+
+(>1 x1; : : : ; >mxm):
+
+(26)
+
+In addition, (x1; : : : ; xm) = 1 if and only if the variables x1; : : : ; xm are uncorrelated.
+
+Proof Let eC(>1 x1; : : : ; >mxm) denote the correlation matrix between (>1 x1; : : : ; >mxm). If
+the vectors i have unit norm then the (i; j)th element of eC(>1 x1; : : : ; >mxm) is just >i eCijj,
+where eCij is the correlation matrix between xi and xj. We then have:
+
+(>1 x1; : : : ; >mxm) =
+
+(>1 x1; : : : ; >mxm)
+
+min
+
+min
+
+1;:::;m
+
+=
+
+=
+
+jj1jj==jjmjj=1
+
+min
+
+jj1jj==jjmjj=1
+
+min
+
+jj1jj==jjmjj=jjjj=1
+
+min
+
+2Rm; jjjj=1
+
+>eC(>1 x1; : : : ; >mxm)
+
+mXi;j=1
+
+(ii)>eCij(jj)
+
+Minimizing over all possible 1; : : : ; m and  of unit norm is the same as minimizing over
+i=1 jjijj2 = 1, by simply mapping ((i); ) to (i) by i = ii
+
+and mapping (i) to ((i); ), by i = jjijj and i = i=jjijj. Consequently, we have:
+
+all possible i such that Pm
+
+min
+
+1;:::;m
+
+(>1 x1; : : : ; >mxm) = min
+jjjj=1
+
+mXi;j=1
+
+>i eCijj = min
+
+jjjj=1
+
+>eC = (x1; : : : ; xm);
+
+which proves the rst part of Theorem 5. Let us now prove the second part.
+
+If the variables x1; : : : ; xm are uncorrelated, then any linear projections will also be un-
+correlated, so (>1 x1; : : : ; >mxm) is constant equal to one, which implies by Eq. (26) that
+(x1; : : : ; xm) = 1. Conversely, if (x1; : : : ; xm) = 1, then since  is always between zero and
+one, using Eq. (26), for all i, (>1 x1; : : : ; >mxm) must be equal to one, and consequently,
+the univariate random variables >1 x1; : : : ; >mxm are uncorrelated. Since this is true for all
+one-dimensional linear projections, x1; : : : ; xm must be uncorrelated.
+
+37
+
+Bach and Jordan
+
+Applying this theorem to a reproducing kernel Hilbert space F, we see that the F-
+correlation between m variables is equal to zero if and only if for all functions f1; : : : ; fm in
+F, the variables f1(x1); : : : ; fm(xm) are uncorrelated. Consequently, assuming a Gaussian
+kernel, we can use the same line of reasoning as in Theorem 2 to prove that the F-correlation
+is zero if and only if the variables x1; : : : ; xm are pairwise independent.
+Concerning our second contrast function, the KGV, Theorem 4 shows that the KGV
+is always an upper bound of a constant function () of the rst canonical correlation .
+Since  is nonnegative and equal to zero if and only if  = 1, this shows that if the KGV is
+equal to zero, then the rst canonical correlation is also zero, and the variables x1; : : : ; xm
+are pairwise independent. As in the KCCA case, the converse is trivially true. Thus, the
+KGV also denes a valid contrast function.
+
+Appendix B. Kernel generalized variance and mutual information
+
+In Section 3.4 we noted that there is a relationship between the kernel generalized variance
+(KGV) and the mutual information in the bivariate case. In particular, we claim that in
+the population case (where no regularization is needed), the KGV approaches a limit as the
+kernel width approaches zero, and that in the bivariate case, this limit is equal to the mutual
+information, up to second order, expanding around independence. A full proof of this result
+is beyond the scope of this paper, but in this section we provide a sketch of the proof. We
+rst introduce a new information criterion for discrete multinomial random variables, show
+its link to the mutual information and then extend it to continuous variables.
+
+B.1 Multinomial and Gaussian variables
+
+We begin by establishing a relationship between a pair of multinomial random variables
+and a pair of Gaussian random variables with the same covariance structure. Let x and y
+be multinomial random variables of dimension p and q, respectively, and let P denote the
+p q joint probability matrix whose (i; j)th element, Pij, is equal to P (x = i; y = j). As
+usual, we also represent these variables as unit basis vectors, X 2 Rp and Y 2 Rq, such
+that P (Xi = 1; Yj = 1) = Pij.
+Let px denote a p-dimensional vector representing the marginal probability distribution
+of x, and let py denote a q-dimensional vector representing the marginal probability distri-
+bution of y. In the following, if r is a R  1 vector, diag(r) denotes the diagonal R  R
+matrix with diagonal r. The covariance structure of (X; Y ) can be written as follows, where
+Dpx = diag(px) and Dpy = diag(py):
+
+E(XY >) = P; E(X) = px; E(Y ) = py; E(XX>) = Dpx; E(Y Y >) = Dpy ;
+
+which implies CXY = P  pxp>y , CXX = Dpx  pxp>x , and CY Y = Dpy  pyp>y . Let X G
+and Y G denote Gaussian random variables that have the same covariance structure as
+It is easy to show that the mutual information between X G and Y G, which
+X and Y .
+we denote as I G, is equal to I G =  1
+2 log det(I  CC>), where
+C = D1=2
+
+2 log det(I  C>C) =  1
+
+.
+
+We now expand I G near independence, that is, when we assume Pij = pxipyj(1 + "ij)
+(P 
+
+where " is a matrix with small norm. In this case, the matrix C dened as C = D1=2
+
+px
+
+px
+
+(P  pxp>y )D1=2
+
+py
+
+38
+
+Kernel Independent Component Analysis
+
+pxp>y )D1=2
+
+py = D1=2
+
+px "D1=2
+
+py , has also a small norm and we can expand I G as follows:
+
+I G = 
+
+1
+2
+
+log det(I  CC>) 
+
+1
+2
+
+tr(CC>);
+
+Indeed, if we let si denote the singular values of C (which are close to zero because the
+matrix C has small norm), we have:
+
+1
+2
+
+
+
+log det(I  CC>) = 
+
+1
+
+2Xi
+
+log(1  s2
+
+i ) 
+
+1
+
+2Xi
+
+s2
+i =
+
+1
+2
+
+tr(CC>):
+
+Thus, we obtain:
+
+I G 
+
+1
+2
+
+tr(Dpx"Dpy ">) =
+
+"2
+ijpxipyj:
+
+1
+
+2Xij
+
+(27)
+
+Let us now expand the mutual information I = I(x; y), using the Taylor expansion (1 +
+") log(1 + ")  " + "2=2:
+
+"2
+ijpxipyj;
+
+(28)
+
+1
+
+2Xij
+
+I =Xij
+
+pxipyj(1 + "ij) log(1 + "ij) Xij
+
+pxipyj("ij +
+
+1
+2
+
+"2
+ij) =
+
+usingPij "ijpxipyj =Pij(1 + "ij)pxipyj Pij pxipyj =Pij Pij Pij pxipyj = 1  1 = 0.
+
+In summary, for multinomial random variables x and y, we have dened the quantity
+I G(x; y) in terms of the mutual information between Gaussian variables with the same
+covariance. We have shown that this quantity is equal up to second order to the actual
+mutual information, I(x; y), when we expand \near independence." We now extend these
+results, dening the quantity I G, which we will refer to as the Gaussian mutual information
+(GMI), for continuous univariate variables.
+
+B.2 A new information measure for continuous random variables
+
+Let x and y be two continuous random variables. Their mutual information, I(x; y) =
+
+R p(x; y) log[p(x; y)=p(x)p(y)]dxdy, can be dened as the upper bound of the mutual infor-
+
+mation between all discretizations of x and y (Kolmogorov, 1956). Behind this denition
+lies the crucial fact that when rening the partitions of the sample space used to discretize
+x and y, the discrete mutual information must increase.
+
+By analogy, we generalize the GMI to continuous variables: the GMI I G(x; y) is dened
+to be the supremum of I G(xd; yd) for discretizations (xd; yd) of x and y. In order to have a
+proper denition, we need to check that when we rene the partitions, then the discrete GMI
+can only increase. It is easy to check that the associated Gaussian random variables before
+the renement are linear combinations of the associated Gaussian random variables after
+the renement, which implies that the renement can only increase the mutual information
+between the associated Gaussian random variables. But this implies that I G can only
+increase during a renement.
+
+Another property of the Gaussian mutual information that we will need in the following
+section, one that is also shared by the classical mutual information, is that it is equal to the
+limit of the discrete mutual information, when the discretization is based on a uniform mesh
+whose spacing tends to zero. From this, it can be shown that the equality of I and I G up to
+
+39
+
+Bach and Jordan
+
+second order around independence still holds for continuous variables. Using the singular
+value decomposition for bivariate distributions (Buja, 1990), an alternate justication of
+this expansion could be derived.
+
+B.3 Relation with kernel generalized variance
+(cid:190) 
+G xy
+Let us consider the feature space F(cid:190) associated with a Gaussian kernel K(x; y) = 1p2(cid:190)
+(cid:190), such that R G(cid:190)(x)dx = 1. As
+G x
+where G(x) = ex2=2. Let us denote G(cid:190)(x) = 1p2(cid:190)
+we saw in Section 2, the space F(cid:190) can be viewed as the completion of the space of nite
+linear combinations of functions of the form G(cid:190)(x  xi) where xi 2 R. Let fxig be a mesh
+of uniformly distributed points in R with spacing h. Using these xed points, we dene
+F(cid:190)fxig to be the (nite-dimensional) linear span of the functions fi = G(cid:190)(x xi). Similarly
+we dene a mesh fyjg for the second random variable, and let F(cid:190)fyjg denote the linear
+span of the functions gj = G(cid:190)(x  yj).
+The contrast function IF ((cid:190)) based on the KGV is dened as the mutual information
+between Gaussian random variables that have the same covariance structure as '(x) and
+'(y). Let IF (h; (cid:190)) be the mutual information between nite-dimensional Gaussian random
+variables that have the same covariance structure as the projections of '(x) and '(y) onto
+F(cid:190)fxig and F(cid:190)fyjg.
+As the spacing h tends to zero and as the number of points tends to innity, the spaces
+F(cid:190)fxig and F(cid:190)fyjg tend to the feature space F(cid:190), so that IF (h; (cid:190)) tends to IF ((cid:190)). We
+now relate the quantity IF (h; (cid:190)) to the Gaussian mutual information I G(x; y). We have:
+
+Ehfi; '(x)ihgj; '(y)i = Z G(cid:190)(x  xi)G(cid:190)(y  yj)p(x; y)dx dy
+
+= [G(cid:190)(x)G(cid:190)(y)  p(x; y)](xi; yj)
+= pG(cid:190) (xi; yj);
+
+where pG(cid:190) , a smoothed version of p, is well dened as a probability density function because
+G(cid:190) is normalized. Similar formulas can be obtained for the other expectations:
+
+Ehfi; '(x)i = (pG(cid:190) )x(xi);
+
+Ehgj; '(x)i = (pG(cid:190) )y(yj)
+
+and covariances:
+
+Ehfi; '(x)ihfj; '(x)i / ij  (pG(cid:190) )x(xi) if (cid:190)  h  1:
+
+These identities ensure that, as h and (cid:190) tends to zero, the covariance structure of the pro-
+jections of '(x) and '(y) onto F(cid:190)fxig and F(cid:190)fyjg is equivalent to the covariance obtained
+through the discretization on the mesh fxi; yjg of random variables having joint distribution
+pG(cid:190) . This implies that, as h and (cid:190) tends to zero, IF (h; (cid:190)) is equivalent to the Gaussian
+mutual information of the variables x and y, smoothed by G(cid:190). Moreover, as the smoothing
+parameter (cid:190) tends to zero, pG(cid:190) tends to p, and we see that IF ((cid:190)) tends to I G. Thus as (cid:190)
+tends to zero, the KGV tends to the Gaussian mutual information.
+
+40
+
+Kernel Independent Component Analysis
+
+Appendix C. Spectrum of Gram matrices
+
+The computational eciency of our algorithms relies on the approximation of Gram matrices
+by matrices of very low rank.12 In this section we present theoretical results from functional
+analysis that justify the use of such approximations. For simplicity, we restrict ourselves to
+Gaussian kernels, but many of these results can be generalized to other translation-invariant
+kernels.
+
+The rank of approximations to Gram matrices depends on the decay of the distribution
+of the eigenspectrum of these matrices. As pointed out by Williams and Seeger (2000),
+for one-dimensional input spaces the eigenvalues decay geometrically if the input density is
+Gaussian. We discuss a generalization of this result in this section, showing that the decay
+of the spectrum depends in general on the decay of the tails of the underlying distribution
+p(x) of the data.
+
+The study of the spectrum of Gram matrices calculated from a kernel K(x; y) is usually
+carried out by studying the spectrum of an associated integral operator, and using the
+Nystrom method to relate these spectra (Baker, 1977). We brie(cid:176)y review the relevant
+machinery.
+
+C.1 Integral Operators and Nystrom method
+Let K 2 L2(RdRd) denote a symmetric kernel and p(x) the probability density of a random
+variable on Rd. We assume that p is bounded and that the integralRRdRd jK(x; y)jp(x)dxdy
+is nite. We dene the integral operator T , from L2(Rd) to L2(Rd), as follows:
+
+K(x; y)p(x)`(x)dx:
+
+(29)
+
+T : `(y) 7!ZRd
+
+T is called a Hilbert-Schmidt operator (Brezis, 1980). It is known that the spectrum of such
+an operator is a sequence of real numbers tending to zero, where the spectrum is dened as
+the set of i for which there exists `i 2 L2(Rd) such that T `i = i`i:
+
+K(x; y)p(x)`i(x)dx = i`i(y):
+
+(30)
+
+The eigenvalues i and eigenvectors `i are often approximated using the \Nystrom method,"
+which relates them to the spectra of Gram matrices of points sampled from p. That is, the
+expectation in Eq. (29) is approximated by the sample mean T `(y)  1
+k=1 K(xk; y)`(xk),
+where xk are N data points sampled from p. Substituting this into the denition of an eigen-
+vector in Eq. (30) and evaluating at y = xj, we get:
+
+NPN
+
+ZRd
+
+1
+N
+
+NXk=1
+
+K(xk; xj)`i(xk)  i`i(xj);
+
+(31)
+
+and thus 'i = (`i(x1); : : : ; `i(xN ))> is an eigenvector of the Gram matrix K = (K(xi; xj))
+with eigenvalue N i:
+
+1
+N
+
+K'i = i'i:
+
+12. Note that a (non-centered) Gram matrix is always invertible (e.g., Scholkopf and Smola, 2001), given dis-
+tinct sample points and a Gaussian kernel, so any low-rank representation of such a matrix is necessarily
+an approximation.
+
+41
+
+Bach and Jordan
+
+Decay of p(x)
+compact support
+ex2=2
+jxjd; d > 2
+
+Bound of h(t) Decay of n
+o(log t)
+log t
+t1=d+"
+
+eAn log n
+eAn
+nd+"
+
+Table 3: Bounds for the number of eigenvalues greater than , as a function h(t) of t = 1=,
+and the n-th eigenvalue n of the integral operator T . The number of eigenvalues
+greater than , for an N N Gram matrix, is bounded by h(t), where t = N=
+(see text for details).
+
+Consequently, the eigenvalues of the Gram matrix K are approximately equal to N , where
+ ranges over eigenvalues of the integral operator. It is also possible to approximate the
+eigenfunctions `i using this approach (see Baker, 1977).
+
+Two problems arise: How fast does the spectrum of the integral operator decay for
+various kernels K and densities p? How close are the eigenvalues of the Gram matrices
+to N times the eigenvalues of the integral operator? In the following section, we overview
+some theoretical results that give asymptotic bounds for the decay of the spectra of integral
+operators, and we provide empirical results that relate the eigenvalues of Gram matrices to
+the eigenvalues of the integral operator.
+
+C.2 Spectra of integral operators
+
+Widom (1963, 1964) provides some useful results regarding the spectra of the operator T
+dened in Eq. (29) for translation-invariant kernels of the form k(x y). He shows that the
+rate of decay of the spectrum depends only on the rate of decay of the Fourier tranform (!)
+of k, and of the rate of decay of the probability density function of the underlying input
+variable x. Moreover, he provides asymptotic equivalents for many cases of interest. Most
+of the results can be generalized to multivariate kernels. For the case of Gaussian kernels,
+we summarize some of the pertinent results in Table 3. Note that except for heavy-tailed
+distributions (those with polynomial decay), the spectrum vanishes at least geometrically.
+
+C.3 Nystrom approximation
+
+We now provide empirical results about how the spectra of Gram matrices relate to the
+spectrum of the associated integral operator. We study the Gaussian distribution, where an
+exact result can be calculated, and the Student distribution with three degrees of freedom,
+where a function of the form n = a
+(b+n)4 can be t tightly to the spectrum.13 In both cases,
+we used distributions with unit variance.
+
+We sampled N data points from these distributions, for N ranging from 23 to 213, and
+computed the spectra of the resulting Gram matrices. The results are plotted in Figure 8.
+We see that the spectrum of an NN Gram matrix, which we denote as k;N , is composed
+
+13. Note that this is consistent with the bounds in Table 3, since the Student distribution with three degrees
+
+of freedom has a density that decays as jxj4.
+
+42
+
+Kernel Independent Component Analysis
+
+of two regimes. For eigenvalues k;N up to a given rank k0(N ), the eigenvalues are very
+close to their limiting value k=N , where k is the k-th eigenvalue of the associated integral
+operator. After k0(N ), the spectrum decays very rapidly.
+
+The important point is that the spectra of the Gram matrices decay at least as rapidly
+as N times the eigenvalues of the integral operators. Consequently, we need only consider
+low-rank approximations of order M = h(N=), where, as t = N= tends to innity, h(t)
+grows as described in Table 3. Given that we choose the precision to be proportional to N ,
+i.e.  = 0N , the number of eigenvalues we need to consider is bounded by a constant that
+depends solely on the input distribution.
+
+0
+
+10
+
+20
+
+30
+
+40
+
+0
+
+10
+
+0
+
+10
+
+20
+
+30
+
+40
+
+0
+
+0
+
+10
+
+20
+
+30
+
+40
+
+0
+
+10
+
+0
+
+10
+
+20
+
+30
+
+40
+
+0
+
+10
+
+20
+
+30
+
+20
+
+40
+
+60
+
+10
+
+20
+
+30
+
+20
+
+40
+
+Figure 8: Spectra for two dierent input densities (top: Gaussian, bottom: Student dis-
+tribution with three degrees of freedom). The dashed lines are the exact or
+tted (see text for details) logarithm of the spectra log k, plotted as a func-
+tion of the eigenvalue number k. (Left) The solid lines represent log 1
+N k;N , for
+N = 23; 25; 27; 29; 211; 213.
+(Right) For N = 211 = 2048, the solid line repre-
+sents log 1
+N k;N , plotted as a function of k, while the lower and upper ends of
+the error bars represent the minimum and the maximum of log 1
+N k;N across 20
+replications.
+
+Appendix D. Derivatives
+
+In this section we provide a discussion of the computation of the derivatives of our contrast
+functions. The computation of these derivatives is a straightforward application of the chain
+rule, where the core subroutine is the computation of the derivatives of the Gram matrices.
+
+43
+
+Bach and Jordan
+
+This latter computation is not entirely straightforward, however, and it is our focus in this
+section. Note that the computation of the derivatives of a Gram matrix arises outside of the
+ICA setting, and this material may therefore have utility for other kernel-based methods.
+
+The key problem is that although the Gram matrix K is symmetric and positive semidef-
+inite, its derivative with respect to some underlying variable is symmetric but not in general
+positive or negative semidenite. Consequently, incomplete Cholesky decomposition cannot
+be used directly to nd low-rank approximations of derivatives.
+
+Fortunately, for Gaussian kernels, it is possible to express the derivatives as sum and/or
+dierence of positive semidenite matrices that themselves are Gram matrices, and to which
+incomplete Cholesky decomposition can be applied. More precisely, if w 2 Rm is a row of
+our parameter matrix W , then the Gram matrix that we have to dierentiate has its (a; b)th
+element equal to exp' 1
+2(cid:190)2 (w>xa  w>xb)2. Without loss of generality, let us dierentiate
+
+this expression around w = (1; 0; : : : ; 0)>. We obtain:
+
+@wj Kab = 
+
+1
+
+(cid:190)2 (xa1  xb1)(xaj  xbj)e 1
+
+2(cid:190)2 (xa1xb1)2
+
+:
+
+(32)
+
+This is not a Gram matrix, because the Fourier transform of x 7! x1xjex2
+is not real-
+valued and nonnegative. We instead proceed by decomposing the derivative as a dierence
+of Gram matrices. Two cases arise:
+
+1=2(cid:190)2
+
+ If j = 1, from Eq. (32), we have a matrix whose elements are of the form f (xa1  xb1)
+. Let ^f be the Fourier transform of f . The Fourier transform
+
+where f (x) = x2ex2=2(cid:190)2
+of g(x) = ex2=2(cid:190)2
+
+is (!) = p2(cid:190)e!2(cid:190)2=2, and we have:
+
+^f (!) = 
+
+d2
+d!2 ((!)) = 
+
+d2
+
+d!2 (p2(cid:190)e!2(cid:190)2=2)
+
+= (cid:190)2(1  (cid:190)2!2)p2(cid:190)e!2(cid:190)2=2
+= (cid:190)2(!)  (cid:190)4!2p2(cid:190)e!2(cid:190)2=2
+= (cid:190)2(!)  ^h(!)
+
+(33)
+The function h = (cid:190)2g f has a nonnegative Fourier transform, which implies that the
+matrix whose elements are (cid:190)2g(xa1 xb1) f (xa1 xb1) is positive semidenite. Since
+g(x) also induces a positive semidenite matrix, we have managed to decompose our
+derivative.
+
+ If j 6= 1, from Eq. (32), we have a matrix induced by a function of the form f (xa1 
+. We use the following trick to reduce the
+
+xb1; xaj  xbj), where f (x; y) = xyex2=2(cid:190)2
+problem to the previous case. For a positive real number (cid:176), we write:
+
+xy =
+
+1
+2
+
+((cid:190)2  x2) +
+
+1
+2
+
+((cid:176)2  y2) 
+
+1
+2
+
+((cid:190)2 + (cid:176)2  (x + y)2):
+
+(34)
+
+Thus we can decompose the function f(cid:176)(x; y) = xyex2=2(cid:190)2
+f(cid:176)(x; y) = h(cid:190)(x; y) + h(cid:176)(x; y) h(cid:190);(cid:176)(x; y) where h(cid:190)(x; y) = 1
+h(cid:176)(x; y) = 1
+all have real positive Fourier transforms. To approximate f based on f(cid:176), we note that:
+
+ey2=2(cid:176)2
+2 ((cid:190)2 x2)ex2=2(cid:190)2
+
+2 ((cid:190)2+(cid:176)2(x+y)2)ex2=2(cid:190)2
+
+as before, letting
+ey2=2(cid:176)2
+,
+
+2 ((cid:176)2y2)ex2=2(cid:190)2
+
+ey2=2(cid:176)2
+
+ey2=2(cid:176)2
+
+and h(cid:190);(cid:176)(x; y) = 1
+
+jf (x; y)  f(cid:176)(x; y)j 6 jxyjex2=2(cid:190)2
+
+y2=2(cid:176)2:
+
+(35)
+
+44
+
+Kernel Independent Component Analysis
+
+Given that our goal is to obtain a descent direction and not an exact value for the
+derivative, we can chose a large value of (cid:176) (we used (cid:176) = 50 in our simulations) and
+obtain satisfactory results.14
+
+In summary, we have managed to decompose the derivatives of Gram matrices in terms of
+the dierence of two matrices to which we can apply our low-rank decomposition algorithm.
+The nal time complexity is O(m2M 2N ) for the derivatives of the contrast functions we
+use.
+
+A similar reduced complexity can be achieved through rst-dierence approximations of
+the derivatives, when the particular structure of the optimization is used. Indeed, since the
+derivatives have m(m1)=2 components, we would need as many evaluations of the contrast
+functions, which would take O(m3M 2N ). Nonetheless, each new evaluation requires to
+compute incomplete Cholesky decompositions only for two components (all others are held
+xed to compute a partial derivative), so the complexity can be reduced to the one of m
+evaluations of the constrast functions, that is O(m2M 2N ).
+
+Acknowledgments
+
+We would like to thank Alexander Smola for useful comments on kernel canonical correlation
+analysis and regularization. We would like to acknowledge support for this project from the
+National Science Foundation (NSF grant IIS-9988642), and the Multidisciplinary Research
+Program of the Department of Defense (MURI N00014-00-1-0637).
+

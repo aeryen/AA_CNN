@@ -1,0 +1,1103 @@
+Abstract
+
+As a fundamental problem in pattern recognition, graph
+matching has applications in a variety of elds, from com-
+puter vision to computational biology.
+In graph match-
+ing, patterns are modeled as graphs and pattern recognition
+amounts to nding a correspondence between the nodes of
+dierent graphs. Many formulations of this problem can be
+cast in general as a quadratic assignment problem, where a
+linear term in the objective function encodes node compati-
+bility and a quadratic term encodes edge compatibility. The
+main research focus in this theme is about designing ecient
+algorithms for approximately solving the quadratic assign-
+ment problem, since it is NP-hard. In this paper we turn our
+attention to a dierent question: how to estimate compati-
+bility functions such that the solution of the resulting graph
+matching problem best matches the expected solution that
+a human would manually provide. We present a method for
+learning graph matching: the training examples are pairs
+of graphs and the labels are matches between them. Our
+experimental results reveal that learning can substantially
+improve the performance of standard graph matching algo-
+rithms. In particular, we nd that simple linear assignment
+with such a learning scheme outperforms Graduated As-
+signment with bistochastic normalisation, a state-of-the-art
+quadratic assignment relaxation algorithm.
+
+1 Introduction
+
+Graphs are commonly used as abstract representations for
+complex structures, including DNA sequences, documents,
+text, and images. In particular they are extensively used in
+the eld of computer vision, where many problems can be
+formulated as an attributed graph matching problem. Here
+the nodes of the graphs correspond to local features of the
+image and edges correspond to relational aspects between
+features (both nodes and edges can be attributed, i.e. they
+can encode feature vectors). Graph matching then consists
+of nding a correspondence between nodes of the two graphs
+such that they look most similar when the vertices are
+labeled according to such a correspondence.
+
+Typically, the problem is mathematically formulated as
+a quadratic assignment problem, which consists of nding
+the assignment that maximizes an objective function en-
+Tiberio Caetano, Julian McAuley, Li Cheng, and Alex Smola are
+with the Statistical Machine Learning Program at NICTA, and the
+Research School of Information Sciences and Engineering, Australian
+National University. Quoc Le is with the Department of Computer
+Science, Stanford University.
+
+coding local compatibilities (a linear term) and structural
+compatibilities (a quadratic term). The main body of re-
+search in graph matching has then been focused on devising
+more accurate and/or faster algorithms to solve the prob-
+lem approximately (since it is NP-hard); the compatibility
+functions used in graph matching are typically handcrafted.
+An interesting question arises in this context: If we are
+given two attributed graphs to match, G and G(cid:48), should
+the optimal match be uniquely determined? For example,
+assume rst that G and G(cid:48) come from two images acquired
+by a surveillance camera in an airports lounge; now, as-
+sume the same G and G(cid:48) instead come from two images in a
+photographers image database; should the optimal match
+be the same in both situations? If the algorithm takes into
+account exclusively the graphs to be matched, the optimal
+solutions will be the same1 since the graph pair is the same
+in both cases. This is the standard way graph matching is
+approached today.
+
+In this paper we address what we believe to be a limitation
+of this approach. We argue that if we know the conditions
+under which a pair of graphs has been extracted, then we
+should take into account how graphs arising in those con-
+ditions are typically matched. However, we do not take the
+information on the conditions explicitly into account, since
+this would obviously be impractical. Instead, we approach
+the problem purely from a statistical inference perspective.
+First, we extract graphs from a number of images acquired
+under the same conditions as those for which we want to
+solve, whatever the word conditions means (e.g. from the
+surveillance camera or the photographers database). We
+then manually provide what we understand to be the op-
+timal matches between the resulting graphs. This informa-
+tion is then used in a learning algorithm which learns a map
+from the space of pairs of graphs to the space of matches.
+In terms of the quadratic assignment problem, this learn-
+ing algorithm amounts to (in loose language) adjusting the
+node and edge compatibility functions such that the ex-
+pected optimal match in a test pair of graphs agrees with
+the expected match they would have had, had they been
+in the training set. In this formulation, the learning prob-
+lem consists of a convex, quadratic program which is readily
+solvable by means of a column generation procedure.
+
+We provide experimental evidence that applying learn-
+ing to standard graph matching algorithms signicantly im-
+proves their performance.
+In fact, we show that learning
+improves upon non-learning results so dramatically that lin-
+ear assignment with learning outperforms Graduated As-
+
+1Assuming there is a single optimal solution and that the algorithm
+
+nds it.
+
+1
+
+signment with bistochastic normalisation, a state-of-the-art
+quadratic assignment relaxation algorithm. Also, by intro-
+ducing learning in Graduated Assignment itself, we obtain
+results that improve both in accuracy and speed over the
+best existing quadratic assignment relaxations.
+
+A preliminary version of this paper appeared in [1].
+
+1.1 Related Literature
+The graph matching literature is extensive, and many dier-
+ent types of approaches have been proposed, which mainly
+focus on approximations and heuristics for the quadratic
+assignment problem. An incomplete list includes spec-
+tral methods [26], relaxation labeling and probabilistic
+approaches [713], semidenite relaxations [14], replicator
+equations [15], tree search [16], and graduated assignment
+[17]. Spectral methods consist of studying the similarities
+between the spectra of the adjacency or Laplacian matri-
+ces of the graphs and using them for matching. Relax-
+ation and probabilistic methods dene a probability dis-
+tribution over mappings, and optimize using discrete relax-
+ation algorithms or variants of belief propagation. Semidef-
+inite relaxations solve a convex relaxation of the original
+combinatorial problem. Replicator equations draw an anal-
+ogy with models from biology where an equilibrium state is
+sought which solves a system of dierential equations on the
+nodes of the graphs. Tree-search techniques in general have
+worst case exponential complexity and work via sequential
+tests of compatibility of local parts of the graphs. Gradu-
+ated Assignment combines the softassign method [18] with
+Sinkhorns method [19] and essentially consists of a series
+of rst-order approximations to the quadratic assignment
+objective function. This method is particularly popular
+in computer vision since it produces accurate results while
+scaling reasonably in the size of the graph.
+
+The above literature strictly focuses on trying better algo-
+rithms for approximating a solution for the graph matching
+problem, but does not address the issue of how to determine
+the compatibility functions in a principled way.
+
+In [20] the authors learn compatibility functions for the
+relaxation labeling process; this is however a dierent prob-
+lem than graph matching, and the compatibility functions
+have a dierent meaning. Nevertheless it does provide an
+initial motivation for learning in the context of matching
+tasks. In terms of methodology, the paper most closely re-
+lated to ours is possibly [21], which uses structured estima-
+tion tools in a quadratic assignment setting for word align-
+ment. A recent paper of interest shows that very signicant
+improvements on the performance of graph matching can be
+obtained by an appropriate normalization of the compati-
+bility functions [22]; however, no learning is involved.
+
+2 The Graph Matching Problem
+
+The notation used in this paper is summarized in table 1.
+In the following we denote a graph by G. We will often refer
+to a pair of graphs, and the second graph in the pair will
+be denoted by G(cid:48). We study the general case of attributed
+graph matching, and attributes of the vertex i and the edge
+
+2
+
+Table 1: Denitions and Notation
+
+G - generic graph (similarly, G(cid:48));
+Gi - attribute of node i in G (similarly, G(cid:48)
+i(cid:48) for G(cid:48));
+Gij - attribute of edge ij in G (similarly, G(cid:48)
+i(cid:48)j(cid:48) for G(cid:48));
+G - space of graphs (G  G - space of pairs of graphs);
+x - generic observation: graph pair (G, G(cid:48)); x  X, space of
+observations;
+y - generic label: matching matrix; y  Y, space of labels;
+n - index for training instance; N - number of training in-
+stances;
+xn - nth training observation: graph pair (Gn, G(cid:48)n);
+yn - nth training label: matching matrix;
+g - predictor function;
+yw - optimal prediction for g under w;
+f - discriminant function;
+ - loss function;
+ - joint feature map;
+1 - node feature map;
+2 - edge feature map;
+Sn - constraint set for training instance n;
+y - solution of the quadratic assignment problem;
+y - most violated constraint in column generation;
+yii(cid:48) - ith row and i(cid:48)th column element of y;
+cii(cid:48) - value of compatibility function for map i (cid:55) i(cid:48);
+dii(cid:48)jj(cid:48) - value of compatibility function for map ij (cid:55) i(cid:48)j(cid:48);
+ - tolerance for column generation;
+w1 - node parameter vector; w2 - edge parameter vector;
+w := [w1 w2] - joint parameter vector; w  W;
+n - slack variable for training instance n;
+ - regularization function;  - regularization parameter;
+ - convergence monitoring threshold in bistochastic nor-
+malization.
+
+(cid:88)
+cii(cid:48)yii(cid:48) + (cid:88)
+i yii(cid:48)  1 for all i(cid:48), (cid:80)
+
+ii(cid:48)jj(cid:48)
+
+ii(cid:48)
+
+ ,
+
+ij in G are denoted by Gi and Gij respectively. Standard
+graphs are obtained if the node attributes are empty and
+the edge attributes Gij  {0, 1} are binary denoting the
+absence or presence of an edge, in which case we get the
+so-called exact graph matching problem.
+Dene a matching matrix y by yii(cid:48)  {0, 1} such that
+yii(cid:48) = 1 if node i in the rst graph maps to node i(cid:48) in the
+second graph (i (cid:55) i(cid:48)) and yii(cid:48) = 0 otherwise. Dene by
+cii(cid:48) the value of the compatibility function for the unary
+assignment i (cid:55) i(cid:48) and by dii(cid:48)jj(cid:48) the value of the compati-
+bility function for the pairwise assignment ij (cid:55) i(cid:48)j(cid:48). Then,
+a generic formulation of the graph matching problem con-
+sists of nding the optimal matching matrix y given by the
+solution of the following (NP-hard) quadratic assignment
+problem [23]
+
+y = argmax
+
+y
+
+dii(cid:48)jj(cid:48)yii(cid:48)yjj(cid:48)
+
+(1)
+
+i(cid:48)} and {Gij, G(cid:48)
+
+to-one, that is (cid:80)
+(many-to-one, that is (cid:80)
+
+typically subject to either the injectivity constraint (one-
+i(cid:48) yii(cid:48)  1 for all i)
+or simply the constraint that the map should be a function
+i(cid:48) yii(cid:48) = 1 for all i). If dii(cid:48)jj(cid:48) = 0
+for all ii(cid:48)jj(cid:48) then (1) becomes a linear assignment problem,
+exactly solvable in worst case cubic time [24]. Although the
+compatibility functions c and d obviously depend on the at-
+tributes {Gi, G(cid:48)
+i(cid:48)j(cid:48)}, the functional form of
+this dependency is typically assumed to be xed in graph
+matching. This is precisely the restriction we are going
+to relax in this paper: both the functions c and d will be
+parametrized by vectors whose coecients will be learned
+within a convex optimization framework. In a way, instead
+of proposing yet another algorithm for determining how to
+approximate the solution for (1), we are aiming at nding
+a way to determine what should be maximized in (1), since
+dierent c and d will produce dierent criteria to be maxi-
+mized.
+
+3 Learning Graph Matching
+
+3.1 General Problem Setting
+
+We approach the problem of learning the compatibility func-
+tions for graph matching as a supervised learning problem
+[25]. The training set comprises N observations x from an
+input set X, N corresponding labels y from an output set Y,
+and can be represented by {(x1; y1), . . . , (xN ; yN )}. Critical
+in our setting is the fact that the observations and labels are
+structured objects. In typical supervised learning scenarios,
+observations are vectors and labels are elements from some
+discrete set of small cardinality, for example yn  {1, 1}
+in the case of binary classication. However, in our case an
+observation xn is a pair of graphs, i.e. xn = (Gn, G(cid:48)n), and
+the label yn is a match between graphs, represented by a
+matching matrix as dened in section 2.
+If X = GG is the space of pairs of graphs, Y is the space of
+matching matrices, and W is the space of parameters of our
+model, then learning graph matching amounts to estimating
+
+a function g : GGW (cid:55) Y which minimizes the prediction
+loss on the test set. Since the test set here is assumed not to
+be available at training time, we use the standard approach
+of minimizing the empirical risk (average loss in the training
+set) plus a regularization term in order to avoid overtting.
+The optimal predictor will then be the one which minimizes
+an expression of the following type:
+
+N(cid:88)
+
+n=1
+
+1
+N
+
+(cid:124)
+
+(g(Gn, G(cid:48)n; w), yn)
+
++
+
+(cid:124) (cid:123)(cid:122) (cid:125)
+
+(w)
+
+regularization term
+
+,
+
+(2)
+
+(cid:125)
+
+(cid:123)(cid:122)
+
+empirical risk
+
+where (g(Gn, G(cid:48)n; w), yn) is the loss incurred by the pre-
+dictor g when predicting, for training input (Gn, G(cid:48)n), the
+output g(Gn, G(cid:48)n; w) instead of the training output yn. The
+function (w) penalizes complex vectors w, and  is a pa-
+rameter that trades o data tting against generalization
+ability, which is in practice determined using a validation
+set.
+In order to completely specify such an optimization
+problem, we need to dene the parametrized class of predic-
+tors g(G, G(cid:48); w) whose parameters w we will optimize over,
+the loss function  and the regularization term (w). In
+the following we will focus on setting up the optimization
+problem by addressing each of these points.
+
+3.2 The Model
+
+We start by specifying a w-parametrized class of predictors
+g(G, G(cid:48); w). We use the standard approach of discriminant
+functions, which consists of picking as our optimal estimate
+the one for which the discriminant function f(G, G(cid:48), y; w)
+i.e. g(G, G(cid:48); w) = argmaxy f(G, G(cid:48), y; w).
+is maximal,
+We assume linear discriminant functions f(G, G(cid:48), y; w) =
+(cid:104)w, (G, G(cid:48), y)(cid:105), so that our predictor has the form
+
+g(G, G(cid:48), w) = argmax
+
+yY
+
+(cid:104)w, (G, G(cid:48), y)(cid:105) .
+
+(3)
+
+Eectively we are solving an inverse optimization problem,
+as described by [25, 26], that is, we are trying to nd f
+such that g has desirable properties. Further specication
+of g(G, G(cid:48); w) requires determining the joint feature map
+(G, G(cid:48), y), which has to encode the properties of both
+graphs as well as the properties of a match y between these
+graphs. The key observation here is that we can relate the
+quadratic assignment formulation of graph matching, given
+by (1), with the predictor given by (3), and interpret the
+solution of the graph matching problem as being the esti-
+mate of g, i.e. yw = g(G, G(cid:48); w). This allows us to interpret
+the discriminant function in (3) as the objective function to
+be maximized in (1):
+
+(cid:104)(G, G(cid:48), y), w(cid:105) =(cid:88)
+
+cii(cid:48)yii(cid:48) + (cid:88)
+
+dii(cid:48)jj(cid:48)yii(cid:48)yjj(cid:48).
+
+(4)
+
+ii(cid:48)
+
+ii(cid:48)jj(cid:48)
+
+This clearly reveals that the graphs and the parameters
+must be encoded in the compatibility functions. The last
+step before obtaining  consists of choosing a parametriza-
+tion for the compatibility functions. We assume a simple
+
+3
+
+linear parametrization
+
+cii(cid:48) = (cid:104)1(Gi, G(cid:48)
+
+dii(cid:48)jj(cid:48) =(cid:10)2(Gij, G(cid:48)
+
+i(cid:48)), w1(cid:105)
+i(cid:48)j(cid:48)), w2
+
+(cid:11) ,
+
+(5a)
+(5b)
+
+i.e. the compatibility functions are linearly dependent on
+the parameters, and on new feature maps 1 and 2 that
+only involve the graphs (section 4 species the feature maps
+1 and 2). As already dened, Gi is the attribute of node
+i and Gij is the attribute of edge ij (similarly for G(cid:48)). How-
+ever, we stress here that these are not necessarily local at-
+tributes, but are arbitrary features simply indexed by the
+nodes and edges.2 For instance, we will see in section 4 an
+example where Gi encodes the graph structure of G as seen
+from node i, or from the perspective of node i.
+
+Note that the traditional way in which graph matching
+is approached arises as a particular case of equations (5): if
+w1 and w2 are constants, then cii(cid:48) and dii(cid:48)jj(cid:48) depend only
+on the features of the graphs. By dening w := [w1 w2], we
+arrive at the nal form for (G, G(cid:48), y) from (4) and (5):
+
+(G, G(cid:48), y) =
+
+(cid:34)(cid:88)
+
+ii(cid:48)
+
+yii(cid:48)1(Gi, G(cid:48)
+
+i(cid:48)),
+
+(cid:35)
+
+yii(cid:48)yjj(cid:48)2(Gij, G(cid:48)
+
+i(cid:48)j(cid:48))
+
+.
+
+(6)
+
+(cid:88)
+
+ii(cid:48)jj(cid:48)
+
+Naturally, the nal specication of the predictor g depends
+on the choices of 1 and 2. Since our experiments are con-
+centrated on the computer vision domain, we use typical
+computer vision features (e.g. Shape Context) for construct-
+ing 1 and a simple edge-match criterion for constructing
+2 (details follow in section 4).
+
+3.3 The Loss
+Next we dene the loss (y, yn) incurred by estimating the
+matching matrix y instead of the correct one, yn. When
+both graphs have large sizes, we dene this as the fraction
+of mismatches between matrices y and yn, i.e.
+
+(y, yn) = 1  1
+(cid:107)yn(cid:107)2
+
+F
+
+yii(cid:48)yn
+
+ii(cid:48).
+
+(7)
+
+(where (cid:107)(cid:107)F is the Frobenius norm). If one of the graphs
+has a small size, this measure may be too rough. In our ex-
+periments we will encounter such a situation in the context
+of matching in images. In this case, we instead use the loss
+
+(G, G(cid:48), ) = 1  1
+||
+
+(cid:34) d(Gi, G(cid:48)
+
+(cid:88)
+
+i
+
+
+
+(cid:35)
+
+(i))
+
+.
+
+(8)
+
+(cid:88)
+
+ii(cid:48)
+
+Here graph nodes correspond to point sets in the images,
+G corresponds to the smaller, query graph, and G(cid:48) is the
+larger, target graph (in this expression, Gi and G(cid:48)
+j are par-
+ticular points in G and G(cid:48); (i) is the index of the point in
+
+2As a result in our general setting node compatibilities and edge
+compatibilities become somewhat misnomers, being more appropri-
+ately described as unary and binary compatibilities. We however stick
+to the standard terminology for simplicity of exposition.
+
+4
+
+G(cid:48) to which the ith point in G should be correctly mapped;
+d is simply the Euclidean distance, and is scaled by , which
+is simply the width of the image in question). Hence we are
+penalising matches based on how distant they are from the
+correct match; this is commonly referred to as the endpoint
+error.
+Finally, we specify a quadratic regularizer (w) =
+2 (cid:107)w(cid:107)2.
+
+1
+
+3.4 The Optimization Problem
+Here we combine the elements discussed in 3.2 in order to
+formally set up a mathematical optimization problem that
+corresponds to the learning procedure. The expression that
+arises from (2) by incorporating the specics discussed in
+3.2/3.3 still consists of a very dicult (in particular non-
+convex) optimization problem. Although the regulariza-
+tion term is convex in the parameters w, the empirical risk,
+i.e. the rst term in (2), is not. Note that there is a nite
+number of possible matches y, and therefore a nite num-
+ber of possible values for the loss ; however, the space of
+parameters W is continuous. What this means is that there
+are large equivalence classes of w (an equivalence class in
+this case is a given set of ws each of which produces the
+same loss). Therefore, the loss is piecewise constant on w,
+and as a result certainly not amenable to any type of smooth
+optimization.
+
+One approach to render the problem of minimizing (2)
+more tractable is to replace the empirical risk by a convex
+upper bound on the empirical risk, an idea that has been
+exploited in Machine Learning in recent years [25,27,28]. By
+minimizing this convex upper bound, we hope to decrease
+(cid:80)
+the empirical risk as well. It is easy to show that the convex
+(in particular, linear) function 1
+n n is an upper bound
+n (g(Gn, G(cid:48)n; w), yn) for the solution of (2) with
+N
+for 1
+N
+appropriately chosen constraints:
+
+(cid:80)
+
+N(cid:88)
+
+1
+N
+
+w,
+
+minimize
+subject to (cid:104)w, n(y)(cid:105)  (y, yn)  n
+
+n=1
+
+n + 
+2
+
+(cid:107)w(cid:107)2
+
+for all n and y  Y.
+
+(9a)
+
+(9b)
+
+Here we dene n(y) := (Gn, G(cid:48)n, yn)  (Gn, G(cid:48)n, y).
+Formally, we have:
+
+1
+N
+
+Lemma 3.1 For any feasible (, w) of (9) the inequality
+n  (g(Gn, G(cid:48)n; w), yn) holds for all n.
+In particu-
+n 
+lar, for the optimal solution (, w) we have 1
+
+(cid:80)
+(cid:80)
+n 
+n (g(Gn, G(cid:48)n; w), yn).
+satises(cid:10)w, n(yw)(cid:11)  0. Consequently n  (yw
+
+Proof The constraint (9b) needs to hold for all y, hence in
+particular for yw = g(Gn, G(cid:48)n; w). By construction yw
+, yn).
+
+N
+
+The second part of the claim follows immediately.
+
+The
+
+constraints
+
+(9b) mean
+
+the margin
+f(Gn, G(cid:48)n, yn; w)  f(Gn, G(cid:48)n, y; w),
+the gap be-
+tween the discriminant functions for yn and y should
+exceed the loss induced by estimating y instead of the
+
+that
+i.e.
+
+training matching matrix yn. This is highly intuitive since
+it reects the fact that we want to safeguard ourselves most
+against mis-predictions y which incur a large loss (i.e. the
+smaller is the loss, the less we should care about making
+a mis-prediction, so we can enforce a smaller margin).
+The presence of n in the constraints and in the objective
+function means that we allow the hard inequality (without
+n) to be violated, but we penalize violations for a given n
+by adding to the objective function the cost 1
+
+Despite the fact that (9) has exponentially many con-
+straints (every possible matching y is a constraint), we will
+see in what follows that there is an ecient way of nding
+an -approximation to the optimal solution of (9) by nding
+the worst violators of the constrained optimization problem.
+
+N n.
+
+3.5 The Algorithm
+Note that the number of constraints in (9) is given by the
+number of possible matching matrices |Y| times the number
+of training instances N. In graph matching the number of
+possible matches between two graphs grows factorially with
+their size. In this case it is infeasible to solve (9) exactly.
+
+There is however a way out of this problem by using an
+optimization technique known as column generation [24].
+Instead of solving (9) directly, one computes the most vi-
+olated constraint in (9) iteratively for the current solution
+and adds this constraint to the optimization problem. In
+order to do so, we need to solve
+
+argmax
+
+[(cid:104)w, (Gn, G(cid:48)n, y)(cid:105) + (y, yn)] ,
+
+(10)
+
+y
+
+as this is the term for which the constraint (9b) is tightest
+(i.e. the constraint that maximizes n).
+
+The resulting algorithm is given in algorithm 1. We use
+the Bundle Methods for Regularized Risk Minimization
+(BMRM) solver of [29], which merely requires that for each
+candidate w, we compute the gradient of 1
+N
+2 (cid:107)w(cid:107)2 with respect to w, and the loss ( 1
+n (y, yn)) (y is
+
+the most violated constraint in column generation). See [29]
+for further details
+
+(cid:80)(cid:104)w, (y)(cid:105) +
+
+(cid:80)
+
+Let us investigate the complexity of solving (10). Using
+the joint feature map  as in (6) and the loss as in (7), the
+argument in (10) becomes
+
+N
+
+(cid:104)(G, G(cid:48), y), w(cid:105) + (y, yn) =
+
+=(cid:88)
+
+yii(cid:48)cii(cid:48) + (cid:88)
+
+yii(cid:48)yjj(cid:48)dii(cid:48)jj(cid:48) + constant,
+
+(11)
+
+ii(cid:48)
+
+where cii(cid:48) = (cid:104)1(Gi, G(cid:48)
+dened as in (5b).
+
+ii(cid:48)jj(cid:48)
+i(cid:48)), w1(cid:105) + yn
+
+ii(cid:48)/(cid:107)yn(cid:107)2
+
+F and dii(cid:48)jj(cid:48)
+
+is
+
+The maximization of (11), which needs to be carried out
+at training time, is a quadratic assignment problem, as is
+the problem to be solved at test time. In the particular case
+where dii(cid:48)jj(cid:48) = 0 throughout, both the problems at training
+and at test time are linear assignment problems, which can
+be solved eciently in worst case cubic time.
+
+In our experiments, we solve the linear assignment prob-
+lem with the ecient solver from [30] (house sequence),
+and the Hungarian algorithm (video/bikes dataset). For
+
+Algorithm 1 Column Generation
+
+Dene:
+n(y) := (Gn, G(cid:48)n, yn)  (Gn, G(cid:48)n, y)
+H n(y) := (cid:104)w, (Gn, G(cid:48)n, y)(cid:105) + (y, yn)
+Input: training graph pairs {Gn},{G(cid:48)n}, training match-
+ing matrices {yn}, sample size N, tolerance 
+Initialize Sn =  for all n, and w = 0
+repeat
+
+Get current w from BMRM
+for n = 1 to N do
+
+y = argmaxyY H n(y)
+Compute gradient of (cid:104)w, (Gn, G(cid:48)n, y)(cid:105) + 
+w.r.t. w (= n(y) + w)
+Compute loss (y, yn)
+
+2 (cid:107)w(cid:107)2
+
+(cid:80) n and 1
+(cid:80) n is suciently small
+
+(cid:80)
+
+N
+
+end for
+Report 1
+N
+
+until 1
+N
+
+n (y, yn) to BMRM
+
+quadratic assignment, we developed a C++ implementation
+of the well-known Graduated Assignment algorithm [17].
+However the learning scheme discussed here is indepen-
+dent of which algorithm we use for solving either linear or
+quadratic assignment. Note that the estimator is but a mere
+approximation in the case of quadratic assignment: since we
+are unable to nd the most violated constraints of (10), we
+cannot be sure that the duality gap is properly minimized
+in the constrained optimization problem.
+
+4 Features for the Compatibility
+
+Functions
+
+The joint feature map (G, G(cid:48), y) has been derived in its full
+generality (6), but in order to have a working model we need
+to choose a specic form for 1(Gi, G(cid:48)
+i(cid:48)j(cid:48)),
+as mentioned in section 3. We rst discuss the linear fea-
+tures 1 and then proceed to the quadratic terms 2. For
+concreteness, here we only discuss options actually used in
+our experiments.
+
+i(cid:48)) and 2(Gij, G(cid:48)
+
+4.1 Node Features
+We construct 1(Gi, G(cid:48)
+i(cid:48)) using the squared dierence
+i(cid:48)(r)|2, . . . ). This diers
+i(cid:48)) = (. . . ,|Gi(r)  G(cid:48)
+1(Gi, G(cid:48)
+in which an exponential de-
+from what is shown in [1],
+cay is used (i.e. exp(|Gi(r)  G(cid:48)
+i(cid:48)(r)|2/)); we found that
+using the squared dierence resulted in much better per-
+formance after learning. Here Gi(r) and G(cid:48)
+i(cid:48)(r) denote
+the rth coordinates of the corresponding attribute vectors.
+Note that in standard graph matching without learning
+we typically have cii(cid:48) = exp((cid:107)Gi  G(cid:48)
+i(cid:48)(cid:107)2), which can be
+seen as the particular case of (5a) for both 1 and w1
+i(cid:48)(cid:107)2), . . . )
+at, given by 1(Gi, G(cid:48)
+and w1 = (. . . , 1, . . . ) [22]. Here instead we have cii(cid:48) =
+(cid:104)1(Gi, G(cid:48)
+i(cid:48)), w1(cid:105), where w1 is learned from training data.
+In this way, by tuning the rth coordinate of w1 accordingly,
+the learning process nds the relevance of the rth feature
+
+i(cid:48)) = (. . . , exp((cid:107)Gi  G(cid:48)
+
+5
+
+of 1. In our experiments (to be described in the next sec-
+tion), we use the well-known 60-dimensional Shape Con-
+text features [31]. They encode how each node sees the
+other nodes.
+It is an instance of what we called in sec-
+tion 3 a feature that captures the node perspective with
+respect to the graph. We use 12 angular bins (for an-
+6 , 2)), and 5 radial bins (for radii in
+gles in [0, 
+(0, 0.125), [0.125, 0.25) . . . [1, 2), where the radius is scaled
+by the average of all distances in the scene) to obtain our
+60 features. This is similar to the setting described in [31].
+
+6 ) . . . [ 11
+
+4.2 Edge Features
+For the edge features Gij (G(cid:48)
+i.e. Gij (G(cid:48)
+otherwise. In this case, we set 2(Gij, G(cid:48)
+that w2 is a scalar).
+
+i(cid:48)j(cid:48)), we use standard graphs,
+i(cid:48)j(cid:48)) is 1 if there is an edge between i and j and 0
+i(cid:48)j(cid:48) (so
+
+i(cid:48)j(cid:48)) = GijG(cid:48)
+
+5 Experiments
+
+5.1 House Sequence
+
+For our rst experiment, we consider the CMU house se-
+quence  a dataset consisting of 111 frames of a toy house
+[32]. Each frame in this sequence has been hand-labelled,
+with the same 30 landmarks identied in each frame [33].
+We explore the performance of our method as the baseline
+(separation between frames) varies.
+
+For each baseline (from 0 to 90, by 10), we identied all
+pairs of images separated by exactly this many frames. We
+then split these pairs into three sets, for training, validation,
+and testing.
+In order to determine the adjacency matrix
+for our edge features, we triangulated the set of landmarks
+using the Delaunay triangulation (see gure 1).
+
+Figure 1 (top) shows the performance of our method as
+the baseline increases, for both linear and quadratic assign-
+ment (for quadratic assignment we use the Graduated As-
+signment algorithm, as mentioned previously). The values
+shown report the normalised Hamming loss (i.e. the propor-
+tion of points incorrectly matched); the regularization con-
+stant resulting in the best performance on our validation set
+is used for testing. Graduated assignment using bistochas-
+tic normalisation, which to the best of our knowledge is the
+state-of-the-art relaxation, is shown for comparison [22].3
+
+For both linear and quadratic assignment, gure 1
+shows that learning signicantly outperforms non-learning
+in terms of accuracy.
+Interestingly, quadratic assignment
+performs worse than linear assignment before learning is
+applied  this is likely because the relative scale of the linear
+and quadratic features is badly tuned before learning. In-
+deed, this demonstrates exactly why learning is important.
+It is also worth noting that linear assignment with learning
+performs similarly to quadratic assignment with bistochas-
+tic normalisation (without learning)  this is an important
+result, since quadratic assignment via Graduated Assign-
+ment is signicantly more computationally intensive.
+
+3Exponential decay on the node features was benecial when using
+the method of [22], and has hence been maintained in this case (see
+section 4.1); a normalisation constant of  = 0.00001 was used.
+
+6
+
+Figure 1: Top: Performance on the house sequence as
+the baseline (separation between frames) varies (the nor-
+malised Hamming loss on all testing examples is reported,
+with error bars indicating the standard error). Centre: The
+weights learned for the quadratic model (baseline = 90,
+ = 1). Bottom: A frame from the sequence, together
+with its landmarks and triangulation; the 3rd and the 93rd
+frames, matched using linear assignment (without learning,
+loss = 12/30), and the same match after learning ( = 10,
+loss = 6/30). Mismatches are shown in red.
+
+Figure 3: Running time versus accuracy on the house
+dataset, for a baseline of 90. Standard errors of both run-
+ning time and performance are shown (the standard error
+for the running time is almost zero). Note that linear as-
+signment is around three orders of magnitude faster than
+quadratic assignment.
+
+Figure 1 (centre) shows the weight vector learned us-
+ing quadratic assignment (for a baseline of 90 frames, with
+ = 1). Note that the rst 60 points show the weights of the
+Shape Context features, whereas the nal point corresponds
+to the edge features. The nal point is given a very high
+score after learning, indicating that the edge features are
+important in this model.4 Here the rst 12 features corre-
+spond to the rst radial bin (as described in section 4) etc.
+The rst radial bin appears to be more important than the
+last, for example. Figure 1 (bottom) also shows an example
+match, using the 3rd and the 93rd frames of the sequence
+for linear assignment, before and after learning.
+
+Finally, Figure 3 shows the running time of our method
+compared to its accuracy. Firstly, it should be noted that
+the use of learning has no eect on running time; since learn-
+ing outperforms non-learning in all cases, this presents a
+very strong case for learning. Quadratic assignment with
+bistochastic normalisation gives the best non-learning per-
+formance, however, it is still worse than either linear or
+quadratic assignment with learning and it is signicantly
+slower.
+
+5.2 Video Sequence
+
+For our second experiment, we consider matching features
+of a human in a video sequence. We used a video sequence
+from the SAMPL dataset [34]  a 108 frame sequence of a
+human face (see gure 2, bottom). To identify landmarks
+for these scenes, we used the SUSAN corner detector [35,
+36]. This detector essentially identies points as corners if
+their neighbours within a small radius are dissimilar. This
+
+4This should be interpreted with some caution: the features have
+dierent scales, meaning that their importances cannot be compared
+directly. However, from the point of view of the regularizer, assigning
+this feature a high weight bares a high cost, implying that it is an
+important feature.
+
+7
+
+Figure 2: Top: Performance on the video sequence as the
+baseline (separation between frames) varies (the endpoint
+error on all testing examples is reported, with error bars
+indicating the standard error). Centre: The weights learned
+for the model (baseline = 90,  = 100). Bottom: The 7th
+and the 97th frames, matched using linear assignment (loss
+= 0.028), and the same match after learning ( = 100, loss
+= 0.009). The outline of the points to be matched (left), and
+the correct match (right) are shown in green; the inferred
+match is outlined in red; the match after learning is much
+closer to the correct match.
+
+detector was tuned such that no more than 200 landmarks
+were identied in each scene.
+
+In this setting, we are no longer interested in matching all
+of the landmarks in both images, but rather those that cor-
+respond to important parts of the human gure. We identi-
+ed the same 11 points in each image (gure 2, bottom). It
+is assumed that these points are known in advance for the
+template scene (G), and are to be found in the target scene
+(G(cid:48)). Clearly, since the correct match corresponds to only a
+tiny proportion of the scene, using the normalised Hamming
+loss is no longer appropriate  we wish to penalise incorrect
+matches less if they are close to the correct match. Hence
+we use the loss function (as introduced in section 3.2)
+
+(cid:34) d(Gi, G(cid:48)
+
+(cid:88)
+
+i
+
+
+
+(cid:35)
+
+(i))
+
+(G, G(cid:48), ) = 1  1
+||
+
+.
+
+(12)
+
+Training
+Validation
+Testing
+
+Loss
+0.094 (0.005)
+0.040 (0.007)
+0.101 (0.005)
+
+Loss (learning)
+0.057 (0.004)
+0.040 (0.006)
+0.062 (0.004)
+
+Table 2: Performance on the bikes dataset. Results for the
+minimiser of the validation loss ( = 10000) are reported.
+Standard errors are in parentheses.
+
+Here the loss is small if the distance between the chosen
+match and the correct match is small.
+
+Since we are interested in only a few of our landmarks,
+triangulating the graph is no longer meaningful. Hence we
+present results only for linear assignment.
+
+Figure 2 (top) shows the performance of our method as
+the baseline increases. In this case, the performance is non-
+monotonic as the subject moves in and out of view through-
+out the sequence. This sequence presents additional dicul-
+ties over the house dataset, as we are subject to noise in
+the detected landmarks, and possibly in their labelling also.
+Nevertheless, learning outperforms non-learning for all base-
+lines. The weight vector (gure 2, centre) is heavily peaked
+about particular angular bins.
+
+5.3 Bikes
+
+For our nal experiment, we used images from the Caltech
+256 dataset [37]. We chose to match images in the touring
+bike class, which contains 110 images of bicycles. Since the
+Shape Context features we are using are robust to only a
+small amount of rotation (and not to reection), we only
+included images in this dataset that were taken side-on.
+Some of these were then reected to ensure that each im-
+age had a consistent orientation (in total, 78 images re-
+mained). Again, the SUSAN corner detector was used to
+identify the landmarks in each scene; 6 points correspond-
+ing to the frame of the bicycle were identied in each frame
+(see gure 4, bottom).
+
+Rather than matching all pairs of bicycles, we used a xed
+template (G), and only varied the target. This is an easier
+problem than matching all pairs, but is realistic in many
+scenarios, such as image retrieval.
+
+Table 2 shows the endpoint error of our method, and gives
+further evidence of the improvement of learning over non-
+learning. Figure 4 shows a selection of data from our train-
+ing set, as well as an example matching, with and without
+learning.
+
+8
+
+Figure 4: Top: Some of our training scenes. Bottom: A
+match from our test set. The top frame shows the points as
+matched without learning (loss = 0.105), and the bottom
+frame shows the match with learning (loss = 0.038). The
+outline of the points to be matched (left), and the correct
+match (right) are outlined in green; the inferred match is
+outlined in red.
+
+6 Conclusions and Discussion
+
+We have shown how the compatibility functions for the
+graph matching problem can be estimated from labeled
+training examples, where a training input is a pair of graphs
+and a training output is a matching matrix. We use large-
+margin structured estimation techniques with column gen-
+eration in order to solve the learning problem eciently,
+despite the huge number of constraints in the optimization
+problem. We presented experimental results in three dier-
+ent settings, each of which revealed that the graph matching
+problem can be signicantly improved by means of learning.
+An interesting nding in this work has been that linear
+assignment with learning performs similarly to Graduated
+Assignment with bistochastic normalisation, a state-of-the-
+art quadratic assignment relaxation algorithm. This sug-
+gests that, in situations where speed is a major issue, lin-
+ear assignment may be resurrected as a means for graph
+matching. In addition to that, if learning is introduced to
+Graduated Assignment itself, then the performance of graph
+matching improves signicantly both on accuracy and speed
+when compared to the best existing quadratic assignment
+relaxation [22].
+
+There are many other situations in which learning a
+matching criterion can be useful. In multi-camera settings
+for example, when dierent cameras may be of dierent
+types and have dierent calibrations and viewpoints, it is
+reasonable to expect that the optimal compatibility func-
+tions will be dierent depending on which camera pair we
+consider. In surveillance applications we should take advan-
+tage of the fact that much of the context does not change:
+the camera and the viewpoint are typically the same.
+
+To summarize, by learning a matching criterion from pre-
+viously labeled data, we are able to substantially improve
+the accuracy of graph matching algorithms.
+

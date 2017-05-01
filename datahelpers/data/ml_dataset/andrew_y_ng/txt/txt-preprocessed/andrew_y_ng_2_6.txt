@@ -1,0 +1,1251 @@
+Abstract. A critical issue for the application of Markov decision processes (MDPs) to realistic problems is how
+the complexity of planning scales with the size of the MDP. In stochastic environments with very large or innite
+state spaces, traditional planning and reinforcement learning algorithms may be inapplicable, since their running
+time typically grows linearly with the state space size in the worst case. In this paper we present a new algorithm
+that, given only a generative model (a natural and common type of simulator) for an arbitrary MDP, performs
+on-line, near-optimal planning with a per-state running time that has no dependence on the number of states. The
+running time is exponential in the horizon time (which depends only on the discount factor  and the desired
+degree of approximation to the optimal policy). Our algorithm thus provides a different complexity trade-off than
+classical algorithms such as value iterationrather than scaling linearly in both horizon time and state space size,
+our running time trades an exponential dependence on the former in exchange for no dependence on the latter.
+
+Our algorithm is based on the idea of sparse sampling. We prove that a randomly sampled look-ahead tree that
+covers only a vanishing fraction of the full look-ahead tree nevertheless sufces to compute near-optimal actions
+from any state of an MDP. Practical implementations of the algorithm are discussed, and we draw ties to our related
+recent results on nding a near-best strategy from a given class of strategies in very large partially observable
+MDPs (Kearns, Mansour, & Ng. Neural information processing systems 13, to appear).
+
+Keywords:
+
+reinforcement learning, Markov decision processes, planning
+
+1.
+
+Introduction
+
+In the past decade, Markov decision processes (MDPs) and reinforcement learning have
+become a standard framework for planning and learning under uncertainty within the ar-
+ticial intelligence literature. The desire to attack problems of increasing complexity with
+this formalism has recently led researchers to focus particular attention on the case of (ex-
+ponentially or even innitely) large state spaces. A number of interesting algorithmic and
+representational suggestions have been made for coping with such large MDPs. Function
+
+
+
+This research was conducted while the author was at AT&T Labs.
+
+194
+
+M. KEARNS, Y. MANSOUR, AND A.Y. NG
+
+approximation (Sutton & Barto, 1998) is a well-studied approach to learning value func-
+tions in large state spaces, and many authors have recently begun to study the properties of
+large MDPs that enjoy compact representations, such as MDPs in which the state transition
+probabilities factor into a small number of components (Boutilier, Dearden, & Goldszmidt,
+1995; Meuleau et al., 1998; Koller & Parr, 1999).
+
+In this paper, we are interested in the problem of computing a near-optimal policy in a
+large or innite MDP that is giventhat is, we are interested in planning. It should be clear
+that as we consider very large MDPs, the classical planning assumption that the MDP is
+given explicitly by tables of rewards and transition probabilities becomes infeasible. One
+approach to this representational difculty is to assume that the MDP has some special
+structure that permits compact representation (such as the factored transition probabili-
+ties mentioned above), and to design special-purpose planning algorithms that exploit this
+structure.
+
+Here we take a slightly different approach. We consider a setting in which our planning
+algorithm is given access to a generative model, or simulator, of the MDP. Informally,
+this is a black box to which we can give any state-action pair (s, a), and receive in
+return a randomly sampled next state and reward from the distributions associated with
+(s, a). Generative models have been used in conjunction with some function approximation
+schemes (Sutton & Barto, 1998), and are a natural way in which a large MDP might be
+specied. Moreover, they are more general than most structured representations, in the
+sense that many structured representations (such as factored models (Boutilier, Dearden, &
+Goldszmidt, 1995; Meuleau et al., 1998; Koller & Parr, 1999)) usually provide an efcient
+way of implementing a generative model. Note also that generative models also provide
+less information than explicit tables of probabilities, but more information than a single
+continuous trajectory of experience generated according to some exploration policy, and so
+we view results obtained via generative models as blurring the distinction between what is
+typically called planning and learning in MDPs.
+
+Our main result is a new algorithm that accesses the given generative model to perform
+near-optimal planning in an on-line fashion. By on-line, we mean that, similar to real-time
+search methods (Korf, 1990; Barto, Bradtke, & Singh, 1995; Koenig & Simmons, 1998),
+our algorithms computation at any time is focused on computing an actions for a single
+current state, and planning is interleaved with taking actions. More precisely, given any
+state s, the algorithm uses the generative model to draw samples for many state-action pairs,
+and uses these samples to compute a near-optimal action from s, which is then executed. The
+amount of time required to compute a near-optimal action from any particular state s has
+no dependence on the number of states in the MDP, even though the next-state distributions
+from s may be very diffuse (that is, have large support). The key to our analysis is in
+showing that appropriate sparse sampling sufces to construct enough information about the
+environment near s to compute a near-optimal action. The analysis relies on a combination of
+Bellman equation calculations, which are standard in reinforcement learning, and uniform
+convergence arguments, which are standard in supervised learning; this combination of
+techniques was rst applied in Kearns and Singh (1999). As mentioned, the running time
+required at each state does have an exponential dependence on the horizon time, which we
+show to be unavoidable without further assumptions. However, our results leave open the
+
+A SPARSE SAMPLING ALGORITHM
+
+195
+
+possiblity of an algorithm that runs in time polynomial in the accuracy parameter, which
+remains an important open problem.
+
+Note that one can view our planning algorithm as simply implementing a (stochastic)
+policya policy that happens to use a generative model as a subroutine. In this sense, if
+we view the generative model as providing a compact representation of the MDP, our
+algorithm provides a correspondingly compact representation of a near-optimal policy. We
+view our result as complementary to work that proposes and exploits particular compact
+representations of MDPs (Meuleau et al., 1998), with both lines of work beginning to
+demonstrate the potential feasibility of planning and learning in very large environments.
+The remainder of this paper is structured as follows: In Section 2, we give the formal
+denitions needed in this paper. Section 3 then gives our main result, an algorithm for
+planning in large or innite MDPs, whose per-state running time does not depend on the
+size of the state space. Finally, Section 4 describes related results and open problems.
+
+2. Preliminaries
+We begin with the denition of a Markov decision process on a set of N =|S| states,
+explicitly allowing the possibility of the number of states being (countably or uncountably)
+innite.
+
+Denition 1. A Markov decision process M on a set of states S and with actions
+{a1, . . . , ak} consists of:
+ Transition probabilities: For each state-action pair (s, a), a next-state distribution Psa(s
+(cid:9))
+that species the probability of transition to each state s
+upon execution of action a from
+state s.1
+ Reward distributions: For each state-action pair (s, a), a distribution Rsa on real-valued
+rewards for executing action a from state s. We assume rewards are bounded in absolute
+value by Rmax.
+
+(cid:9)
+
+For simplicity, we shall assume in this paper that all rewards are in fact deterministicthat
+is, the reward distributions have zero variance, and thus the reward received for executing a
+from s is always exactly Rsa. However, all of our results have easy generalizations for the
+case of stochastic rewards, with an appropriate and necessary dependence on the variance
+of the reward distributions.
+
+Throughout the paper, we will primarily be interested in MDPs with a very large (or
+even innite) number of states, thus precluding approaches that compute directly on the full
+next-state distributions. Instead, we will assume that our planning algorithms are given M
+in the form of the ability to sample the behavior of M. Thus, the model given is simulative
+rather than explicit. We call this ability to sample the behavior of M a generative model.
+
+Denition 2. A generative model for a Markov decision process M is a randomized
+algorithm that, on input of a state-action pair (s, a), outputs Rsa and a state s
+is
+randomly drawn according to the transition probabilities Psa().
+
+, where s
+
+(cid:9)
+
+(cid:9)
+
+196
+
+M. KEARNS, Y. MANSOUR, AND A.Y. NG
+
+We think of a generative model as falling somewhere in between being given explicit
+next-state distributions, and being given only irreversible experience in the MDP (in
+which the agent follows a single, continuous trajectory, with no ability to reset to any
+desired state). On the one hand, a generative model may often be available when explicit
+next-state distributions are not; on the other, a generative model obviates the important
+issue of exploration that arises in a setting where we only have irreversible experience. In
+this sense, planning results using generative models blur the distinction between what is
+typically called planning and what is typically called learning.
+Following standard terminology, we dene a (stochastic) policy to be any mapping
+ : S (cid:11){a1, . . . , ak}. Thus (s) may be a random variable, but depends only on the current
+state s. We will be primarily concerned with discounted MDPs,2 so we assume we are given
+a number 0  < 1 called the discount factor, with which we then dene the value function
+V  for any policy :
+
+(cid:2) (cid:3)
+
+i=1
+
+(cid:5)
+
+(cid:4)(cid:4)(cid:4)(cid:4)(cid:4) s, 
+
+V  (s) = E
+
+ i1ri
+
+(1)
+
+where ri is the reward received on the ith step of executing the policy  from state s, and
+the expectation is over the transition probabilities and any randomization in . Note that
+for any s and any , |V  (s)| Vmax, where we dene Vmax = Rmax/(1   ).
+We also dene the Q-function for a given policy  as
+
+Q (s, a) = Rsa +  Es(cid:9)Psa ()[V  (s
+(cid:9))]
+(cid:9)  Psa() means that s
+(cid:9)
+
+(2)
+is drawn according to the distribution Psa()).
+(where the notation s
+We will later describe an algorithm A that takes as input any state s and (stochastically)
+outputs an action a, and which therefore implements a policy. When we have such an
+algorithm, we will also write V
+to denote the value function and Q-function of
+the policy implemented by A. Finally, we dene the optimal value function and the optimal
+(s, a)= sup Q (s, a), and the optimal policy
+Q-function as V
+
+
+and Q
+(s)= sup V  (s) and Q
+(s, a) for all s  S.
+
+, (s)= arg maxa Q
+
+A
+
+A
+
+3. Planning in large or innite MDPs
+
+Usually, one considers the planning problem in MDPs to be that of computing a good policy,
+given as input the transition probabilities Psa() and the rewards Rsa (for instance, by solving
+the MDP for the optimal policy). Thus, the input is a complete and exact model, and the
+output is a total mapping from states to actions. Without additional assumptions about the
+structure of the MDP, such an approach is clearly infeasible in very large state spaces, where
+even reading all of the input can take N 2 time, and even specifying a general policy requires
+space on the order of N . In such MDPs, a more fruitful way of thinking about planning
+might be an on-line view, in which we examine the per-state complexity of planning. Thus,
+the input to a planning algorithm would be a single state, and the output would be which
+
+A SPARSE SAMPLING ALGORITHM
+
+197
+
+single action to take from that state. In this on-line view, a planning algorithm is itself simply
+a policy (but one that may need to perform some nontrivial computation at each state).
+Our main result is the description and analysis of an algorithm A that, given access to a
+generative model for an arbitrary MDP M, takes any state of M as input and produces an
+action as output, and meets the following performance criteria:
+ The policy implemented by A is near-optimal in M;
+ The running time of A (that is, the time required to compute an action at any state) has
+
+no dependence on the number of states of M.
+
+This result is obtained under the assumption that there is an O(1) time and space way to
+refer to the states, a standard assumption known as the uniform cost model (Aho, Hopcroft,
+& Ullman, 1974), that is typically adopted to allow analysis of algorithms that operate on
+real numbers (such as we require to allow innite state spaces). The uniform cost model
+essentially posits the availability of innite-precision registers (and constant-size circuitry
+for performing the basic arithmetic operations on these registers). If one is unhappy with
+this model, then algorithm A will suffer a dependence on the number of states only equal
+to the space required to name the states (at worst log(N ) for N states).
+
+3.1. A sparse sampling planner
+
+Here is our main result:
+Theorem 1. There is a randomized algorithm A that, given access to a generative model
+for any k-action MDP M, takes as input any state s  S and any value  > 0, outputs an
+action, and satises the following two conditions:
+ (Efciency) The running time of A is O((kC)H ), where
+
+(cid:6)
+
+H = (cid:19)log (/Vmax)(cid:20),
+C = V 2
+ = ((1   )2)/4, Vmax = Rmax/(1   ).
+
+kHV2
+2
+
++ log
+
+2H log
+
+max
+2
+
+Rmax
+
+max
+
+
+
+(cid:7)
+
+,
+
+In particular, the running time depends only on Rmax,  , and , and does not depend on
+N =|S|. If we view Rmax as a constant, the running time bound can also be written
+
+(1   )
+
+(3)
+ (Near-Optimality) The value function of the stochastic policy implemented by A satises
+
+.
+
+|V
+
+A(s)  V
+
+(s)|  
+
+simultaneously for all states s  S.
+
+(4)
+
+(cid:8)
+
+(cid:10)
+
+(cid:9)O
+
+(cid:10)
+
+(cid:11)(cid:11)
+
+k
+
+1
+1 log
+
+1
+
+(1 )
+
+198
+
+M. KEARNS, Y. MANSOUR, AND A.Y. NG
+
+As we have already suggested, it will be helpful to think of algorithm A in two different
+ways. On the one hand, A is an algorithm that takes a state as input and has access to a
+generative model, and as such we shall be interested in its resource complexityits running
+time, and the number of calls it needs to make to the generative model (both per state input).
+On the other hand, A produces an action as output in response to each state given as input,
+and thus implements a (possibly stochastic) policy.
+
+The proof of Theorem 1 is given in Appendix A, and detailed pseudo-code for the
+algorithm is provided in gure 1. We now give some high-level intuition for the algorithm
+and its analysis.
+
+(cid:9)
+
+Given as input a state s, the algorithm must use the generative model to nd a near-
+optimal action to perform from state s. The basic idea of the algorithm is to sample the
+generative model from states in the neighborhood of s. This allows us to construct a small
+sub-MDP M
+from s is a near-optimal action from
+s in M.3 There will be no guarantee that M
+will contain enough information to compute a
+good action from any state other than s. However, in exchange for this limited applicability,
+the MDP M
+will have a number of states that does not depend on the number of states
+in M.
+
+of M such that the optimal action in M
+
+(cid:9)
+
+(cid:9)
+
+(cid:9)
+
+Figure 1. Algorithm A for planning in large or innite state spaces. EstimateV nds the V
+text, and EstimateQ nds analogously dened Q
+
+h. Algorithm A implements the policy.
+
+
+
+h described in the
+
+A SPARSE SAMPLING ALGORITHM
+
+199
+
+(cid:9)
+
+The graphical structure of M
+
+will be given by a directed tree in which each node is
+labeled by a state, and each directed edge to a child is labeled by an action and a reward.
+For the sake of simplicity, let us consider only the two-action case here, with actions a1
+and a2. Each node will have C children in which the edge to the child is labeled a1, and C
+children in which the edge to the child is labeled a2.
+
+The root node of M
+
+is labeled by the state of interest s, and we generate the 2C children
+of s in the obvious way: we call the generative model C times on the state-action pair (s, a1)
+to get the a1-children, and on C times on (s, a2) to get the a2-children. The edges to these
+children are also labeled by the rewards returned by the generative model, and the child
+nodes themselves are labeled by the states returned. We will build this (2C)-ary tree to some
+depth to be determined. Note that M
+
+is essentially a sparse look-ahead tree.
+
+(cid:9)
+
+(cid:9)
+
+(cid:9)
+
+(cid:9)
+
+We can also think of M
+
+as an MDP in which the start state is s, and in which taking
+an action from a node in the tree causes a transition to a (uniformly) random child of that
+node with the corresponding action label; the childless leaf nodes are considered absorbing
+states. Under this interpretation, we can compute the optimal action to take from the root s
+in M
+. Figure 2 shows a conceptual picture of this tree for a run of the algorithm from an
+input state s0, for C = 3. (C will typically be much larger). From the root s0, we try action
+a1 three times and action a2 three times. From each of the resulting states, we also try each
+action C times, and so on down to depth H in the tree. Zero values assigned to the leaves
+then correspond to our estimates of V
+
+1 for
+their parents, which are in turn backed-up to their parents, and so on, up to the root to nd
+an estimate of V
+The central claim we establish about M
+
+0 , which are backed-up to nd estimates of V
+
+
+is that its size can be independent of the number
+of states in M, yet still result in our choosing near-optimal actions at the root. We do this
+by establishing bounds on the required depth H of the tree and the required degree C.
+Recall that the optimal policy at s is given by (s)= arg maxa Q
+(s, a), and therefore
+(s,). Estimating the Q-values
+is completely determined by, and easily calculated from, Q
+
+(s0).
+
+
+H
+
+(cid:9)
+
+Figure 2. Sparse look-ahead tree of states constructed by the algorithm (shown with C = 3, actions a1, a2).
+
+200
+
+M. KEARNS, Y. MANSOUR, AND A.Y. NG
+
+is a common way of planning in MDPs. From the standard duality between Q-functions
+and value functions, the task of estimating Q-functions is very similar to that of estimating
+value functions. So while the algorithm uses the Q-function, we will, purely for expository
+purposes, actually describe here how we estimate V
+
+(s).
+
+There are two parts to the approximation we use. First, rather than estimating V
+
+, we
+will actually estimate, for a value of H to be specied later, the H-step expected discounted
+reward V
+
+(s), given by
+
+
+
+
+H
+
+(cid:2)
+
+h(cid:3)
+
+i=1
+
+(cid:5)
+
+(cid:4)(cid:4)(cid:4)(cid:4)(cid:4) s, 
+
+
+V
+h
+
+(s) = E
+
+ i1ri
+
+(6)
+
+a
+
+
+
+
+V
+h
+
+(cid:9))]}
+
+ max
+
+where ri is the reward received on the ith time step upon executing the optimal policy 
+
+from s. Moreover, we see that the V
+h
+(s) = Rsa +  Es(cid:9)Psa ()[V
+
+(s), for h  1, are recursively given by
+
+(cid:9))]
+h1
+(s
+{Rsa +  Es(cid:9)Psa ()[V
+
+h1
+(s
+
+
+is the action taken by the optimal policy from state s, and V
+0
+
+(7)
+(s)= 0. The quality
+where a
+of the approximation in Eq. (7) becomes better for larger values of h, and is controllably
+tight for the largest value h = H we eventually choose. One of the main efforts in the proof
+is establishing that the error incurred by the recursive application of this approximation can
+be made controllably small by choosing H sufciently large.
+Thus, if we are able to obtain an estimate V
+
+
+(cid:9)) of V
+h1
+h1
+, we can inductively
+(s
+(s
+dene an algorithm for nding an estimate V
+
+
+(s) by making use of Eq. (7). Our
+(s) of V
+h
+h
+algorithm will approximate the expectation in Eq. (7) by a sample of C random next states
+from the generative model, where C is a parameter to be determined (and which, for reasons
+that will become clear later, we call the width). Recursively, given a way of nding the
+estimator V
+
+, we nd our estimate V
+
+(cid:9)) for any s
+
+(cid:9)) for any s
+
+(s) as follows:
+
+
+h
+
+
+(s) of V
+h
+
+
+h1
+
+(s
+
+(cid:9)
+
+(cid:9)
+
+independently sampled states from the next-state distribution Psa().
+
+1. For each action a, use the generative model to get Rsa and to sample a set Sa of C
+2. Use our procedure for nding V
+
+(cid:9)) for each state s
+
+in any of the
+
+(s
+
+(cid:9)
+
+
+h1
+
+sets Sa.
+
+
+3. Following Eq. (7), our estimate of V
+h
+
+(s) is then given by
+
+(cid:12)
+
+V
+
+
+h
+
+(s) = max
+
+a
+
+Rsa + 
+
+1
+C
+
+h1 to estimate V
+
+(cid:13)
+(cid:3)
+
+V
+
+h1
+
+(cid:9))
+
+(s
+
+s(cid:9)Sa
+
+.
+
+(8)
+
+To complete the description of the algorithm, all that remains is to choose the depth H and
+the parameter C, which controls the width of the tree. Bounding the required depth H is the
+easy and standard part. It is not hard to see that if we choose depth H = log (1  )/Rmax
+(the so-called -horizon time), then the discounted sum of the rewards that is obtained by
+considering rewards beyond this horizon is bounded by .
+
+A SPARSE SAMPLING ALGORITHM
+
+201
+
+The central claim we establish about C is that it can be chosen independent of the number
+of states in M, yet still result in choosing near-optimal actions at the root. The key to the
+argument is that even though small samples may give very poor approximations to the
+next-state distribution at each state in the tree, they will, nevertheless, give good estimates
+of the expectation terms of Eq. (7), and that is really all we need. For this we apply a careful
+combination of uniform convergence methods and inductive arguments on the tree depth.
+Again, the technical details of the proof are in Appendix A.
+
+In general, the resulting tree may represent only a vanishing fraction of all of the
+H-step paths starting from s0 that have non-zero probability in the MDPthat is, the
+sparse look-ahead tree covers only a vanishing part of the full look-ahead tree. In this sense,
+our algorithm is clearly related to and inspired by classical look-ahead search techniques
+(Russell & Norvig, 1995) including various real-time search algorithms (Korf, 1990; Barto,
+Bradtke, & Singh, 1995; Bonet, Loerincs, & Geffner, 1997; Koenig & Simmons, 1998)
+and receding horizon controllers. Most of these classical search algorithms, however, run
+into difculties in very large or innite MDPs with diffuse transitions, since their search
+trees can have arbitrarily large (or even innite) branching factors. Our main contribution
+is showing that in large stochastic environments, clever random sampling sufces to re-
+construct nearly all of the information available in the (exponentially or innitely) large
+full look-ahead tree. Note that in the case of deterministic environments, where from each
+state-action pair we can reach only a single next state, the sparse and full trees coincide
+(assuming a memoization trick described below), and our algorithm reduces to classical
+deterministic look-ahead search.
+
+3.2. Practical issues and lower bounds
+Even though the running time of algorithm A does not depend on the size of the MDP, it still
+runs in time exponential in the -horizon time H, and therefore exponential in 1/(1   ).
+It would seem that the algorithm would be practical only if  is not too close to 1. In a
+moment, we will give a lower bound showing it is not possible to do much better without
+further assumptions on the MDP. Nevertheless, there are a couple of simple tricks that may
+help to reduce the running time in certain cases, and we describe these tricks rst.
+
+The rst idea is to allow different amounts of sampling at each level of the tree. The
+intuition is that the further we are from the root, the less inuence our estimates will have
+on the Q-values at the root (due to the discounting). Thus, we can sample more sparsely at
+deeper levels of the tree without having too adverse an impact on our approximation.
+
+We have analyzed various schemes for letting the amount of sampling at a node depend on
+its depth. None of the methods we investigated result in a running time which is polynomial
+in 1/. However, one specic scheme that reduces the running time signicantly is to let
+the number of samples per action at depth i be Ci =  2i C, where the parameter C now
+controls the amount of sampling done at the root. The error in the Q-values using such a
+scheme does not increase by much, and the running time is the square root of our original
+running time. Beyond this and analogous to how classical search trees can often be pruned
+in ways that signicantly reduce running time, a number of standard tree pruning methods
+may also be applied to our algorithms trees (Russell & Norvig, 1995) (see also Dearden
+
+202
+
+M. KEARNS, Y. MANSOUR, AND A.Y. NG
+
+
+h
+
+& Boutilier, 1994), and we anticipate that this may signicantly speed up the algorithm in
+practice.
+Another way in which signicant savings might be achieved is through the use of memo-
+ization in our subroutines for calculating the V
+(s)s. In gure 2, this means that whenever
+there are two nodes at the same level of the tree that correspond to the same state, we collapse
+them into one node (keeping just one of their subtrees). While it is straightforward to show
+the correctness of such memoization procedures for deterministic procedures, one must be
+careful when addressing randomized procedures. We can show that the important proper-
+ties of our algorithm are maintained under this optimization. Indeed, this optimization is
+particularly nice when the domain is actually deterministic: if each action deterministically
+causes a transition to a xed next-state, then the tree would grow only as k H (where k
+is the number of actions). If the domain is nearly deterministic, then we have behavior
+somewhere in between. Similarly, if there are only some N0 (cid:24) |S| states reachable from s0,
+then the tree would also never grow wider than N0, giving it a size of O(N0 H ).
+
+In implementing the algorithm, one may wish not to specify a targeted accuracy  in
+advance, but rather to try to do as well as is possible with the computational resources
+available. In this case, an iterative-deepening approach may be taken. This would entail
+simultaneously increasing C and H by decreasing the target . Also, as studied in Davies,
+Ng, and Moore (1998), if we have access to an initial estimate of the value function, we can
+replace our estimates V
+(s)= 0 at the leaves with the estimated value function at those states.
+Though we shall not do so here, it is again easy to make formal performance guarantees
+depending on C, H and the supremum error of the value function estimate we are using.
+
+
+0
+
+(s)|  
+
+A(s)  V
+
+Unfortunately, despite these tricks, it is not difcult to prove a lower bound that shows
+that any planning algorithm with access only to a generative model, and which implements
+a policy that is -close to optimal in a general MDP, must have running time at least
+exponential in the -horizon time. We now describe this lower bound.
+Theorem 2. Let A be any algorithm that is given access only to a generative model for
+an MDP M, and inputs s (a state in M) and . Let the stochastic policy implemented by A
+satisfy
+|V
+
+(9)
+simultaneously for all states s  S. Then there exists an MDP M on which A makes at least
+(2H ) = ((1/)(1/ log(1/ ))) calls to the generative model.
+Proof: Let H = log  = log(1/)/ log(1/ ). Consider a binary tree T of depth H. We
+use T to dene an MDP in the following way. The states of the MDP are the nodes of the
+tree. The actions of the MDP are {0, 1}. When we are in state s and perform an action b we
+reach (deterministically) state sb, where sb is the b-child of s in T . If s is a leaf of T then
+we move to an absorbing state. We choose a random leaf v in the tree. The reward function
+for v and any action is Rmax, and the reward at any other state and action is zero.
+Algorithm A is given s0, the root of T . For algorithm A to compute a near optimal policy,
+it has to nd the node v, and therefore has to perform at least (2H ) calls to the generative
+model.
+
+
+A SPARSE SAMPLING ALGORITHM
+
+203
+
+4. Summary and related work
+
+We have described an algorithm for near-optimal planning from a generative model, that has
+a per-state running time that does not depend on the size of the state space, but which is still
+exponential in the -horizon time. An important open problem is to close the gap between our
+lower and upper bound. Our lower bound shows that the number of steps has to grow polyno-
+mially in 1/ while in the upper bound the number of steps grows sub-exponentially in 1/,
+more precisely (1/)O(log(1/)). Closing this gap, either by giving an algorithm that would
+be polynomial in 1/ or by proving a better lower bound, is an interesting open problem.
+Two interesting directions for improvement are to allow partially observable MDPs
+(POMDPs), and to nd more efcient algorithms that do not have exponential dependence
+on the horizon time. As a rst step towards both of these goals, in a separate paper (Kearns,
+Mansour, & Ng, to appear) we investigate a framework in which the goal is to use a gener-
+ative model to nd a near-best strategy within a restricted class of strategies for a POMDP.
+Typical examples of such restricted strategy classes include limited-memory strategies in
+POMDPs, or policies in large MDPs that implement a linear mapping from state vectors
+to actions. Our main result in this framework says that as long as the restricted class of
+strategies is not too complex (where this is formalized using appropriate generalizations
+of standard notions like VC dimension from supervised learning), then it is possible to nd
+a near-best strategy from within the class, in time that again has no dependence on the size
+of the state space. If the restricted class of strategies is smoothly parameterized, then this
+further leads to a number of fast, practical algorithms for doing gradient descent to nd the
+near-best strategy within the class, where the running time of each gradient descent step
+now has only linear rather than exponential dependence on the horizon time.
+
+Another approach to planning in POMDPs that is based on the algorithm presented here
+is investigated by McAllester and Singh (1999), who show how the approximate belief-state
+tracking methods of Boyen and Koller (1998) can be combined with our algorithm.
+
+Appendix A: Proof sketch of Theorem 1
+
+In this appendix, we give the proof of Theorem 1.
+Theorem 1. There is a randomized algorithm A that, given access to a generative model
+for any k-action MDP M, takes as input any state s  S and any value  > 0, outputs an
+action, and satises the following two conditions:
+ (Efciency) The running time of A is O((kC)H ), where
+
+(cid:7)
+
+,
+
++ log
+
+Rmax
+
+
+
+kHV2
+2
+
+max
+
+(cid:6)
+
+H = (cid:19)log (/Vmax)(cid:20),
+C = V 2
+2H log
+ = ((1   )2)/4,
+ = /Rmax,
+
+max
+2
+
+Vmax = Rmax/(1   ).
+
+204
+
+M. KEARNS, Y. MANSOUR, AND A.Y. NG
+
+In particular, the running time depends only on Rmax,  , and , and does not depend on
+N =|S|. If we view Rmax as a constant, the running time bound can also be written
+
+(cid:10)
+
+(cid:9)O
+
+(cid:10)
+
+(cid:11)(cid:11)
+
+(cid:8)
+
+k
+
+(1   )
+
+1
+1 log
+
+1
+
+(1 )
+
+.
+
+(10)
+
+ (Near-Optimality) The value function of the stochastic policy implemented by A satises
+
+|V
+
+A(s)  V
+
+(s)|  
+
+(11)
+
+simultaneously for all states s  S.
+Throughout the analysis we will rely on the pseudo-code provided for algorithm A given
+in gure 1.
+The claim on the running time is immediate from the denition of algorithm A. Each
+call to EstimateQ generates kC calls to EstimateV , C calls for each action. Each recursive
+call also reduces the depth parameter h by one, so the depth of the recursion is at most H.
+Therefore the running time is O((kC)H ).
+
+
+
+The main effort is in showing that the values of EstimateQ are indeed good estimates
+of Q
+for the chosen values of C and H. There are two sources of inaccuracy in these
+estimates. The rst is that we use only a nite sample to approximate an expectationwe
+draw only C states from the next-state distributions. The second source of inaccuracy is that
+() but rather values
+in computing EstimateQ, we are not actually using the values of V
+returned by EstimateV , which are themselves only estimates. The crucial step in the proof
+is to show that as h increases, the overall inaccuracy decreases.
+
+Let us rst dene an intermediate random variable that will capture the inaccuracy due
+
+to the limited sampling. Dene U
+
+(s, a) as follows:
+
+(s, a) = Rsa + 
+
+U
+
+1
+C
+
+(si )
+
+V
+
+(12)
+
+where the si are drawn according to Psa(). Note that U
+(s, a) is averaging values of
+(), the unknown value function. Since U
+(s, a) is used only for the proof and not in the
+V
+algorithm, there is no problem in dening it this way. The next lemma shows that with high
+(s, a) is at most .
+probability, the difference between U
+Lemma 3. For any state s and action a, with probability at least 1  e
+
+(s, a) and Q
+
+max we have
+
+2C/V 2
+
+C(cid:3)
+
+i=1
+
+|Q
+
+(s, a)  U
+
+(s, a)| = 
+
+(cid:4)(cid:4)(cid:4)(cid:4)(cid:4)EsPsa ()[V
+
+(cid:3)
+
+i
+
+(s)]  1
+C
+
+(si )
+
+V
+
+(cid:4)(cid:4)(cid:4)(cid:4)(cid:4)  ,
+
+where the probability is taken over the draw of the si from Psa().
+
+A SPARSE SAMPLING ALGORITHM
+
+205
+
+Proof: Note that Q
+Chernoff bound.
+
+(s, a) = Rsa +  EsPsa ()[V
+
+(s)]. The proof is immediate from the
+
+Now that we have quantied the error due to nite sampling, we can bound the error
+(). We bound this error as
+from our using values returned by EstimateV rather than V
+(s, a) and EstimateV . In order to make our notation simpler, let
+the difference between U
+V n(s) be the value returned by EstimateV (n, C,  , G, s), and let Qn(s, a) be the component
+in the output of EstimateQ(n, C,  , G, s) that corresponds to action a. Using this notation,
+our algorithm computes
+
+Qn(s, a) = Rsa + 
+
+1
+C
+
+V n1(si )
+
+(13)
+
+where V n1(s)= maxa{Qn1(s, a)}, and Q0(s, a)= 0 for every state s and action a.
+We now dene a parameter n that will eventually bound the difference between Q
+
+(s, a)
+
+and Qn(s, a). We dene n recursively:
+
+C(cid:3)
+
+i=1
+
+where 0 = Vmax. Solving for H we obtain
+
+n+1 =  ( + n)
+(cid:7)
+
+(cid:6)
+
+H(cid:3)
+
+H =
+
+ i 
+
+i=1
+
++  H Vmax  
+1  
+
++  H Vmax.
+
+(14)
+
+(15)
+
+The next lemma bounds the error in the estimation, at level n, by n. Intuitively, the
+error due to nite sampling contributes , while the errors in estimation contribute n. The
+combined error is + n, but since we are discounting, the effective error is only  (+ n),
+which by denition is n+1.
+Lemma 4. With probability at least 1  (kC)ne
+
+max we have that
+
+2C/V 2
+
+
+
+|Q
+
+(s, a)  Qn(s, a)|  n.
+
+(16)
+
+Proof: The proof is by induction on n. It clearly holds for n = 0. Now
+
+|Q
+
+(s, a)  Qn(s, a)| = 
+
+ 
+
++
+
+(cid:4)(cid:4)(cid:4)(cid:4)(cid:4)EsPs,a ()[V
+(cid:6)(cid:4)(cid:4)(cid:4)(cid:4)(cid:4)EsPs,a ()[V
+(cid:4)(cid:4)(cid:4)(cid:4)(cid:4) 1
+(cid:3)
+
+V
+
+C
+
+(cid:3)
+(s)]  1
+V n1(si )
+(cid:3)
+C
+(s)]  1
+(cid:3)
+C
+
+(cid:4)(cid:4)(cid:4)(cid:4)(cid:4)
+(cid:4)(cid:4)(cid:4)(cid:4)(cid:4)
+(si )
+(cid:7)
+
+V
+
+i
+
+i
+
+V n1(si )
+
+(cid:4)(cid:4)(cid:4)(cid:4)(cid:4)
+
+(si )  1
+C
+
+i
+
+i
+
+  ( + n) = n+1
+
+206
+
+M. KEARNS, Y. MANSOUR, AND A.Y. NG
+
+We require that all of the C child estimates be good, for each of the k actions. This means
+that the probability of a bad estimate increases by a factor of kC, for each n. By Lemma 3
+the probability of a single bad estimate is bounded by e
+max. Therefore the probability
+of some bad estimate is bounded by 1  (kC)ne
+2C/V 2
+
+From H   H Vmax+/(1 ), we also see that for H = log (/Vmax), with probability
+1  (kC)H e
+max all the nal estimates Q H (s0, a) are within 2/(1   ) from the true
+Q-values. The next step is to choose C such that  = /Rmax  (kC)H e
+2C/V 2
+max will
+(cid:6)
+bound the probability of a bad estimate during the entire computation. Specically,
+
+2C/V 2
+max.
+
+2C/V 2
+
+(cid:7)
+
+C = V 2
+
+max
+2
+
++ log
+
+1
+
+
+(17)
+
+2H log
+
+kHV2
+2
+
+max
+
+is sufcient to ensure that with probability 1   all the estimates are accurate.
+
+At this point we have shown that with high probability, algorithm A computes a good
+(s0, a) for all a, where s0 is the input state. To complete the proof, we need
+estimate of Q
+to relate this to the expected value of a stochastic policy. We give a fairly general result
+about MDPs, which does not depend on our specic algorithm. (A similar result appears in
+Singh & Yee, 1994).
+
+Lemma 5. Assume that  is a stochastic policy, so that (s) is a random variable. If for
+(s, (s)) <  is at least 1 , then the
+each state s, the probability that Q
+discounted innite horizon return of  is at most ( + 2Vmax)/(1   ) from the optimal
+return, i.e., for any state sV
+
+(s)  V  (s)  ( + 2Vmax)/(1   ).
+
+(s, (s)) Q
+
+Proof: Since we assume that the rewards are bounded by Rmax, it implies that the expected
+return of  at each state s is at least
+(s, (s))]  (1  )(Q
+
+(s, (s))  )  Vmax
+
+E[Q
+
+ Q
+
+(s, (s))    2Vmax.
+
+(18)
+
+(s, (s)) is at most , then V
+
+Now we show that if  has the property that at each state s the difference between
+(s) V  (s) /(1  ). (A similar
+(s, (s))] and Q
+E[Q
+result was proved by Singh and Yee (1994), for the case that each action chosen has
+(s, (s)) Q(s, (s)) . It is easy to extend their proof to handle the case here, and
+Q
+we sketch a proof only for completeness).
+values immediately implies |E[R(s, (s))] E[R(s, (s))]|
+The assumption on the Q
+ . Consider a policy  j that executes  for the rst j + 1 steps and then executes 
+.
+ i . This
+We can show by induction on j that for every state s, V
+ i = /(1   ).
+implies that V
+By setting  = + 2Vmax the lemma follows.
+
+(s)  V  (s) (cid:14)
+
+(s)  V  j (s) (cid:14) j
+
+i=0
+
+i=0
+
+
+
+
+
+Now we can combine all the lemmas to prove our main theorem.
+
+A SPARSE SAMPLING ALGORITHM
+
+207
+
+Proof of Theorem 1: As discussed before, the running time is immediate from the
+algorithm, and the main work is showing that we compute a near-optimal policy. By
+Lemma 4 we have that the error in the estimation of Q
+is at most H , with probability
+1 (kC)H e
+max. Using the values we chose for C and H we have that with probability
+1   the error is at most 2/(1   ). By Lemma 5 this implies that such a policy  has
+the property that from every state s,
+
+2C/V 2
+
+
+
+(s)  V  (s) 
+
+V
+
+2
+
+(1   )2
+
++ 2Vmax
+1  
+
+.
+
+(19)
+
+Substituting back the values of  = /Rmax and = (1  )2/4 that we had chosen, it
+follows that
+
+V
+
+(s) V  (s) 4
+
+(1  )2
+
+= .
+
+Acknowledgments
+
+(20)
+
+
+
+We give warm thanks to Satinder Singh for many enlightening discussions and numerous
+insights on the ideas presented here.
+
+Notes
+
+1. Henceforth, everything that needs to be measurable is assumed to be measurable.
+2. However, our results can be generalized to the undiscounted nite-horizon case for any xed horizon H
+
+(McAllester & Sing, 1999).
+
+(cid:9)
+
+3. M
+
+will not literally be a sub-MDP of M, in the sense of being strictly embedded in M, due to the variations
+
+of random sampling. But it will be very near such an embedded MDP.
+

@@ -1,0 +1,1097 @@
+Abstract
+
+This paper addresses the problem of tracking and diagnosing
+complex systems with mixtures of discrete and continuous
+variables. This problem is a difcult one, particularly when
+the system dynamics are nondeterministic, not all aspects of
+the system are directly observed, and the sensors are subject
+to noise. In this paper, we propose a new approach to this
+task, based on the framework of hybrid dynamic Bayesian
+networks (DBN). These models contain both continuous vari-
+ables representing the state of the system and discrete vari-
+ables representing discrete changes such as failures; they can
+model a variety of faults, including burst faults, measurement
+errors, and gradual drifts. We present a novel algorithm for
+tracking in hybrid DBNs, that deals with the challenges posed
+by this difcult problem. We demonstrate how the resulting
+algorithm can be used to detect faults in a complex system.
+
+Introduction
+
+The complexity and sophistication of the current genera-
+tion of industrial processes, and the growing need for au-
+tonomous agents that control physical systems, motivate the
+need for robust online monitoring and diagnosis of complex
+hybrid systems (e.g., (Isermann 1997) and (McIlraith et al.
+2000)). We want to monitor the state of the system, reliably
+detect abnormal behavior, and diagnose the failure. Sev-
+eral approaches have been used for dealing with this prob-
+lem, but each has its limitations. The traditional model-
+based schemes for diagnosis and control suffer from com-
+putational intractability and numerical convergence prob-
+lems. The qualitative reasoning mechanisms that dominate
+this work in the AI community mitigate some of these prob-
+lems; however, the lack of precision in the representation,
+and the ambiguities introduced by the reasoning framework
+can lead them to perform poorly when applied to complex
+system with continuous dynamics (Hamscher, Console, &
+de Kleer (eds.) 1992).
+
+In this paper, we propose a different approach to this prob-
+lem, where we model a complex hybrid system as a dynamic
+Bayesian network (DBN). This model implicitly denes a
+probability distribution over projected trajectories of the sys-
+tem state over time. In this sense, it is similar to the very
+successful Kalman lter (Kalman 1960). For systems with
+linear dynamics and Gaussian noise, the Kalman lter pro-
+vides an excellent means for tracking system state. Unfortu-
+nately, real-life systems are rife with nonlinearities, many of
+
+Copyright c 2000, American Association for Articial Intelli-
+gence (www.aaai.org). All rights reserved.
+
+which are expressed as discrete failure modes that can pro-
+duce discontinuous jumps in system behavior. Hybrid DBNs
+accommodate a much greater range of problems, including
+nonlinear dynamics and discrete failure modes that inuence
+system evolution. They can directly represent the noise asso-
+ciated with the system evolution and measurements, as well
+as the probabilities of faults and their effects.
+
+We rst show that many interesting aspects of diagnostic
+models can be represented in the DBN framework. In par-
+ticular, we show that they allow a natural encoding of the
+representation of higher-order system dynamics used in the
+temporal causal graph (TCG) framework of Mosterman and
+Biswas (1997). In fact, a TCG can be used to provide the
+skeleton for an appropriate DBN model. We also show that
+many interesting types of failures can be modeled naturally
+in the DBN, including burst faults, parameter drift, and mea-
+surement errors.
+
+There are several advantages to the use of general proba-
+bilistic models, such as DBNs, for fault detection and diag-
+nosis. A DBN is complete model of the system. Using this
+model, the state of the system, including its failure modes, is
+tracked by maintaining a probability distribution over possi-
+ble system states given all of the measurements so far. This
+belief state distribution is an exact representation of our best
+possible beliefs given all of the available evidence.
+It in-
+cludes within it the likelihood of different types of failures,
+as well as a distribution over the relevant system parameters.
+In principle, many of the issues that have challenged tradi-
+tional approaches to diagnosis  ranking possible failures,
+handling of multiple simultaneous failures, and robustness
+to parameter drift  can be addressed within a probabilistic
+tracking framework.
+
+Of course, the inference task that is required for main-
+taining this belief state is a difcult one. Unlike the case of a
+simple Kalman lter, tracking such systems is generally in-
+tractable since the number of modes of these systems grows
+exponentially over time. We present a novel algorithm that
+tames this intractability using a combination of several dif-
+ferent techniques. We show that this algorithm succeeds in
+tracking a very difcult scenario on a fairly large system
+(one involving ve tanks). We believe that our approach will
+scale well to substantially more complex systems.
+
+The framework
+
+Diagnosis of hybrid systems
+To ground our discussion, we will focus on the diagnosis
+task for a class of problems typical of chemical manufac-
+
+In flow
+
+Tank 2
+
+Tank 1
+
+R1o
+
+R12
+
+F12
+
+P1
+
+P2
+
+R2o
+
+F2o
+
+(a)
+
+F1o
+
+1
+
+R1o
+
+1
+
+F1
+
+(b)
+
+F2o
+-1
+
+dt1
+C1
+F1T
+
+P1
+=
+
+P1
+
+=
+
+1
+
+P2
+
+-1
+
+1
+R12
+
+P12
+
+-P12
+
+=
+
+=
+F12
+
+1
+F12
+
+dt1
+C2
+F2T
+
+-1
+
+F4
+
+=
+
+-1
+
+F2o
+
+1
+Rb2
+
+P2
+=
+
+P2
+
+Figure 1: The two-tank system. F indicates ow; P indicates
+pressure; R indicates Resistance.
+
+turing processes, which involve the transport of materials
+(mostly uids) into and between tanks. Such domains are
+well-represented using bond graph formalism (Rosenberg &
+Karnopp 1983), where the dynamic behavior of the system
+is dened by uid pressures and uid ow-rates. Consider,
+for example, a simple two-tank model, shown in Figure 1(a).
+The model represents a system with two tanks that can hold
+uids, an inlet pipe into tank 1, two outlet pipes, and a con-
+necting pipe between the tanks. The storage tanks are ca-
+pacitive elements and the connecting pipes are resistive el-
+ements. This system is a second order system with natural
+feedback mechanisms.
+
+The temporal causal graph (TCG) framework of (Moster-
+man & Biswas 1997) is a topological representation that
+captures local dynamic relations between variables, and pro-
+vides a more explicit representation of the relation between
+system parameters and the behavior variables. The TCG for
+the two-tank example is shown in Figure 1(b). Here, the
+variables are the pressure and ow-rate variables associated
+with the tanks and the pipes in the system. Causal edges
+in a TCG are labeled with component parameter values and
+temporal information derived from the characteristics of the
+related components. Resistive and junction components in-
+troduce algebraic relations among the system variables, and
+therefore, dene instantaneous temporal relations such as a
+direct or inverse proportionality between the variables (de-
+noted by ). On the other hand, energy storage elements,
+like capacitive and inductive elements, introduce integral re-
+lations between system variables (labeled with a dt). For
+example, capacitive relations from the ow-rate variable to
+the pressure variable are labeled with a 
+dt; this implies a
+C
+temporal relation, i.e., the ow-rate affects the derivative of
+the corresponding pressure variable.
+
+Many systems have the property that they behave nearly
+deterministically in the absence of a fault. The deterministic
+trajectory of the system is often called its nominal trajectory.
+In such cases, faults are sometimes dened implicitly as any
+abrupt change in a parameter that causes a deviation from
+
+the nominal trajectory. Since the temporal causal graph de-
+nes a set of qualitative constraints on the system it can be
+used to predict the effects of sudden discontinuous changes
+in parameters, e.g., burst faults. By contrast, TCGs gener-
+ally are not used identify parameter drift failures, which are
+the result of gradual changes in system parameters that ac-
+cumulate over time.
+
+Dynamic Bayesian Networks
+A dynamic Bayesian network (DBN) is a temporal stochas-
+tic model for a dynamic system. It assumes that the system
+state can be represented by a set of variables, denoted Z.
+Each of these variables Zi can be real-valued or discrete.
+We use Dt  Zt to denote the discrete variables in the
+state. We partition the continuous variables into two sub-
+sets: the subset Y  Z are variables that are measurements,
+i.e., their value is known to us; the remaining subset X are
+unobserved.
+
+The system is modeled as evolving in discrete time steps.
+Thus, each system variable Z has an instantiation Z t for
+each time slice t. A DBN is a compact graphical represen-
+tation for the two-time-slice conditional probability distri-
+bution P Zt+ j Zt.
+It encompasses both the transition
+model and the observation model. More formally, a DBN
+is a directed acyclic graph, whose nodes are random vari-
+ables in two consecutive time slices: Zt and Zt+. The
+edges in the graph represent the direct dependence of a time
+t +  variable Z t+
+.
+Each such node is annotated with a conditional probability
+distribution (CPD), that denes the local probability model
+P Z t+
+. The DBN model is a compact rep-
+resentation for the two-time-slice distribution via the chain
+. We note
+that the transition probabilities for any variable are deter-
+mined completely by the value of the variables in the current
+and previous time step. This Markov assumption requires us
+to model explicitly any variables, such as failures, that in-
+duce long-term correlations on the system state. We return
+to this issue below.
+
+rule: P Zt+ j Zt = Qi P Z t+
+
+on its immediate causes ParZ t+
+
+j ParZ t+
+
+j ParZ t+
+
+i
+
+i
+
+i
+
+i
+
+i
+
+i
+
+For the diagnostic tasks that we focus on, we can restrict
+attention to a very natural subclass of hybrid DBNs  the
+conditional linear Gaussian (CLG) models. Here, we we
+require that discrete nodes cannot have continuous parents.
+We also require that the CPD for a continuous variable be a
+conditional linear Gaussian. Roughly speaking, in a linear
+Gaussian dependence, the node is a linear function of its par-
+ents with Gaussian noise, where the parameters of the linear
+dependence can depend on the discrete parents. More pre-
+cisely, if a node X has continuous parents Y; : : : ; Yk and
+discrete parents U, we parameterize its CPD using param-
+eters au;; : : : ; au;k and 
+u for every instantiation u to the
+discrete parents U. Then P X j y; u is a Gaussian distri-
+
+i= au;iyi and variance 
+u.
+
+bution with a mean au; +Pk
+
+It is important to note that, without discrete variables in
+the network, this type of DBN denes standard linear Gaus-
+sian dynamics. Hence, in this case, the DBN is simply a
+graphical representation of the standard dynamics used in
+a Kalman lter, albeit one that makes certain independence
+
+D1o
+
+R1o
+
+P
+1
+
+R12
+
+P2
+
+R2o
+
+D12
+
+D
+
+2o
+
+F1o
+
+F12
+
+F2o
+
+D
+
+1o
+
+D
+
+12
+
+D2o
+
+R
+
+1o
+
+P1
+
+R
+
+12
+
+P2
+
+R2o
+
+F1o
+
+F12
+
+F2o
+
+E 1o
+
+M
+
+1o
+
+E 12
+
+M
+
+12
+
+E 2o
+
+2oM
+
+Figure 2: The two-tank DBN.
+
+assumptions explicit. In the presence of discrete parents, the
+model represents a mixture of linear models, with the mix-
+tures determined by the discrete variables.
+
+DBNs for diagnosis
+Our goal is to represent a diagnostic system, of the type de-
+scribed above, as a DBN. It turns out that we can use a TCG
+for a system as a blueprint for the skeleton of the DBN. We
+can think of a TCG as a schema for a system of equations
+describing the continuous system dynamics. We distinguish
+two types of arcs in a TCG: temporal arcs are annotated with
+a dt, whereas non-temporal arcs are not. For any variable
+X with no incoming temporal arcs, the TCG expresses an
+instantaneous constraint on X as a function of its predeces-
+sors. For a variable X with at least one incoming temporal
+arc, the TCG expresses a temporal constraint.
+
+We generate a DBN structure from a TCG as follows: For
+each node Xi in the temporal causal graph, we create X t
+i
+and X t+
+to denote the state of the variable at two consec-
+utive time points. (In practice, we will merge nodes that are
+connected by equality constraints in the TCG.) Let Xj be a
+node in the TCG which is a direct predecessor of Xi. If the
+arc from Xj to Xi is non-temporal, we add an arc from X t
+j
+i and an arc fromX t+
+to X t
+. If the arc is temporal,
+. This process sufces
+we add an arc only from X t
+to generate the structure for a DBN that models the nominal
+behavior the system.
+
+to X t+
+j to X t+
+
+j
+
+i
+
+i
+
+i
+
+We then want to add variables that model our observations
+and represent the failure modes of the system. Our frame-
+work accommodates for a wide variety of failure modes. In
+our presentation, we focus on three important types: burst
+failures, measurement failures and parameter drift failures.
+To accommodate these, we need to make two important ad-
+ditions to the TCG induced DBN. Since any parameter that
+
+can change must be modeled in the DBN, we add nodes to
+model the resistance variables. In our implementation, these
+were conductances and not resistances, since we preferred
+to use a multiplicative model. We also need to add nodes
+corresponding to presence of burst failures and the presence
+of measurement failures.
+
+Figure 2 shows a DBN created by this process. The nodes
+Ft and Ft simply add incoming ows and this function has
+been subsumed by the CPDs for P and P. The nodes la-
+beled with M correspond to our measurements of the ow
+parameters in the system and the discrete nodes labeled with
+E indicate the presence of measurement failures. For exam-
+ple, we dene the CPD of M to be a normal distribution
+around F with small variance when E is false, but with a
+much larger variance when the E is true. The R variables
+model the conductances in the system. These have discrete
+parents, D, that indicate the presence of faults. Unlike the
+measurement fault variables, these fault variables have par-
+ents in the previous DBN time slice. This is necessary to
+model persistent events such as drifts. Each conductance
+fault variable takes on four values: stable, fault, buildup and
+leak. When the system is stable, the CPD of the correspond-
+ing R has low noise. When a fault occurs, there is a sharp
+increase in the variance of the corresponding R. The two
+drift faults produce a small drift, dened as a percentage of
+the parameters previous value. We need the temporal con-
+nection between the D nodes to reect the fact that drifts
+persist; once a buildup starts in a pipe it tends to continue.
+
+Inference
+
+In this section, we propose an inference procedure for fault
+diagnosis and detection in models represented as DBNs. As
+we have mentioned, we can view DBNs as a structured
+representation and extension of traditional Kalman lters.
+We therefore build our algorithm starting from the classi-
+cal Kalman lter algorithm. Typical extensions to this algo-
+rithm maintain multiple candidate hypotheses about the state
+of the system. At each time step they update a set of candi-
+date hypotheses and prune out unlikely ones based upon evi-
+dence. If the correct hypothesis remains in the candidate set,
+these algorithms will track the state of the system correctly.
+The problem with this type of approach is that it is very
+difcult to determine which hypotheses to keep for com-
+plex systems: there are too many possible new hypotheses
+at each time, and the information needed to prune away bad
+hypotheses often is not manifested until several time steps
+after the hypotheses are generated. We present a novel ap-
+proach that collapses similar hypotheses into a single hy-
+pothesis, then present a novel approximate smoothing algo-
+rithm that we use to improve our ability to effectively reduce
+the number of hypotheses. This approach allows us to deal
+with complex failure modes and sequences involving many
+failures. But it does not scale to complex systems that in-
+volve many possible failures in different components. We
+address this problem by combining our techniques with a
+decomposition method based on the algorithm of Boyen and
+Koller (1998) that allows the tracking of very large systems.
+
+Tracking and smoothing
+Our dynamic Bayesian network represents the complete
+state of the system at each time step; it includes variables
+for the various aspects of the continuous state of the system
+such as pressures or conductances, as well as discrete vari-
+ables representing possible failures. This complete model
+allows us to reduce the problems of fault detection and di-
+agnosis to the task of tracking (or ltering) a stochastic dy-
+namic system. The tracking problem is dened as follows.
+As the system evolves, we get observations y; y; : : :. At
+time t, our most informed evaluation of the state of the sys-
+tem is our posterior distribution P Zt j y; : : : ; yt about
+the current system state given all of our observations so far.
+We call this posterior distribution our time t belief state, and
+denote it using t. The probability of a discrete fault vari-
+able in this belief state takes into consideration all of the
+evidence up to the present to determine the probability that
+this fault has occurred.
+
+In principle, tracking is a very easy task, which can be
+
+accomplished by the following propagation formula:
+t+zt+=P yt+ j zt+Z tztP zt+ j ztdzt
+where  is a normalizing constant. This process is known as
+a forward pass.
+
+Forward tracking gives the best estimate of the likelihood
+of a fault given the evidence so far. It cannot, however, deal
+with cases where a fault is momentary, but whose direct ef-
+fects are unobservable so that its effects become visible to
+our sensor only later on. The reason is that, at the time
+that the evidence indicates the presence of a previous failure,
+there is no longer a variable in the belief state that represents
+the occurrence of that failure. There is a variable denoting
+this event at an earlier time slice, but the forward pass only
+maintains beliefs about variables in the current time step.
+To explicitly discover faults of this type, we need to also
+reason backwards in time, from our current evidence to the
+time slice where the fault took place. This process is known
+as smoothing. Given evidence y; : : : ; yt+, we compute
+P Zt j y; : : : ; yt; : : : ; yt+. The smoothing process in-
+volves a backward pass where evidence from t +  is trans-
+mitted backwards over the intervening time slices, updating
+each of them. We omit details for lack of space.
+
+One case of enormous practical importance is the case of
+linear systems. These systems are fully continuous, with
+linear Gaussian CPDs. In this case, Zt+ is a linear function
+of Zt and Yt+ is a linear function of Zt+, both with some
+added Gaussian noise. In this case, the belief state can be
+represented exactly as a multivariate Gaussian distribution
+over Zt. This is the basis for an elegant tracking algorithm
+called the Kalman lter (Kalman 1960) which maintains this
+belief state in closed form as the system evolves.
+
+Nonlinearities
+Unfortunately, often we cannot apply the Kalman lter di-
+rectly to real-life problems, since many real-life systems
+are not linear systems. The continuous relationships be-
+tween variables are often nonlinear and the failure modes
+
+of the system are often discrete, introducing discontinuous
+changes in system parameters. When the system is nonlin-
+ear, the belief state is no longer a multivariate Gaussian, and
+rarely has a compact closed form representation.
+
+Consider our simple two-tank model. Here, we have a
+product of two random variables: the ow F is the product
+of the pressure P and the conductance 
+R . A standard solu-
+tion to this type of problem is to approximate the nonlinear
+dynamics with linear dynamics, and then use a standard lin-
+ear Gaussian model. Thus, we try to get the best approxima-
+tion for the rst and second moments, and ignore the rest.
+The classical method of linearizing is called the Extended
+Kalman Filter (Bar-Shalom & Fortmann 1988); it approxi-
+mates the nonlinear function using its second order Taylor
+series expansion.
+In our case, the nonlinear function is a
+product, which is fairly simple, thus we can compute its rst
+and second order moments in closed form.
+
+A far more problematic type of nonlinearity is caused by
+discrete state changes that inuence the continuous system
+dynamics. For example, a fault might drastically change the
+conditional mean or variance of a continuous variable such
+as the conductance. This type of situation is represented in
+our model via the dependence of the continuous variables X
+on the discrete fault variables D.
+
+This type of model creates substantial difculties for
+a tracking algorithm. To understand the difculties, let
+d; : : : ; dt be some particular instantiation of the discrete
+variables at time ; : : : ; t. Given this instantiation, the dy-
+namics of the continuous variables are, once again, linear
+Gaussian. Hence, the time t belief state, conditioned on
+d; : : : ; dt, is a multivariate Gaussian over Xt. The dif-
+culty is that we have one such Gaussian for every single in-
+stantiation d; : : : ; dt. Thus, in order to do exact tracking,
+we need to maintain a separate hypothesis for every combi-
+nation of the discrete variables at all times. The number of
+such hypotheses grows exponentially with the length of the
+sequence, which is clearly unacceptable.
+
+A classical tracking algorithm which deals with this prob-
+lem is described in (Bar-Shalom & Fortmann 1988). The
+main idea is to maintain our belief state as a smaller set
+of hypotheses, each of which corresponds to a single mul-
+tivariate Gaussian. The algorithm, applied to our setting, is
+as follows. It is convenient to introduce the random vari-
+able H t, each of whose values corresponds to one hypoth-
+esis. The distribution of H t corresponds to the likelihood
+of the hypothesis. When the algorithm does the forward
+pass, it considers all the combinations of values of H t and
+Dt+. The result is a mixture with K  jDj components.
+Each of these new hypotheses is conditioned on the new
+measurements Yt+, and using Bayesian conditioning we
+adjust both the mixture weights and the parameters of the
+multivariate Gaussians. The algorithm them prunes the hy-
+potheses that have low probability, and selects only the most
+likely ones to be part of the time t +  belief state.
+
+I our setting, we also wish to maintain values for the per-
+sistent discrete state variables, since the state of the system
+at time t +  depends on these values at time t. We therefore
+represent the belief state using a simple graphical model of
+the form Dt  H t ! Xt. Formally, we represent our time
+
+t belief state t as a mixture tht of K hypotheses, each
+of which is associated with a single multivariate Gaussian
+tXt j ht and a discrete distribution tDt j ht
+
+The deciency of this algorithm is that it selects some hy-
+potheses exactly, while entirely ignoring others.
+In many
+cases, the hypotheses that are maintained all correspond to
+scenarios that are all close to nominal behavior, and are
+therefore qualitatively quite similar. By contrast, the pruned
+hypotheses often correspond to a priori unlikely faults, that
+can lead to very different behaviors. We therefore propose a
+new approach where similar hypotheses are collapsed.
+
+Like the pruning algorithm, we start by performing the
+forward propagation step, dening a set of possible hypothe-
+ses H t; Dt+; let ~H t+ be random variable whose values
+correspond to this larger set of K  jDj hypotheses. Next,
+the measurements are introduced, and the result is a mixture
+distribution  t+ over H t; Dt+ and Xt+. Our task is to
+generate the t +  hypotheses from this mixture.
+
+We dene a new set of mixture components H t+, each of
+which aggregates several of the values of ~H t+. The algo-
+rithm thereby denes a collapsing matrix that is essentially
+a deterministic CPD P H t+ j H t; Dt+. This collapsing
+matrix is used to dene the belief state t+, as a weighted
+average of the mixture components:
+
+t+H t+ = X~H t+
+
+P H t+ j ~H t+ t+ ~H t+
+
+t+Dt+ j H t+ = X~H t+
+
+P  ~H t+ j H t+ t+Dt+ j ~H t+
+
+Finally, we dene t+Xt+ j H t; Dt+ to be the closest
+Gaussian approximation (i.e., the Gaussian that has the same
+mean and covariances as the mixture) to
+
+P ~H t+ P  ~H t+ j H t+P Xt+ j ~H t+.
+
+The main remaining question is the choice of which hy-
+potheses to collapse. We use a greedy approach, that takes
+into consideration both the likelihood of the different hy-
+potheses and their similarity to each other. We sort the dif-
+ferent hypotheses by their likelihood.1 Then, starting from
+the most likely hypothesis, we nd the closest hypothesis
+to it, and merge the two. Note that the merged hypothe-
+sis will have higher probability, so will remain at the top
+of the list. When there are no hypotheses that are close
+enough, we move to the next most likely hypothesis in our
+list. When we have lled our quota of hypotheses, we col-
+lapse all the remaining hypotheses into one, regardless of
+how close they are. As our distance measure, we use the
+sum of the two relative entropies (KL-distances) (Cover &
+Thomas 1991) between the Gaussians associated with the
+hypotheses. We note that we deliberately do not use the
+weights in determining the distance between hypotheses;
+otherwise, we would invariably collapse unlikely hypotheses
+into likely ones, even if they are qualitatively very different.
+
+1To reduce CPU time in our implementation, we rst removed
+all hypotheses with extremely low probability ((cid:0)), and then use
+the merging approach to collapse the rest.
+
+Smoothing
+Both hypothesis collapsing and pruning are myopic meth-
+ods; they only use evidence observed up to time t. As dis-
+cussed above, the effects of some failures have a delay, so
+a failure at time t may not manifest itself in evidence up
+to time t. Since a priori failure probabilities are typically
+quite low, failures could have very weak support in our be-
+lief state. Thus, by the time the data necessary to diagnose
+the failure are available, the failure track may be lost. The
+obvious solution to the problem is to pick the likely hypothe-
+ses based not only on past and present evidence but also on
+future evidence; i.e., we want to use weights obtained after
+some amount of smoothing. However, smoothing requires
+that we rst propagate a belief state forward in time, and
+this is the very problem we are trying to solve. We break
+this cycle by using a slightly different method of collapsing
+hypotheses. Instead of sorting the hypotheses by likelihoods
+we always collapse the two most similar Gaussians until our
+mixture is small enough. This may lead to a more aggres-
+sive collapsing since we do not have a bound on the maximal
+KL-distance between two Gaussians that we collapse. We
+can afford to be more aggressive here since we will not use
+the results of smoothing to update our continuous variables,
+but only to guide our hypothesis reduction method.
+
+It remains to show how we do the backward propagation
+process required for smoothing. The primary difculty is
+the correct handling of the continuous part of our belief state
+approximation. The reason is that after collapsing a mixture
+of Gaussians, updating the distribution of each component
+based only on evidence relative to the result of the collapse
+is a non-trivial problem. Fortunately, we are primarily inter-
+ested in getting a more informed posterior for the hypothesis
+variable, since our main goal is simply to identify the most
+likely hypotheses. The continuous parts will typically track
+correctly if we identify the correct hypotheses. Therefore,
+we execute smoothing only for the discrete variables.
+
+The process is now easy; assume that we use a looka-
+head window of  time slices (thus, the last observation we
+get to see is t +  + ). The backward message to time
+step t +  is simply the probability of yt++; : : : ; yt++
+given H t+. This message denes a posterior distribution
+over H t+, which can be computed using standard methods.
+We now use our collapsing matrix to compute the effect of
+this new information on Dt+l and H t+l
+(cid:0). In particular,
+the probabilities of all the components which were collapsed
+into some ht+ are multiplied by the change in the probabil-
+ity of ht+. This is also intuitively appealing  since all the
+collapsed components were similar, we should change their
+probabilities by the same factor. The result is a message to
+time step t +  (cid:0) , which is propagated in the same way.
+
+When the process terminates at time step t, we have the
+probability P H t j y; : : : ; yt++, which we can then use
+to better guide which hypotheses to eliminate, as well as our
+collapsing algorithm. We note, however, that the results of
+smoothing should be used only for guiding the approxima-
+tion. In order to avoid double-counting evidence, it is very
+important to continue our tracking using our unsmoothed
+hypothesis weights tH t.
+
+Subsystem decomposition
+One of the underlying assumptions of the algorithm is that
+it is feasible to enumerate all the possible instantiations of
+the discrete variables Dt. Unfortunately, for non-trivial sys-
+tems, this assumption is often unrealistic. The number of
+possible instantiations of the discrete variables Dt grows
+exponentially with the number of discrete variables in the
+system. To deal with this problem, we take an approach
+introduced for discrete systems in (Boyen & Koller 1998).
+The crucial idea is to make use of the fact that large systems
+are typically composed of subsystems, and that, while the
+subsystems are correlated, the interaction between them is
+often not so strong. Therefore, it might be reasonable to ap-
+proximate our beliefs about the system using separate beliefs
+about the subsystems, i.e., using a belief state where they are
+independent. Note that this approximation is very different
+from one that ignores the interactions between the subsys-
+tems. As we do the propagation, the state of one subsystem
+can inuence the state of another; but we then decouple the
+correlations resulting from this interaction when we main-
+tain our beliefs about the current system state.
+
+More precisely, we partition the system variables into n
+disjoint sets, corresponding to the different subsystems. Let
+Di and Xi be the discrete and continuous variables in sub-
+system i, respectively. As for the case of a single system, we
+represent the belief state for each subsystem i as a mixture,
+represented using a hypothesis variable Hi. We also asso-
+ciate with each subsystem a set of observation variables Yi,
+which are the ones that are most relevant to the subsystem.
+i over each subsystem i.
+Since subsystem i may be inuenced directly by some other
+subsystems, we cannot perform the inference completely in
+isolation inside subsystem i. Instead, we consider the ex-
+tended subsystem which includes subsystem i, and all the
+variables from other subsystems which inuence it.
+
+Our goal is to get a belief state t
+
+Given our belief state representation, it is possible to de-
+scribe the distribution over the extended subsystem as a mix-
+ture of Gaussians. As in the single subsystem case, we can
+introduce evidence which changes our probability distribu-
+tion over discrete variables as well as over continuous vari-
+ables. Note that different extended subsystems may over-
+lap, and after introducing different measurements into these
+subsystems we may have a different distribution over the
+shared variables. We synchronize these probabilities using a
+message-passing algorithm called calibration (Lauritzen &
+Spiegelhalter 1988). As in backward propagation, we only
+update the discrete variables, not the continuous ones. As
+a result of this phase, all the discrete variables are updated
+using all the measurement information. This is important, as
+outside evidence can be important in determining the likeli-
+hood of the different hypotheses.
+
+It is also possible to modify the smoothing algorithm to
+use the decomposed representation of the belief state. The
+collapsing is done independently in every subsystem using
+the same algorithm (and giving a collapsing matrix for every
+subsystem). The backward messages are used to update the
+hypothesis variables of each one of the subsystems. The in-
+formation can be propagated backwards with the collapsing
+matrices. The only difference is that after this propagation,
+
+subsystem 1
+
+subsystem 2
+
+subsystem 3
+
+subsystem 4
+
+subsystem 5
+
+R10
+
+Tank 1
+
+R12
+
+F12
+
+Tank 2
+
+R23
+
+F23
+
+Tank 3
+
+Tank 4
+
+R45
+
+F45
+
+R34
+
+F34
+
+Tank 5
+
+R50
+
+P1
+
+P2
+
+P3
+
+P4
+
+P5
+
+F10
+
+= Measurement
+
+F50
+
+e
+c
+n
+a
+t
+c
+u
+d
+n
+o
+C
+
+2
+
+1.8
+
+1.6
+
+1.4
+
+1.2
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+R12 Truth
+R12 Belief
+R45 Truth
+R45 Belief
+R23 Truth
+R23 Belief
+
+0
+
+5
+
+10
+
+15
+
+Time steps
+
+20
+
+25
+
+30
+
+Figure 3: Five tank system and results
+
+we need to calibrate the discrete variables of the subsystems,
+just like in the forward pass.
+
+Experimental Results
+
+We tested our algorithm on a system which contains ve wa-
+ter tanks, shown in Figure 3. The system contains six con-
+ductances and ve pressures, which are all free parameters,
+but only three measurements, making it a challenging sys-
+tem to track. In addition, the system contains the three types
+of failures described in Section : drifts, bursts and measure-
+ment errors, each occurring with probability :. Thus,
+at every time step every conductance has 4 possible failure
+modes (stable, fault, buildup, leak) and each measurement
+has 2 possible failure modes. Counting all the possible fail-
+ures at time t +  and the persistent failures from time t,
+the system has  possible failure modes at any point in
+time, eliminating any hope of using inference without some
+decomposition of the system.
+
+In our experiments we decomposed the system into ve
+subsystems, since decompositions into less subsystems de-
+manded too much memory. Each tank was considered to
+be a subsystem (see Figure 3). We tracked ve hypotheses
+per subsystem, with a lookahead of two steps when doing
+smoothing. We tested our algorithm on a complicated se-
+quence:
+ At t = , R starts to experience a negative drift.
+ At t = , we introduce two simultaneous measurement
+
+errors in the measurements of F and Fo.
+
+ At t = , R bursts, and then returns to a steady state.
+ At t =  R starts a negative drift.
+ At t =  R bursts and then returns to normal.
+ At t =  R bursts.
+
+The graph in Figure 3 shows the results of tracking R,
+
+R and R. Initially, at t =  the effect of the drift in R
+was negligible. The corresponding hypothesis had a prob-
+ability of :, but after smoothing the probability went
+up to :. As a result our algorithm considered this a
+likely hypothesis, and kept it in the belief state. At t =  the
+probability of a negative drift went from : to 		:	 af-
+ter smoothing. At this point our algorithm correctly detected
+the negative drift, and maintained a very high probability for
+this event until t = . At this point, before smoothing, our
+algorithm considered two hypotheses: a burst in R (prob-
+ability ) or the persistence of the negative drift and a
+measurement failure (probability ). Smoothing raised
+the probability of a burst (the correct hypothesis) to .
+The actual values of R were tracked with high accuracy.
+
+The measurement of F made the tracking of R a rel-
+atively simple problem. Things are much more complicated
+for R. Not only is there no direct measurement of F,
+there is no measurement at all in subsystem 4! Therefore,
+tracking R is a real challenge. Due to lack of space we
+omit the actual numbers, but in this run our algorithm de-
+tected the drift as soon as it began. (In other runs the de-
+tection was sometimes delayed by 23 steps.) It is also in-
+teresting to see the behavior of R during the burst. Our
+algorithm detected the burst, but since no evidence is used
+in subsystem 4 it could not track the true value of the burst
+correctly. We plan to address this problem in future work
+by propagating continuous information between the subsys-
+tems as well as discrete information.
+
+For the measurements failures at t = , our algorithm
+behaved in almost the same way for the two measurements,
+so we report on M only. Before smoothing, our algorithm
+considered two hypotheses  a burst in R (probability
+:) or a measurement fault and a persistent negative drift
+in R (probability :). After smoothing the probability
+of the correct hypothesis went up to almost .
+
+We feel that these results demonstrate the power of our al-
+gorithm, and its ability to correctly diagnose and track even
+a complex system with a small number of measurements.
+
+Conclusions and future work
+
+In this paper, we presented a new approach for monitoring
+and diagnosis of hybrid systems. We model these systems as
+DBNs, thus reducing the problem of diagnosis to the prob-
+lem of tracking. It is not a surprise that tracking hybrid sys-
+tems is also a difcult problem. In this paper we focus on
+a special class of hybrid systems: ones that given some par-
+ticular assignment to the discrete variables have linear dy-
+namics (or can be linearized with a satisfactory precision).
+Furthermore, we focus on systems that are composed of sev-
+eral weakly interacting subsystems. We believe that many
+real-life physical systems belong to this class of systems.
+
+We present a novel tracking algorithm for this class of
+systems. First, we collapse similar hypotheses instead of
+just choosing the most likely ones. This technique allows
+us to use a bounded window look-ahead into the future. We
+use future observations to assist us in determining which hy-
+potheses are the likely candidates and should be kept relative
+unchanged, and which are less likely and can be collapsed
+more aggressively. Our nal contribution is introducing a
+
+way to avoid the exponential blowup, caused by many dis-
+crete variables within a time slice. We do this by reasoning
+separately about the different subsystems, while still propa-
+gating correlations between them.
+
+Our initial experiments with this approach are very en-
+couraging. We have tested it on a very large system (one
+with  different discrete states per time slice), with a par-
+ticularly difcult scenario. Our algorithm found most of the
+faults, showing that it can be used to provide reliable track-
+ing and diagnosis even for very hard problems. Of course,
+we plan to conduct further experiments in other domains.
+
+We are currently working on extending the calibration al-
+gorithm to allow us to propagate information between sub-
+systems not only for the discrete variables but for continu-
+ous variables as well. We believe that this new feature will
+signicantly improve our tracking capabilities, especially on
+long sequences with many events.
+
+We are also looking for ways to extend the algorithm be-
+yond the family of conditional linear systems (or systems
+which can be approximated as such). In particular, we hope
+to be able to handle discrete children of continuous parents
+and highly non-linear evidence models.
+
+Finally, we hope to apply our algorithm on real-life ap-
+plications and not just on synthetic data. We are exploring
+possible applications in the diagnosis domain, such as mon-
+itoring the performance of an engine, as well as application
+in other domains, such as visual tracking.
+
+Acknowledgments. This research was supported by an
+ONR Young Investigator Award grant number N00014-99-
+1-0464 and by ARO under the MURI program, Integrated
+Approach to Intelligent Systems, grant number DAAH04-
+96-1-0341, and by the Terman Foundation.
+

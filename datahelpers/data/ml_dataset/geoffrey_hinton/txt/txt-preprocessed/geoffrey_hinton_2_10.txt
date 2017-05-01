@@ -1,0 +1,1669 @@
+AbstractGaussian mixture models are currently the domi-
+nant technique for modeling the emission distribution of hidden
+Markov models for speech recognition. We show that better
+phone recognition on the TIMIT dataset can be achieved by
+replacing Gaussian mixture models by deep neural networks
+that contain many layers of features and a very large number
+of parameters. These networks are rst pre-trained as a multi-
+layer generative model of a window of spectral feature vectors
+without making use of any discriminative information. Once the
+generative pre-training has designed the features, we perform
+discriminative ne-tuning using backpropagation to adjust the
+features slightly to make them better at predicting a probability
+distribution over the states of monophone hidden Markov models.
+
+using a feature vector that describes segments of the temporal
+evolution of critical-band spectral densities within a single
+critical band. Sub-word posterior probabilities are estimated
+using feedforward neural networks for each critical band and
+these probabilities are merged to produce the nal estimate
+of the posterior probabilities using another feedforward neural
+network. In [8], the split temporal context system is introduced
+which modies the TRAP system by including, in the middle
+layer of the system, splits over time as well as over frequency
+bands before the nal merger neural network.
+
+Feedforward neural networks offer several potential advan-
+
+Index TermsAcoustic Modeling, deep belief networks, neural
+
+networks, phone recognition
+
+I. INTRODUCTION
+
+A Utomatic speech Recognition (ASR) has evolved signi-
+
+cantly over the past few decades. Early systems typically
+discriminated isolated digits or yes/no, whereas current sys-
+tems can do quite well at recognizing telephone-quality, spon-
+taneous speech. A huge amount of progress has been made
+in improving word recognition rates, but the core acoustic
+modeling has remained fairly stable, despite many attempts
+to develop better alternatives.
+
+A typical ASR system uses Hidden Markov Models
+(HMMs) to model the sequential structure of speech signals,
+with each HMM state using a mixture of Gaussians to model a
+spectral representation of the sound wave. The most common
+spectral representation is a set of Mel Frequency Cepstral
+coefcients (MFCCs) derived from a window of about 25 ms
+of speech. The window is typically advanced by about 10 ms
+per frame, and each frame of coefcients is augmented with
+differences and differences of differences with nearby frames.
+One research direction involves using deeper acoustic mod-
+els that contain many layers of features. The work in [1] pro-
+poses a hierarchical framework where each layer is designed to
+capture a set of distinctive feature landmarks. For each feature,
+a specialized acoustic representation is constructed in which
+that feature is easy to detect. In [2], a probabilistic generative
+model is introduced where the dynamic structure in the hidden
+vocal tract resonance space is used to characterize long-span
+contextual inuence across phonetic units.
+
+Feedforward neural networks have been used in many
+ASR systems [3], [4], [5]. Inspired by insights from [6],
+the TRAP architecture [7] models a whole second of speech
+
+Copyright (c) 2010 IEEE. Personal use of this material
+
+is permitted.
+However, permission to use this material for any other purposes must be
+obtained from the IEEE by sending a request to pubs-permissions@ieee.org.
+The authors are with the University of Toronto, Toronto, ON, M5S
+3G4, Canada. (e-mail: asamir@cs.toronto.edu; gdahl@cs.toronto.edu; hin-
+ton@cs.toronto.edu)
+
+tages over GMMs:
+
+ Their estimation of the posterior probabilities of HMM
+states does not require detailed assumptions about the
+data distribution.
+
+ They allow an easy way of combining diverse features,
+
+including both discrete and continuous features.
+
+ They use far more of the data to constrain each parameter
+because the output on each training case is sensitive to a
+large fraction of the weights.
+
+The benet of each weight
+
+in a neural network being
+constrained by a larger fraction of training cases than each
+parameter in a GMM has been masked by other differences
+in training. Neural networks have traditionally been trained
+purely discriminatively, whereas GMMs are typically trained
+as generative models (even if discriminative training is per-
+formed later in the training procedure). Generative training
+allows the data to impose many more bits of constraint on the
+parameters (see below), thus partially compensating for the
+fact that each component of a large GMM must be trained on
+a very small fraction of the data.
+
+MFCCs, GMMs, and HMMs co-evolved as a way of doing
+speech recognition when computers were too slow to explore
+more computationally intensive approaches. MFCCs throw
+away a lot of the information in the sound wave, but pre-
+serve most of the information required for discrimination. By
+including temporal differences, MFCCs partially overcome the
+very strong conditional independence assumption of HMMs,
+namely that successive frames are independent given the
+hidden state of the HMM. The temporal differences also allow
+diagonal covariance Gaussians to model the strong temporal
+covariances by reducing these particular pairwise covariances
+to individual coefcients. As we shall see, a Fourier transform
+based lterbank, densely distributed on a mel-scale,
+is a
+potential alternative to MFCCs for models that can easily
+model correlated features [7].
+
+GMMs are easy to t to data using the EM algorithm,
+especially when they have diagonal covariance matrices, and
+with enough components they can model any distribution.
+They are, however, statistically inefcient at modeling high-
+dimensional data that has any kind of componential structure.
+
+2
+
+SUBMITTED TO IEEE TRANS. ON AUDIO, SPEECH, AND LANGUAGE PROCESSING
+
+Suppose, for example, that N signicantly different patterns
+can occur in one sub-band and M signicantly different pat-
+terns can occur in another sub-band. Suppose also that which
+pattern occurs in each sub-band is approximately independent.
+A GMM requires N M components to model this structure
+because each component must generate both sub-bands (each
+piece of data has only a single latent cause). On the other
+hand, a model that explains the data using multiple causes
+only requires N + M components, each of which is specic to
+a particular sub-band. This exponential inefciency of GMMs
+for modeling factorial structure leads to ASR systems that
+have a very large number of Gaussians, most of which must
+be estimated from a very small fraction of the data.
+
+In this paper, we focus on a more powerful alternative
+to GMMs for relating HMM states to feature vectors. In
+particular, we reconsider the use of multi-layer, feed-forward
+neural networks that take a window of feature vectors as input
+and produce posterior probabilities of HMM states as output.
+Previous instantiations of the neural network approach
+have used the backpropagation algorithm to train the neural
+networks discriminatively. These approaches coincided nicely
+with a trend initiated by [9] in which generative modeling
+is replaced by discriminative training. Discriminative training
+is a very sensible thing to do when using computers that
+are too slow to learn a really good generative model of the
+data. As generative models get better, however, the advantage
+of discriminative training gets smaller1 and is eventually
+outweighed by a major disadvantage: the amount of constraint
+that the data imposes on the parameters of a discriminative
+model is equal to the number of bits required to specify the
+correct labels of the training cases, whereas the amount of
+constraint for a generative model is equal to the number of
+bits required to specify the input vectors of the training cases.
+So when the input vectors contain much more structure than
+the labels, a generative model can learn many more parameters
+before it overts.
+
+The benet of learning a generative model is greatly mag-
+nied when there is a large supply of unlabeled speech in
+addition to the training data that has been labeled by a forced
+HMM alignment. We do not make use of unlabeled data in
+this paper, but it could only improve our results relative to
+purely discriminative approaches.
+
+Naturally, many of the high-level features learned by the
+generative model may be irrelevant for making the required
+discriminations, even though they are important for explaining
+the input data. However,
+this is a price worth paying if
+computation is cheap and some of the high-level features are
+very good for discriminating between the classes of interest.
+The main novelty of our work is to show that we can achieve
+consistently better phone recognition performance by pre-
+training a multi-layer neural network, one layer at a time, as
+a generative model of the window of speech coefcients. This
+pre-training makes it easier to optimize deep neural networks
+that have many layers of hidden units and it also allows
+
+many more parameters to be used before overtting occurs.
+The generative pre-training creates many layers of feature
+detectors that become progressively more complex. A subse-
+quent phase of discriminative ne-tuning, using the standard
+backpropagation algorithm, then slightly adjusts the features
+in every layer to make them more useful for discrimination.
+The big advantage of this new way of training multi-layer
+neural networks is that the limited amount of information in
+the labels is not used to design features from scratch. It is only
+used to change the features ever so slightly in order to adjust
+the class boundaries. The features themselves are discovered
+by building a multi-layer generative model of the much richer
+information in the window of speech coefcients, and this does
+not require labeled data.
+
+Our approach makes two major assumptions about
+
+the
+nature of the relationship between the input data, which in this
+case is a window of speech coefcients, and the labels, which
+are HMM states produced by a forced alignment using a pre-
+existing ASR model. First, we assume that the discrimination
+we want to perform is more directly related to the underlying
+causes of the data than to the individual elements of the
+data itself. Second, we assume that a good feature-vector
+representation of the underlying causes can be recovered from
+the input data by modeling its higher-order statistical structure.
+It is easy to dream up articial tasks in which our two
+assumptions are entirely wrong, but a purely discriminative
+machine learning approach, such as a support vector machine
+with a polynomial kernel, would still work very well. Suppose,
+for example, that the label assigned to a window of speech
+coefcients is simply the parity of two particular components
+of the binarized data. Our approach would almost certainly
+fail because this information is unlikely to be preserved in the
+high-level features and, even if it is preserved, it will be in
+a much more complex form than the simple form it had in
+the data. Our claim is that, because of the highly structured
+way in which speech is generated, this articial task is exactly
+what ASR is not like, and machine learning methods that do
+not make use of the huge difference between these two tasks
+have no long term future in ASR.
+
+II. LEARNING A MULTILAYER GENERATIVE MODEL
+
+There are two very different ways to understand our ap-
+proach to learning a multi-layer generative model of a window
+of speech coefcients. In the directed view, we t a multilayer
+generative model
+that has innitely many layers of latent
+variables, but uses weight sharing among the higher layers
+to keep the number of parameters under control. In the
+undirected, energy-based view, we t a relatively simple
+type of learning module that only has one layer of latent
+variables, but then we treat the activities of the latent variables
+as data and t the same type of module again to this new
+data. This can be repeated as many times as we like to
+learn as many layers of latent variables as we desire.
+
+A. The undirected view
+
+1It is impossible for a discriminatively trained system to produce better
+estimates of the posterior probability ratio of two classes than the ratio of
+the probabilities of generating the data from a mixture of two, class-specic,
+generative models if these models and their mixing proportions are correct.
+
+The simple learning module used in the undirected view is
+called a Restricted Boltzmann Machine (RBM). It is a bi-
+partite graph in which visible units that represent observations
+
+MOHAMED, DAHL AND HINTON : ACOUSTIC MODELING USING DEEP BELIEF NETWORKS
+
+3
+
+are connected to hidden units that learn to represent features
+using undirected weighted connections. An RBM is restricted
+in the sense that there are no visible-visible or hidden-hidden
+connections. In the simplest type of RBM, the binary RBM,
+both the hidden and visible units are binary and stochastic. To
+deal with real-valued input data, we use a Gaussian-Bernoulli
+RBM in which the hidden units are binary but the input units
+are linear with Gaussian noise. We will explain the Gaussian-
+Bernoulli RBM later after rst explaining the simpler binary
+RBM.
+
+In a binary RBM, the weights on the connections and the
+biases of the individual units dene a probability distribution
+over the joint states of the visible and hidden units via an
+energy function. The energy of a joint conguration is:
+
+E(v, h|) = 
+
+V
+
+H
+
+X
+
+i=1
+
+X
+
+j=1
+
+wijvihj 
+
+V
+
+X
+
+i=1
+
+bivi 
+
+H
+
+X
+
+j=1
+
+ajhj
+
+(1)
+
+where  = (w, b, a) and wij
+represents the symmetric
+interaction term between visible unit i and hidden unit j while
+bi and aj are their bias terms. V and H are the numbers of
+visible and hidden units.
+
+The probability that an RBM assigns to a visible vector v
+
+is:
+
+p(v|) = Ph eE(v,h)
+Pu Ph eE(u,h)
+
+(2)
+
+Since there are no hidden-hidden connections, the conditional
+distribution p(h|v, ) is factorial and is given by:
+
+p(hj = 1|v, ) = (aj +
+
+V
+
+X
+
+i=1
+
+wijvi)
+
+(3)
+
+where (x) = (1 + ex)
+no visible-visible connections,
+p(v|h, ) is factorial and is given by:
+
+1. Similarly, since there are
+the conditional distribution
+
+p(vi = 1|h, ) = (bi +
+
+H
+
+X
+
+j=1
+
+wijhj),
+
+(4)
+
+Exact maximum likelihood learning is infeasible in a large
+RBM because it is exponentially expensive to compute the
+derivative of the log probability of the training data. Never-
+theless, RBMs have an efcient approximate training proce-
+dure called contrastive divergence [10] which makes them
+suitable as building blocks for learning DBNs. We repeatedly
+update each weight, wij, using the difference between two
+measured, pairwise correlations:
+
+wij  hvihjidata  hvihjireconstruction
+
+(5)
+
+The rst term on the RHS of Eq. 5 is the measured frequency
+with which visible unit i and hidden unit j are on together
+when the visible vectors are samples from the training set and
+the states of the hidden units are determined by Eq. 3. The
+second term is the measured frequency with which i and j are
+both on when the visible vectors are reconstructions of the
+data vectors and the states of the hidden units are determined
+by applying Eq. 3 to the reconstructions. Reconstructions are
+produced by applying Eq. 4 to the hidden states that were
+
+computed from the data when computing the rst term on the
+RHS of Eq. 5.
+
+The contrastive divergence learning rule does not follow the
+maximum likelihood gradient. Understanding why it works at
+all is much easier using the directed view, so we defer the
+explanation to the next section. After learning the weights in
+an RBM module, we use the states of the hidden units, when
+driven by real data, as the data for training another module of
+the same kind. This process can be repeated to learn as many
+layers of features as we desire. Again, understanding why this
+greedy approach works is much easier using the directed view.
+For Gaussian-Bernoulli RBMs2 the energy of a joint con-
+
+guration is:
+
+E(v, h|) =
+
+V
+
+X
+
+i=1
+
+(vi  bi)2
+
+2
+
+
+
+V
+
+H
+
+X
+
+i=1
+
+X
+
+j=1
+
+wijvihj 
+
+H
+
+X
+
+j=1
+
+ajhj (6)
+
+Since there are no visible-visible connections, the conditional
+distribution p(v|h, ) is factorial and is given by:
+
+p(vi|h, ) = N 
+
+bi +
+
+H
+
+X
+
+j=1
+
+wijhj, 1
+
+
+(7)
+
+where N (, V ) is a Gaussian with mean  and variance V .
+Apart from these differences, the inference and learning rules
+for a Gaussian-Bernoulli RBM are the same as for a binary
+RBM, though the learning rate needs to be smaller.
+
+B. The directed view
+
+In the undirected view, it is easy to say what we do, but
+hard to justify it. In the alternative directed view, the learning
+algorithm is more complicated to explain, but much easier to
+justify [11].
+
+Fig. 1. A multi-layer sigmoid belief net composed of stochastic binary units.
+
+Consider a sigmoid belief net [12] that consists of multiple
+layers of binary stochastic units as shown in gure 1. The
+higher hidden layers represent binary features and the bot-
+tom, visible, layer represents a binary data vector (we will
+
+2To keep the equation simple, we assume that the Gaussian noise level of
+all the visible units is xed at 1. We also normalize the input data to have a
+xed variance of 1 for each component over the whole training set.
+
+4
+
+SUBMITTED TO IEEE TRANS. ON AUDIO, SPEECH, AND LANGUAGE PROCESSING
+
+directions.
+
+1) Learning with tied weights: Consider a sigmoid belief
+net with an innite number of layers and with tied symmetric
+weights between layers as shown in gure 2. In this net, the
+posterior in the rst hidden layer is factorial: The hidden units
+are independent given the states of the visible units. This
+occurs because the correlations created by the prior coming
+from all of the layers above exactly cancel the anti-correlations
+in the likelihood term coming from the layer below [11].
+Moreover, the factorial posterior can be computed by simply
+multiplying the visible vector by the transposed weight matrix
+and then applying the logistic function to each element:
+
+p(h(1)
+
+j =1|v, W) = (b(1)
+
+j + X
+
+i
+
+wijvi)
+
+(10)
+
+Notice that this simple operation computes the normalized
+product of the prior and the likelihood terms, not the likelihood
+term, which is considerably more complicated.
+
+show how to handle real-valued data later). Generating data
+from the model is easy. First, binary states are chosen for the
+top layer of hidden units using their biases to determine the
+log odds of choosing 1 or 0. Given the binary states of the
+units in layer k, binary states are chosen in parallel for all
+of the units in layer k  1 by applying the logistic sigmoid
+1 to the total input received from
+function (x) = (1 + ex)
+the layer above plus the units own bias:
+
+p(h(k1)
+
+i
+
+=1|h(k), W(k)) = (b(k1)
+
+i
+
+w(k)
+ij h(k)
+
+j
+
+)
+
+(8)
+
++ X
+
+j
+
+where h(k) is the vector of binary states for layer k and h(k)
+is its jth element. W(k) is the matrix of weights from layer
+k to layer k  1, w(k)
+is
+the bias of unit j in layer k. The vector of states of the visible
+units, v, is also called h(0).
+
+is an element of that matrix, and b(k)
+
+ij
+
+j
+
+j
+
+Now consider the problem of adjusting the weights on the
+top-down connections so that the model is more likely to gen-
+erate the binary training data on its visible units. Performing
+gradient ascent in the expected log probability of generating
+the training data is very simple if we can get unbiased samples
+of the hidden states from their posterior distribution given an
+observed data vector:
+
+wij  Dh(k)
+
+j (cid:16)h(k1)
+
+i
+
+ p(h(k1)
+
+i
+
+=1|h(k), W(k))(cid:17)E
+
+(9)
+
+where the angle brackets denote an expectation over the
+training data. If we want to ensure that every weight update
+increases the log probability of the data, we need to use a very
+small learning rate and we need to average over many samples
+from the posterior. In practice, it is much more efcient to use
+a larger learning rate on small mini-batches of the data.
+
+Unfortunately, getting unbiased samples from the exponen-
+tially large posterior appears to be intractable for all but the
+smallest models.3 Consider, for example, the posterior in the
+rst hidden layer. This posterior is the normalized product of
+a complicated, non-factorial prior created by the layers above
+and a complicated non-factorial likelihood term created by
+the observed states of the visible units. When generating data
+from the model, the units in the rst hidden layer are, by
+denition, conditionally independent given the states of the
+units in the layer above. When inferring the posterior, however,
+they are not conditionally independent given the states of the
+units in the layer below, even with a uniform prior, due to the
+phenomenon of explaining away [13].
+
+Approximate samples from the posterior can be obtained
+by using a slow Markov chain Monte Carlo method [12] or
+a fast but crude approximation [14]. There is, however, one
+very special form of sigmoid belief net in which sampling
+from the posterior distribution in every hidden layer is just
+as easy as generating data from the model. In fact, inference
+and generation are the same process, but running in opposite
+
+3In this respect, mixture models appear to be far superior. The exact
+posterior over the mixture components is easy to compute because it only has
+as many terms as the number of components. This computational simplicity,
+however, comes at a terrible price: The whole data vector must be generated
+by a single component. As we shall see later, it is possible to achieve an
+equally simple posterior whilst allowing multiple simultaneous causes.
+
+Fig. 2. An innite sigmoid belief net with tied weights. Alternate layers
+must have the same number of units. The tied weights make inference much
+simpler in this net than in a general sigmoid belief net.
+
+Once the posterior has been sampled for the rst hidden
+layer, exactly the same process can be used for the next hidden
+layer. So inference is extremely easy in this special kind of
+network. Learning is a little more difcult because every copy
+of the tied weight matrix gets different derivatives. However,
+we know in advance that the expected derivatives will be
+zero for very high level layers. This is because the bottom-
+up inference process is really a Markov chain that eventually
+converges to its stationary distribution in the higher layers.
+When it is sampling from its stationary distribution, the current
+weights are perfect for explaining the samples, so, on average,
+there is no derivative. When the weights and biases are small,
+this Markov chain converges rapidly and we can approximate
+
+MOHAMED, DAHL AND HINTON : ACOUSTIC MODELING USING DEEP BELIEF NETWORKS
+
+5
+
+gradient ascent in the log likelihood quite well by just adding
+the derivatives for the rst two layers [10].
+
+The tied weights mean that the process of inferring h(2)
+from h(1) is the same as the process of generating v from
+h(1). Consequently, h(2) can be viewed as a noisy but unbiased
+estimate of the probabilities for the visible units predicted by
+h(1). Similarly h(3) can be viewed as a noisy estimate of the
+probabilities for the units in the rst hidden layer predicted
+by h(2). We can use these two facts and equation 9 to get an
+unbiased estimate of the sum of the derivatives for the rst
+two layers of weights. This gives the following learning rule
+which is known as contrastive divergence [10]:
+
+wij  Dh(1)
+ hvih(1)
+
+j (vi  h(2)
+j i  hh(2)
+
+i
+
+i h(3)
+j i
+
+) + h(2)
+
+i
+
+(h(1)
+
+j  h(3)
+
+j )E
+
+(11)
+
+where the angle brackets denote expectations over the training
+data (or a representative mini-batch).
+
+As the weights and biases grow, it makes sense to add
+the derivatives for more layers [15] and for learning really
+good generative models this is essential [16]. For the purpose
+of creating sensible feature detectors, however, even a
+rather poorly tuned generative model is good enough, and
+the learning rule in equation 11 is sufcient even when the
+weights get quite large. The approximate maximum likelihood
+derivatives produced by this learning rule become highly
+biased, but they are cheap to compute and they also have
+very low variance [17] which is important for allowing a high
+learning rate when the derivatives are estimated from small
+mini-batches of data. These issues are discussed further in
+[18].
+
+2) Learning different weights in each layer: Now that
+we have efcient inference and learning procedures for an
+innite sigmoid belief net with tied weights, the next step
+is to make the generative model more powerful by allowing
+different weights in different layers. First, we learn with all of
+the weight matrices tied together. Then we untie the bottom
+weight matrix from the other matrices and freeze the values
+of its weights. This frozen matrix is now called W (1). Then,
+keeping all the remaining matrices tied together, we continue
+to learn the higher matrices, treating the inferred state vector
+h(1) in just the same way as we previously treated v. This
+involves rst inferring h(1) from v by using (W (1))T and
+then inferring h(2), h(3), and h(4) in a similar bottom-up
+manner using W or W T . The inference for the higher hidden
+layers produces unbiased samples given h(1), but the simple
+inference method no longer gives an exactly unbiased sample
+for h(1) because the higher weight matrices are no longer equal
+to W (1) so they no longer create a prior that exactly cancels
+the correlations in the likelihood term. However, the posterior
+for h(1) is still approximately factorial and it can be proved
+that if we continue to infer h(1) as if the higher matrices had
+not changed, then learning improves a variational lower bound
+on the log probability of the training data [11]4.
+
+4The proof assumes that each layer of weights is learned by following the
+maximum likelihood derivative, rather than using the contrastive divergence
+approximation.
+
+We can repeat the process of freezing and untying the lowest
+copy of the currently tied weight matrices as many times as
+we like, so we can learn as many layers of features as we
+desire. When we have learned K layers of features, we are
+left with a directed generative model called a deep belief
+net (DBN) that has K different weight matrices between
+the lower layers and an innite number of higher layers that
+all use the K th weight matrix or its transpose. We then
+simply throw away all layers above the K th and add a nal
+softmax layer of label units representing HMM states. We
+also jettison the probabilistic interpretation that was used to
+justify the generative learning, and we treat the whole system
+as a feedforward, deterministic neural network. This network
+is then discriminatively ne-tuned by using backpropagation
+to maximize the log probability of the correct HMM state5.
+
+For the softmax nal layer, the probability of label l given
+the real-valued activations of the nal layer of features (which
+we call h(K) even though they are no longer binary sampled
+values) is dened to be
+
+p(l|h(K)) =
+
+exp(bl + Pi h(K)
+i wil)
+Pm exp(bm + Pi h(K)
+
+i wim)
+
+(12)
+
+where bl is the bias of the label and wil is the weight from
+hidden unit i in layer K to label l. The discriminative training
+must learn the weights from the last layer of features to the
+label units, but it does not need to create any new feature
+detectors. It simply ne-tunes existing feature detectors that
+were discovered by the unsupervised pre-training.
+
+To model real values in the visible layer, we simply replace
+the binary unit by linear units with Gaussian noise that has
+a variance of 1. This does not change p(h(1)|v) and the
+distribution for visible unit i given h(1) is a Gaussian with
+unit variance and mean i given by:
+
+i = b(0)
+
+i + X
+
+j
+
+w(1)
+ij h(1)
+
+j
+
+(13)
+
+This type of generative pre-training followed by discrimi-
+native ne-tuning has been used successfully for hand-written
+character recognition [11], [10], [19], dimensionality reduction
+[20], 3-D object recognition [21], [22], extracting road maps
+from cluttered aerial images [23], information retrieval [24],
+[25] and machine transliteration [26]. As we shall see, it is
+also very good for phone recognition.
+
+III. USING DEEP BELIEF NETS FOR PHONE RECOGNITION
+In order to apply DBNs with xed input and output dimen-
+sionality to phone recognition, we use a context window of
+n successive frames of speech coefcients to set the states
+of the visible units of the lowest layer of the DBN. Once
+it has been pre-trained as a generative model, the resulting
+feedfoward neural network is discriminatively trained to output
+a probability distribution over the possible labels of the central
+frame. To generate phone sequences, the sequence of predicted
+
+5In a convenient abuse of the correct terminology, we sometimes use
+DBN to refer to a feedforward neural network that was initialized using
+a generatively trained deep belief net, even though the feedforward neural
+network is clearly very different from a belief net.
+
+6
+
+SUBMITTED TO IEEE TRANS. ON AUDIO, SPEECH, AND LANGUAGE PROCESSING
+
+probability distributions over the possible labels for each frame
+is fed into a standard Viterbi decoder.
+
+Strictly speaking, since the HMM implements a prior over
+states, we should divide out
+the prior from the posterior
+distribution over HMM states produced by the DBN, although
+for our particular task it made no difference.
+
+IV. EXPERIMENTAL SETUP
+
+A. TIMIT corpus
+
+Phone recognition experiments were performed on the
+TIMIT corpus.6 We used the 462 speaker training set and re-
+moved all SA records (i.e., identical sentences for all speakers
+in the database) since they could bias the results. A separate
+development set of 50 speakers was used for tuning all of the
+meta parameters, such as the number of layers and the size of
+each layer. Results are reported using the 24-speaker core test
+set, which excludes the development set.
+
+The speech was analyzed using a 25-ms Hamming window
+with a 10-ms xed frame rate. In most of the experiments,
+we represented the speech using 12th-order Mel frequency
+cepstral coefcients (MFCCs) and energy, along with their rst
+and second temporal derivatives. For some experiments, we
+used a Fourier-transform-based lter-bank with 40 coefcients
+distributed on a mel-scale (and energy) together with their rst
+and second temporal derivatives.
+
+The data were normalized so that, averaged over the training
+cases, each coefcient or rst derivative or second derivative
+had zero mean and unit variance. We used 183 target class
+labels (i.e., 3 states for each one of the 61 phones). After
+decoding, the 61 phone classes were mapped to a set of 39
+classes as in [27] for scoring. All of our experiments used
+a bigram language model over phones, estimated from the
+training set.
+
+B. Computational setup
+
+Training DBNs of the sizes used in this paper is quite com-
+putationally expensive. Training was accelerated by exploiting
+graphics processors, in particular GPUs in a NVIDIA Tesla
+S1070 system, using the CUDAMAT library [28]. A single
+pass over the entire training set (an epoch) for a model with
+5 hidden layers and 2048 units per layer took about 6 minutes
+during pre-training of the topmost layer and about 11 minutes
+during ne-tuning the whole network with backpropagation. A
+single GPU learns at 20 times faster than a single 2.66 GHz
+Xeon core.
+
+V. EXPERIMENTS
+
+For all experiments, we xed the parameters for the Viterbi
+decoder. Specically, we used a zero word insertion probabil-
+ity and a language model scale factor of 1.0.
+
+All DBNs were pre-trained with a xed recipe using
+stochastic gradient decent with a mini-batch size of 128
+training cases. For Gaussian-binary RBMs, we ran 225 epochs
+with a xed learning rate of 0.002 while for binary-binary
+RBMs we used 75 epochs with a learning rate of 0.02.
+
+6http://www.ldc.upenn.edu/Catalog/CatalogEntry.jsp?catalogId=LDC93S1.
+
+The theory used to justify the pre-training algorithm as-
+sumes that when the states of the visible units are reconstructed
+from the inferred binary activities in the rst hidden layer,
+they are reconstructed stochastically. To reduce noise in the
+learning, we actually reconstructed them deterministically and
+used the real values (see [18] for more details).
+
+For ne-tuning, we used stochastic gradient descent with
+the same mini-batch size as in pre-training. The learning rate
+started at 0.1. At the end of each epoch, if the substitution error
+on the development set increased, the weights were returned to
+their values at the beginning of the epoch and the learning rate
+was halved. This continued until the learning rate fell below
+0.001.
+
+During both pre-training and ne-tuning, a small weight-
+cost of 0.0002 was used and the learning was accelerated by
+using a momentum of 0.9 (except for the rst epoch of ne-
+tuning which did not use momentum). [18] gives a detailed
+explanation of weight-cost and momentum and sensible ways
+to set them.
+
+Figure 3 and gure 4 show the effect of varying the size
+of each hidden layer and the number of hidden layers. For
+simplicity we used the same size for every hidden layer in a
+network. For these comparisons, the number of input frames
+was xed at 11.
+
+24.5
+
+24
+
+23.5
+
+23
+
+22.5
+
+22
+
+21.5
+
+21
+
+20.5
+
+)
+
+R
+E
+P
+
+(
+
+
+t
+
+e
+a
+r
+
+r
+o
+r
+r
+e
+
+
+
+e
+n
+o
+h
+P
+
+20
+
+
+1
+
+2
+
+3
+
+
+
+hid1024dev
+hid2048dev
+hid3072dev
+hid512dev
+
+6
+
+7
+
+8
+
+4
+
+5
+
+Number of layers
+
+Fig. 3. Phone error rate on the development set as a function of the number
+of layers and size of each layer, using 11 input frames.
+
+The main trend visible in gures 3 and 4 is that adding
+more hidden layers gives better performance, though the gain
+diminishes as the number of layers increases. Using more
+hidden units per layer also improves performance when the
+number of hidden layers is less than 4, but with more hidden
+layers the number of units has little effect provided it is at least
+1024. The advantage of using a deep architecture is clear if
+we consider the best way to use a total of 2048 hidden units:
+It is better to use two layers of 1024 or four layers of 512
+than one layer of 2048.
+
+To benet from having many hidden layers, it is necessary
+to do generative pre-training. With a single hidden layer of
+2048 units, generative pre-training gives a phone error rate of
+24.5% and exactly the same ne-tuning algorithm started from
+
+MOHAMED, DAHL AND HINTON : ACOUSTIC MODELING USING DEEP BELIEF NETWORKS
+
+7
+
+26
+
+25.5
+
+25
+
+24.5
+
+24
+
+23.5
+
+23
+
+22.5
+
+)
+
+R
+E
+P
+
+(
+
+e
+t
+a
+r
+
+r
+o
+r
+r
+e
+
+e
+n
+o
+h
+P
+
+22
+
+
+1
+
+2
+
+3
+
+
+
+hid1024core
+hid2048core
+hid3072core
+hid512core
+
+26
+
+25.5
+
+25
+
+24.5
+
+24
+
+23.5
+
+23
+
+22.5
+
+)
+
+R
+E
+P
+
+(
+
+e
+t
+a
+r
+
+r
+o
+r
+r
+e
+
+e
+n
+o
+h
+P
+
+6
+
+7
+
+8
+
+22
+
+
+1
+
+2
+
+3
+
+
+pretrain11fr2048hidcore
+pretrain17fr3072hidcore
+rand11fr2048hidcore
+rand17fr3072hidcore
+
+4
+
+5
+
+Number of layers
+
+6
+
+7
+
+8
+
+4
+
+5
+
+Number of layers
+
+Fig. 4. Phone error rate on the core test set as a function of the number of
+layers and size of each layer, using 11 input frames.
+
+Fig. 6. Phone error rate on the core test set as a function of the number of
+hidden layers using randomly initialized and pretrained networks.
+
+small random weights gives 24.4%. So generative pre-training
+does not help. Adding a second hidden layer causes a larger
+proportional increase in the number of trainable parameters
+than adding a third hidden layer because the input and output
+layers are much smaller than the hidden layers and because
+adjacent hidden layers are fully connected. This large increase
+in capacity makes the model far more exible, but it also
+makes it overt far more easily. Figure 5 and gure 6 show
+that for networks that are not pre-trained (but still use early
+stopping), these two effects apparently cancel out, whereas for
+pre-trained networks there is less overtting so extra layers
+help. Although the advantage of pre-training is not as large as
+for some other tasks [20], [29], it is still required to gain an
+advantage from using extra hidden layers.
+
+the development set is achieved using 11, 17, or 27 frames
+and this is true whatever the number of hidden layers. Much
+smaller (7 frames) and much bigger (37 frames) windows give
+signicantly worse performance. The range from 110ms to
+270ms covers the average size of phones or syllables. Smaller
+input windows miss important discriminative information in
+the context, while networks with larger windows are probably
+getting distracted by the almost
+information far
+from the center of the window. The TRAP [7] architecture
+successfully uses 1 second long windows, but it dedicates
+separate networks to model different parts of the spectrum
+which simplies the learning task. Larger windows would
+probably work better using triphone targets which provide the
+network with more information about the context and make
+the peripheral frames more relevant.
+
+irrelevant
+
+23.5
+
+23
+
+22.5
+
+22
+
+21.5
+
+21
+
+20.5
+
+)
+
+R
+E
+P
+
+(
+
+
+e
+
+t
+
+a
+r
+
+r
+o
+r
+r
+e
+
+
+
+e
+n
+o
+h
+P
+
+20
+
+
+1
+
+2
+
+3
+
+
+pretrain11fr2048hiddev
+pretrain17fr3072hiddev
+rand11fr2048hiddev
+rand17fr3072hiddev
+
+24.5
+
+24
+
+23.5
+
+23
+
+22.5
+
+22
+
+21.5
+
+21
+
+)
+
+R
+E
+P
+
+(
+
+
+e
+
+t
+
+a
+r
+
+r
+o
+r
+r
+e
+
+
+
+e
+n
+o
+h
+P
+
+4
+
+5
+
+Number of layers
+
+6
+
+7
+
+8
+
+20.5
+
+
+1
+
+2
+
+3
+
+
+
+fr173kdev
+fr273kdev
+fr373kdev
+fr73kdev
+
+6
+
+7
+
+8
+
+4
+
+5
+
+Number of layers
+
+Fig. 5. Phone error rate on the development set as a function of the number
+of hidden layers using randomly initialized and pretrained networks.
+
+Fig. 7. Phone error rate on the development set as a function of the number
+of layers, using 3072 hidden units per layer.
+
+Fixing the number of hidden units per layer to 3072 and
+varying the number of frames in the input window (gures 7
+and 8 and also 3 and 4) shows that the best performance on
+
+Since all but the output layer weights are pre-trained, it
+could be helpful to introduce a bottleneck at the last layer
+
+8
+
+SUBMITTED TO IEEE TRANS. ON AUDIO, SPEECH, AND LANGUAGE PROCESSING
+
+26
+
+25.5
+
+25
+
+24.5
+
+24
+
+23.5
+
+23
+
+22.5
+
+)
+
+R
+E
+P
+
+(
+
+e
+t
+a
+r
+
+r
+o
+r
+r
+e
+
+e
+n
+o
+h
+P
+
+22
+
+
+1
+
+2
+
+3
+
+
+
+fr173kcore
+fr273kcore
+fr373kcore
+fr73kcore
+
+23.5
+
+23
+
+22.5
+
+22
+
+21.5
+
+21
+
+20.5
+
+20
+
+19.5
+
+19
+
+)
+
+R
+E
+P
+
+(
+
+e
+t
+a
+r
+
+r
+o
+r
+r
+e
+
+e
+n
+o
+h
+P
+
+6
+
+7
+
+8
+
+18.5
+
+
+1
+
+2
+
+3
+
+
+
+hid102411frcore
+hid102411frdev
+hid204811frcore
+hid204811frdev
+hid204815frcore
+hid204815frdev
+
+6
+
+7
+
+8
+
+4
+
+5
+
+Number of layers
+
+4
+
+5
+
+Number of layers
+
+Fig. 8. Phone error rate on the core test set as a function of the number of
+layers, using 3072 hidden units per layer.
+
+Fig. 10.
+context window of lter bank coefcients as input features to the DBN.
+
+Phone error rates as a function of the number of layers, using a
+
+of the DBN to combat overtting by reducing the number of
+weights that are not pre-trained. A bottleneck layer followed
+by a softmax is exactly equivalent to using a distributed output
+code for each class and then making the class probabilities
+proportional to the exponentiated squared difference between
+the code for a class and the activity pattern in the bottleneck
+layer [30]. Figure 9 shows that having a bottleneck layer does
+not actually improve PER for a typical network with 5 hidden
+layers of 2048 units and an input window of 11 frames of
+MFCCs.
+
+
+
+dev11fr2k5lay
+core11fr2k5lay
+
+23.5
+
+23
+
+22.5
+
+22
+
+21.5
+
+21
+
+)
+
+R
+E
+P
+
+(
+
+
+e
+
+t
+
+a
+r
+
+r
+o
+r
+r
+e
+
+
+
+e
+n
+o
+h
+P
+
+20.5
+
+
+64
+
+128
+
+256
+512
+Bottleneck size
+
+1024
+
+2048
+
+Fig. 9. The effect of the size of the bottleneck on the phone error rate for a
+typical network with 11 input frames and 5 hidden layers of 2048 units per
+layer (except for the last hidden layer).
+
+In all of the previous experiments MFCCs were used
+as the input representation. MFCCs attempt to reduce the
+dimensionality of the input by eliminating variations that are
+irrelevant for recognition and spoon-feeding the recognizer
+with a modest-sized input representation that
+is designed
+to make recognition easy. With a more powerful learning
+procedure, better recognition performance can be achieved
+
+by using a less pre-processed input representation consisting
+of a large number of lter-bank coefcients augmented with
+temporal differences and differences of differences. Figure
+10 shows that a DBN is capable of making good use of
+the more detailed information available in this larger input
+representation. For the DBN system that perfomed best on the
+development set, the phone error rate on the TIMIT core test
+set was 20.7%.
+
+TABLE I
+
+Reported results on TIMIT core test set
+
+Method
+
+Stochastic Segmental Models [31]
+
+Conditional Random Field [32]
+
+Large-Margin GMM [33]
+
+CD-HMM [34]
+
+Augmented conditional Random Fields [34]
+
+Recurrent Neural Nets [35]
+
+Bayesian Triphone HMM [36]
+
+Monophone HTMs [37]
+
+Heterogeneous Classiers [38]
+
+Triphone HMMs discriminatively trained w/ BMMI [39]
+Monophone Deep Belief Networks(DBNs) (this work)
+
+PER
+36%
+34.8%
+33%
+27.3%
+26.6%
+26.1%
+25.6%
+24.8%
+24.4%
+22.7%
+20.7%
+
+Table I compares the best performing DBN model with
+
+previously reported results on the TIMIT core test set 7.
+
+VI. CONCLUSIONS AND FUTURE WORK
+
+So far as we know, the work reported in this paper was the
+rst application to acoustic modeling of neural networks in
+which multiple layers of features are generatively pre-trained.
+Since then, our approach has been extended to explicitly model
+the covariance structure of the input features [40]. It has been
+also used to jointly train the acoustic and language models
+using the full utterance rather than a local window of frames
+
+7In [8] a PER of 21.48% is reported on the complete test set of TIMIT.
+The speech units used are not the same as the standard TIMIT denitions
+and their method would very probably give a worse result using the standard
+speech units.
+
+MOHAMED, DAHL AND HINTON : ACOUSTIC MODELING USING DEEP BELIEF NETWORKS
+
+9
+
+[41]. It has been also applied to a large vocabulary task
+[42] where the competing GMM approach uses a very large
+number of components. In this latter task it gives a very large
+advantage relative to the GMM.
+
+We are currently exploring alternatives input representations
+that allow deep neural networks to see more of the relevant
+information in the sound-wave, such as very precise coinci-
+dences of onset times in different frequency bands. We are also
+exploring ways of using recurrent neural networks to greatly
+increase the amount of detailed information about the past
+that can be carried forward to help in the interpretation of the
+future.
+
+VII. ACKNOWLEDGMENTS
+
+We thank Jim Glass, John Bridle, Li Deng and Gerald
+Penn for helpful discussions and two anonymous reviewers
+for improving the paper. The research was funded by a gift
+from Microsoft Research and by grants from the Natural
+Sciences and Engineering Research Council of Canada and
+the Canadian Institute for Advanced Research.
+

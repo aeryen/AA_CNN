@@ -1,0 +1,1576 @@
+Abstract
+
+Supervised and unsupervised learning methods have tradi-
+tionally focused on data consisting of independent instances
+of a single type. However, many real-world domains are best
+described by relational models in which instances of multiple
+types are related to each other in complex ways. For exam-
+ple, in a scientic paper domain, papers are related to each
+other via citation, and are also related to their authors. In this
+case, the label of one entity (e.g., the topic of the paper) is of-
+ten correlated with the labels of related entities. We propose a
+general class of models for classication and clustering in re-
+lational domains that capture probabilistic dependencies be-
+tween related instances. We show how to learn such models
+efciently from data. We present empirical results on two
+real world data sets. Our experiments in a transductive clas-
+sication setting indicate that accuracy can be signicantly
+improved by modeling relational dependencies. Our algo-
+rithm automatically induces a very natural behavior, where
+our knowledge about one instance helps us classify related
+ones, which in turn help us classify others. In an unsuper-
+vised setting, our models produced coherent clusters with a
+very natural interpretation, even for instance types that do not
+have any attributes.
+
+1 Introduction
+Most supervised and unsupervised learning methods assume
+that data instances are independent and identically distributed
+(IID). Numerous classication and clustering approaches
+have been designed to work on such at data, where
+each data instance is a x ed-length vector of attribute val-
+ues (see [Duda et al., 2000] for a survey). However, many
+real-world data sets are much richer in structure, involving in-
+stances of multiple types that are related to each other. Hyper-
+text is one example, where web pages are connected by links.
+Another example is a domain of scientic papers, where pa-
+pers are related to each other via citation, and are also related
+to their authors. The IID assumption is clearly violated for
+two papers written by the same author or two papers linked
+by citation, which are likely to have the same topic.
+
+Recently, there has been a growing interest in learning
+techniques for more richly structured datasets. Relational
+links between instances provide a unique source of infor-
+mation that has been proved useful for both classication
+and clustering in the hypertext domain [Slattery and Craven,
+
+1998; Kleinberg, 1998]. Intuitively, relational learning meth-
+ods attempt to use our knowledge about one object to reach
+conclusions about other, related objects. For example, we
+would like to propagate information about the topic of a pa-
+per 
+to papers that it cites. These, in turn, would propagate
+information to papers that they cite. We would also like to use
+information about  s topic to help us reach conclusion about
+the research area of  s author, and about the topics of other
+papers written by that author.
+
+Several authors have proposed relational classication
+methods along the lines of this inuence propagation idea.
+Neville and Jensen [2000] present an iterative classication
+algorithm which essentially implements this process exactly,
+by iteratively assigning labels to test instances the classier
+is condent about, and using these labels to classify related
+instances. Slattery and Mitchell [2000] propose an iterative
+algorithm called FOIL-HUBS for the problem of classify-
+ing web pages, e.g., as belonging to a university student or
+not. However, none of these approaches proposes a single
+coherent model of the correlations between different related
+instances. Hence they are forced to provide a purely procedu-
+ral approach, where the results of different classication steps
+or algorithms are combined without a unifying principle.
+
+In clustering, the emphasis so far has been on dyadic
+data, such as word-document co-occurrence [Hofmann and
+Puzicha, 1999], document citations [Cohn and Chang, 2000],
+web links [Cohn and Hofmann, 2001; Kleinberg, 1998], and
+gene expression data. Kleinbergs Hubs and Authorities al-
+gorithm exploits the link structure to dene a mutually rein-
+forcing relationship between hub and authority pages, where
+a good hub page points to many good authorities and a good
+authority page is pointed to by many good hubs.
+
+These techniques can be viewed as relational clustering
+methods for one or two types of instances (e.g., web pages,
+documents and words), with a single relation between them
+(e.g., hyperlinks, word occurrence). However, we would like
+to model richer structures present in many real world domains
+with multiple types of instances and complex relationships
+between them. For example, in a movie database the instance
+types might be movies, actors, directors, and producers. In-
+stances of the same type may also be directly related. In a
+scientic paper database, a paper is described by its set of
+words and its relations to the papers it cites (as well as to the
+authors who wrote it). We would like to identify, for each in-
+stance type, sub-populations (or segments) of instances that
+are similar in both their attributes and their relations to other
+
+instances.
+
+In this paper, we propose a general class of generative
+probabilistic models for classication and clustering in rela-
+tional data. The key to our approach is the use of a single
+probabilistic model for the entire database that captures inter-
+actions between instances in the domain. Our work builds on
+the framework of Probabilistic Relational Models (PRMs) of
+Koller and Pfeffer [1998] that extend Bayesian networks to a
+relational setting. PRMs provide a language that allows us to
+capture probabilistic dependencies between related instances
+in a coherent way. In particular, we use it to allow depen-
+dencies between the class variables of related instances, pro-
+viding a principled mechanism for propagating information
+between them.
+
+Like all generative probabilistic models, our models ac-
+commodate the entire spectrum between purely supervised
+classication and purely unsupervised clustering. Thus, we
+can learn from data where some instances have a class label
+and other do not. We can also deal with cases where one (or
+more) of the instance types does not have an observed class
+attribute by introducing a new latent class variable to repre-
+sent the (unobserved) cluster. Note that, in relational mod-
+els, it is often impossible to segment the data into a training
+and test set that are independent of each other since the train-
+ing and test instances may be interconnected. Using naive
+random sampling to select training instances is very likely to
+sever links between instances in the training and test set data.
+We circumvent this difculty by using a transductive learning
+setting, where we use the test data, albeit without the labels, in
+the training phase. Hence, even if all the instance types have
+observed class attributes, the training phase involves learning
+with latent variables.
+
+We provide an approximate EM algorithm for learning
+such PRMs with latent variables from a relational database.
+This task is quite complex: Our models induce a complex
+web of dependencies between the latent variables of all of the
+entities in the data, rendering standard approaches intractable.
+We provide an efcient approximate algorithm that scales lin-
+early with the number of instances, and thus can be applied
+to large data sets.
+
+We present experimental results for our approach on two
+domains: a dataset of scientic papers and authors and a
+database of movies, actors and directors. Our classication
+experiments show that the relational information provides a
+substantial boost in accuracy. Applied to a clustering task,
+we show that our methods are able to exploit the relational
+structure and nd coherent clusters even for instance types
+that do not have any attributes.
+
+2 Generative models for relational data
+Probabilistic classication and clustering are often viewed
+from a generative perspective as a density estimation task.
+Data instances are assumed to be independent and identi-
+cally distributed (IID) samples from a mixture model distri-
+classes
+In clustering, a latent class random variable is
+or clusters.
+associated with the instance to indicate its cluster. Other
+attributes of an instance are then assumed to be samples
+
+bution. Each instance belongs to exactly one of 
+
+from a distribution associated with its class. A simple yet
+powerful model often used for this distribution is the Naive
+Bayes model.
+In the Naive Bayes model, the attributes of
+each instance are assumed to be conditionally independent
+given the class variable. Although this independence as-
+sumption is often unrealistic, this model has nevertheless
+proven to be robust and effective for classication and clus-
+tering across a wide range of applications [Duda et al., 2000;
+Cheeseman and Stutz, 1995]. Both classication and cluster-
+ing involve estimation of the parameters of the Naive Bayes
+model; however, clustering is signicantly more difcult due
+to the presence of latent variables.
+
+The IID assumption made by these standard classication
+and clustering models is inappropriate in rich relational do-
+mains, where different instances are related to each other,
+and are therefore likely to be correlated. In this section, we
+describe a probabilistic model for classication and cluster-
+ing in relational domains, where entities are related to each
+other. Our construction utilizes the framework of proba-
+bilistic relational models (PRMs) [Koller and Pfeffer, 1998;
+Friedman et al., 1999].
+
+2.1 Probabilistic Relational Models
+A PRM is a template for a probability distribution over a re-
+lational database of a given schema. It species probabilistic
+models for different classes of entities, including probabilis-
+tic dependencies between related objects. Given a set of in-
+stances and relations between them, a PRM denes a joint
+probability distribution over the attributes of the instances.
+
+Relational Schema. A relational schema describes at-
+
+. For
+
+is associated with a set of at-
+is also associated with a set
+
+tributes and relations of a set of instance types 
+	
+
+
+
+ . Each type 
+ . Each type 
+tributes 
+ of typed binary relations 
+relation  with the type 
+to use the relation as a set-valued function, whose value 
+is the set of instances  "!
+related to an instance 
+example, for an actor # , #
+
+
+Role is the set of movies in which
+
+ . We associate each
+
+of its rst argument, allowing us
+
+the actor has appeared.
+
+In certain cases, relations might have attributes of their
+own. For example, the Role relation might be associated
+with the attribute Credit-Order, which indicates the ranking
+of the actor in the credits. We can introduce an explicit type
+corresponding to the relation. In this case, a relation object
+is itself related to both of its arguments. For example, if one
+of the role objects is Meryl Streep in Sophies Choice, this
+role object would be related to the actor object Meryl Streep
+and the movie object Sophies Choice. By denition, these
+relations are many-to-one. It will be useful to distinguish be-
+
+% ), and relation
+
+species the set of objects in each type,
+the relations that hold between them, and the values of the
+species only
+to denote the
+
+tween entity types (such as $&%('*),+&- or ./+10(2
+types (such as 34+65
+% ).
+An instantiation7
+attributes for all of the objects. A skeleton 8
+
+the objects and the relations. We will use 89
+set of objects of type 
+Probabilistic Model. A probabilistic relational model :
+7 of the relational schema. More precisely, a PRM is a tem-
+
+species a probability distribution over a set of instantiations
+
+.
+
+
+
+
+
+
+
+
+(cid:1)(cid:2)(cid:3)(cid:4)(cid:5)
+
+Gender
+
+C
+
+(cid:11) (cid:4)(cid:12)
+
+Credit-Order
+
+(cid:7) (cid:5)(cid:8) (cid:2)(cid:3)(cid:4)(cid:5)
+
+C
+
+Role
+
+Directed
+
+(cid:9) (cid:4)(cid:10)
+
+Genre
+
+Year
+
+C
+
+MPAA  Rating
+
+Rating
+
+#Votes
+
+(cid:10) (cid:5)
+
+C
+
+Wrote
+
+Cited
+
+(cid:1)(cid:2)(cid:3)(cid:4)(cid:5)
+
+Topic
+
+W ord1
+
+W ord2
+
+...
+
+W ordN
+
+(cid:1)(cid:2)(cid:3)(cid:4)(cid:5)(cid:6)(cid:7)(cid:9)
+
+C
+
+(cid:1)(cid:2)(cid:3)(cid:4)(cid:5)(cid:6)(cid:7)(cid:8)
+
+C
+
+Wrote
+
+Wrote
+
+Wrote
+
+(cid:10)(cid:11)(cid:12)(cid:13)(cid:6)(cid:7)(cid:14)
+
+Aggr(Auth)
+
+Aggr(Cite)
+
+C
+
+Aggr(Auth)
+
+Aggr(Cite)
+
+W ord1
+
+Word2
+
+WordN
+
+(cid:10)(cid:11)(cid:12)(cid:13)(cid:6)(cid:7)(cid:9)
+
+Word2
+
+Aggr(Auth)
+
+W ordN
+
+Aggr(Cite)
+
+C
+
+Cited
+
+Word1
+
+Word2
+
+WordN
+
+(cid:10)(cid:11)(cid:12)(cid:13)(cid:6)(cid:7)(cid:8)
+
+C
+
+Cited
+
+Cited
+
+Word1
+
+Word2
+
+WordN
+
+Cited
+
+(a)
+
+(b)
+
+(c)
+
+Figure 1: (a) Model for IMDB domain; (b) Model for Cora domain; (c) Fragment of unrolled network for Cora model.
+
+plate, which is instantiated for different skeletons 8
+
+. The re-
+sult of this instantiation is a probabilistic model over a set of
+random variables corresponding to all of the attributes of all
+of the objects in the skeleton. We can view a PRM as a com-
+pact way of representing a Bayesian network for any skeleton
+over this schema.
+
+A PRM consists of a qualitative dependency structure, 
+and the parameters associated with it, 
+structure is dened by associating with each attribute 
+
+set of parents Pa
+of either 
+
+or 
+
+
+,
+. The dependency
+a
+has the form
+
+ . (PRMs also allow
+
+dependencies along chains of relations, but we have chosen
+to omit those for simplicity of presentation.)
+
+ . Each parent of 
+
+for 
+
+89
+
+For a given skeleton 8
+rolled Bayesian network over the random variables 
+ ,
+every object
+or 
+ents of the form 
+valued, then 
+for each
+the dependence of 
+
+, the PRM structure induces an un-
+. For
+ depends probabilistically on par-
+is not single-
+is actually a set of random variables, one
+. We address this problem by interpreting
+as dependence on an ag-
+gregate function (e.g., mode or mean) of the multiset of values
+of these variables (see below).
+
+. Note that if 
+
+on 
+
+
+
+
+
+ . When one
+
+The quantitative part of the PRM species the parameteri-
+zation of the model. Given a set of parents for an attribute, we
+can dene a local probability model by associating with it a
+conditional probability distribution (CPD). For each attribute
+
+ Pa
+and 
+
+is many-valued,
+the CPD represents the dependence on the value of the aggre-
+in the unrolled net-
+is repeated
+
+we have a CPD that species 
+of the parents is of the form 
+
+gate. The CPD for 
+
+in 
+work, for every 
+
+is used for 
+. Thus, the CPD for 
+
+
+many times in the network.
+
+Aggregates. There are many possible choices of aggre-
+gation operator to allow dependencies on a set of variables.
+An obvious choice for categorical variables is the mode ag-
+gregate, which computes the most common value of its par-
+
+. Let the domain of each 
+be 
+
+
+ents. More precisely, consider some variable  whose par-
+ we wish to aggregate into a single
+ents
+
+
+
+
+ , and
+variable 
+note that 
+
+aggregator is as follows: We dene a distribution 
+
+
+
+
+
+for each  ; given a multiset of values for 
+ for the value 
+which is the most
+the distribution 
+
+has the same domain. The effect of the mode
+
+
+
+
+, we use
+
+
+
+
+,
+
+common in this multiset.
+
+The mode aggregator is not very sensitive to the distribu-
+tion of values of its parents; for example, it cannot differ-
+entiate between a highly skewed and a fairly uniform set of
+values that have the same most frequent value. An aggre-
+gate that better reects the value distribution is a stochastic
+mode aggregator. In this case, we still dene a set of dis-
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ , but the effect of the aggregator is that
+
+is a weighted average of these distribu-
+is the frequency of this value
+. We accomplish this behavior by using
+
+tributions 
+
+
+tions, where the weight of 
+
+within 
+an aggregate variable 
+dened as follows. The aggregate variable also takes on val-
+ues in 
+
+ . Let 
+that take on the value
+ "!
+
+the desired effect.
+
+	
+
+
+,& ,
+Stochastic-Mode
+ be the number of variables
+
+ . Then we dene 
+
+. It is easy to verify that this aggregator has exactly
+
+We note that this aggregate can also be viewed as a ran-
+domized selector node that chooses one of its parents uni-
+formly at random and takes on its value. One appealing con-
+sequence is that, like min or max, the stochastic model can be
+decomposed to allow its representation as a CPD to scale lin-
+early with the number of parents. We simply decompose the
+aggregate in a cascading binary tree. The rst layer computes
+aggregates of disjoint pairs, with each aggregate randomly
+selecting the value of one of its parents; the following layer
+repeats the procedure for disjoint pairs of results from the rst
+layer, and so on. (This construction can also be extended to
+
+
+
+omit details for lack of space.)
+
+cases where the number of variables is not a power of # ; we
+2.2 Classication and clustering models
+We use the PRM framework as the basis of our models for
+relational classication and clustering. As in the at prob-
+abilistic generative approaches, our approach is based on the
+use of a special variable to represent the class or the cluster.
+This variable is the standard class variable in the classi-
+cation task. As usual, we deal with the clustering task by
+introducing a new latent class variable. Thus, for each entity
+
+As in at classication and clustering, we dene the at-
+to depend on the class variable. For simplicity,
+we choose the Naive Bayes dependency model for the other
+
+class  we have a designated attribute 
+tributes of 
+attributes: For each attribute 
+
+
+, the only parent of 
+
+
+in 
+
+ .
+
+(cid:6)
+(cid:7)
+(cid:8)
+(cid:8)
+(cid:6)
+(cid:7)
+(cid:8)
+(cid:9)
+
+
+
+
+
+
+
+
+
+
+
+!
+
+
+
+
+
+!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$
+
+
+is 
+
+
+. Note that we have only dened class attributes for
+entity types. We connect the attributes of relation types to
+the class attributes of the two associated entity types. Thus,
+for example, an attribute such as Credit-Order in the relation
+
+class 3+&5
+./+10(2
+
+% will depend on the class attributes of
+
+' and
+% . Note that, as the dependence in this case is single-
+
+valued by denition, no aggregates are necessary. Most in-
+terestingly, we also allow direct dependence between class
+attributes of related entities. Thus, for example, we could al-
+, or vice versa. In
+this case, as the relation is many-to-many, we use aggregates,
+as described above.
+
+low a dependence of ./+10(2
+
+on 
+
+
+
+Fig. 1(a) shows a simple model for a movie dataset,
+extracted from the Internet Movie Database (IMDB)
+(www.imdb.com). We see that Role is both a class on
+its own, as well as dening the relation between movies and
+actors. We have chosen, in this case, not to have the attribute
+
+
+Credit-Order depend on the class of movies, but only
+3+&5
+of actors. Fig. 1(b) shows a model for a domain of scientic
+papers and authors, derived from the Cora dataset [McCal-
+lum et al., 2000] (cora.whizbang.com).
+In this case,
+we see that the Cites relation connects two objects of the
+same type. We have chosen to make the class attribute of the
+cited paper depend on the class attribute of the citing paper.
+Note that this dependency appears cyclic at the type level.
+However, recall that this model is only a template, which is
+instantiated for particular skeletons to produce an unrolled
+network; Fig. 1(c) shows a fragment of such a network. If
+we do not have citation cycles in the domain, then this un-
+rolled network is acyclic, and the PRM induces a coherent
+probability model over the random variables of the skeleton.
+(See [Friedman et al., 1999] for more details.)
+
++
+
+We can also use latent variable models to represent dyadic
+clustering. Consider, for example, a domain where we have
+people and movies, and a relation between them that cor-
+responds to a person rating a movie.
+In this case, we will
+have a class
+tribute Rating representing the actual rating given. This at-
+
+% , corresponding to the relation, with the at-
+tribute will depend on the cluster attributes of both ./+10(2
+and $&%('*),+&- , leading naturally to a two-sided clustering model.
+
+However, our approach is exible enough to accommodate a
+much richer model, e.g., where we also have other attributes
+of person, and perhaps an entire relational model for movies,
+such as shown in Fig. 1(a). Our approach will take all of this
+information into consideration when constructing the clus-
+ters.
+
+3 Learning the models
+We now show how we learn our models from data. Our train-
+ing set
+consists of a partial instantiation of the schema, one
+where everything except the values of some or all the class
+attributes is given. We can view this data as a single large
+mega-instance of the model, with a large number of miss-
+ing values. Note that we cannot view the data as a set of inde-
+pendent instances corresponding to the objects in the model.
+In our setting, we typically assume that the structure of our
+latent variable model is given, as described in Section 2.2.
+Thus, our task is parameter estimation.
+
+ .
+
+3.1 Parameter estimation
+In this case, we assume that we are given the probabilistic de-
+, and need only estimate the parameters
+, i.e., the CPDs of the attributes. A standard approach is to
+that
+
+pendency structure 
+use maximum likelihood (ML) estimation, i.e., to nd 
+maximize 
+If we had a complete instantiation 7
+
+, the likelihood func-
+tion has a unique global maximum. The maximum likelihood
+parameters can be found very easily simply by counting oc-
+currences in the data. Recall that all of the objects in the same
+class share the same CPD. Thus, to estimate the parameter for
+
+ , we simply consider all objects of class
+ Pa
+
+, and count the number of times that each combination 4
+
+and its parents jointly take. These counts are known
+that 
+as sufcient statistics. See [Friedman et al., 1999] for details.
+The case of incomplete data is substantially more com-
+plex.
+In this case, the likelihood function has multiple lo-
+cal maxima, and no general method exists for nding the
+global maximum. The Expectation Maximization (EM) al-
+gorithm [Dempster et al., 1977], provides an approach for
+nding a local maximum of the likelihood function. Start-
+
+
+
+
+
+ for the parameters, EM iterates
+
+the following two steps. The E-step computes the distribution
+over the unobserved variables given the observed data and the
+be the set of
+
+ing from an initial guess 
+current estimate of the parameters. Letting 
+unobserved cluster variables, we compute 
+N
+
+from which it can compute the expected sufcient statistics:
+
+To compute the posterior distribution over the hidden vari-
+ables, we must run inference over the model. The M-step re-
+estimates the parameters by maximizing the likelihood with
+respect to the distribution computed in the E-step.
+
+	
+
+ Pa
+
+
+
+#
+
+ "!
+
+
+
+
+
+ ,
+
+
+%'&
+
+	
+	
+
+N
+% N
+
+3.2 Belief Propagation for E step
+To perform the E step, we need to compute the posterior dis-
+tribution over the unobserved variables given our data. This
+inference is over the unrolled network dened in Section 2.2.
+We cannot decompose this task into separate inference tasks
+over the objects in the model, as they are all correlated. (In
+some cases, the unrolled network may have several connected
+components that can be treated separately; however, it will
+generally contain one or more large connected components.)
+In general, the unrolled network can be fairly complex, in-
+(In
+volving many objects that are related in various ways.
+our experiments, the networks involve tens of thousands of
+nodes.) Exact inference over these networks is clearly im-
+practical, so we must resort to approximate inference. There
+is a wide variety of approximation schemes for Bayesian net-
+works. For various reasons (some of which are described be-
+low), we chose to use belief propagation. Belief Propaga-
+tion (BP) is a local message passing algorithm introduced by
+Pearl [Pearl, 1988]. It is guaranteed to converge to the cor-
+rect marginal probabilities for each node only for singly con-
+nected Bayesian networks. However, empirical results [Mur-
+phy and Weiss, 1999] show that it often converges in general
+
+$
++
+%
+
+
+$
++
+'
+
+
+$
+%
+
+%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$
+
+(
+
+
+
+)
+
+
+networks, and when it does, the marginals are a good approx-
+imation to the correct posteriors. (When BP does not con-
+verge, the marginals for some nodes can be very inaccurate.
+This happens very rarely in our experiments and does not af-
+fect convergence of EM.)
+
+a family graph, with a node
+
+associated with
+CPD; i.e., if
+
+for each variable 
+
+We provide a brief outline of one variant of BP, referring
+to [Murphy and Weiss, 1999] for more details. Consider a
+Bayesian network over some set of nodes (which in our case
+would be the variables 
+). We rst convert the graph into
+in the
+BN, containing 
+
+and its parents. Two nodes are connected
+if they have some variable in common. The CPD of 
+
+is
+
+represent the factor dened by the
+
+. Let
+
+
+
+, , then
+ . We
+is a function from the domains of these variables to 
+that encompasses our
+evidence about 
+is not observed. If we
+observe 
+ and
+elsewhere.
+
+
+
+
+, where
+The belief propagation algorithm is now very simple. At
+each iteration, all the family nodes simultaneously send mes-
+sage to all others, as follows:
+
+
+contains the variables 
+to be a factor over 
+if 
+
+:
+, we have that
+
+
+
+Our posterior distribution is then
+is a normalizing constant.
+
+also dene
+
+
+
+
+
+,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+is a (different) normalizing constant and
+
+is the
+where
+in the family graph.
+set of families that are neighbors of
+At any point in the algorithm, our marginal distribution about
+
+. This process is
+any family
+repeated until the beliefs converge.
+
+give us the marginal distribu-
+tion over each of the families in the unrolled network. These
+marginals are precisely what we need for the computation of
+the expected sufcient statistics.
+
+After convergence, the
+
+!	"
+
+
+
+
+
+is
+
+We note that occasionally BP does not converge; to alle-
+viate this problem, we start the EM algorithm from several
+different starting points (initial guesses). As our results in
+Section 5 show, this approach works well in practice.
+
+4 Inuence propagation over relations
+Among the strong motivations for using a relational model is
+its ability to model dependencies between related instances.
+As described in the introduction, we would like to propagate
+information about one object to help us reach conclusions
+about other, related objects. Recently, several papers have
+proposed a process along the lines of this inuence prop-
+agation idea. Neville and Jensen [2000] propose an itera-
+tive classication algorithm which builds a classier based
+on a fully observed relational training set; the classier uses
+both base attributes and more relational attributes (e.g., the
+number of related entities of a given type). It then uses this
+classier on a test set where the base attributes are observed,
+but the class variables are not. Those instances that are clas-
+sied with high condence are temporarily labeled with the
+predicted class; the classication algorithm is then rerun, with
+the additional information. The process repeats several times.
+The classication accuracy is shown to improve substantially
+as the process iterates.
+
+Slattery and Mitchell [2000] propose an application of this
+idea to the problem of classifying web pages, e.g., as belong-
+ing to a university student or not. They rst train a classier
+on a set of labeled documents, and use it to classify docu-
+ments in the test set. To classify more documents in the test
+set, they suggest combining the classication of the test set
+pages and the relational structure of the test set. As a moti-
+vating example, they describe a scenario where there exists a
+page that points to several other pages, some of which were
+classied as student home pages. Their approach tries to iden-
+tify this page as a student directory page, and conclude that
+other pages to which it points are also more likely to be stu-
+dent pages. They show that classication accuracy improves
+by exploiting the relational structure.
+
+Neither of these approaches proposes a single coherent
+model of the dependencies between related objects and thus
+combine different classication steps or algorithms without a
+unifying principle. Our approach achieves the inuence prop-
+agation effect through the probabilistic inuences induced by
+the unrolled Bayesian network over the instances in our do-
+main. For example, in the Cora domain, our network models
+correlations between the topics of papers that cite each other.
+Thus, our beliefs about the topic of one paper will inuence
+our beliefs about the topic of its related papers. In general,
+probabilistic inuence ows through active paths in the un-
+rolled network, allowing beliefs about one cluster to inuence
+others to which it is related (directly or indirectly). Moreover,
+the use of belief propagation implements this effect directly.
+By propagating a local message from one family to another
+in the family graph network, the algorithm propagates our
+beliefs about one variable to other variables to which it is di-
+rectly connected. We demonstrate this property in the next
+section.
+
+This spreading inuence is particularly useful in our frame-
+work due to the application of the EM algorithm. The EM
+algorithm constructs a sequence of models, using the proba-
+bilities derived from the belief propagation algorithm to train
+a new model. Hence, we not only use our probabilistic in-
+ference process to spread the information in the relational
+structure, we then use the results to construct a better clas-
+sier , which in turn allows us to obtain even better results,
+etc. From a different perspective, we are using the structure
+in the test set not only to provide better classications, but
+also to learn a better classier . As we show below, this pro-
+cess results in substantial improvements in accuracy over the
+iterations of EM. We note that this bootstrapping ability arises
+very naturally in the probabilistic framework, where it is also
+associated with compelling convergence guarantees.
+
+5 Experiments
+We evaluated our method on the Cora and IMDB data sets.
+
+Cora. The structure of the Cora dataset, and the model
+we used, are shown in Fig. 1(b,c). For our experiments, we
+selected a subset of 4187 papers from the Machine Learn-
+ing category, along with 1454 of their authors. These papers
+are classied into seven topics: Probablistic Methods, Neu-
+ral networks, Reinforcement Learning, Rule Learning, Case-
+Based, and Theory.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+y
+c
+a
+r
+u
+c
+c
+A
+
+0.79
+
+0.77
+
+0.75
+
+0.73
+
+0.71
+
+0.69
+
+0.67
+
+0.65
+
+Authors & Citations (AC)
+Authors (A)
+Citations (C)
+Nave Bayes (NB)
+
+0.1
+
+0.15
+
+0.2
+
+0.25
+
+0.3
+
+0.35
+
+0.4
+
+0.45
+
+0.5
+
+0.55
+
+0.6
+
+Fraction Labeled
+
+(a)
+
+l
+
+d
+e
+i
+f
+i
+s
+s
+a
+C
+n
+o
+i
+t
+c
+a
+r
+F
+
+
+
+0.95
+
+0.93
+
+0.91
+
+0.89
+
+0.87
+
+0.85
+
+0.83
+
+0.81
+
+EM(cid:0) 3
+EM(cid:0) 2
+EM(cid:0) 1
+
+0
+
+1
+
+2
+
+3
+
+Loopy Iteration
+
+4
+
+5
+
+6
+
+(b)
+
+0.8
+
+0.75
+
+0.7
+
+0.65
+
+y
+c
+a
+r
+u
+c
+c
+A
+
+0.6
+
+0
+
+50%(cid:0) Labeled
+
+30%(cid:0) Labeled
+
+10%(cid:0) Labeled
+
+1
+
+2
+
+3
+
+4
+
+EM(cid:0) Iteration
+
+5
+
+6
+
+7
+
+8
+
+(c)
+
+Figure 2: (a) Comparison of classication accuracies; (b) Inuence propagation in BP; (c) Accuracy improvement in EM.
+
+We evaluated the ability of our algorithm to use the rela-
+tional structure to aid in classication. We took our entire
+data set, and hid the classications for all but a fraction of
+the papers. We then constructed our model based on all of
+this data, including the documents whose topics were unob-
+served. The resulting model was used to classify the topic
+for the test documents. In effect, we are performing a type of
+transduction, where the test set is also used to train the model
+(albeit without the class labels).
+
+To investigate how our method benets from exploiting
+the relational structure, we considered four different mod-
+els which vary in the amount of relational information they
+use. The baseline model does not use relational information
+at all. It is a standard multinomial Naive Bayes model (NB)
+over the set of words (bag of words model) in the abstract.
+The full model (AC) was shown in Fig. 1(b); it makes use
+of both the authors and citations. The other two models are
+fragments of AC: model A incorporates only the author infor-
+mation (eliminating the citation relation from the model), and
+model C only citations. All four models were trained using
+EM; model NB was trained using exact EM and the others
+using our algorithm of Section 3. We initialized the CPDs for
+the word attributes using the CPDs in a Naive Bayes model
+that was trained only on the observed portion of the data set.
+All models were initialized with the same CPDs.
+
+We varied the percentage of labeled papers, ranging from
+10% to 60%. For each different percentage, we tested the
+classication accuracy over  ve random training/test splits.
+The results are shown in Fig. 2(a). Each point is the average
+of the accuracy on the  ve runs, and the error bars correspond
+to the standard error. As can be seen, incorporating more
+relational dependencies signicantly improves classication
+accuracy. Both A and C outperform the baseline model, and
+the combined model AC achieves by far the highest accuracy.
+the local message passing
+of loopy belief propagation (BP) resembles the process of
+spreading the inuence of beliefs for a particular instance to
+
+As discussed in Section 4,
+
+eral labeled papers. Upon initialization, we have some initial
+from its words alone. However,
+after the rst iteration, this belief will be updated to reect
+the labels of the papers it cites, and is likely to become more
+
+its related instances. For example, suppose paper  cites sev-
+belief about the topic of 
+peaked around a single value, increasing the condence in s
+
+topic. In the following iteration, unlabeled papers that cite 
+(as well as unlabeled papers that  cites) will be updated to
+reect the increased condence about the topic of 
+
+, and so
+on. To measure this effect, we examine the belief state of
+the topic variable of the unlabeled papers after every iteration
+of loopy belief propagation. For every iteration, we report
+the fraction of variables whose topic can be determined with
+high condence, i.e., whose belief for a single topic is above a
+threshold of
+ . Fig. 2(b) shows several series of these mea-
+surements on a dataset with 10% labeled papers. The series
+show BP iterations performed within the rst, third and sev-
+enth iteration of EM. Each series shows a gradual increase of
+the fraction of papers whose topics we are condent in. The
+accuracy on those high-condence papers is fairly constant
+over the iterations  around 0.7, 0.735, and 0.74 for the rst,
+third and seventh iteration of EM, respectively.
+
+Loopy belief propagation is an approximation to the infer-
+ence required for the E step of EM. Although loopy BP is
+not guaranteed to converge, in our experiments, it generally
+converges to a solution which is good enough to allow EM
+to make progress.
+Indeed, Fig. 2(c) shows that the classi-
+cation accuracy improves for every EM iteration. This g-
+ure also demonstrates the performance improvement obtained
+from bootstrapping the results of iterative classication, as
+discussed in Section 4.
+
+IMDB. The attributes and relations in the IMDB database,
+and the latent variable model we used, are shown in are shown
+in Fig. 1(a); the Genre attribute actually refers to a set of 18
+binary attributes (action, comedy, . . . ). Note that actors and
+directors have almost no descriptive attributes and hence can-
+not be clustered meaningfully without considering their rela-
+tions. We selected a subset of this database that contains 1138
+movies, 2446 actors, and 734 directors. In Fig. 5, we show
+two example clusters for each class, listing several highest
+condence members of the clusters.
+
+In general, clusters for movies consist of movies of pre-
+dominantly of a particular genre, time period and popularity.
+For example, the rst movie cluster shown can be labeled as
+classic musicals and childrens lms. The second cluster cor-
+responds roughly to action/adventure/sci- movies.
+In our
+model, the clusters for actors and directors are relational in
+nature, since they are induced by the movie attributes. For
+example, the rst cluster of actors consists primarily of action
+
+
+
+
+Acknowledgments. This work was supported by ONR
+contract N66001-97-C-8554 under DARPAs HPKB pro-
+gram. Eran Segal was also supported by a Stanford Graduate
+Fellowship (SGF).
+

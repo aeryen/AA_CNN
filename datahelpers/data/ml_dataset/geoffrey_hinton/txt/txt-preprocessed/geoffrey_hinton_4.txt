@@ -1,0 +1,2004 @@
+Abstract
+
+Most current speech recognition systems use hidden Markov models (HMMs) to deal with the temporal variability
+of speech and Gaussian mixture models to determine how well each state of each HMM ts a frame or a short window
+of frames of coefcients that represents the acoustic input. An alternative way to evaluate the t is to use a feed-
+forward neural network that takes several frames of coefcients as input and produces posterior probabilities over
+HMM states as output. Deep neural networks with many hidden layers, that are trained using new methods have been
+shown to outperform Gaussian mixture models on a variety of speech recognition benchmarks, sometimes by a large
+margin. This paper provides an overview of this progress and represents the shared views of four research groups
+who have had recent successes in using deep neural networks for acoustic modeling in speech recognition.
+
+I. INTRODUCTION
+
+New machine learning algorithms can lead to signicant advances in automatic speech recognition. The biggest
+
+single advance occured nearly four decades ago with the introduction of the Expectation-Maximization (EM)
+
+algorithm for training Hidden Markov Models (HMMs) (see [1], [2] for informative historical reviews of the
+
+introduction of HMMs). With the EM algorithm, it became possible to develop speech recognition systems for
+
+real world tasks using the richness of Gaussian mixture models (GMM) [3] to represent the relationship between
+
+HMM states and the acoustic input. In these systems the acoustic input is typically represented by concatenating
+
+Mel Frequency Cepstral Coefcients (MFCCs) or Perceptual Linear Predictive coefcients (PLPs) [4] computed
+
+from the raw waveform, and their rst- and second-order temporal differences [5]. This non-adaptive but highly-
+
+engineered pre-processing of the waveform is designed to discard the large amount of information in waveforms that
+
+is considered to be irrelevant for discrimination and to express the remaining information in a form that facilitates
+
+discrimination with GMM-HMMs.
+
+GMMs have a number of advantages that make them suitable for modeling the probability distributions over
+
+vectors of input features that are associated with each state of an HMM. With enough components, they can model
+
+Hinton, Dahl, Mohamed, and Jaitly are with the University of Toronto.
+
+Deng and Yu are with Microsoft Research.
+
+Senior, Vanhoucke and Nguyen are with Google Research.
+
+Sainath and Kingsbury are with IBM Research.
+
+April 27, 2012
+
+DRAFT
+
+2
+
+probability distributions to any required level of accuracy and they are fairly easy to t to data using the EM
+
+algorithm. A huge amount of research has gone into ways of constraining GMMs to increase their evaluation speed
+
+and to optimize the trade-off between their exibility and the amount of training data available to avoid serious
+
+overtting [6].
+
+The recognition accuracy of a GMM-HMM system can be further improved if it is discriminatively ne-tuned
+
+after it has been generatively trained to maximize its probability of generating the observed data, especially if
+
+the discriminative objective function used for training is closely related to the error rate on phones, words or
+
+sentences[7]. The accuracy can also be improved by augmenting (or concatenating) the input features (e.g., MFCCs)
+
+with tandem or bottleneck features generated using neural networks [8], [9]. GMMs are so successful that it is
+
+difcult for any new method to outperform them for acoustic modeling.
+
+Despite all their advantages, GMMs have a serious shortcoming  they are statistically inefcient for modeling
+
+data that lie on or near a non-linear manifold in the data space. For example, modeling the set of points that lie very
+
+close to the surface of a sphere only requires a few parameters using an appropriate model class, but it requires a
+
+very large number of diagonal Gaussians or a fairly large number of full-covariance Gaussians. Speech is produced
+
+by modulating a relatively small number of parameters of a dynamical system [10], [11] and this implies that its true
+
+underlying structure is much lower-dimensional than is immediately apparent in a window that contains hundreds
+
+of coefcients. We believe, therefore, that other types of model may work better than GMMs for acoustic modeling
+
+if they can more effectively exploit information embedded in a large window of frames.
+
+Articial neural networks trained by backpropagating error derivatives have the potential to learn much better
+
+models of data that lie on or near a non-linear manifold. In fact two decades ago, researchers achieved some success
+
+using articial neural networks with a single layer of non-linear hidden units to predict HMM states from windows
+
+of acoustic coefcients [9]. At that time, however, neither the hardware nor the learning algorithms were adequate
+
+for training neural networks with many hidden layers on large amounts of data and the performance benets of
+
+using neural networks with a single hidden layer were not sufciently large to seriously challenge GMMs. As a
+
+result, the main practical contribution of neural networks at that time was to provide extra features in tandem or
+
+bottleneck systems.
+
+Over the last few years, advances in both machine learning algorithms and computer hardware have led to more
+
+efcient methods for training deep neural networks (DNNs) that contain many layers of non-linear hidden units and
+
+a very large output layer. The large output layer is required to accommodate the large number of HMM states that
+
+arise when each phone is modelled by a number of different triphone HMMs that take into account the phones on
+
+either side. Even when many of the states of these triphone HMMs are tied together, there can be thousands of tied
+
+states. Using the new learning methods, several different research groups have shown that DNNs can outperform
+
+GMMs at acoustic modeling for speech recognition on a variety of datasets including large datasets with large
+
+vocabularies.
+
+This review paper aims to represent the shared views of research groups at the University of Toronto, Microsoft
+
+Research (MSR), Google and IBM Research, who have all had recent successes in using DNNs for acoustic
+
+April 27, 2012
+
+DRAFT
+
+3
+
+modeling. The paper starts by describing the two-stage training procedure that is used for tting the DNNs. In the
+
+rst stage, layers of feature detectors are initialized, one layer at a time, by tting a stack of generative models,
+
+each of which has one layer of latent variables. These generative models are trained without using any information
+
+about the HMM states that the acoustic model will need to discriminate. In the second stage, each generative model
+
+in the stack is used to initialize one layer of hidden units in a DNN and the whole network is then discriminatively
+
+ne-tuned to predict the target HMM states. These targets are obtained by using a baseline GMM-HMM system to
+
+produce a forced alignment.
+
+In this paper we review exploratory experiments on the TIMIT database [12], [13] that were used to demonstrate
+
+the power of this two-stage training procedure for acoustic modeling. The DNNs that worked well on TIMIT were
+
+then applied to ve different large vocabulary, continuous speech recognition tasks by three different research groups
+
+whose results we also summarize. The DNNs worked well on all of these tasks when compared with highly-tuned
+
+GMM-HMM systems and on some of the tasks they outperformed the state-of-the-art by a large margin. We also
+
+describe some other uses of DNNs for acoustic modeling and some variations on the training procedure.
+
+II. TRAINING DEEP NEURAL NETWORKS
+
+A deep neural network (DNN) is a feed-forward, articial neural network that has more than one layer of hidden
+units between its inputs and its outputs. Each hidden unit, j, typically uses the logistic function1 to map its total
+
+input from the layer below, xj, to the scalar state, yj that it sends to the layer above.
+
+yj = logistic(xj) =
+
+1
+
+1 + exj
+
+,
+
+xj = bj +Xi
+
+yiwij,
+
+(1)
+
+where bj is the bias of unit j, i is an index over units in the layer below, and wij is a the weight on a connection
+
+to unit j from unit i in the layer below. For multiclass classication, output unit j converts its total input, xj, into
+
+a class probability, pj, by using the softmax non-linearity:
+
+where k is an index over all classes.
+
+pj =
+
+,
+
+exp(xj)
+
+Pk exp(xk)
+
+(2)
+
+DNNs can be discriminatively trained by backpropagating derivatives of a cost function that measures the
+
+discrepancy between the target outputs and the actual outputs produced for each training case[14]. When using the
+
+softmax output function, the natural cost function C is the cross-entropy between the target probabilities d and the
+
+outputs of the softmax, p:
+
+where the target probabilities, typically taking values of one or zero, are the supervised information provided to
+
+C = Xj
+
+dj log pj,
+
+(3)
+
+train the DNN classier.
+
+1The closely related hyberbolic tangent is also often used and any function with a well-behaved derivative can be used.
+
+April 27, 2012
+
+DRAFT
+
+4
+
+For large training sets, it is typically more efcient to compute the derivatives on a small, random mini-batch
+
+of training cases, rather than the whole training set, before updating the weights in proportion to the gradient. This
+
+stochastic gradient descent method can be further improved by using a momentum coefcient, 0 <  < 1, that
+
+smooths the gradient computed for mini-batch t, thereby damping oscillations across ravines and speeding progress
+
+down ravines:
+
+The update rule for biases can be derived by treating them as weights on connections coming from units that always
+
+wij(t) = wij(t  1)  
+
+C
+
+wij(t)
+
+.
+
+(4)
+
+have a state of 1.
+
+To reduce overtting, large weights can be penalized in proportion to their squared magnitude, or the learning
+
+can simply be terminated at the point at which performance on a held-out validation set starts getting worse[9]. In
+
+DNNs with full connectivity between adjacent layers, the initial weights are given small random values to prevent
+
+all of the hidden units in a layer from getting exactly the same gradient.
+
+DNNs with many hidden layers are hard to optimize. Gradient descent from a random starting point near the
+
+origin is not the best way to nd a good set of weights and unless the initial scales of the weights are carefully
+
+chosen [15], the backpropagated gradients will have very different magnitudes in different layers. In addition to
+
+the optimization issues, DNNs may generalize poorly to held-out test data. DNNs with many hidden layers and
+
+many units per layer are very exible models with a very large number of parameters. This makes them capable of
+
+modeling very complex and highly non-linear relationships between inputs and outputs. This ability is important
+
+for high-quality acoustic modeling, but it also allows them to model spurious regularities that are an accidental
+
+property of the particular examples in the training set, which can lead to severe overtting. Weight penalties or
+
+early-stopping can reduce the overtting but only by removing much of the modeling power. Very large training sets
+
+[16] can reduce overtting whilst preserving modeling power, but only by making training very computationally
+
+expensive. What we need is a better method of using the information in the training set to build multiple layers of
+
+non-linear feature detectors.
+
+A. Generative pre-training
+
+Instead of designing feature detectors to be good for discriminating between classes, we can start by designing
+
+them to be good at modeling the structure in the input data. The idea is to learn one layer of feature detectors at
+
+a time with the states of the feature detectors in one layer acting as the data for training the next layer. After this
+
+generative pre-training, the multiple layers of feature detectors can be used as a much better starting point for
+
+a discriminative ne-tuning phase during which backpropagation through the DNN slightly adjusts the weights
+
+found in pre-training [17]. Some of the high-level features created by the generative pre-training will be of little
+
+use for discrimination, but others will be far more useful than the raw inputs. The generative pre-training nds a
+
+region of the weight-space that allows the discriminative ne-tuning to make rapid progress, and it also signicantly
+
+reduces overtting [18].
+
+April 27, 2012
+
+DRAFT
+
+5
+
+A single layer of feature detectors can be learned by tting a generative model with one layer of latent variables
+
+to the input data. There are two broad classes of generative model to choose from. A directed model generates
+
+data by rst choosing the states of the latent variables from a prior distribution and then choosing the states of the
+
+observable variables from their conditional distributions given the latent states. Examples of directed models with
+
+one layer of latent variables are factor analysis, in which the latent variables are drawn from an isotropic Gaussian,
+
+and GMMs, in which they are drawn from a discrete distribution. An undirected model has a very different way of
+
+generating data. Instead of using one set of parameters to dene a prior distribution over the latent variables and a
+
+separate set of parameters to dene the conditional distributions of the observable variables given the values of the
+
+latent variables, an undirected model uses a single set of parameters, W, to dene the joint probability of a vector
+
+of values of the observable variables, v, and a vector of values of the latent variables, h, via an energy function,
+
+E:
+
+p(v, h; W) =
+
+where Z is called the partition function.
+
+1
+Z
+
+eE(v,h;W), Z = Xv,h
+
+eE(v,h;W),
+
+(5)
+
+If many different latent variables interact non-linearly to generate each data vector, it is difcult to infer the states
+
+of the latent variables from the observed data in a directed model because of a phenomenon known as explaining
+
+away [19]. In undirected models, however, inference is easy provided the latent variables do not have edges linking
+
+them. Such a restricted class of undirected models is ideal for layerwise pre-training because each layer will have
+
+an easy inference procedure.
+
+We start by describing an approximate learning algorithm for a restricted Boltzmann machine (RBM) which
+
+consists of a layer of stochastic binary visible units that represent binary input data connected to a layer of
+
+stochastic binary hidden units that learn to model signicant non-independencies between the visible units [20]. There
+
+are undirected connections between visible and hidden units but no visible-visible or hidden-hidden connections.
+
+An RBM is a type of Markov Random Field (MRF) but differs from most MRFs in several ways: It has a bipartite
+
+connectivity graph; it does not usually share weights between different units; and a subset of the variables are
+
+unobserved, even during training.
+
+B. An efcient learning procedure for RBMs
+
+A joint conguration, (v, h) of the visible and hidden units of an RBM has an energy given by:
+
+vihjwij
+
+(6)
+
+E(v, h) =  Xivisible
+
+aivi  Xjhidden
+
+bjhj Xi,j
+
+where vi, hj are the binary states of visible unit i and hidden unit j, ai, bj are their biases and wij is the weight
+
+between them. The network assigns a probability to every possible pair of a visible and a hidden vector via this
+
+energy function as in Eqn. (5) and the probability that the network assigns to a visible vector, v, is given by
+
+summing over all possible hidden vectors:
+
+April 27, 2012
+
+p(v) =
+
+1
+
+Z Xh
+
+eE(v,h)
+
+(7)
+
+DRAFT
+
+The derivative of the log probability of a training set with respect to a weight is surprisingly simple:
+
+6
+
+(8)
+
+1
+N
+
+ log p(vn)
+
+wij
+
+=<vihj>data  <vihj>model
+
+n=N
+
+Xn=1
+
+where N is the size of the training set and the angle brackets are used to denote expectations under the distribution
+
+specied by the subscript that follows. The simple derivative in Eqn.(8) leads to a very simple learning rule for
+
+performing stochastic steepest ascent in the log probability of the training data:
+
+wij = (<vihj>data  <vihj>model)
+
+(9)
+
+where  is a learning rate.
+
+The absence of direct connections between hidden units in an RBM makes it is very easy to get an unbiased
+
+sample of <vihj>data. Given a randomly selected training case, v, the binary state, hj, of each hidden unit, j, is
+
+set to 1 with probability
+
+and vihj is then an unbiased sample. The absence of direct connections between visible units in an RBM makes
+
+p(hj = 1 | v) = logistic(bj +Xi
+
+viwij)
+
+(10)
+
+it very easy to get an unbiased sample of the state of a visible unit, given a hidden vector
+
+p(vi = 1 | h) = logistic(ai +Xj
+
+hjwij).
+
+(11)
+
+Getting an unbiased sample of < vihj >model, however, is much more difcult. It can be done by starting at
+
+any random state of the visible units and performing alternating Gibbs sampling for a very long time. Alternating
+
+Gibbs sampling consists of updating all of the hidden units in parallel using Eqn.(10) followed by updating all of
+
+the visible units in parallel using Eqn.(11).
+
+A much faster learning procedure called contrastive divergence (CD) was proposed in [20]. This starts by
+
+setting the states of the visible units to a training vector. Then the binary states of the hidden units are all computed
+
+in parallel using Eqn.(10). Once binary states have been chosen for the hidden units, a reconstruction is produced
+
+by setting each vi to 1 with a probability given by Eqn.(11). Finally, the states of the hidden units are updated
+
+again. The change in a weight is then given by
+
+wij = (<vihj>data  <vihj>recon)
+
+(12)
+
+A simplied version of the same learning rule that uses the states of individual units instead of pairwise products
+
+is used for the biases.
+
+Contrastive divergence works well even though it is only crudely approximating the gradient of the log probability
+
+of the training data [20]. RBMs learn better generative models if more steps of alternating Gibbs sampling are used
+
+before collecting the statistics for the second term in the learning rule, but for the purposes of pre-training feature
+
+detectors, more alternations are generally of little value and all the results reviewed here were obtained using
+
+CD1 which does a single full step of alternating Gibbs sampling after the initial update of the hidden units. To
+suppress noise in the learning, the real-valued probabilities rather than binary samples are generally used for the
+
+April 27, 2012
+
+DRAFT
+
+reconstructions and the subsequent states of the hidden units, but it is important to use sampled binary values for the
+
+rst computation of the hidden states because the sampling noise acts as a very effective regularizer that prevents
+
+7
+
+overtting [21].
+
+C. Modeling real-valued data
+
+Real-valued data, such as MFCCs, are more naturally modeled by linear variables with Gaussian noise and the
+
+RBM energy function can be modied to accommodate such variables, giving a Gaussian-Bernoulli RBM (GRBM):
+
+E(v, h) = Xivis
+
+(vi  ai)2
+
+22
+i
+
+ Xjhid
+
+bjhj Xi,j
+
+where i is the standard deviation of the Gaussian noise for visible unit i.
+
+The two conditional distributions required for CD1 learning are:
+
+vi
+i
+
+hjwij
+
+(13)
+
+(14)
+
+(15)
+
+p(hj|v) = logistic bj +Xi
+p(vi|h) = N 
+ai + iXj
+
+vi
+i
+
+wij!
+i
+
+
+hjwij, 2
+
+where N (, 2) is a Gaussian. Learning the standard deviations of a GRBM is problematic for reasons described
+
+in [21], so for pre-training using CD1, the data are normalized so that each coefcient has zero mean and unit
+variance, the standard deviations are set to 1 when computing p(v|h), and no noise is added to the reconstructions.
+
+This avoids the issue of deciding the right noise level.
+
+D. Stacking RBMs to make a deep belief network
+
+After training an RBM on the data, the inferred states of the hidden units can be used as data for training
+
+another RBM that learns to model the signicant dependencies between the hidden units of the rst RBM. This
+
+can be repeated as many times as desired to produce many layers of non-linear feature detectors that represent
+
+progressively more complex statistical structure in the data. The RBMs in a stack can be combined in a surprising
+
+way to produce a single, multi-layer generative model called a deep belief net (DBN) [22]. Even though each RBM
+is an undirected model, the DBN 2 formed by the whole stack is a hybrid generative model whose top two layers
+
+are undirected (they are the nal RBM in the stack) but whose lower layers have top-down, directed connections
+
+(see gure 1).
+
+To understand how RBMs are composed into a DBN it is helpful to rewrite Eqn.(7) and to make explicit the
+
+dependence on W:
+
+p(v; W) =Xh
+
+p(h; W)p(v|h; W),
+
+(16)
+
+2Not to be confused with a Dynamic Bayesian Net which is a type of directed model of temporal data that unfortunately has the same
+
+acronym.
+
+April 27, 2012
+
+DRAFT
+
+8
+
+RBM
+
+DBN
+
+RBM
+
+copy
+
+W
+3
+
+GRBM
+
+copy
+
+W
+
+2
+
+W
+1
+
+W
+3
+
+W
+
+2
+
+W
+1
+
+DBN-DNN
+
+softmax
+
+4(cid:32)W
+
+0
+
+T
+
+W
+3
+
+T
+
+W
+
+2
+
+T
+
+W
+1
+
+Fig. 1.
+
+The sequence of operations used to create a DBN with three hidden layers and to convert it to a pre-trained DBN-DNN. First a
+
+GRBM is trained to model a window of frames of real-valued acoustic coefcients. Then the states of the binary hidden units of the GRBM
+
+are used as data for training an RBM. This is repeated to create as many hidden layers as desired. Then the stack of RBMs is converted
+
+to a single generative model, a DBN, by replacing the undirected connections of the lower level RBMs by top-down, directed connections.
+
+Finally, a pre-trained DBN-DNN is created by adding a softmax output layer that contains one unit for each possible state of each HMM.
+
+The DBN-DNN is then discriminatively trained to predict the HMM state corresponding to the central frame of the input window in a forced
+
+alignment.
+
+where p(h; W) is dened as in Eqn.(7) but with the roles of the visible and hidden units reversed. Now it is
+
+clear that the model can be improved by holding p(v|h; W) xed after training the RBM, but replacing the prior
+
+over hidden vectors p(h; W) by a better prior, i.e. a prior that is closer to the aggregated posterior over hidden
+
+vectors that can be sampled by rst picking a training case and then inferring a hidden vector using Eqn.(14). This
+
+aggregated posterior is exactly what the next RBM in the stack is trained to model.
+
+As shown in [22], there is a series of variational bounds on the log probability of the training data, and furthermore,
+
+each time a new RBM is added to the stack, the variational bound on the new and deeper DBN is better than the
+
+previous variational bound, provided the new RBM is initialized and learned in the right way. While the existence
+
+of a bound that keeps improving is mathematically reassuring, it does not answer the practical issue, addressed in
+
+this review paper, of whether the learned feature detectors are useful for discrimination on a task that is unknown
+
+while training the DBN. Nor does it guarantee that anything improves when we use efcient short-cuts such as
+
+CD1 training of the RBMs.
+
+April 27, 2012
+
+DRAFT
+
+9
+
+One very nice property of a DBN that distinguishes it from other multilayer, directed, non-linear generative
+
+models, is that it is possible to infer the states of the layers of hidden units in a single forward pass. This inference,
+
+which is used in deriving the variational bound, is not exactly correct but it is fairly accurate. So after learning a
+
+DBN by training a stack of RBMs, we can jettison the whole probabilistic framework and simply use the generative
+
+weights in the reverse direction as a way of initializing all the feature detecting layers of a deterministic feed-forward
+DNN. We then just add a nal softmax layer and train the whole DNN discriminatively3.
+
+E. Interfacing a DNN with an HMM
+
+After
+
+it
+
+has
+
+been
+
+discriminatively
+
+ne-tuned,
+
+a DNN outputs
+
+probabilities
+
+of
+
+the
+
+form
+
+p(HM M state|AcousticInput). But to compute a Viterbi alignment or to run the forward-backward algorithm
+
+within the HMM framework we require the likelihood p(AcousticInput|HM M state). The posterior probabilities
+
+that the DNN outputs can be converted into the scaled likelihood by dividing them by the frequencies of the
+
+HMM-states in the forced alignment that is used for ne-tuning the DNN [9]. All of the likelihoods produced in
+
+this way are scaled by the same unknown factor of p(AcousticInput), but this has no effect on the alignment.
+
+Although this conversion appears to have little effect on some recognition tasks, it can be important for tasks
+
+where training labels are highly unbalanced (e.g., with many frames of silences).
+
+III. PHONETIC CLASSIFICATION AND RECOGNITION ON TIMIT
+
+The TIMIT dataset provides a simple and convenient way of testing new approaches to speech recognition.
+
+The training set is small enough to make it feasible to try many variations of a new method and many existing
+
+techniques have already been benchmarked on the core test set so it is easy to see if a new approach is promising
+
+by comparing it with existing techniques that have been implemented by their proponents [23]. Experience has
+
+shown that performance improvements on TIMIT do not necessarily translate into performance improvements on
+
+large vocabulary tasks with less controlled recording conditions and much more training data. Nevertheless, TIMIT
+
+provides a good starting point for developing a new approach, especially one that requires a challenging amount of
+
+computation.
+
+Mohamed et. al. [12] showed that a DBN-DNN acoustic model outperformed the best published recognition
+
+results on TIMIT at about the same time as Sainath et. al. [23] achieved a similar improvement on TIMIT by
+
+applying state-of-the-art techniques developed for large vocabulary recognition. Subsequent work combined the
+
+two approaches by using state-of-the-art, discriminatively trained (DT) speaker-dependent features as input to the
+
+DBN-DNN [24], but this produced little further improvement, probably because the hidden layers of the DBN-DNN
+
+were already doing quite a good job of progressively eliminating speaker differences [25].
+
+The DBN-DNNs that worked best on the TIMIT data formed the starting point for subsequent experiments
+
+on much more challenging, large vocabulary tasks that were too computationally intensive to allow extensive
+
+3Unfortunately, a DNN that is pre-trained generatively as a DBN is often still called a DBN in the literature. For clarity we call it a DBN-DNN.
+
+April 27, 2012
+
+DRAFT
+
+Comparisons among the reported speaker-independent phonetic recognition accuracy results on TIMIT core test set with 192 sentences
+
+TABLE I
+
+10
+
+Method
+
+CD-HMM [26]
+
+Augmented conditional Random Fields [26]
+
+Randomly initialized recurrent Neural Nets [27]
+
+Bayesian Triphone GMM-HMM [28]
+
+Monophone HTMs [29]
+
+Heterogeneous Classiers [30]
+
+Monophone randomly initialized DNNs (6 layers)[13]
+
+Monophone DBN-DNNs (6 layers) [13]
+
+Monophone DBN-DNNs with MMI training [31]
+
+Triphone GMM-HMMs discriminatively trained w/ BMMI [32]
+
+Monophone DBN-DNNs on fbank (8 layers) [13]
+
+Monophone mcRBM-DBN-DNNs on fbank (5 layers) [33]
+
+Monophone convolutional DNNs on fbank (3 layers) [34]
+
+PER
+
+27.3%
+
+26.6%
+
+26.1%
+
+25.6%
+
+24.8%
+
+24.4%
+
+23.4%
+
+22.4%
+
+22.1%
+
+21.7%
+
+20.7%
+
+20.5%
+
+20.0%
+
+exploration of variations in the architecture of the neural network, the representation of the acoustic input or the
+
+training procedure.
+
+For simplicity, all hidden layers always had the same size, but even with this constraint it was impossible to
+
+train all possible combinations of number of hidden layers [1, 2, 3, 4, 5, 6, 7, 8], number of units per layer [512,
+
+1024, 2048, 3072] and number of frames of acoustic data in the input layer [7, 11, 15, 17, 27, 37]. Fortunately,
+
+the performance of the networks on the TIMIT core test set was fairly insensitive to the precise details of the
+
+architecture and the results in [13] suggest that any combination of the numbers in boldface probably has an error
+
+rate within about 2% of the very best combination. This robustness is crucial for methods such as DBN-DNNs
+
+that have a lot of tuneable meta-parameters. Our consistent nding is that multiple hidden layers always worked
+
+better than one hidden layer and, with multiple hidden layers, pre-training always improved the results on both the
+
+development and test sets in the TIMIT task. Details of the learning rates, stopping criteria, momentum, L2 weight
+
+penalties and mini-batch size for both the pre-training and ne-tuning are given in [13].
+
+Table I compares DBN-DNNs with a variety of other methods on the TIMIT core test set. For each type of
+
+DBN-DNN the architecture that performed best on the development set is reported. All methods use MFCCs as
+
+inputs except for the three marked fbank that use log Mel-scale lter-bank outputs.
+
+A. Pre-processing the waveform for deep neural networks
+
+State-of-the-art ASR systems do not use lter-bank coefcients as the input representation because they are
+
+strongly correlated so modeling them well requires either full covariance Gaussians or a huge number of diagonal
+
+Gaussians. MFCCs offer a more suitable alternative as their individual components are roughly independent so they
+
+are much easier to model using a mixture of diagonal covariance Gaussians. DBN-DNNs do not require uncorrelated
+
+April 27, 2012
+
+DRAFT
+
+11
+
+data and, on the TIMIT database, the work reported in [13] showed that the best performing DBN-DNNs trained
+
+with lter-bank features had a phone error rate 1.7% lower than the best performing DBN-DNNs trained with
+
+MFCCs (see Table I).
+
+B. Fine-tuning DBN-DNNs to optimize mutual information
+
+In the experiments using TIMIT discussed above, the DNNs were ne-tuned to optimize the per frame cross-
+
+entropy between the target HMM state and the predictions. The transition parameters and language model scores
+
+were obtained from an HMM-like approach and were trained independently of the DNN weights. However, it has
+
+long been known that sequence classication criteria, which are more directly correlated with the overall word or
+
+phone error rate, can be very helpful in improving recognition accuracy [7], [35] and the benet of using such
+
+sequence classication criteria with shallow neural networks has already been shown by [36], [37], [38]. In the more
+
+recent work reported in [31], one popular type of sequence classication criterion, maximum mutual information
+
+or MMI, proposed as early as 1986 [7], was successfully applied to learn DBN-DNN weights for the TIMIT phone
+
+recognition task. MMI optimizes the conditional probability p(l1:T |v1:T ) of the whole sequence of labels, l1:T , with
+length T, given the whole visible feature utterance v1:T , or equivalently the hidden feature sequence h1:T extracted
+by the DNN:
+
+p(l1:T |v1:T ) = p(l1:T |h1:T ) =
+
+exp(PT
+
+t=1 ijij(lt1, lt) +PT
+
+Z(h1:T )
+
+t=1PD
+
+d=1 lt,dhtd)
+
+,
+
+(17)
+
+where the transition feature ij(lt1, lt) takes on a value of one if lt1 = i and lt = j, and otherwise takes on
+a value of zero, where ij is the parameter associated with this transition feature, htd is the d-th dimension of
+
+the hidden unit value at the t-th frame at the nal layer of the DNN, and where D is the number of units in the
+
+nal hidden layer. Note the objective function of Eqn.(17) derived from mutual information [35] is the same as
+
+the conditional likelihood associated with a specialized linear-chain conditional random eld. Here, it is the top
+
+most layer of the DNN below the softmax layer, not the raw speech coefcients of MFCC or PLP, that provides
+
+features to the conditional random eld.
+
+To optimize the log conditional probability p(ln
+
+1:T |vn
+
+1:T ) of the n-th utterance, we take the gradient over the
+
+activation parameters kd, transition parameters ij, and the lower-layer weights of the DNN, wij, according to
+
+=
+
+T
+
+Xt=1
+
+((ln
+
+t = k)  p(ln
+
+t = k|vn
+
+1:T ))hn
+
+td
+
+=
+
+[(ln
+
+t1 = i, ln
+
+t = j)  p(ln
+
+t1 = i, ln
+
+t = j|vn
+
+1:T )]
+
+ log p(ln
+
+1:T |vn
+
+1:T )
+
+kd
+
+1:T |vn
+
+1:T )
+
+ log p(ln
+ij
+
+T
+
+Xt=1
+Xt=1
+
+T
+
+(18)
+
+(19)
+
+(20)
+
+1:T |vn
+
+1:T )
+
+ log p(ln
+wij
+
+=
+
+[ltd 
+
+p(ln
+
+t = k|vn
+
+1:T )kd]  hn
+
+td(1  hn
+
+td)xn
+
+ti
+
+K
+
+Xk=1
+
+Note that the gradient  log p(ln
+wij
+1:T ), vs. (ln
+
+t = k)  p(ln
+
+t = k|vn
+
+1:T |vn
+
+k|vn
+
+1:T )
+
+t ) in the frame-based training algorithm.
+
+above can be viewed as back-propagating the error (ln
+
+t = k)  p(ln
+
+t =
+
+April 27, 2012
+
+DRAFT
+
+12
+
+In implementing the above learning algorithm for a DBN-DNN, the DNN weights can rst be ne-tuned to
+
+optimize the per frame cross entropy. The transition parameters can be initialized from the combination of the
+
+HMM transition matrices and the phone language model scores, and can be further optimized by tuning the
+
+transition features while xing the DNN weights before the joint optimization. Using the joint optimization with
+
+careful scheduling, we observe that the sequential MMI training can outperform the frame-level training by about
+
+5% relative within the same system in the same laboratory.
+
+C. Convolutional DNNs for phone classication and recognition
+
+All
+
+the previously cited work reported phone recognition results on the TIMIT database. In recognition
+
+experiments, the input is the acoustic input for the whole utterance while the output is the spoken phonetic sequence.
+
+A decoding process using a phone language model is used to produce this output sequence. Phonetic classication
+
+is a different task where the acoustic input has already been labeled with the correct boundaries between different
+
+phonetic units and the goal is to classify these phones conditioned on the given boundaries. In [39] convolutional
+
+DBN-DNNs were introduced and successfully applied to various audio tasks including phone classication on the
+
+TIMIT database. In this model, the RBM was made convolutional in time by sharing weights between hidden
+
+units that detect the same feature at different times. A max-pooling operation was then performed which takes the
+
+maximal activation over a pool of adjacent hidden units that share the same weights but apply them at different
+
+times. This yields some temporal invariance.
+
+Although convolutional models along the temporal dimension achieved good classication results [39], applying
+
+them to phone recognition is not straightforward. This is because temporal variations in speech can be partially
+
+handled by the dynamic programing procedure in the HMM component and those aspects of temporal variation that
+
+cannot be adequately handled by the HMM can be addressed more explicitly and effectively by hidden trajectory
+
+models [40].
+
+The work reported in [34] applied local convolutional lters with max-pooling to the frequency rather than
+
+time dimension of the spectrogram. Sharing-weights and pooling over frequency was motivated by the shifts in
+
+formant frequencies caused by speaker variations. It provides some speaker invariance while also offering noise
+
+robustness due to the band-limited nature of the lters. [34] only used weight-sharing and max-pooling across
+
+nearby frequencies because, unlike features that occur at different positions in images, acoustic features occuring
+
+at very different frequencies are very different.
+
+D. A summary of the differences between DNNs and GMMs
+
+Here we summarize the main differences between the DNNs and GMMs used in the TIMIT experiments described
+
+so far in this paper. First, one major element of the DBN-DNN, the RBM which serves as the building block for
+
+pre-training, is an instance of product of experts [20], in contrast to mixture models that are a sum of experts.
+4. Mixture models with a large number of components use their parameters inefciently because each parameter
+
+4Product models have only very recently been explored in speech processing; e.g., [41].
+
+April 27, 2012
+
+DRAFT
+
+13
+
+only applies to a very small fraction of the data whereas each parameter of a product model is constrained by a
+
+large fraction of the data. Second, while both DNNs and GMMs are nonlinear models, the nature of the nonlinearity
+
+is very different. Third, DNNs are good at exploiting multiple frames of input coefcients whereas GMMs that
+
+use diagonal covariance matrices benet much less from multiple frames because they require decorrelated inputs.
+
+Finally, DNNs are learned using stochastic gradient descent, while GMMs are learned using the EM algorithm or
+
+its extensions [35] which makes GMM learning much easier to parallelize on a cluster machine.
+
+IV. COMPARING DBN-DNNS WITH GMMS FOR LARGE-VOCABULARY SPEECH RECOGNITION
+
+The success of DBN-DNNs on TIMIT tasks starting in 2009 motivated more ambitious experiments with much
+
+larger vocabularies and more varied speaking styles. In this section, we review experiments by three different speech
+
+groups on ve different benchmark tasks for large vocabulary speech recognition. To make DBN-DNNs work really
+
+well on large vocabulary tasks it is important to replace the monophone HMMs used for TIMIT (and also for
+
+early neural network/HMM hybrid systems) with triphone HMMs that have many thousands of tied states [42].
+
+Predicting these context-dependent states provides several advantages over monophone targets. They supply more
+
+bits of information per frame in the labels. They also make it possible to use a more powerful triphone HMM
+
+decoder and to exploit the sensible classes discovered by the decision tree clustering that is used to tie the states of
+
+different triphone HMMs. Using context-dependent HMM states, it is possible to outperform state-of-the-art BMMI
+
+trained GMM-HMM systems with a two-hidden-layer neural network without using any pre-training [43], though
+
+using more hidden layers and pre-training works even better.
+
+A. Bing-Voice-Search speech recognition task
+
+The rst successful use of acoustic models based on DBN-DNNs for a large vocabulary task used data collected
+
+from the Bing mobile voice search application (BMVS). The task used 24 hours of training data with a high degree
+
+of acoustic variability caused by noise, music, side-speech, accents, sloppy pronunciation, hesitation, repetition,
+
+interruptions, and mobile phone differences. The results reported in [42] demonstrated that the best DNN-HMM
+
+acoustic model trained with context-dependent states as targets achieved a sentence accuracy of 69.6% on the test
+
+set, compared with 63.8% for a strong, MPE trained GMM-HMM baseline.
+
+The DBN-DNN used in the experiments was based on one of the DBN-DNNs that worked well for the TIMIT
+
+task. It used ve pre-trained layers of hidden units with 2,048 units per layer and was trained to classify the central
+
+frame of an 11 frame acoustic context window using 761 possible context-dependent states as targets. In addition
+
+to demonstrating that a DBN-DNN could provide gains on a large vocabulary task, several other important issues
+
+were explicitly investigated in [42]. It was found that using tied triphone context-dependent state targets was crucial
+
+and clearly superior to using monophone state targets, even when the latter were derived from the same forced
+
+alignment with the same baseline. It was also conrmed that the lower the error rate of the system used during forced
+
+alignment to generate frame level training labels for the neural net, the lower the error rate of the nal neural-net
+
+based system. This effect was consistent across all the alignments they tried, including monophone alignments,
+
+April 27, 2012
+
+DRAFT
+
+14
+
+alignments from maximum likelihood trained GMM-HMM systems, and alignments from discriminatively trained
+
+GMM-HMM systems.
+
+Further work after that of [42] extended the DNN-HMM acoustic model from 24 hours of training data to 48
+
+hours, and explored the respective roles of pre-training and ne-tuning the DBN-DNN [44]. As expected, pre-training
+
+is helpful in training the DBN-DNN because it initializes the DBN-DNN weights to a point in the weight-space
+
+from which ne-tuning is highly effective. However, a moderate increase of the amount of unlabeled pre-training
+
+data has an insignicant effect on the nal recognition results (69.6% to 69.8%), as long as the original training set
+
+is fairly large. By contrast, the same amount of additional labeled ne-tuning training data signicantly improves
+
+the performance of the DNN-HMMs (accuracy from 69.6% to 71.7%).
+
+B. Switchboard speech recognition task
+
+The DNN-HMM training recipe developed for the Bing voice search data was applied unaltered to the Switchboard
+
+speech recognition task [43] to conrm the suitability of DNN-HMM acoustic models for large vocabulary tasks.
+
+Before this work, DNN-HMM acoustic models had only been trained with up to 48 hours of data [44] and hundreds
+
+of tied triphone states as targets, whereas this work used over 300 hours of training data and thousands of tied
+
+triphone states as targets. Furthermore, Switchboard is a publicly available speech-to-text transcription benchmark
+
+task that allows much more rigorous comparisons among techniques.
+
+The baseline GMM-HMM system on the Switchboard task was trained using the standard 309-hour Switchboard-I
+
+training set. 13-dimensional PLP features with windowed mean-variance normalization were concatenated with up
+
+to third-order derivatives and reduced to 39 dimensions by HDLA, a form of linear discriminant analysis (LDA).
+
+The speaker-independent crossword triphones used the common left-to-right 3-state topology and shared 9304 tied
+
+states.
+
+The baseline GMM-HMM system had a mixture of 40 Gaussians per (tied) HMM state that were rst trained
+
+generatively to optimize a maximum likelihood (ML) criterion and then rened discriminatively to optimize a
+
+boosted maximum-mutual-information (BMMI) criterion. A seven-hidden-layer DBN-DNN with 2048 units in each
+
+layer and full connectivity between adjacent layers replaced the GMM in the acoustic model. The trigram language
+
+model, used for both systems, was trained on the training transcripts of the 2000-hours of the Fisher corpus and
+
+interpolated with a trigram model trained on written text.
+
+The primary test set is the FSH portion of the 6.3-hour Spring 2003 NIST rich transcription set (RT03S). Table
+
+II extracted from the literature shows a summary of the core results. Using a DNN reduced the word-error rate
+
+(WER) from the 27.4% of the baseline GMM-HMM (trained with BMMI) to 18.5%  a 33% relative reduction.
+
+The DNN-HMM system trained on 309 hours performs as well as combining several speaker-adaptive, multi-pass
+
+systems which use Vocal Tract Length Normalization (VTLN) and nearly seven times as much acoustic training
+
+data (the 2000h Fisher corpus) (18.6%, last row).
+
+Detailed experiments [43] on the Switchboard task conrmed that the remarkable accuracy gains from the DNN-
+
+HMM acoustic model are due to the direct modeling of tied triphone states using the DBN-DNN, the effective
+
+April 27, 2012
+
+DRAFT
+
+TABLE II
+
+Comparing ve different DBN-DNN acoustic models with two strong GMM-HMM baseline systems that are discriminatively trained (DT).
+
+Speaker-independent (SI) training on 309 hours of data and single-pass decoding were used for all models except for the GMM-HMM system
+
+shown on the last row which used speaker adaptive (SA) training with 2000 hours of data and multi-pass decoding including hypotheses
+
+combination. In the table, 40 mix means a mixture of 40 Gaussians per HMM state and 15.2 nz means 15.2 million, non-zero weights.
+
+Word-error rates (WER) in % are shown for two separate test sets, Hub500-SWB and RT03S-FSH.
+
+15
+
+modeling
+
+technique
+
+#params
+
+WER
+
+[106] Hub500-SWBRT03S-FSH
+
+GMM, 40 mix DT 309h SI
+
+NN 1 hidden-layer4634 units
+
++ 25 neighboring frames
+
+29.4
+
+43.6
+
+45.1
+
+DBN-DNN 7 hidden layers2048 units 45.1
+
++ updated state alignment
+
++ sparsication
+
+GMM 72 mix DT 2000h SA
+
+45.1
+
+15.2 nz
+
+102.4
+
+23.6
+
+26.0
+
+22.4
+
+17.1
+
+16.4
+
+16.1
+
+17.1
+
+27.4
+
+29.4
+
+25.7
+
+19.6
+
+18.6
+
+18.5
+
+18.6
+
+exploitation of neighboring frames by the DBN-DNN, and the strong modeling power of deeper networks, as was
+
+discovered in the Bing voice search task [44], [42]. Pre-training the DBN-DNN leads to the best results but it is
+
+not critical: For this task, it provides an absolute WER reduction of less than 1% and this gain is even smaller
+
+when using ve or more hidden layers. For under-resourced languages that have smaller amounts of labeled data,
+
+pre-training is likely to be far more helpful.
+
+Further study [45] suggests that feature-engineering techniques such as HLDA and VTLN, commonly used in
+
+GMM-HMMs, are more helpful for shallow neural nets than for DBN-DNNs, presumably because DBN-DNNs are
+
+able to learn appropriate features in their lower layers.
+
+C. Google Voice Input speech recognition task
+
+Google Voice Input transcribes voice search queries, short messages, emails and user actions from mobile devices.
+
+This is a large vocabulary task that uses a language model designed for a mixture of search queries and dictation.
+
+Googles full-blown model for this task, which was built from a very large corpus, uses a speaker-independent
+
+GMM-HMM model composed of context dependent cross-word triphone HMMs that have a left-to-right, three-
+
+state topology. This model has a total of 7969 senone states and uses as acoustic input PLP features that have been
+
+transformed by LDA. Semi-Tied Covariances (STC) are used in the GMMs to model the LDA transformed features
+
+and BMMI[46] was used to train the model discriminatively.
+
+Jaitly et. al. [47] used this model to obtain approximately 5,870 hours of aligned training data for a DBN-DNN
+
+acoustic model that predicts the 7,969 HMM state posteriors from the acoustic input. The DBN-DNN was loosely
+
+based on one of the DBN-DNNs used for the TIMIT task. It had four hidden layers with 2,560 fully connected
+
+units per layer and a nal softmax layer with 7,969 alternative states. Its input was 11 contiguous frames of 40
+
+log lter-bank outputs with no temporal derivatives. Each DBN-DNN layer was pre-trained for one epoch as an
+
+RBM and then the resulting DNN was discriminatively ne-tuned for one epoch. Weights with magnitudes below
+
+April 27, 2012
+
+DRAFT
+
+16
+
+a threshold were then permanently set to zero before a further quarter epoch of training. One third of the weights
+
+in the nal network were zero. In addition to the DBN-DNN training, sequence level discriminative ne-tuning
+
+of the neural network was performed using MMI, similar to the method proposed in [37]. Model combination
+
+was then used to combine results from the GMM-HMM system with the DNN-HMM hybrid, using the SCARF
+
+framework [48]. Viterbi decoding was done using the Google system [49] with modications to compute the scaled
+
+log likelihoods from the estimates of the posterior probabilities and the state priors. Unlike the other systems, it was
+
+observed that for Voice Input it was essential to smooth the estimated priors for good performance. This smoothing
+
+of the priors was performed by rescaling the log priors with a multiplier that was chosen by using a grid search to
+
+nd a joint optimum of the language model weight, the word insertion penalty and the smoothing factor.
+
+On a test set of anonymized utterances from the live Voice Input system, the DBN-DNN-based system achieved
+
+a word error rate of 12.3%  a 23% relative reduction compared to the best GMM-based system for this task.
+
+MMI sequence discriminative training gave an error rate of 12.2% and model combination with the GMM system
+
+11.8%.
+
+D. YouTube speech recognition task
+
+In this task, the goal is to transcribe Youtube data. Unlike the mobile voice input applications described above,
+
+this application does not have a strong language model to constrain the interpretation of the acoustic information
+
+so good discrimination requires an accurate acoustic model.
+
+Googles full-blown baseline, built with a much larger training set, was used to create approximately 1400 hours
+
+of aligned training data. This was used to create a new baseline system for which the input was 9 frames of MFCCs
+
+that were transformed by LDA. Speaker Adaptive Training was performed, and decision tree clustering was used to
+
+obtain 17,552 triphone states. Semi-tied covariances were used in the GMMs to model the features. The acoustic
+
+models were further improved with BMMI. During decoding, feature space Maximum Likelihood Linear Regression
+
+(fMLLR) and Maximum Likelihood Linear Regression (MLLR) transforms were applied.
+
+The acoustic data used for training the DBN-DNN acoustic model were the fMLLR transformed features. The
+
+large number of HMM states added signicantly to the computational burden, since most of the computation is
+
+done at the output layer. To reduce this burden, the DNN used only four hidden layers with 2000 units in the rst
+
+hidden layer and only 1000 in each of the layers above.
+
+About ten epochs of training were performed on this data before sequence level training and model combination.
+
+The DBN-DNN gave an absolute improvement of 4.7% over the baseline systems WER of 52.3%. Sequence level
+
+ne-tuning of the DBN-DNN further improved results by 0.5% and model combination produced an additional gain
+
+of 0.9%.
+
+E. English-Broadcast-News speech recognition task
+
+DNNs have also been successfully applied to an English broadcast news task. Since a GMM-HMM baseline creates
+
+the initial training labels for the DNN, it is important to have a good baseline system. All GMM-HMM systems
+
+April 27, 2012
+
+DRAFT
+
+A comparison of the Percentage Word Error Rates using DNN-HMMs and GMM-HMMs on ve different large vocabulary tasks.
+
+TABLE III
+
+17
+
+task
+
+hours of
+
+DNN-HMM GMM-HMM
+
+GMM-HMM
+
+training data
+
+with same data
+
+with more data
+
+Switchboard (test set 1)
+
+Switchboard (test set 2)
+
+English Broadcast News
+
+Bing Voice Search
+
+(Sentence error rates)
+
+Google Voice Input
+
+Youtube
+
+309
+
+309
+
+50
+
+24
+
+5,870
+
+1,400
+
+18.5
+
+16.1
+
+17.5
+
+30.4
+
+12.3
+
+47.6
+
+27.4
+
+23.6
+
+18.8
+
+36.2
+
+52.3
+
+18.6 (2000 hrs)
+
+17.1 (2000 hrs)
+
+16.0 (>>5,870hrs)
+
+created at IBM use the following recipe to produce a state-of-the-art baseline system. First speaker-independent
+
+(SI) features are created, followed by speaker-adaptively trained (SAT) and discriminatively trained (DT) features.
+
+Specically, given initial PLP features, a set of SI features are created using Linear Discriminative Analysis (LDA).
+
+Further processing of LDA features is performed to create SAT features using vocal tract length normalization
+
+(VTLN) followed by feature space Maximum Likelihood Linear Regression (fMLLR). Finally, feature and model-
+
+space discriminative training is applied using the the Boosted Maximum Mutual Information (BMMI) or Minimum
+
+Phone Error (MPE) criterion.
+
+Using alignments from a baseline system, [32] trained a DBN-DNN acoustic model on 50 hours of data from the
+
+1996 and 1997 English Broadcast News Speech Corpora [37]. The DBN-DNN was trained with the best-performing
+
+LVCSR features, namely SAT + DT features. The DBN-DNN architecture consisted of 6 hidden layers with 1,024
+
+units per layer and a nal softmax layer of 2,220 context-dependent states. The SAT+DT feature input into the rst
+
+layer used a context of 9 frames. Pre-training was performed following a recipe similar to [42].
+
+Two phases of ne-tuning were performed. During the rst phase, the cross-entropy loss was used. For cross-
+
+entropy training, after each iteration through the whole training set, loss is measured on a held-out set and the
+
+learning rate is annealed (i.e. reduced) by a factor of 2 if the held-out loss has grown or improves by less than
+
+a threshold of 0.01% from the previous iteration. Once the learning rate has been annealed ve times, the rst
+
+phase of ne-tuning stops. After weights are learned via cross-entropy, these weights are used as a starting point
+
+for a second phase of ne-tuning using a sequence criterion [37] which utilizes the MPE objective function, a
+
+discriminative objective function similar to MMI [7] but which takes into account phoneme error rate.
+
+A strong SAT+DT GMM-HMM baseline system, which consisted of 2,220 context-dependent states and 50,000
+
+Gaussians, gave a WER of 18.8% on the EARS Dev-04f set, whereas the DNN-HMM system gave 17.5% [50].
+
+F. Summary of the main results for DBN-DNN acoustic models on LVCSR tasks
+
+Table III summarizes the acoustic modeling results described above. It shows that DNN-HMMs consistently
+
+outperform GMM-HMMs that are trained on the same amount of data, sometimes by a large margin. For some
+
+tasks, DNN-HMMs also outperform GMM-HMMs that are trained on much more data.
+
+April 27, 2012
+
+DRAFT
+
+18
+
+G. Speeding up DNNs at recognition time
+
+State pruning or Gaussian selection methods can be used to make GMM-HMM systems computationally efcient
+
+at recognition time. A DNN, however, uses virtually all its parameters at every frame to compute state likelihoods,
+
+making it potentially much slower than a GMM with a comparable number of parameters. Fortunately, the time that
+
+a DNN-HMM system requires to recognize 1s of speech can be reduced from 1.6s to 210ms, without decreasing
+
+recognition accuracy, by quantizing the weights down to 8 bits and using the very fast SIMD primitives for xed-
+
+point computation that are provided by a modern x86 CPU[49]. Alternatively, it can be reduced to 66ms by using
+
+a GPU.
+
+H. Alternative pre-training methods for DNNs
+
+Pre-training DNNs as generative models led to better recognition results on TIMIT and subsequently on a variety
+
+of LVCSR tasks. Once it was shown that DBN-DNNs could learn good acoustic models, further research revealed
+
+that they could be trained in many different ways. It is possible to learn a DNN by starting with a shallow neural
+
+net with a single hidden layer. Once this net has been trained discriminatively, a second hidden layer is interposed
+
+between the rst hidden layer and the softmax output units and the whole network is again discriminatively trained.
+
+This can be continued until the desired number of hidden layers is reached, after which full backpropagation
+
+ne-tuning is applied.
+
+This type of discriminative pre-training works well in practice, approaching the accuracy achieved by generative
+
+DBN pre-training and further improvement can be achieved by stopping the discriminative pre-training after a single
+
+epoch instead of multiple epochs as reported in [45]. Discriminative pre-training has also been found effective
+
+for the architectures called deep convex network [51] and deep stacking network [52], where pre-training is
+
+accomplished by convex optimization involving no generative models.
+
+Purely discriminative training of the whole DNN from random initial weights works much better than had been
+
+thought, provided the scales of the initial weights are set carefully, a large amount of labeled training data is available,
+
+and mini-batch sizes over training epochs are set appropriately [45], [53]. Nevertheless, generative pre-training still
+
+improves test performance, sometimes by a signicant amount.
+
+Layer-by-layer generative pre-training was originally done using RBMs, but various types of autoencoder with
+
+one hidden layer can also be used (see gure 2). On vision tasks, performance similar to RBMs can be achieved
+
+by pre-training with denoising autoencoders [54] that are regularized by setting a subset of the inputs to zero
+
+or contractive autoencoders [55] that are regularized by penalizing the gradient of the activities of the hidden
+
+units with respect to the inputs. For speech recognition, improved performance was achieved on both TIMIT and
+
+Broadcast News tasks by pre-training with a type of autoencoder that tries to nd sparse codes [56].
+
+I. Alternative ne-tuning methods for DNNs
+
+Very large GMM acoustic models are trained by making use of the parallelism available in compute clusters.
+
+It is more difcult to use the parallelism of cluster systems effectively when training DBN-DNNs. At present, the
+
+April 27, 2012
+
+DRAFT
+
+19
+
+output units
+
+code units
+
+input units
+
+Fig. 2. An autoencoder is trained to minimize the discrepancy between the input vector and its reconstruction of the input vector on its output
+
+units. If the code units and the output units are both linear and the discrepancy is the squared reconstruction error, an autoencoder nds the
+
+same solution as Principal Components Analysis (up to a rotation of the components). If the output units and the code units are logistic, an
+
+autoencoder is quite similar to an RBM that is trained using contrastive divergence, but it does not work as well for pre-training DNNs unless it
+
+is strongly regularized in an appropriate way. If extra hidden layers are added before and/or after the code layer, an autoencoder can compress
+
+data much better than Principal Components Analysis[17].
+
+most effective parallelization method is to parallelize the matrix operations using a GPU. This gives a speed-up of
+
+between one and two orders of magnitude, but the ne-tuning stage remains a serious bottleneck and more effective
+
+ways of parallelizing training are needed. Some recent attempts are described in [52], [57].
+
+Most DBN-DNN acoustic models are ne-tuned by applying stochastic gradient descent with momentum to
+
+small mini-batches of training cases. More sophisticated optimization methods that can be used on larger mini-
+
+batches include non-linear conjugate-gradient [17], LBFGS [58] and Hessian Free methods adapted to work for
+
+deep neural networks [59]. However, the ne-tuning of DNN acoustic models is typically stopped early to prevent
+
+overtting and it is not clear that the more sophisticated methods are worthwhile for such incomplete optimization.
+
+V. OTHER WAYS OF USING DEEP NEURAL NETWORKS FOR SPEECH RECOGNITION
+
+The previous section reviewed experiments in which GMMs were replaced by DBN-DNN acoustic models to
+
+give hybrid DNN-HMM systems in which the posterior probabilities over HMM states produced by the DBN-DNN
+
+replace the GMM output model. In this section, we describe two other ways of using DNNs for speech recognition.
+
+A. Using DBN-DNNs to provide input features for GMM-HMM systems
+
+Here we describe a class of methods where neural networks are used to provide the feature vectors that the
+
+GMM in a GMM-HMM system is trained to model. The most common approach to extracting these feature vectors
+
+is to discriminatively train a randomly initialized neural net with a narrow bottleneck middle layer and to use the
+
+activations of the bottleneck hidden units as features. For a summary of such methods, commonly known as the
+
+tandem approach, see [60], [61].
+
+April 27, 2012
+
+DRAFT
+
+20
+
+Recently, [62] investigated a less direct way of producing feature vectors for the GMM. First, a DNN with
+
+six hidden layers of 1024 units each was trained to achieve good classication accuracy for the 384 HMM states
+
+represented in its softmax output layer. This DNN did not have a bottleneck layer and it was therefore able to
+
+classify better than a DNN with a bottleneck. Then the 384 logits computed by the DNN as input to its softmax
+
+layer were compressed down to 40 values using a 384-128-40-384 autoencoder. This method of producing feature
+
+vectors is called AE-BN because the bottleneck is in the autoencoder rather than in the DNN that is trained to
+
+classify HMM states.
+
+Bottleneck feature experiments were conducted on 50 hours and 430 hours of data from the 1996 and 1997
+
+English Broadcast News Speech collections and English broadcast audio from TDT-4. The baseline GMM-HMM
+
+acoustic model trained on 50 hours was the same acoustic model described in Section IV-E. The acoustic model
+
+trained on 430 hours had 6,000 states and 150,000 Gaussians. Again, the standard IBM LVCSR recipe described
+
+in Section IV-E was used to create a set of speaker-adapted, discriminatively trained features and models.
+
+All DBN-DNNs used SAT features as input. They were pre-trained as DBNs and then discriminatively ne-tuned
+
+to predict target values for 384 HMM states that were obtained by clustering the context-dependent states in the
+
+baseline GMM-HMM system. As in section IV-E, the DBN-DNN was trained using the cross-entropy criterion,
+
+followed by the sequence criterion with the same annealing and stopping rules.
+
+After the training of the rst DBN-DNN terminated, the nal set of weights was used for generating the 384
+
+logits at the output layer. A second 384-128-40-384 DBN-DNN was then trained as an auto-encoder to reduce the
+
+dimensionality of the output logits. The GMM-HMM system that used the feature vectors produced by the AE-BN
+
+was trained using feature and model space discriminative training. Both pre-training and the use of deeper networks
+
+made the AE-BN features work better for recognition. To fairly compare the performance of the system that used
+
+the AE-BN features with the baseline GMM-HMM system, the acoustic model of the AE-BN features was trained
+
+with the same number of states and Gaussians as the baseline system.
+
+Table IV shows the results of the AE-BN and baseline systems on both 50 and 430 hours, for different steps in
+
+the LVCSR recipe described in Section IV-E. On 50 hours, the AE-BN system offers a 1.3% absolute improvement
+
+over the baseline GMM-HMM system which is the same improvement as the DBN-DNN, while on 430 hours the
+
+AE-BN system provides a 0.5% improvement over the baseline. The 17.5% WER is the best result to date on the
+
+Dev-04f task, using an acoustic model trained on 50 hours of data. Finally, the complementarity of the AE-BN
+
+and baseline methods is explored by performing model combination on both the 50 and 430 hour tasks. Table IV
+
+shows that model-combination provides an additional 1.1% absolute improvement over individual systems on the
+
+50 hour task, and a 0.5% absolute improvement over the individual systems on the 430 hour task, conrming the
+
+complementarity of the AE-BN and baseline systems.
+
+Instead of replacing the coefcients usually modeled by GMMs, neural networks can also be used to provide
+
+additional features for the GMM to model [8], [9], [63]. DBN-DNNs have recently been shown to be very effective
+
+in such tandem systems. On the Aurora2 test set, pre-training decreased word error rates by more than one third
+
+for speech with signal-to-noise levels of 20dB or more, though this effect almost disappeared for very high noise
+
+April 27, 2012
+
+DRAFT
+
+21
+
+TABLE IV
+
+WER in % on English Broadcast News
+
+LVCSR Stage
+
+GMM-HMM Baseline
+
+AE-BN
+
+GMM/HMM Baseline
+
+AE-BN
+
+50 Hours
+
+430 Hours
+
+FSA
+
++fBMMI
+
++BMMI
+
++MLLR
+
+24.8
+
+20.7
+
+19.6
+
+18.8
+
+20.6
+
+19.0
+
+18.1
+
+17.5
+
+20.2
+
+17.7
+
+16.5
+
+16.0
+
+17.6
+
+16.6
+
+15.8
+
+15.5
+
+Model Combination
+
+16.4
+
+15.0
+
+levels [64].
+
+B. Using DNNs to estimate articulatory features for detection-based speech recognition
+
+A recent study [65] demonstrated the effectiveness of DBN-DNNs for detecting sub-phonetic speech attributes
+
+(also known as phonological or articulatory features [66]) in the widely used Wall Street Journal speech database
+
+(5k-WSJ0). 13 MFCCs plus rst and second temporal derivatives were used as the short-time spectral representation
+
+of the speech signal. The phone labels were derived from the forced alignments generated using a GMM-HMM
+
+system trained with maximum likelihood, and that HMM system had 2818 tied-state, cross-word tri-phones, each
+
+modeled by a mixture of 8 Gaussians. The attribute labels were generated by mapping phone labels to attributes,
+
+simplifying the overlapping characteristics of the articulatory features. The 22 attributes used in the recent work,
+
+as reported in [65], are a subset of the articulatory features explored in [66], [67].
+
+DBN-DNNs achieved less than half the error rate of shallow neural nets with a single hidden layer. DNN
+
+architectures with 5 to 7 hidden layers and up to 2048 hidden units per layer were explored, producing greater
+
+than 90% frame-level accuracy for all 21 attributes tested in the full DNN system. On the same data, DBN-DNNs
+
+also achieved a very high per frame phone classication accuracy of 86.6%. This level of accuracy for detecting
+
+sub-phonetic fundamental speech units may allow a new family of exible speech recognition and understanding
+
+systems that make use of phonological features in the full detection-based framework discussed in [65].
+
+VI. SUMMARY AND FUTURE DIRECTIONS
+
+When GMMs were rst used for acoustic modeling they were trained as generative models using the EM algorithm
+
+and it was some time before researchers showed that signicant gains could be achieved by a subsequent stage of
+
+discriminative training using an objective function more closely related to the ultimate goal of an ASR system[7],
+
+[68]. When neural nets were rst used they were trained discriminatively and it was only recently that researchers
+
+showed that signicant gains could be achieved by adding an initial stage of generative pre-training that completely
+
+ignores the ultimate goal of the system. The pre-training is much more helpful in deep neural nets than in shallow
+
+ones, especially when limited amounts of labeled training data are available. It reduces overtting and it also reduces
+
+the time required for discriminative ne-tuning with backpropagation which was one of the main impediments to
+
+using DNNs when neural networks were rst used in place of GMMs in the 1990s. The successes achieved using
+
+April 27, 2012
+
+DRAFT
+
+22
+
+pre-training led to a resurgence of interest in DNNs for acoustic modeling. Retrospectively, it is now clear that
+
+most of the gain comes from using deep neural networks to exploit information in neighboring frames and from
+
+modeling tied context-dependent states. Pre-training is helpful in reducing overtting, and it does reduce the time
+
+taken for ne-tuning, but similar reductions in training time can be achieved with less effort by careful choice of
+
+the scales of the initial random weights in each layer.
+
+The rst method to be used for pre-training DNNs was to learn a stack of RBMs, one per hidden layer of the
+
+DNN. An RBM is an undirected generative model that uses binary latent variables, but training it by maximum
+
+likelihood is expensive so a much faster, approximate method called contrastive divergence is used. This method has
+
+strong similarities to training an autoencoder network (a non-linear version of PCA) that converts each datapoint
+
+into a code from which it is easy to approximately reconstruct the datapoint. Subsequent research showed that
+
+autoencoder networks with one layer of logistic hidden units also work well for pre-training, especially if they are
+
+regularized by adding noise to the inputs or by constraining the codes to be insensitive to small changes in the
+
+input. RBMs do not require such regularization because the Bernoulli noise introduced by using stochastic binary
+
+hidden units acts as a very strong regularizer.
+
+We have described how three major speech research groups achieved signicant improvements in a variety
+
+of state-of-the-art ASR systems by replacing GMMs with DNNs, and we believe that there is the potential for
+
+considerable further improvement. There is no reason to believe that we are currently using the optimal types of
+
+hidden units or the optimal network architectures and it is highly likely that both the pre-training and ne-tuning
+
+algorithms can be modied to reduce the amount of overtting and the amount of computation. We therefore expect
+
+that the performance gap between acoustic models that use DNNs and ones that use GMMs will continue to increase
+
+for some time.
+
+Currently, the biggest disadvantage of DNNs compared with GMMs is that it is much harder to make good use of
+
+large cluster machines to train them on massive datasets. This is offset by the fact that DNNs make more efcient
+
+use of data so they do not require as much data to achieve the same performance, but better ways of parallelizing
+
+the ne-tuning of DNNs is still a major issue.
+

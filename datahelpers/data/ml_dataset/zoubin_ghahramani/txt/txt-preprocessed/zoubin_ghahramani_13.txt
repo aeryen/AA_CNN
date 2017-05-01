@@ -1,0 +1,632 @@
+Abstract
+
+Factor analysis, a statistical method for modeling the covariance structure of high
+dimensional data using a small number of latent variables, can be extended by allowing
+di(cid:11)erent local factor models in di(cid:11)erent regions of the input space. This results in a
+model which concurrently performs clustering and dimensionality reduction, and can
+be thought of as a reduced dimension mixture of Gaussians. We present an exact
+Expectation{Maximization algorithm for (cid:12)tting the parameters of this mixture of factor
+analyzers.
+
+
+
+Introduction
+
+Clustering and dimensionality reduction have long been considered two of the fundamental
+problems in unsupervised learning (Duda & Hart, 	; Chapter ). In clustering, the goal
+is to group data points by similarity between their features. Conversely, in dimensionality
+reduction, the goal is to group (or compress) features that are highly correlated. In this
+paper we present an EM learning algorithm for a method which combines one of the basic
+forms of dimensionality reduction|factor analysis|with a basic method for clustering|the
+Gaussian mixture model. What results is a statistical method which concurrently performs
+clustering and, within each cluster, local dimensionality reduction.
+
+Local dimensionality reduction presents several bene(cid:12)ts over a scheme in which clustering
+and dimensionality reduction are performed separately. First, di(cid:11)erent features may be
+correlated within di(cid:11)erent clusters and thus the metric for dimensionality reduction may
+need to vary between di(cid:11)erent clusters. Conversely, the metric induced in dimensionality
+reduction may guide the process of cluster formation|i.e. di(cid:11)erent clusters may appear
+more separated depending on the local metric.
+
+Recently, there has been a great deal of research on the topic of local dimensionality
+reduction, resulting in several variants on the basic concept with successful applications to
+character and face recognition (Bregler and Omohundro, 		; Kambhatla and Leen, 		;
+Sung and Poggio, 		; Schwenk and Milgram, 		; Hinton et al., 		). The algorithm
+used by these authors for dimensionality reduction is principal components analysis (PCA).
+
+
+
+(cid:19)(cid:16)z
+(cid:18)(cid:17)
+(cid:19)(cid:16)x(cid:9)
+(cid:18)(cid:17)
+
+(cid:3)
+
+?
+
+-
+
+Figure : The factor analysis generative model (in vector form).
+
+PCA, unlike maximum likelihood factor analysis (FA), does not de(cid:12)ne a proper density
+model for the data, as the cost of coding a data point is equal anywhere along the principal
+component subspace (i.e. the density is un-normalized along these directions). Furthermore,
+PCA is not robust to independent noise in the features of the data (see Hinton et al., 		,
+for a comparison of PCA and FA models) . Hinton, Dayan, and Revow (		), also exploring
+an application to digit recognition, were the (cid:12)rst to extend mixtures of principal components
+analyzers to a mixture of factor analyzers. Their learning algorithm consisted of an outer
+loop of approximate EM to (cid:12)t the mixture components, combined with an inner loop of
+gradient descent to (cid:12)t each individual factor model. In this note we present an exact EM
+algorithm for mixtures of factor analyzers which obviates the need for an outer and inner
+loop. This simpli(cid:12)es the implementation, reduces the number of heuristic parameters (i.e.
+learning rates or steps of conjugate gradient descent), and can potentially result in speed-ups.
+In the next section we present background material on factor analysis and the EM al-
+gorithm. This is followed by the derivation of the learning algorithm for mixture of factor
+analyzers in section . We close with a discussion in section .
+
+ Factor Analysis
+
+In maximum likelihood factor analysis (FA), a p-dimensional real-valued data vector x is
+modeled using a k-dimensional vector of real-valued factors, z, where k is generally much
+smaller than p (Everitt, 	). The generative model is given by:
+
+x = (cid:3)z + u;
+
+()
+
+where (cid:3) is known as the factor loading matrix (see Figure ). The factors z are assumed
+to be N (; I) distributed (zero-mean independent normals, with unit variance). The p-
+dimensional random variable u is distributed N (; (cid:9)), where (cid:9) is a diagonal matrix. The
+diagonality of (cid:9) is one of the key assumptions of factor analysis: The observed variables are
+independent given the factors. According to this model, x is therefore distributed with zero
+mean and covariance (cid:3)(cid:3) + (cid:9); and the goal of factor analysis is to (cid:12)nd the (cid:3) and (cid:9) that
+best model the covariance structure of x. The factor variables z model correlations between
+the elements of x, while the u variables account for independent noise in each element of x.
+The k factors play the same role as the principal components in PCA: They are infor-
+mative projections of the data. Given (cid:3) and (cid:9), the expected value of the factors can be
+
+
+
+computed through the linear projection:
+
+where (cid:12) (cid:17) (cid:3)((cid:9) + (cid:3)(cid:3))(cid:0), a fact that results from the joint normality of data and factors:
+
+E(zjx) = (cid:12)x;
+
+()
+
+P  " x
+
+z #! = N  " 
+
+ # ;" (cid:3)(cid:3) + (cid:9) (cid:3)
+
+I #! :
+
+(cid:3)
+
+()
+
+Note that since (cid:9) is diagonal, the p (cid:2) p matrix ((cid:9) + (cid:3)(cid:3)), can be e(cid:14)ciently inverted using
+the matrix inversion lemma:
+
+((cid:9) + (cid:3)(cid:3))(cid:0) = (cid:9)(cid:0) (cid:0) (cid:9)(cid:0)(cid:3)(I + (cid:3)(cid:9)(cid:0)(cid:3))(cid:0)(cid:3)(cid:9)(cid:0)
+
+;
+
+where I is the k (cid:2) k identity matrix. Furthermore, it is possible (and in fact necessary for
+EM) to compute the second moment of the factors,
+
+E(zzjx) = Var(zjx) + E(zjx)E(zjx)
+
+= I (cid:0) (cid:12)(cid:3) + (cid:12)xx
+
+(cid:12)
+
+
+
+;
+
+()
+
+which provides a measure of uncertainty in the factors, a quantity that has no analogue in
+PCA.
+
+The expectations () and () form the basis of the EM algorithm for maximum likelihood
+
+factor analysis (see Appendix A and Rubin & Thayer, 	):
+
+E-step: Compute E(zjxi) and E(zzjxi) for each data point xi, given (cid:3) and (cid:9).
+
+M-step:
+
+xiE(zjxi)!  n
+(cid:3)new =   n
+Xl=
+Xi=
+diag( n
+Xi=
+i (cid:0) (cid:3)new
+
+(cid:9)new =
+
+xix
+
+
+
+n
+
+E(zzjxl)!(cid:0)
+i) ;
+
+E[zjxi]x
+
+()
+
+()
+
+where the diag operator sets all the o(cid:11)-diagonal elements of a matrix to zero.
+
+ Mixture of Factor Analyzers
+
+Assume we have a mixture of m factor analyzers indexed by !j , j = ; : : : ; m. The generative
+model now obeys the following mixture distribution (see Figure ):
+
+P (x) =
+
+m
+
+Xj=Z P (xjz; !j)P (zj!j)P (!j )dz:
+
+()
+
+As in regular factor analysis, the factors are all assumed to be N (; I) distributed, therefore,
+
+P (zj!j ) = P (z) = N (; I):
+
+()
+
+
+
+S
+
+!
+
+(cid:25)
+
+(cid:19)(cid:16)
+(cid:19)(cid:16)z(cid:18)(cid:17)
+(cid:18)(cid:17)
+(cid:3)j ; (cid:22)j
+(cid:19)(cid:16)x(cid:9)-
+(cid:18)(cid:17)
+
+SSw
+
+(cid:19)(cid:19)/
+
+S
+
+(cid:19)
+
+(cid:19)
+
+Figure : The mixture of factor analysis generative model.
+
+Whereas in factor analysis the data mean was irrelevant and was subtracted before (cid:12)tting the
+model, here we have the freedom to give each factor analyzer a di(cid:11)erent mean, (cid:22)j , thereby
+allowing each to model the data covariance structure in a di(cid:11)erent part of input space,
+
+P (xjz; !j) = N ((cid:22)j + (cid:3)jz; (cid:9)):
+
+(	)
+
+The parameters of this model are f((cid:22)j ; (cid:3)j)m
+
+j=; (cid:25); (cid:9)g;  the vector (cid:25) parametrizes the
+adaptable mixing proportions, (cid:25)j = P (!j ). The latent variables in this model are the factors
+z and the mixture indicator variable !, where wj =  when the data point was generated
+by !j. For the E-step of the EM algorithm, one needs to compute expectations of all
+the interactions of the hidden variables that appear in the log likelihood. Fortunately, the
+following statements can be easily veri(cid:12)ed,
+
+E[wjzjxi] = E[wjjxi] E[zj!j ; xi]
+
+E[wjzzjxi] = E[wjjxi] E[zzj!j ; xi]:
+
+De(cid:12)ning
+
+hij = E[wjjxi] / P (xi; !j ) = (cid:25)jN (xi (cid:0) (cid:22)j ; (cid:3)j(cid:3)
+
+j + (cid:9))
+
+and using equations () and () we obtain
+
+E[wjzjxi] = hij (cid:12)j (xi (cid:0) (cid:22)j);
+
+where (cid:12)j (cid:17) (cid:3)
+
+j((cid:9) + (cid:3)j(cid:3)
+
+j)(cid:0). Similarly, using equations () and () we obtain
+
+The EM algorithm for mixtures of factor analyzers therefore becomes:
+
+E[wjzzjxi] = hij (cid:16)I (cid:0) (cid:12)j(cid:3)j + (cid:12)j(xi (cid:0) (cid:22)j )(xi (cid:0) (cid:22)j )
+
+(cid:12)
+
+
+
+j(cid:17) :
+
+()
+
+()
+
+()
+
+()
+
+()
+
+E-step: Compute hij , E[zjxi; !j ] and E[zzjxi; !j] for all data points i and mixture
+components j.
+
+M-step: Solve a set of linear equations for (cid:25)j, (cid:3)j , (cid:22)j and (cid:9) (see Appendix B).
+
+The mixture of factor analyzers is, in essence, a reduced dimensionality mixture of Gaus-
+sians. Each factor analyzer (cid:12)ts a Gaussian to a portion of the data, weighted by the posterior
+probabilities, hij. Since the covariance matrix for each Gaussian is speci(cid:12)ed through the
+lower dimensional factor loading matrices, the model has mkp + p, rather than mp(p + )=,
+parameters dedicated to modeling covariance structure.
+
+Note that each model can also be allowed to have a separate (cid:9) matrix. This, however, changes its
+
+interpretation as sensor noise.
+
+
+
+ Discussion
+
+We have described an EM algorithm for (cid:12)tting a mixture of factor analyzers. Matlab source
+code for the algorithm can be obtained from ftp://ftp.cs.toronto.edu/pub/zoubin/
+mfa.tar.gz. An extension of this architecture to time series data, in which both the factors
+z and the discrete variables ! depend on their value at a previous time step, is currently
+being developed.
+
+One of the important issues not addressed in this note is model selection. In (cid:12)tting a
+mixture of factor analyzers the modeler has two free parameters to decide: The number of
+factor analyzers to use (m), and the number of factor in each analyzer (k). One method
+by which these can be selected is cross-validation: several values of m and k are (cid:12)t to the
+data and the log likelihood on a validation set is used to select the (cid:12)nal values. Greedy
+methods based on pruning or growing the mixture may be more e(cid:14)cient at the cost of
+some performance loss. Alternatively, a full-(cid:13)edged Bayesian analysis, in which these model
+parameters are integrated over, may also be possible.
+
+Acknowledgements
+
+We thank C. Bishop for comments on the manuscript. The research was funded by grants
+from the Canadian Natural Science and Engineering Research Council and the Ontario
+Information Technology Research Center. GEH is the Nesbitt-Burns fellow of the Canadian
+Institute for Advanced Research.
+
+A EM for Factor Analysis
+
+The expected log likelihood for factor analysis is
+
+Q = E"logYi
+
+((cid:25))p=j(cid:9)j(cid:0)= expf(cid:0)
+
+
+
+
+[xi (cid:0) (cid:3)z](cid:9)(cid:0)[xi (cid:0) (cid:3)z]g#
+
+= c (cid:0) n
+
+= c (cid:0) n
+
+
+E(cid:20) 
+log j(cid:9)j (cid:0)Xi
+log j(cid:9)j (cid:0)Xi (cid:18)
+
+
+
+
+
+i(cid:9)(cid:0)xi (cid:0) x
+x
+
+i(cid:9)(cid:0)(cid:3)z +
+
+
+
+
+z(cid:3)(cid:9)(cid:0)(cid:3)z(cid:21)
+
+i(cid:9)(cid:0)xi (cid:0) x
+x
+
+i(cid:9)(cid:0)(cid:3) E[zjxi] +
+
+
+
+
+trh(cid:3)(cid:9)(cid:0)(cid:3) E[zzjxi]i(cid:19) ;
+
+where c is a constant, independent of the parameters, and tr is the trace operator.
+
+To re-estimate the factor loading matrix we set
+
+@Q
+@(cid:3)
+
+= (cid:0)Xi
+
+(cid:9)(cid:0)xiE[zjxi] +Xl
+
+(cid:9)(cid:0)(cid:3)new
+
+E[zzjxl] = 
+
+obtaining
+
+(cid:3)new Xl
+
+E[zzjxl]! = Xi
+
+xiE[zjxi]
+
+
+
+from which we get equation ().
+
+We re-estimate the matrix (cid:9) through its inverse, setting
+
+@Q
+
+@(cid:9)(cid:0) =
+
+n
+
+
+(cid:9)new (cid:0)Xi (cid:18) 
+
+
+
+xix
+
+i (cid:0) (cid:3)new
+
+E[zjxi] x
+
+i +
+
+
+
+
+(cid:3)new
+
+E[zzjxi](cid:3)new(cid:19) = :
+
+Substituting equation (),
+
+n
+
+
+(cid:9)new = Xi
+
+
+
+
+xix
+
+i (cid:0)
+
+
+
+
+(cid:3)new
+
+E[zjxi] x
+i
+
+and using the diagonal constraint,
+
+(cid:9)new =
+
+
+
+n
+
+diag(Xi
+
+xix
+
+i (cid:0) (cid:3)new
+
+E[zjxi]x
+
+i) :
+
+B EM for Mixture of Factor Analyzers
+
+The expected log likelihood for mixture of factor analysis is
+
+Q = E
+
+logYi Yj (cid:26)((cid:25))p=j(cid:9)j(cid:0)= expf(cid:0)
+
+
+
+
+[xi (cid:0) (cid:22)j (cid:0) (cid:3)jz](cid:9)(cid:0)[xi (cid:0) (cid:22)j (cid:0) (cid:3)jz]g(cid:27)wj
+
+
+To jointly estimate the mean (cid:22)j and the factor loadings (cid:3)j it is useful to de(cid:12)ne an
+
+augmented column vector of factors
+
+ #
+~z = " z
+
+and an augmented factor loading matrix ~(cid:3)j = [(cid:3)j (cid:22)j]. The expected log likelihood is then
+Q = E
+= c (cid:0) n
+
+
+[xi (cid:0) ~(cid:3)j~z](cid:9)(cid:0)[xi (cid:0) ~(cid:3)j~z]g(cid:27)wj
+
+hij trh~(cid:3)
+
+i(cid:9)(cid:0) ~(cid:3)j E[~zjxi; !j] +
+
+i(cid:9)(cid:0)xi (cid:0) hijx
+
+j (cid:9)(cid:0) ~(cid:3)j E[~z~zjxi; !j ]i
+
+logYi Yj (cid:26)((cid:25))p=j(cid:9)j(cid:0)= expf(cid:0)
+log j(cid:9)j (cid:0)Xi;j
+
+hij x
+
+
+
+
+
+
+
+
+
+
+where c is a constant. To estimate ~(cid:3)j we set
+
+@Q
+@ ~(cid:3)j
+
+= (cid:0)Xi
+
+hij(cid:9)(cid:0)xiE[~zjxi; !j] + hij (cid:9)(cid:0) ~(cid:3)new
+
+j E[~z~zjxi; !j] = :
+
+This results in a linear equation for re-estimating the means and factor loadings,
+
+j (cid:22)
+
+h(cid:3)new
+
+new
+j
+
+i = ~(cid:3)new
+
+j =  Xi
+
+hijxiE[~zjxi; !j]! Xl
+
+hlj E[~z~zjxl; !j ]!(cid:0)
+
+()
+
+
+
+where
+
+and
+
+E[~zjxi; !j ] = " E[zjxi; !j]
+
+
+
+#
+
+E[~z~zjxl; !j] = " E[zzjxl; !j] E[zjxl; !j ]
+
+E[zjxl; !j]
+
+
+
+# :
+
+We re-estimate the matrix (cid:9) through its inverse, setting
+
+@Q
+
+@(cid:9)(cid:0) =
+
+n
+
+
+(cid:9)new (cid:0)Xij
+
+
+
+
+hijxix
+
+i (cid:0) hij ~(cid:3)new
+
+j E[~zjxi; !j ]x
+
+i +
+
+
+
+
+hij ~(cid:3)new
+
+j E[~z~zjxi; !j ] ~(cid:3)new
+
+j = :
+
+Substituting equation () for ~(cid:3)j and using the diagonal constraint on (cid:9) we obtain,
+
+(cid:9)new =
+
+
+
+n
+
+diag<
+:
+
+Xij
+
+hij (cid:16)xi (cid:0) ~(cid:3)new
+
+i	=
+j E[~zjxi; !j](cid:17) x
+;
+
+:
+
+()
+
+Finally, to re-estimate the mixing proportions we use the de(cid:12)nition,
+
+(cid:25)j = P (!j) = Z P (!jjx)P (x) dx:
+
+Since hij = P (!jjxi), using the empirical distribution of the data as an estimate of P (x) we
+get
+
+new
+
+j =
+
+(cid:25)
+
+
+
+n
+
+n
+
+hij :
+
+Xi=
+

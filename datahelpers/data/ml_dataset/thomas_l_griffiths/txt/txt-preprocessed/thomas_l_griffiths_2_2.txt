@@ -1,0 +1,842 @@
+Abstract
+
+Inference algorithms for topic models are typ-
+ically designed to be run over an entire col-
+lection of documents after they have been
+observed. However, in many applications of
+these models, the collection grows over time,
+making it infeasible to run batch algorithms
+repeatedly. This problem can be addressed
+by using online algorithms, which update es-
+timates of the topics as each document is
+observed. We introduce two related Rao-
+Blackwellized online inference algorithms for
+the latent Dirichlet allocation (LDA) model 
+incremental Gibbs samplers and particle l-
+ters  and compare their runtime and perfor-
+mance to that of existing algorithms.
+
+1 INTRODUCTION
+
+Probabilistic topic models are often used to analyze
+collections of documents, each of which is represented
+as a mixture of topics, where each topic is a proba-
+bility distribution over words. Applying these mod-
+els to a document collection involves estimating the
+topic distributions and the weight each topic receives
+in each document. A number of algorithms exist for
+solving this problem (e.g., Hofmann, 1999; Blei et al.,
+2003; Minka and Laerty, 2002; Griths and Steyvers,
+2004), most of which are intended to be run in batch
+mode, being applied to all the documents once they are
+collected. However, many applications of topic mod-
+els are in contexts where the collection of documents
+is growing. For example, when inferring the topics
+of news articles or communications logs, documents
+
+Appearing in Proceedings of the 12th International Confe-
+rence on Articial Intelligence and Statistics (AISTATS)
+2009, Clearwater Beach, Florida, USA. Volume 5 of JMLR:
+W&CP 5. Copyright 2009 by the authors.
+
+arrive in a continuous stream, and decisions must be
+made on a regular basis, without waiting for future
+documents to arrive. In these settings, repeatedly run-
+ning a batch algorithm can be infeasible or wasteful.
+In this paper, we explore the possibility of using online
+inference algorithms for topic models, whereby the rep-
+resentation of the topics in a collection of documents
+is incrementally updated as each document is added.
+In addition to providing a solution to the problem of
+growing document collections, online algorithms also
+open up dierent routes for parallelization of infer-
+ence from batch algorithms, providing ways to draw
+on the enhanced computing power of multiprocessor
+systems, and dierent tradeos in runtime and perfor-
+mance from other algorithms.
+We discuss algorithms for a particular topic model: la-
+tent Dirichlet allocation (LDA) (Blei et al., 2003). The
+state space from which these algorithms draw samples
+is dened at time i to be all possible topic assignments
+to each of the words in the documents observed up to
+time i. The result is a Rao-Blackwellized sampling
+scheme (Doucet et al., 2000), analytically integrating
+out the distributions over words associated with topics
+and the per-document weights of those topics.
+The plan of the paper is as follows. Section 2 intro-
+duces the LDA model in more detail. Section 3 dis-
+cusses one batch and three online algorithms for sam-
+pling from LDA. Section 4 discusses the ecient im-
+plementation of one of the online algorithms  particle
+lters. Section 5 describes a comparative evaluation
+of the algorithms, and Section 6 concludes the paper.
+
+2 INFERRING TOPICS
+
+Latent Dirichlet allocation (Blei et al., 2003) is widely
+used for identifying the topics in a set of documents,
+building on previous work by Hofmann (1999). In this
+model, each document is represented as a mixture of
+a xed number of topics, with topic z receiving weight
+
+65Online Inference of Topics with Latent Dirichlet Allocation
+
+(d)
+in document d, and each topic is a probability dis-
+z
+tribution over a nite vocabulary of words, with word
+w having probability (z)
+w in topic z. The generative
+model assumes that documents are produced by inde-
+pendently sampling a topic z for each word from (d)
+and then independently sampling the word from (z).
+The independence assumptions mean that the docu-
+ment is treated as a bag of words, so word ordering
+is irrelevant to the model. Symmetric Dirichlet priors
+are placed on (d) and (z), with (d)  Dirichlet()
+and (z)  Dirichlet(), where  and  are hyper-
+parameters that aect the relative sparsity of these
+distributions. The complete probability model is thus
+
+wi|zi, (zi)  Discrete((zi)),
+ Dirichlet(),
+(z)
+ Discrete((di)),
+zi|(di)
+ Dirichlet(),
+(d)
+
+i = 1, . . . , N,
+z = 1, . . . , T,
+i = 1, . . . , N,
+d = 1, . . . , D,
+
+where N is the total number of words in the collection,
+T is the number of topics, D is the number of docu-
+ments, and di and zi are, respectively, the document
+and topic of the ith word, wi. The goal of inference in
+this model is to identify the values of  and , given a
+document collection represented by the sequence of N
+words wN = (w1, . . . , wN ). Estimation is complicated
+by the latent variables zN = (z1, . . . , zN ), the topic
+assignments of the words. Various algorithms have
+been proposed for solving this problem, including a
+variational Expectation-Maximization algorithm (Blei
+et al., 2003) and Expectation-Propagation (Minka and
+Laerty, 2002). In the collapsed Gibbs sampling algo-
+rithm of Griths and Steyvers (2004),  and  are ana-
+lytically integrated out of the model to collect samples
+from P (zN|wN ). The use of conjugate Dirichlet priors
+on  and  makes this analytic integration straightfor-
+ward, and also makes it easy to recover the posterior
+distribution on  and  given zN and wN , meaning
+that a set of samples from P (zN|wN ) is sucient to
+estimate  and .
+Existing inference algorithms provide users with sev-
+eral options in trading o bias and runtime. However,
+most of these algorithms are designed to be run over an
+entire document collection, requiring multiple sweeps
+to produce good estimates of  and . While some ap-
+plications of these models involve the analysis of static
+databases, more typically, users work with document
+collections that grow over time. In the remainder of
+the paper, we outline three related algorithms that can
+be used for inference in such a setting.
+
+3 ALGORITHMS
+
+In this section, we describe a batch sampling algorithm
+for LDA. We then discuss ways in which this algorithm
+can be extended to yield three online algorithms.
+
+Algorithm 1 batch Gibbs sampler for LDA
+1: initialize zN randomly from {1, . . . , T}N
+2: loop
+3:
+4:
+
+choose j from {1, . . . , N}
+sample zj from P (zj|zN\j, wN )
+
+3.1 BATCH GIBBS SAMPLER
+
+Griths and Steyvers (2004) presented a collapsed
+Gibbs sampler for LDA, where the state space is the set
+of all possible topic assignments to the words in every
+document. The Gibbs sampler is collapsed because
+the variables  and  are analytically integrated out,
+and only the latent topic variables zN are sampled.
+The topic assignment of word j is sampled according
+to its conditional distribution
+P (zj|zN\j, wN )  n(wj )
+
+(1)
+
+zj ,N\j + 
+n()
+zj ,N\j + W 
+
+n(dj )
+zj ,N\j + 
+n(dj )
+,N\j + T 
+
+,
+
+where zN\j indicates (z1, . . . , zj1, zj+1, . . . , zN ), W is
+the size of the vocabulary, n(wj )
+zj ,N\j is the number of
+times word wj is assigned to topic zj, n()
+zj ,N\j is the
+total number of words assigned to topic zj, n(dj )
+zj ,N\j is
+the number of times a word in document dj is assigned
+to topic zj, and n(dj )
+,N\j is the total number of words in
+document dj, and all the counts are taken over words
+1 through N, excluding the word at position j itself
+(hence the N\j subscripts).
+The Gibbs sampling procedure, outlined in Algo-
+rithm 1, converges to the desired posterior distribu-
+tion P (zN|wN ). This batch Gibbs sampler can be
+extended in several ways, leading to ecient online
+sampling algorithms for LDA.
+
+3.2 O-LDA
+
+A simple modication of the batch Gibbs sampler
+yields an online algorithm presented by Song et al.
+(2005) and called o-LDA by Banerjee and Basu
+(2007). This procedure, outlined in Algorithm 2, rst
+applies the batch Gibbs sampler to a prex of the full
+dataset, then samples the topic of each new word i by
+conditioning on the words observed so far1:
+
+P (zi|zi1, wi)  n(wi)
+
+zi,i\i + 
+n()
+zi,i\i + W 
+
+n(di)
+zi,i\i + 
+n(di)
+,i\i + T 
+
+.
+
+(2)
+
+1The o-LDA algorithm as presented by Banerjee and
+Basu (2007) samples the next topic by conditioning only
+on the topics of the words up to the end of the previous
+document, rather than all previous words. The algorithm
+presented here is slightly slower, but more accurate.
+
+66Canini, Shi, Griths
+
+0 = P 1 for p = 1, . . . , P
+
+Algorithm 4 particle lter for LDA
+1: initialize weights (p)
+2: for i = 1, . . . , N do
+3:
+4:
+
+for p = 1, . . . , P do
+
+i = (p)
+
+set (p)
+sample z(p)
+
+i
+
+i1P (wi|z(p)
+from P (z(p)
+
+i1, wi1)
+|z(p)
+i1, wi)
+
+i
+
+5:
+6:
+7:
+8:
+9:
+10:
+11:
+
+12:
+
+normalize weights i to sum to 1
+if (cid:107)i(cid:107)2  ESS threshold then
+
+resample particles
+for j in R(i) do
+
+for p = 1, . . . , P do
+
+|z(p)
+sample z(p)
+i\j, wi)
+i = P 1 for p = 1, . . . , P
+
+from P (z(p)
+
+j
+
+j
+
+set (p)
+
+Algorithm 2 o-LDA (initialized with rst  words)
+1: sample z using batch Gibbs sampler
+2: for i =  + 1, . . . , N do
+3:
+
+sample zi from P (zi|zi1, wi)
+
+Algorithm 3 incremental Gibbs sampler for LDA
+1: for i = 1, . . . , N do
+sample zi from P (zi|zi1, wi)
+2:
+for j in R(i) do
+3:
+4:
+
+sample zj from P (zj|zi\j, wi)
+
+After its batch initialization phase, o-LDA applies
+Equation (2) incrementally for each new word wi,
+never resampling old topic variables. For this reason,
+its performance depends critically on the accuracy of
+the topics inferred during the batch phase. If the doc-
+uments used to initialize o-LDA are not representative
+of the full dataset, it could be led to make poor infer-
+ences. Also, because each topic variable is sampled by
+conditioning only on previous words and topics, sam-
+ples drawn with o-LDA are not distributed according
+to the true posterior distribution P (zN|wN ). To rem-
+edy these issues, we consider online algorithms that re-
+vise their decisions about previous topic assignments.
+
+3.3
+
+INCREMENTAL GIBBS SAMPLER
+
+Extending o-LDA to occasionally resample topic vari-
+ables, we introduce the incremental Gibbs sampler, an
+algorithm that rejuvenates old topic assignments in
+light of new data. The incremental Gibbs sampler,
+outlined in Algorithm 3, does not have a batch initial-
+ization phase like o-LDA, but it does use Equation (2)
+to sample topic variables of new words. After each step
+i, the incremental Gibbs sampler resamples the topics
+of some of the previous words. The topic assignment
+zj of each index j in the rejuvenation sequence R(i)
+is drawn from its conditional distribution
+
+P (zj|zi\j, wi)  n(wj )
+
+zj ,i\j + 
+n()
+zj ,i\j + W 
+
+n(dj )
+zj ,i\j + 
+n(dj )
+,i\j + T 
+
+.
+
+(3)
+
+If these rejuvenation steps are performed often enough
+(depending on the mixing time of the induced Markov
+chain), the incremental Gibbs sampler closely approxi-
+mates the posterior distribution P (zi|wi) at every step
+i. Indeed, convergence is guaranteed as the number of
+times each zj is resampled goes to innity, since the al-
+gorithm becomes a batch Gibbs sampler for P (zi|wi)
+in the limit. More generally, the incremental Gibbs
+sampler is an instance of the decayed MCMC frame-
+work introduced by Marthi et al. (2002). The choice
+of the number of rejuvenation steps to perform deter-
+mines the runtime of the incremental Gibbs sampler.
+
+If |R(i)| is bounded as a function of i, then the overall
+runtime is linear. However, if |R(i)| grows logarith-
+mically or linearly with i, then the overall runtime is
+log-linear or quadratic, respectively. R(i) can also be
+chosen to be nonempty only at certain intervals, lead-
+ing to an incremental Gibbs sampler that only rejuve-
+nates itself periodically (for example, whenever there
+is time to spare between observing documents).
+An alternative approach to frequently resampling pre-
+vious topic assignments is to concurrently maintain
+multiple samples of zi, rejuvenating them less fre-
+quently. This option is desirable because it allows the
+algorithm to simultaneously explore several regions of
+the state space. It is also useful in a multi-processor
+environment, since it is simpler to parallelize multiple
+samples  dedicating each sample to a single machine
+ than it is to parallelize operations on one sample. An
+ensemble of independent samples from the incremen-
+tal Gibbs sampler could be used to approximate the
+posterior distribution P (zN|wN ); however, if the sam-
+ples are not rejuvenated often enough, they will not
+have the desired distribution. With this motivation,
+we turn to particle lters, which perform importance
+weighting on a set of sequentially-generated samples.
+
+3.4 PARTICLE FILTER
+
+Particle lters are a sequential Monte Carlo method
+commonly used for approximating a probability dis-
+tribution over a latent variable as observations are ac-
+quired (Doucet et al., 2001). We can extend the incre-
+mental Gibbs sampler to obtain a Rao-Blackwellized
+particle lter (Doucet et al., 2000), again analytically
+integrating out  and  to sample from P (zi|wi). This
+use of particle lters is slightly nonstandard, since the
+state space grows with each observation.
+The particle lter for LDA, outlined in Algorithm 4,
+updates samples from P (zi1|wi1) to generate sam-
+
+67Online Inference of Topics with Latent Dirichlet Allocation
+
+i
+
+i
+
+ples from the target distribution P (zi|wi) after each
+It does this by rst generat-
+word wi is observed.
+ing a value of z(p)
+for each particle p from a proposal
+|z(p)
+distribution Q(z(p)
+i1, wi). The prior distribution,
+|z(p)
+P (z(p)
+i1, wi1), is typically used for the proposal
+because it is often infeasible to sample from the pos-
+|z(p)
+terior, P (z(p)
+i1, wi). However, since zi is drawn
+from a constant, nite set of values, we can use the
+posterior, which is given by Equation (2) and min-
+imizes the variance of the resulting particle weights
+(Doucet et al., 2000). Next, the unnormalized impor-
+tance weights of the particles are calculated using the
+standard iterative equation
+
+i
+
+i
+
+(p)
+i
+(p)
+i1
+
+ P (wi|z(p)
+= P (wi|z(p)
+
+, wi1)P (z(p)
+i
+|z(p)
+Q(z(p)
+i1, wi)
+i1, wi1).
+
+i
+
+i
+
+|z(p)
+i1)
+
+(4)
+
+(5)
+
+The weights are then normalized to sum to 1. Equa-
+tion (5) is designed so that after the weight normaliza-
+tion step, the particle lter approximates the posterior
+distribution over topic assignments as follows:
+
+P (zi|wi)  P(cid:88)
+
+(p)
+i 1zi(z(p)
+
+i
+
+),
+
+(6)
+
+p=1
+
+where 1zi() is the indicator function for zi. As P 
+, the right side converges to the left side, since zi
+can assume only a nite number of values.
+Over time, the weights assigned to particles diverge
+signicantly, as a few particles come to provide a sig-
+nicantly better account of the observed data than the
+others. Resampling addresses this issue by producing a
+new set of particles that are more highly concentrated
+on states with high weight whenever the variance of the
+weights becomes large. A standard measure of weight
+variance is an approximation to the eective sample
+size, ESS  (cid:107)(cid:107)2, and a threshold can be expressed
+as some proportion of the number of particles, P .
+The simplest form of resampling is to draw from
+the multinomial distribution dened by the normal-
+ized weights. However, more sophisticated resampling
+methods also exist, such as stratied sampling (Kita-
+gawa, 1996), quasi-deterministic methods (Fearnhead,
+2004), and residual resampling (Liu and Chen, 1998),
+which produce more diverse sets of particles. Residual
+resampling was used in our evaluations. Whenever the
+particles are resampled, their weights are all reset to
+P 1, since each is now a draw from the same distri-
+bution and the previous weights are reected in their
+relative resampling frequencies.
+As in the resample-move algorithm of Gilks and
+Berzuini (2001), Markov chain Monte Carlo (MCMC)
+
+is used after particle resampling to restore diversity
+to the particle set in the same way that the incremen-
+tal Gibbs sampler rejuvenates its samples, by choosing
+a rejuvenation sequence R(i) of topic variables to re-
+sample. The length of R(i) can be chosen to trade o
+runtime against performance, and the variables to be
+resampled can be randomly selected either uniformly
+or using a decayed distribution that favors more recent
+history, as in Marthi et al. (2002). While a uniform
+schedule visits earlier sites more overall, using a distri-
+bution that approaches zero quickly enough for sites
+in the past ensures that in expectation, each site is
+sampled the same number of times.
+
+4 EFFICIENT IMPLEMENTATION
+
+In order to be feasible as an online algorithm, the par-
+ticle lter must be implemented with an ecient data
+representation.
+In particular, the amount of time it
+takes to incrementally process a document must not
+grow with the amount of data previously seen. In ini-
+tial implementations of the algorithm, individual par-
+ticles were represented as linear arrays of topic assign-
+ment values, consistent with the interpretation of the
+state space zi = (z1, . . . , zi) as a sequence of variables
+stored in an array.
+It was found that nearly all of
+the computing time was spent resampling the parti-
+cles (line 8 of Algorithm 4). This is due to the fact
+that when a particle is resampled more than once,
+the nave implementation makes copies of the zi ar-
+ray for each child particle. Since these structures grow
+linearly with the observed data and resampling is per-
+formed at a roughly constant rate, the total time spent
+resampling particles grows quadratically.
+This problem can be alleviated by using a shared rep-
+resentation of the particles, exploiting the high degree
+of redundancy among particles with common lineages.
+When a particle is resampled multiple times, the re-
+sulting copies all share the same parent particle and
+implicitly inherit its zi vector as their history of topic
+assignments. Each particle maintains a hash table that
+is used to store the dierences between its topic as-
+signments and its parents; consequently, the compu-
+tational complexity of the resampling step is reduced
+from quadratic to linear. As illustrated in Figure 1,
+the particles are thus stored as a directed tree2, with
+parent-child relationships indicating the hierarchy of
+inheritance for topic variables.
+
+To look up the value z(p)
+of topic assignment i in par-
+ticle p, the particles hash table is consulted rst. If
+the value is missing, the particles parents hash table
+is checked, recursing up the tree towards the root and
+
+i
+
+2More precisely, a forest of directed trees, since it is
+
+possible that not all particles share a common ancestor.
+
+68Canini, Shi, Griths
+
+idence conrms that the time overhead of maintaining
+a directed tree of hash tables is negligible compared to
+the increase in speed and decrease in memory usage it
+aords. Specically, by reducing the resampling step
+to have linear runtime, this implementation detail is
+the key to making the particle lter feasible to run.
+
+5 EVALUATION
+
+In online topic modeling settings, such as news article
+clustering, we care about two aspects of performance:
+the quality of the solutions recovered and runtime. As
+documents arrive and are incrementally processed, we
+would like online algorithms to maintain high-quality
+inferences and to produce topic labels quickly for new
+documents. Since there is a tradeo between runtime
+and inference quality, the algorithms were evaluated
+by comparing the quality of their inferences while con-
+straining the amount of time spent per document. We
+compared the performance of the three online algo-
+rithms presented in Section 3: o-LDA, the incremental
+Gibbs sampler, and the particle lter. Our evaluation
+is a variation of the comparison of o-LDA to other on-
+line algorithms by Banerjee and Basu (2007), using the
+same datasets and performance metric.
+
+5.1 DATASETS
+
+The datasets used to test the algorithms are each a
+collection of categorized documents. They consist of
+four subsets derived from the 20 Newsgroups corpus3:
+(1) diff-3 (2995 documents, 7670 word types, 3 cate-
+gories), (2) rel-3 (2996 documents, 10091 word types,
+3 categories), (3) sim-3 (2980 documents, 5950 word
+types, 3 categories), and (4) subset-20 (1997 docu-
+ments, 13341 word types, 20 categories), represent-
+ing dierent levels of size and diculty, as well as
+news articles harvested from the Slashdot website: (5)
+slash-7 (6714 documents, 5769 word types, 7 cate-
+gories) and (6) slash-6 (5182 documents, 4498 word
+types, 6 categories).
+
+5.2 METHODOLOGY
+
+Our testing methodology is designed to approximate a
+real-world online inference task. For each dataset, the
+algorithms were given the rst 10% of the documents
+to use for initialization. A single sample drawn using
+the batch Gibbs sampler on this initial set was used to
+initialize all of the online algorithms. This constituted
+the explicit batch initialization phase of o-LDA, and
+the other two online algorithms used the same starting
+conguration.
+
+3Available online at http://people.csail.mit.edu/
+
+jrennie/20Newsgroups/
+
+Figure 1: An example of the directed tree of hashta-
+bles implementation of the particle lter. Particle 2
+is the root, so all other particles descended from it.
+Particle 0 directly depends on particle 2, altering the
+topics of the words choosing and where. The other
+child of particle 2 is not itself an active sample, but an
+inactive remnant of an old particle that was not resam-
+pled. It is retained because multiple active particles
+depend on its hashed topic values. If either particle 1
+or particle 3 is not resampled in the future, the remain-
+ing one will be merged with its parent, maintaining the
+bound on the tree depth.
+
+i
+
+eventually terminating when the value is found in an
+ancestors hash table. To change the value z(p)
+, the
+new value is inserted into particle ps hash table, and
+the old value is inserted into each of particle ps chil-
+drens hash tables (if they dont already have an entry)
+to ensure consistency.
+In order to ensure that variable lookup is a constant-
+time operation, it is necessary that the depth of the
+tree does not grow with the amount of data. This can
+be ensured by selectively pruning the tree just after
+the resampling step. After resampling is performed,
+a node is called active if it has been sampled one or
+more times, and inactive otherwise. If an entire sub-
+tree of nodes is inactive, it is deleted. If an inactive
+node has only one active descendant depending on its
+history, that descendants hash table is merged with
+its own. When this operation is performed after each
+resampling step, it can be shown that the depth of the
+tree is never greater than P . Furthermore, merging the
+hash tables takes linear amortized time. Empirical ev-
+
+69!"#$%&(#)*!+,-.()-/0-1!2$-//-3(.1!)4-55-!"616$7-08-+97!":-0;-&9$($-,<-)-,=-#(.&-/>-)9$-,?-1!"$-/!"#$%&()*!"#$%&(#)*!+8-+97!":-5;-&9$($-0!"#$%&()+!"#$%&(#)*!+,-.()-08-+97!":-5=-#(.&-0,-.)!"#$%&(/!"#$%&(#)*!+,-.()-/!"#$%&()0!"#$%&(#)*!+;-&9$($-/?-1!"$-5!"#$%&()1Online Inference of Topics with Latent Dirichlet Allocation
+
+After the batch initialization set is chosen, the o-LDA
+algorithm has no remaining parameters and is the
+fastest of the three online algorithms, since it does
+not rejuvenate its topic assignments. The incremental
+Gibbs sampler has one parameter: the choice of re-
+juvenation sequence R(i). The particle lter has two
+parameters: the eective sample size (ESS) threshold,
+which controls how often the particles are resampled,
+and the choice of rejuvenation sequence. Since the run-
+time and performance of the incremental Gibbs sam-
+pler and the particle lter depend on these parameters,
+there is a compromise to be made. We set the param-
+eters so that these algorithms ran within roughly 6
+times the amount of time taken by o-LDA on each
+dataset. For the incremental Gibbs sampler, R(i) was
+chosen to be a set of 4 indices from 1 to i chosen uni-
+formly at random. For the particle lter, the ESS
+threshold was set at 20 for the diff-3, rel-3, and
+sim-3 datasets and at 10 for the subset-20, slash-6,
+and slash-7 datasets, |R(i)| was set at 30 for the
+diff-3, rel-3, and sim-3 datasets and at 10 for the
+subset-20, slash-6, and slash-7 datasets, and the
+particular values of R(i) were chosen uniformly at ran-
+dom from 1 to i. The runtime of these algorithms can
+be chosen to t any constraints, but we selected one
+point that we felt was reasonable. Indeed, an impor-
+tant strength of these two online algorithms is that
+they can take full advantage of any amount of comput-
+ing power by appropriate choice of their parameters.
+The LDA hyperparameters  and  were both set to
+be 0.1. The particle lter was run with 100 particles;
+to allow the other algorithms the same advantage of
+multiple samples, they were each run 100 times inde-
+pendently, with the sample having highest posterior
+probability at each step being used for evaluation.
+Since the datasets are collections of documents with
+known category memberships, we evaluated how well
+the clustering implied by the inferred topics matched
+the true categories. That is, for each dataset, the num-
+ber of topics T was set equal to the number of cate-
+gories, and the documents were clustered according to
+their most frequent topic. Normalized mutual infor-
+mation (nMI) was used to measure the similarity of
+this implied partition to the true document categories
+(Banerjee and Basu, 2007). Scores are between 0 and
+1, with a perfect match receiving a score of 1.
+Two dierent evaluations were made for each algo-
+rithm on each dataset. First, we evaluated how well
+the algorithms clustered the documents on which they
+were trained. That is, at regular intervals through-
+out each dataset, the sample with maximum posterior
+probability was drawn, and the quality of the induced
+clustering of the documents observed so far was mea-
+sured. Second, we evaluated how well the algorithms
+
+clustered a randomly-chosen held-out set consisting of
+10% of the documents, as a function of the amount of
+the training set that had been observed so far. That is,
+at regular intervals throughout the training set, each
+algorithm was run on the held-out documents as if they
+were the next ones to be observed, the nMI score was
+calculated for the held-out documents, and the algo-
+rithm was returned to its original state and position
+in the training set.
+
+5.3 RESULTS
+
+The results of the training set evaluation are shown
+in Figure 2. The particle lter and incremental Gibbs
+sampler perform about equally well, with the parti-
+cle lter performing better for some datasets. As ex-
+pected, o-LDA consistently has the lowest score of
+the three algorithms. The dashed horizontal line in
+each gure represents the performance of the batch
+Gibbs sampler on the entire dataset, which is approx-
+imately the best possible performance an online algo-
+rithm could achieve using the LDA model.
+The results of the evaluation on the held-out set are
+shown in Figure 3. For each held-out set, the mean
+performance of the particle lter is consistently better
+than that of the incremental Gibbs sampler, which is
+consistently better than that of o-LDA. With the ex-
+ception of the sim-3 and subset-20 datasets, the al-
+gorithms performances are separated by at least two
+standard deviations. Interestingly, the performance of
+all the algorithms on all the held-out document sets
+does not change signicantly as more training data is
+observed. This seems to indicate that a majority of
+the information about the topics comes from the rst
+10% of the documents. In rel-3, performance on the
+held-out set seems to decrease as more of the training
+set is observed. This could be because the held-out
+documents are more closely related to those at the be-
+ginning of the training set than those at the end.
+As mentioned earlier, the algorithms performance
+strongly depends on their parameters; allowing more
+time for rejuvenation of old topic assignments would
+improve the performance of the particle lter and the
+incremental Gibbs sampler. Table 1 summarizes the
+total runtimes of each algorithm on each dataset. Al-
+though there is some variation, the incremental Gibbs
+sampler and particle lter each take about 6 times
+longer than o-LDA.
+The top ten words from 5 of the 20 topics found by the
+particle ltering algorithm on the subset-20 dataset
+are listed in Table 2. Although the normalized mutual
+information is not as high as that of the batch Gibbs
+sampler, the recovered topics seem intelligible.
+We also noticed that the particle lter used signi-
+
+70Canini, Shi, Griths
+
+Figure 2: nMI traces for each algorithm on each dataset. The algorithms were initialized with the same cong-
+uration on the rst 10% of the documents. Each dashed horizontal line represents the nMI score for the batch
+Gibbs sampler on an entire dataset. Solid lines show mean performance over 30 runs, and shading indicates plus
+and minus one sample standard deviation.
+
+Figure 3: nMI traces for each algorithm on held-out test sets, as a function of the amount of the training set
+observed. The algorithms were initialized with the same conguration on the rst 10% of the documents. Each
+dashed horizontal line represents the nMI score on the held-out set for the batch Gibbs sampler given the entire
+training set. Solid lines show mean performance over 30 runs, and shading indicates plus and minus one sample
+standard deviation.
+
+71Online Inference of Topics with Latent Dirichlet Allocation
+
+Table 1: Runtimes of algorithms in seconds. Numbers
+in parentheses give multiples of o-LDA runtime.
+
+diff-3
+rel-3
+sim-3
+
+subset-20
+
+slash-6
+slash-7
+
+o-LDA inc. Gibbs
+185 (5.4)
+338 (5.9)
+176 (5.5)
+1221 (8.1)
+255 (5.8)
+420 (6.1)
+
+34
+57
+32
+150
+44
+69
+
+particle lter
+
+183 (5.4)
+251 (4.4)
+148 (4.6)
+1029 (6.9)
+256 (5.8)
+521(7.6)
+
+Acknowledgements
+
+This work was supported by the DARPA CALO project
+and NSF grant BCS-0631518. The authors thank Jason
+Wolfe for helpful discussions and Sugato Basu for providing
+the datasets and nMI code used for evaluation.
+

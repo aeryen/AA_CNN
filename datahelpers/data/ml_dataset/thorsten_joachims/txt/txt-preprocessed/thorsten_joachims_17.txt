@@ -1,0 +1,3316 @@
+Abstract
+
+Learning general functional dependencies between arbitrary input and output spaces is one of the
+key challenges in computational intelligence. While recent progress in machine learning has mainly
+focused on designing exible and powerful input representations, this paper addresses the comple-
+mentary issue of designing classication algorithms that can deal with more complex outputs, such
+as trees, sequences, or sets. More generally, we consider problems involving multiple dependent
+output variables, structured output spaces, and classication problems with class attributes. In order
+to accomplish this, we propose to appropriately generalize the well-known notion of a separation
+margin and derive a corresponding maximum-margin formulation. While this leads to a quadratic
+program with a potentially prohibitive, i.e. exponential, number of constraints, we present a cut-
+ting plane algorithm that solves the optimization problem in polynomial time for a large class of
+problems. The proposed method has important applications in areas such as computational biology,
+natural language processing, information retrieval/extraction, and optical character recognition. Ex-
+periments from various domains involving different types of output spaces emphasize the breadth
+and generality of our approach.
+
+1. Introduction
+
+This paper deals with the general problem of learning a mapping from input vectors or patterns
+x  X to discrete response variables y  Y , based on a training sample of input-output pairs
+(x1,y1), . . . , (xn,yn)  X  Y drawn from some xed but unknown probability distribution. Un-
+like multiclass classication, where the output space consists of an arbitrary nite set of labels or
+class identiers, Y = {1, ..., K}, or regression, where Y = R and the response variable is a scalar,
+we consider the case where elements of Y are structured objects such as sequences, strings, trees,
+
+c(cid:13)2005 Ioannis Tsochantaridis, Thorsten Joachims, Thomas Hofmann and Yasemin Altun.
+
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+lattices, or graphs. Such problems arise in a variety of applications, ranging from multilabel clas-
+sication and classication with class taxonomies, to label sequence learning, sequence alignment
+learning, and supervised grammar learning, to name just a few. More generally, these problems
+fall into two generic cases: rst, problems where classes themselves can be characterized by certain
+class-specic attributes and learning should occur across classes as much as across patterns; second,
+problems where y represents a macro-label, i.e. describes a conguration over components or state
+variables y = (y1, . . . , yT ), with possible dependencies between these state variables.
+
+We approach these problems by generalizing large margin methods, more specically multiclass
+support vector machines (SVMs) (Weston and Watkins, 1998; Crammer and Singer, 2001), to the
+broader problem of learning structured responses. The naive approach of treating each structure as a
+separate class is often intractable, since it leads to a multiclass problem with a very large number of
+classes. We overcome this problem by specifying discriminant functions that exploit the structure
+and dependencies within Y . In that respect our approach follows the work of Collins (2002) on
+perceptron learning with a similar class of discriminant functions. However, the maximum-margin
+algorithm we propose has advantages in terms of accuracy and tunability to specic loss functions.
+A maximum-margin algorithm has also been proposed by Collins and Duffy (2002a) in the context
+of natural language processing. However, it depends on the size of the output space, therefore it
+requires some external process to enumerate a small number of candidate outputs y for a given
+input x. The same is true also for other ranking algorithms (Cohen et al., 1999; Herbrich et al.,
+2000; Schapire and Singer, 2000; Crammer and Singer, 2002; Joachims, 2002). In contrast, we
+have proposed an efcient algorithm (Hofmann et al., 2002; Altun et al., 2003; Joachims, 2003)
+even in the case of very large output spaces, that takes advantage of the sparseness of the maximum-
+margin solution.
+
+A different maximum-margin algorithm that can deal with very large output sets, maximum
+margin Markov networks, has been independently proposed by Taskar et al. (2004a). The structure
+of the output is modeled by a Markov network, and by employing a probabilistic interpretation of the
+dual formulation of the problem, Taskar et al. (2004a) propose a reparameterization of the problem,
+that leads to an efcient algorithm, as well as generalization bounds that do not depend on the size
+of the output space. The proposed reparameterization, however, assumes that the loss function can
+be decomposed in the the same fashion as the feature map, thus does not support arbitrary loss
+functions that may be appropriate for specic applications.
+
+On the surface our approach is related to the kernel dependency estimation approach described
+in Weston et al. (2003). There, however, separate kernel functions are dened for the input and
+output space, with the idea to encode a priori knowledge about the similarity or loss function in
+output space. In particular, this assumes that the loss is input dependent and known beforehand.
+More specically, in Weston et al. (2003) a kernel PCA is used in the feature space dened over y to
+reduce the problem to a (small) number of independent regression problems. The latter corresponds
+to an unsupervised embedding (followed by dimension reduction) performed in the output space
+and no information about the patterns x is utilized in dening this low-dimensional representation.
+In contrast, the key idea in our approach is not primarily to dene more complex functions, but to
+deal with more complex output spaces by extracting combined features over inputs and outputs.
+
+For a large class of structured models, we propose a novel SVM algorithm that allows us to
+learn mappings involving complex structures in polynomial time despite an exponential (or in-
+nite) number of possible output values. In addition to respective theoretical results, we empirically
+evaluate our approach for a number of specic problem instantiations: classication with class tax-
+
+1454
+
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+Figure 1: Illustration of natural language parsing model.
+
+onomies, label sequence learning, sequence alignment, and natural language parsing. This paper
+extends Tsochantaridis et al. (2004) with additional theoretical and empirical results.
+
+The rest of the paper is organized as follows: Section 2 presents the general framework of
+large margin learning over structured output spaces using representations of input-output pairs via
+joint feature maps. Section 3 describes and analyzes a generic algorithm for solving the resulting
+optimization problems. Sections 4 and 5 discuss numerous important special cases and experimental
+results, respectively.
+
+2. Large Margin Learning with Joint Feature Maps
+We are interested in the general problem of learning functions f : X  Y between input spaces
+X and arbitrary discrete output spaces Y based on a training sample of input-output pairs. As
+an illustrating example, which we will continue to use as a prototypical application in the sequel,
+consider the case of natural language parsing, where the function f maps a given sentence x to a
+parse tree y. This is depicted graphically in Figure 1.
+
+The approach we pursue is to learn a discriminant function F : X  Y  R over input-output
+pairs from which we can derive a prediction by maximizing F over the response variable for a
+specic given input x. Hence, the general form of our hypotheses f is
+
+f (x;w) = argmax
+
+yY
+
+F(x,y;w) ,
+
+(1)
+
+where w denotes a parameter vector. It might be useful to think of F as a compatibility function
+that measures how compatible pairs (x,y) are, or, alternatively, F can be thought of as a w-
+parameterized family of cost functions, which we try to design in such a way that the minimum of
+F(x,;w) is at the desired output y for inputs x of interest.
+inputs and outputs Y
+
+Throughout this paper, we assume F to be linear in some combined feature representation of
+
+(x,y), i.e.
+
+The specic form of Y
+depends on the nature of the problem and special cases will be discussed
+subsequently. However, whenever possible we will develop learning algorithms and theoretical
+
+(2)
+
+F(x,y;w) = hw,Y
+
+(x,y)i .
+
+1455
+
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+results for the general case. Since we want to exploit the advantages of kernel-based method, we will
+pay special attention to cases where the inner product in the joint representation can be efciently
+
+computed via a joint kernel function J((x,y), (x0,y0)) = hY
+
+(x,y),Y
+
+(x0,y0)i.
+
+Using again natural language parsing as an illustrative example, we can chose F such that we
+get a model that is isomorphic to a probabilistic context free grammar (PCFG) (cf. Manning and
+Schuetze, 1999). Each node in a parse tree y for a sentence x corresponds to grammar rule g j, which
+in turn has a score w j. All valid parse trees y (i.e. trees with a designated start symbol S as the root
+and the words in the sentence x as the leaves) for a sentence x are scored by the sum of the w j of
+their nodes. This score can thus be written in the form of Equation (2), with Y
+(x,y) denoting a
+histogram vector of counts (how often each grammar rule g j occurs in the tree y).
+f (x;w) can be
+efciently computed by nding the structure y  Y that maximizes F(x,y;w) via the CKY algorithm
+(Younger, 1967; Manning and Schuetze, 1999).
+
+2.1 Loss Functions and Risk Minimization
+
+The standard zero-one loss function typically used in classication is not appropriate for most kinds
+of structured responses. For example, in natural language parsing, a parse tree that is almost correct
+and differs from the correct parse in only one or a few nodes should be treated differently from
+a parse tree that is completely different. Typically, the correctness of a predicted parse tree is
+measured by its F1 score (see e.g. Johnson, 1998), the harmonic mean of precision and recall as
+calculated based on the overlap of nodes between the trees.
+
+In order to quantify the accuracy of a prediction, we will consider learning with arbitrary loss
+functions 4 : Y  Y  R. Here 4(y, y) quanties the loss associated with a prediction y, if the
+true output value is y. It is usually sufcient to restrict attention to zero diagonal loss functions with
+4(y,y) = 0 and for which furthermore 4(y,y0) > 0 for y 6= y0.1 Moreover, we assume the loss is
+bounded for every given target value y, i.e. maxy{4(y,y)} exists.
+We investigate a supervised learning scenario, where input-output pairs (x,y) are generated
+according to some xed distribution P(x,y) and the goal is to nd a function f in a given hypothesis
+class such that the risk,
+
+R 4P ( f ) = ZXY 4(y, f (x)) dP(x,y) ,
+
+is minimized. Of course, P is unknown and following the supervised learning paradigm, we assume
+that a nite training set of pairs S = {(xi,yi)  X  Y : i = 1, . . . , n} generated i.i.d. according to P
+is given. The performance of a function f on the training sample S is described by the empirical
+risk,
+
+R 4S ( f ) =
+
+1
+n
+
+n(cid:229)
+i=14(yi, f (xi)) ,
+
+which is simply the expected loss under the empirical distribution induced by S. For w-parameterized
+hypothesis classes, we will also write R 4P (w)  R 4P ( f (;w)) and similarly for the empirical risk.
+1. Cases where 4(y,y0) = 0 for y 6= y0 can be dealt with, but lead to additional technical overhead, which we chose to
+
+avoid for the sake of clarity.
+
+1456
+
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+2.2 Margin Maximization
+
+We consider various scenarios for the generalization of support vector machine learning over struc-
+tured outputs. We start with the simple case of hard-margin SVMs, followed by soft-margin SVMs,
+and nally we propose two approaches for the case of loss-sensitive SVMs, which is the most gen-
+eral case and subsumes the former ones.
+
+2.2.1 SEPARABLE CASE
+
+First, we consider the case where there exists a function f parameterized by w such that the empirical
+risk is zero. The condition of zero training error can then be compactly written as a set of nonlinear
+constraints
+
+i  {1, . . . , n} :
+
+max
+
+yY \yi{hw,Y
+
+(xi,y)i}  hw,Y
+
+(xi,yi)i .
+
+(3)
+
+Notice that this holds independently of the loss functions, since we have assumed that 4(y,y) = 0
+and 4(y,y0) > 0 for y 6= y0.
+Every one of the nonlinear inequalities in Equation (3) can be equivalently replaced by |Y | 1
+linear inequalities, resulting in a total of n|Y | n linear constraints,
+(xi,yi) Y
+
+i  {1, . . . , n}, y  Y \ yi :
+
+(xi,y)i  0 .
+
+hw,Y
+
+(4)
+
+i(y)  Y
+
+i(y)i  0.
+
+(xi,yi)Y
+
+As we will often encounter terms involving feature vector differences of the type appearing in
+Equation (4), we dene d
+(xi,y) so that the constraints can be more compactly
+written as hw,d
+If the set of inequalities in Equation (4) is feasible, there will typically be more than one solu-
+tion w. To specify a unique solution, we propose to select the w for which the separation margin
+g , i.e. the minimal differences between the score of the correct label yi and the closest runner-up
+y(w) = argmaxy6=yihw,Y
+(xi,y)i, is maximal. This generalizes the maximum-margin principle em-
+ployed in support vector machines (Vapnik, 1998) to the more general case considered in this paper.
+Restricting the L2 norm of w to make the problem well-posed leads to the following optimization
+problem:
+
+max
+
+g ,w:kwk=1
+s.t. i  {1, . . . , n}, y  Y \ yi :
+
+hw,d
+
+i(y)i  g .
+
+This problem can be equivalently expressed as a convex quadratic program in standard form
+
+SVM0 :
+
+min
+w
+
+1
+2kwk2
+
+s.t. i, y  Y \ yi : hw,d
+
+i(y)i  1 .
+
+(5)
+
+(6)
+
+2.2.2 SOFT-MARGIN MAXIMIZATION
+
+To allow errors in the training set, we introduce slack variables and propose to optimize a soft-
+margin criterion. As in the case of multiclass SVMs, there are at least two ways of introducing slack
+variables. One may introduce a single slack variable x
+i for violations of the nonlinear constraints
+
+1457
+
+Y
+Y
+g
+Y
+Y
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+(i.e. every instance xi) (Crammer and Singer, 2001) or one may penalize margin violations for
+every linear constraint (i.e. every instance xi and output y 6= yi) (Weston and Watkins, 1998; Har-
+Peled et al., 2002). Since the former will result in a (tighter) upper bound on the empirical risk
+(cf. Proposition 1) and offers some advantages in the proposed optimization scheme (cf. Section 3),
+we have focused on this formulation. Adding a penalty term that is linear in the slack variables to
+the objective, results in the quadratic program
+1
+2kwk2 +
+
+SVM1 :
+
+C
+n
+
+n(cid:229)
+
+(7)
+
+min
+w,x
+s.t. i, y  Y \ yi : hw,d
+
+i=1
+
+i
+
+i(y)i  1 x
+
+i, x
+
+i  0 .
+
+Alternatively, we can also penalize margin violations by a quadratic term leading to the following
+optimization problem:
+
+SVM2 :
+
+n(cid:229)
+
+C
+2n
+
+1
+2kwk2 +
+
+x 2
+min
+i
+w,x
+s.t. i, y  Y \ yi : hw,d
+
+i=1
+
+i(y)i  1 x
+
+i .
+
+In both cases, C > 0 is a constant that controls the trade-off between training error minimization and
+margin maximization.
+
+2.2.3 GENERAL LOSS FUNCTIONS: SLACK RE-SCALING
+
+The rst approach we propose for the case of arbitrary loss functions, is to re-scale the slack vari-
+ables according to the loss incurred in each of the linear constraints. Intuitively, violating a margin
+constraint involving a y 6= yi with high loss 4(yi,y) should be penalized more severely than a vi-
+olation involving an output value with smaller loss. This can be accomplished by multiplying the
+margin violation by the loss, or equivalently, by scaling the slack variable with the inverse loss,
+which yields
+
+SVM4s
+1
+
+:
+
+n(cid:229)
+
+C
+n
+
+1
+2kwk2 +
+
+min
+w,x
+s.t. i, y  Y \ yi : hw,d
+
+i=1
+
+i
+
+i(y)i  1
+
+i
+
+.
+
+4(yi,y)
+
+i=1
+
+(cid:229) n
+
+x i is an upper bound on the empirical risk R 4S (w).
+
+A justication for this formulation is given by the subsequent proposition.
+Proposition 1 Denote by x (w) the optimal solution of the slack variables in SVM4s
+1
+weight vector w. Then 1
+n
+Proof Notice rst that x i = max{0,maxy6=yi{4(yi,y) (1hw,d
+Case 1: If f (xi;w) = yi, then x i  0 = 4(yi, f (xi;w)) and the loss is trivially upper bounded.
+Case 2: If y  f (xi;w) 6= yi, then hw,d
+i(y)i  0 and thus
+x i  4(yi,y).
+
+i(y)i)}}.
+x i
+4(yi,y)  1 which is equivalent to
+
+Since the bound holds for every training instance, it also holds for the average.
+
+for a given
+
+The optimization problem SVM4s
+in order to obtain an upper bound on the empirical risk.
+
+2 can be derived analogously, where 4(yi,y) is replaced byp4(yi,y)
+
+1458
+
+x
+x
+x
+Y
+x
+x
+Y
+x
+x
+x
+Y
+x
+Y
+Y
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+2.2.4 GENERAL LOSS FUNCTIONS: MARGIN RE-SCALING
+
+In addition to this slack re-scaling approach, a second way to include loss functions is to re-scale
+the margin as proposed by Taskar et al. (2004a) for the special case of the Hamming loss. It is
+straightforward to generalize this method to general loss functions. The margin constraints in this
+setting take the following form:
+
+i, y  Y :
+
+hw,d
+
+i(y)i  4(yi,y) x
+
+i .
+
+(8)
+
+The set of constraints in Equation (8) combined with the objective in Equation (7) yield an opti-
+mization problem SVM4m
+
+1 which also results in an upper bound on R 4S (w).
+
+Proposition 2 Denote by x (w) the optimal solution of the slack variables in SVM4m
+weight vector w. Then 1
+n
+Proof The essential observation is that x i = max{0,maxy{4(yi,y)hw,d
+anteed to upper bound 4(yi,y) for y such that hw,d
+
+x i is an upper bound on the empirical risk R 4S (w).
+
+i(y)i  0.
+
+(cid:229) n
+
+i=1
+
+1
+
+i(y)i}} which is guar-
+
+for a given
+
+The optimization problem SVM4m
+
+2
+
+can be derived analogously, where 4(yi,y) is replaced byp4(yi,y).
+
+2.2.5 GENERAL LOSS FUNCTIONS: DISCUSSION
+
+Let us discuss some of the advantages and disadvantages of the two formulations presented. An
+appealing property of the slack re-scaling approach is its scaling invariance.
+
+, the optimization problems SVM4s
+1
+
+Proposition 3 Suppose 40  h 4 with h > 0, i.e. 40 is a scaled version of the original loss 4.
+Then by re-scaling C0 = C/h
+(C0) are equivalent
+as far as w is concerned. In particular the optimal weight vector w is the same in both cases.
+Proof First note that each w is feasible for SVM4s
+in the sense that we can nd slack
+variables such that all the constraints are satised. In fact we can chose them optimally and dene
+i x i 0(w), where x  and x 0 refer to the
+H(w)  1
+optimal slacks in SVM4s
+, respectively, for given w. It is easy to see that they are given
+by
+
+i x i (w) and H0(w)  1
+1 and SVM40s
+1
+
+1 and SVM40s
+1
+
+2kwk2 + C0
+
+(C) and SVM40s
+
+1
+
+2kwk2 + C
+
+n
+
+n
+
+and
+
+x i = max{0,max
+
+x i 0 = max{0,max
+
+y6=yi{4(yi,y) (1hw,d
+y6=yi{h 4(yi,y) (1hw,d
+
+i(y)i)}}
+
+i(y)i)}},
+
+respectively. Pulling h out of the max, one gets that x i 0 = h
+From that it follows immediately that H = H0.
+
+i and thus (cid:229)
+
+i x i = Ch
+
+i x i 0 = C0 (cid:229)
+
+i x i 0.
+
+In contrast, the margin re-scaling formulation is not invariant under scaling of the loss function.
+One needs, for example, to re-scale the feature map Y
+by a corresponding scale factor as well. This
+seems to indicate that one has to calibrate the scaling of the loss and the scaling of the feature map
+
+1459
+
+Y
+Y
+Y
+(cid:229)
+(cid:229)
+Y
+Y
+x
+(cid:229)
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+more carefully in the SVM4m
+the loss scale explicitly in terms of the constant C.
+
+formulation. The SVM4s
+1
+
+1
+
+formulation on the other hand, represents
+
+A second disadvantage of the margin scaling approach is that it potentially gives signicant
+weight to output values y  Y that are not even close to being confusable with the target values
+yi, because every increase in the loss increases the required margin. If one interprets F(xi,yi;w)
+F(xi,y;w) as a log odds ratio of an exponential family model (Smola and Hofmann, 2003), then
+the margin constraints may be dominated by incorrect values y that are exponentially less likely
+than the target value. To be more precise, notice that in the SVM4s
+formulation, the penalty
+1
+part only depends on y for which hw,d
+i(y)i  1. These are output values y that all receive
+, x i
+a relatively high (i.e. 1-close to the optimum) value of F(x,y;w). However, in SVM4m
+i(y)i for all y. This means x i can be dominated by a value
+has to majorize 4(yi,y)  hw,d
+y = argmaxy{4(yi,y)hw,d
+i(y)i} which has a large loss, but whose value of F(x,y;w) comes
+
+1
+
+nowhere near the optimal value of F.
+
+3. Support Vector Algorithm for Structured Output Spaces
+
+So far we have not discussed how to solve the optimization problems associated with the various
+formulations SVM0 , SVM1 , SVM2 , SVM4s
+. The key challenge
+1
+is that the size of each of these problems can be immense, since we have to deal with n|Y |  n
+margin inequalities. In many cases, |Y | may be extremely large, in particular, if Y is a product
+space of some sort (e.g. in grammar learning, label sequence learning, etc.), its cardinality may
+grow exponentially in the description length of y. This makes standard quadratic programming
+solvers unsuitable for this type of problem.
+
+, and SVM4m
+
+, SVM4s
+2
+
+, SVM4m
+
+1
+
+2
+
+In the following, we will propose an algorithm that exploits the special structure of the maximum-
+margin problem, so that only a much smaller subset of constraints needs to be explicitly examined.
+We will show that the algorithm can compute arbitrary close approximations to all SVM optimiza-
+tion problems posed in this paper in polynomial time for a large range of structures and loss func-
+tions. Since the algorithm operates on the dual program, we will rst derive the Wolfe dual for the
+various soft margin formulations.
+
+3.1 Dual Programs
+We will denote by a
+(iy) the Lagrange multiplier enforcing the margin constraint for label y 6= yi
+and example (xi,yi). Using standard Lagragian duality techniques, one arrives at the following dual
+quadratic program (QP).
+
+Proposition 4 The objective of the dual problem of SVM0 from Equation (6) is given by
+
+Q (a )  
+
+1
+2
+
+(iy)
+
+i,y6=yi
+
+j,y6=y j
+
+( jy)J(iy)( jy) + (cid:229)
+
+i,y6=yi
+
+(iy),
+
+where J(iy)( jy) =(cid:10)d
+
+i(y),d
+
+j(y)(cid:11). The dual QP can be formulated as
+a  = argmax
+
+Q (a ),
+
+s.t. a  0 .
+
+1460
+
+Y
+Y
+Y
+(cid:229)
+(cid:229)
+a
+a
+a
+Y
+Y
+a
+a
+a
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+Proof (sketch) Forming the Lagrangian function and eliminating the primal variables w by using
+the optimality condition
+
+w(a ) = (cid:229)
+
+(iy)
+
+i(y)
+
+i
+
+y6=yi
+
+directly leads to the above dual program.
+
+Notice that the J function that generates the quadratic from in the dual objective can be computed
+from inner products involving values of Y
+, which is a simple consequence of the linearity of the
+inner product. J can hence be alternatively computed from a joint kernel function over X  Y .
+penalties modify the kernel function.
+
+In the non-separable case, linear penalties introduce additional constraints, whereas the squared
+
+Proposition 5 The dual problem to SVM1 is given by the program in Proposition 4 with additional
+constraints
+
+C
+n
+
+(iy) 
+
+, i = 1, . . . , n .
+
+y6=yi
+
+In the following, we denote with d (a, b) the function that returns 1 if a = b, and 0 otherwise.
+Proposition 6 The dual problem to SVM2 is given by the program in Proposition 4 with modied
+kernel function
+
+J(iy)( jy) (cid:10)d
+
+i(y),d
+
+j(y)(cid:11) + d (i, j)
+
+n
+C
+
+.
+
+In the non-separable case with slack re-scaling, the loss function is introduced in the constraints for
+linear penalties and in the kernel function for quadratic penalties.
+Proposition 7 The dual problem to SVM4s
+1
+constraints
+
+is given by the program in Proposition 4 with additional
+
+(iy)
+
+4(yi,y) 
+
+C
+n
+
+y6=yi
+
+, i = 1, . . . , n .
+
+Proposition 8 The dual problem to SVM4s
+2
+kernel function
+
+is given by the program in Proposition 4 with modied
+
+J(iy)( jy) =(cid:10)d
+
+i(y),d
+
+j(y)(cid:11) + d (i, j)
+
+n
+
+.
+
+Cp4(yi,y)p4(y j, y)
+
+In the non-separable case with margin re-scaling, the loss function is introduced in the linear part of
+the objective function
+Proposition 9 The dual problems to SVM4m
+SVM2 with the linear part of the objective replaced by
+
+are given by the dual problems to SVM1 and
+
+1
+
+and SVM4m
+
+2
+
+(iy)4(yi,y) and
+
+(iy)p4(yi,y)
+
+i,y6=yi
+
+i,y6=yi
+
+respectively.
+
+1461
+
+(cid:229)
+a
+d
+Y
+(cid:229)
+a
+Y
+Y
+(cid:229)
+a
+Y
+Y
+(cid:229)
+a
+(cid:229)
+a
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+3.2 Algorithm
+
+The algorithm we propose aims at nding a small set of constraints from the full-sized optimization
+problem that ensures a sufciently accurate solution. More precisely, we will construct a nested
+sequence of successively tighter relaxations of the original problem using a cutting plane method
+(Kelley, 1960), implemented as a variable selection approach in the dual formulation. Similar to
+its use with the Ellipsoid method (Grotschel et al., 1981; Karmarkar, 1984), we merely require a
+separation oracle that delivers a constraint that is violated by the current solution. We will later
+show that this is a valid strategy, since there always exists a polynomially sized subset of constraints
+so that the solution of the relaxed problem dened by this subset fullls all constraints from the full
+optimization problem up to a precision of e . This means, the remainingpotentially exponentially
+manyconstraints are guaranteed to be violated by no more than e , without the need for explicitly
+adding these constraints to the optimization problem.
+
+We will base the optimization on the dual program formulation which has two important advan-
+tages over the primal QP. First, it only depends on inner products in the joint feature space dened
+by Y
+, hence allowing the use of kernel functions. Second, the constraint matrix of the dual program
+supports a natural problem decomposition. More specically, notice that the constraint matrix de-
+rived for the SVM0 and the SVM2 variants is diagonal, since the non-negativity constraints involve
+only a single a -variable at a time, whereas in the SVM1 case, dual variables are coupled, but the
+couplings only occur within a block of variables associated with the same training instance. Hence,
+the constraint matrix is (at least) block diagonal in all cases, where each block corresponds to a
+specic training instance.
+
+Pseudo-code of the algorithm is depicted in Algorithm 1. The algorithm maintains working
+sets Si for each training instance to keep track of the selected constraints which dene the current
+relaxation. Iterating through the training examples (xi,yi), the algorithm proceeds by nding the
+(potentially) most violated constraint for xi, involving some output value y. If the (appropriately
+scaled) margin violation of this constraint exceeds the current value of x
+i by more than e , the dual
+variable corresponding to y is added to the working set. This variable selection process in the dual
+program corresponds to a successive strengthening of the primal problem by a cutting plane that
+cuts off the current primal solution from the feasible set. The chosen cutting plane corresponds to
+the constraint that determines the lowest feasible value for x
+i. Once a constraint has been added,
+the solution is re-computed with respect to S. Alternatively, we have also devised a scheme where
+the optimization is restricted to Si only, and where optimization over the full S is performed much
+less frequently. This can be benecial due to the block diagonal structure of the constraint matrix,
+which implies that variables a
+( jy) with j 6= i, y  S j can simply be frozen at their current values.
+Notice that all variables not included in their respective working set are implicitly treated as 0. The
+algorithm stops, if no constraint is violated by more than e . With respect to the optimization in step
+10, we would like to point out that in some applications the constraint selection in step 6 may be
+more expensive than solving the relaxed QP. Hence it may be advantageous to solve the full relaxed
+QP in every iteration, instead of just optimizing over a subspace of the dual variables.
+
+The presented algorithm is implemented in the software package SVMstruct, available on the web
+at http://svmlight.joachims.org. Note that the SVM optimization problems from iteration to
+iteration differ only by a single constraint. We therefore restart the SVM optimizer from the current
+solution, which greatly reduces the runtime.
+
+1462
+
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+Algorithm 1 Algorithm for solving SVM0 and the loss re-scaling formulations SVM1 and SVM2 .
+1: Input: (x1,y1), . . . , (xn,yn), C, e
+2: Si  /0 for all i = 1, . . . , n
+3: repeat
+4:
+
+for i = 1, . . . , n do
+
+/* prepare cost function for optimization */
+set up cost function
+
+i(y),wi
+
+H(y) 
+
+i(y),wi
+i(y),wi)4(yi,y)
+i(y),wi)p4(yi,y)
+i(y),wi
+j(y0).
+
+1hd
+
+(1hd
+4(yi,y)hd
+(1hd
+
+p4(yi,y)hd
+j (cid:229) y0S j
+where w  (cid:229)
+/* nd cutting plane */
+compute y = argmaxyY H(y)
+/* determine value of current slack variable */
+compute x
+if H(y) > x
+
+i = max{0,maxySi H(y)}
+i + e
+
+(SVM0 )
+(SVM4s
+)
+1
+(SVM4m
+)
+1
+(SVM4s
+)
+2
+(SVM4m
+)
+
+2
+
+( jy0)
+
+then
+
+5:
+
+6:
+
+7:
+
+8:
+
+9:
+
+10a:
+
+10b:
+
+/* add constraint to the working set */
+Si  Si {y}
+/* Variant (a): perform full optimization */
+a S  optimize the dual of SVM0 , SVM1 or SVM2 over S, S = iSi.
+a Si  optimize the dual of SVM0 , SVM1 or SVM2 over Si
+end if
+end for
+
+/* Variant (b): perform subspace ascent */
+
+12:
+13:
+14: until no Si has changed during iteration
+
+A convenient property of both variants of the cutting plane algorithm is that they have a very
+general and well-dened interface independent of the choice of Y
+and 4. To apply the algorithm,
+it is sufcient to implement the feature mapping Y
+(x,y) (either explicitly or via a joint kernel
+function), the loss function 4(yi,y), as well as the maximization in step 6. All of those, in particular
+the constraint/cut selection method, are treated as black boxes. While the modeling of Y
+(x,y)
+and 4(yi,y) is typically straightforward, solving the maximization problem for constraint selection
+typically requires exploiting the structure of Y
+for output spaces that can not be dealt with by
+exhaustive search.
+
+1463
+
+Y
+Y
+Y
+Y
+Y
+a
+d
+Y
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+In the slack re-scaling setting, it turns out that for a given example (xi,yi) we need to identify
+
+the maximum over
+
+y  argmax
+
+yY {(1hw,d
+
+i(y)i)4(yi,y)} .
+
+We will discuss several cases for how to solve this problem in Section 4. Typically, it can be
+solved by an appropriate modication of the prediction problem in Equation (1), which recovers
+f from F. For example, in the case of grammar learning with the F1 score as the loss function
+via 4(yi,y) = (1 F1(yi,y)), the maximum can be computed using a modied version of the CKY
+algorithm. More generally, in cases where 4(yi,) only takes on a nite number of values, a generic
+strategy is a two stage approach, where one rst computes the maximum over those y for which the
+loss is constant, 4(yi,y) = const, and then maximizes over the nite number of levels.
+
+In the margin re-scaling setting, one needs to solve the maximization problem
+
+y  argmax
+
+yY {4(yi,y)hw,d
+
+i(y)i} .
+
+(9)
+
+In cases where the loss function has an additive decomposition that is compatible with the feature
+map, one can fold the loss function contribution into the weight vector hw0,d
+i(y)i
+4(yi,y) for some w0. This means the class of cost functions dened by F(x,;w) and F(x,;w)
+4(y,) may actually be identical.
+The algorithm for the zero-one loss is a special case of either algorithm. We need to identify the
+highest scoring y that is incorrect,
+
+i(y)i = hw,d
+
+y  argmax
+
+y6=yi {1hw,d
+
+i(y)i} .
+
+It is therefore sufcient to identify the best solution y = argmaxyY hw,Y
+(xi,y)i as well as the
+second best solution y = argmaxyY \yhw,Y
+(xi,y)i. The second best solution is necessary to detect
+margin violations in cases where y = yi, but hw,d
+i(y)i < 1. This means that for all problems
+where we can solve the inference problem in Equation (1) for the top two y, we can also apply our
+learning algorithms with the zero-one loss. In the case of grammar learning, for example, we can
+use any existing parser that returns the two highest scoring parse trees.
+
+We will now proceed by analyzing the presented family of algorithms. In particular, we will
+show correctness and sparse approximation properties, as well as bounds on the runtime complexity.
+
+3.3 Correctness and Complexity of the Algorithm
+
+What we would like to accomplish rst is to obtain a lower bound on the achievable improvement of
+the dual objective by selecting a single variable a
+(iy) and adding it to the dual problem (cf. step 10
+in Algorithm 1). While this is relatively straightforward when using quadratic penalties, the SVM1
+formulation introduces an additional complication in the form of upper bounds on non-overlapping
+subsets of variables, namely the set of variables a
+(iy) in the current working set that correspond to
+the same training instance. Hence, we may not be able to answer the above question by optimizing
+over a
+(iy) alone, but rather have to deal with a larger optimization problem over a whole subspace.
+In order to derive useful bounds, it sufces to restrict attention to simple one-dimensional families
+of solutions that are dened by improving an existing solution along a specic direction h
+. Proving
+
+1464
+
+Y
+Y
+Y
+Y
+Y
+Y
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+that one can make sufcient progress along a specic direction, clearly implies that one can make at
+least that much progress by optimizing over a larger subspace that includes the direction h
+. A rst
+step towards executing this idea is the following lemma.
+Lemma 10 Let J be a symmetric, positive semi-denite matrix, and dene a concave objective in a
+
+Q (a ) = 
+
+1
+2
+
+0Ja +hh,a i ,
+
+which we assume to be bounded from above. Assume that a solution a o and an optimization direc-
+tion h
+starting from a o along the chosen
+direction h will increase the objective by
+
+(a o),h i > 0. Then optimizing Q
+
+is given such that h(cid:209)
+
+max
+
+b >0 {Q (a o + b
+
+)} Q (a o) =
+
+h(cid:209)
+
+1
+2
+
+(a o),h i2
+0Jh
+
+> 0 .
+
+is given by
+
+Proof The difference obtained by a particular b
+(b )  b (cid:20)h(cid:209)
+
+0Jh (cid:21) ,
+as can be veried by elementary algebra. Solving for b one arrives at
+(a o),h i
+0Jh
+
+Q = 0  b  = h(cid:209)
+
+(a o),h i
+
+d
+db
+
+2
+
+.
+
+Notice that this requires h
+0 for any h
+. Moreover h
+
+0Jh > 0. Obviously, the positive semi-deniteness of J guarantees h
+(a o),h i > 0 would imply that limb 
+0Jh = 0 together with h(cid:209)
+
+0Jh 
+Q (a o +
+is bounded. Plugging the value for
+
+, which is in contradiction with the assumption that Q
+
+) = 
+
+b  back into the above expression for d
+
+yields the claim.
+
+Corollary 11 Under the same assumption as in Lemma 10 and for the special case of an optimiza-
+tion direction h = er, the objective improves by
+
+(b ) =
+
+1
+
+2Jrr(cid:18) 
+
+r(cid:19)2
+
+> 0 .
+
+Proof Notice that h = er implies h(cid:209)
+
+,h i =
+
+and h
+
+0Jh = Jrr.
+
+r
+
+Corollary 12 Under the same assumptions as in Lemma 10 and enforcing the constraint b  D for
+some D > 0, the objective improves by
+
+max
+
+0<b D{Q (a o + b
+
+h(cid:209)
+)} Q (a o) =
+Dh(cid:209)
+
+
+(a
+
+2h
+
+o),h i2
+0Jh
+(a o),h i D2
+
+2
+
+0Jh
+
+1465
+
+if h(cid:209)
+
+(a o),h i  Dh
+
+0Jh
+
+.
+
+otherwise
+
+a
+Q
+h
+Q
+h
+d
+Q
+Q
+b
+h
+d
+Q
+h
+Q
+b
+h
+Q
+d
+Q
+Q
+
+a
+Q
+
+Q
+
+a
+h
+Q
+Q
+Q
+h
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+Moreover, the improvement can be upper bounded by
+
+max
+
+0<b D{Q (a o + b
+
+)} Q (a o) 
+
+1
+2
+
+min(cid:26)D, h(cid:209)
+
+(a o),h i
+0Jh
+
+(cid:27)h(cid:209)
+
+(a o),h i .
+
+Proof We distinguish two cases of either b   D or b  > D. In the rst case, we can simple apply
+lemma 10 since the additional constraint is inactive and does not change the solution. In the second
+case, the concavity of Q
+over the constrained range.
+Plugging in this result for b  into d
+
+implies that b = D achieves the maximum of d
+
+yields the second case in the claim.
+
+Finally, the bound is obtained by exploiting that in the second case
+
+b  > D  D < h(cid:209)
+
+(a o),h i
+0Jh
+
+.
+
+Replacing one of the D factors in the D2 term of the second case with this bound yields an upper
+bound. The rst (exact) case and the bound in the second case can be compactly combined as shown
+in the formula of the claim.
+
+Corollary 13 Under the same assumption as in Corollary 12 and for the special case of a single-
+coordinate optimization direction h = er, the objective improves at least by
+
+Q (a o + b er) Q (a o) 
+
+1
+2
+
+max
+0<b D
+
+D,
+
+min
+
+0Jh = Jrr.
+
+r
+
+(a o)
+
+Jrr 
+
+
+(a o)
+
+r
+
+Proof Notice that h = er implies h(cid:209)
+
+,h i =
+
+r
+
+and h
+
+We now apply the above lemma and corollaries to the four different SVM formulations, starting
+
+with the somewhat simpler squared penalty case.
+
+Proposition 14 (SVM4s
+2
+jective is lower bounded by
+
+) For SVM4s
+2
+
+step 10 in Algorithm 1 the improvement d
+
+of the dual ob-
+
+Q 
+
+1
+2
+
+e 2
+i + n
+4iR2
+C
+
+, where 4i  max
+
+y {kd
+y {4(yi,y)} and Ri  max
+
+i(y)k} .
+
+Proof Using the notation in Algorithm 1 one can apply Corollary 11 with multi-index r = (iy),
+h = 1, and J such that
+
+j(y)i +
+Notice that the partial derivative of Q with respect to a
+
+J(iy)( jy) = hd
+
+i(y),d
+
+(a o) = 1(cid:229)
+
+(iy)
+
+j,y
+
+( jy)J(iy)( jy) = 1hw,d
+a o
+
+i(y)i
+
+d (i, j)n
+
+.
+
+Cp4(yi, y)p4(yi,y)
+x i
+
+(iy) is given by
+
+,
+
+p4(yi, y)
+
+1466
+
+h
+Q
+h
+Q
+Q
+Q
+Q
+h
+
+Q
+
+a
+
+Q
+
+a
+Q
+
+Q
+
+a
+Q
+d
+Y
+Y
+Y
+
+Q
+
+a
+Y
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+since the optimality equations for the primal variables yield the identities
+
+w = (cid:229)
+
+a o
+( jy)
+
+j,y
+
+j(y),
+
+and
+
+x i = (cid:229)
+
+y6=yi
+
+na o
+
+(iy)
+
+.
+
+Cp4(yi,y)
+
+Now, applying the condition of step 10, namelyp4(yi, y) (1hw,d
+
+bound
+
+i(y)i) > x i + e , leads to the
+
+(a o) 
+
+(iy)
+
+.
+
+p4(yi, y)
+
+Finally, Jrr = kd
+
+expression from Corollary 11 yields
+
+i(y)k2 + n
+C4(yi,y) and inserting this expression and the previous bound into the
+2Jrr(cid:18) 
+(iy)(cid:19)2
+
+e 2
+i + n
+
+
+
+e 2
+
+1
+
+.
+
+C(cid:1) 
+i(y)k2 + n
+
+2(cid:0)4iR2
+
+C(cid:1)
+
+2(cid:0)4(yi, y)kd
+
+The claim follows by observing that jointly optimizing over a set of variables that include a
+only further increase the value of the dual objective.
+
+r can
+
+Proposition 15 (SVM4m
+objective is lower bounded by
+
+2
+
+) For SVM4m
+
+2
+
+step 10 in Algorithm 1 the improvement d
+
+of the dual
+
+Proof By re-dening d
+
+Y
+
+1
+2
+
+Q 
+
+e 2
+i + n
+R2
+C
+i(y)4(yi,y)
+i(y) 
+Y
+y {4(yi,y)kd
+
+max
+
+y kd
+, where Ri = max
+
+i(y)k .
+
+we are back to Proposition 14 with
+
+y {kd
+i(y)k2} = max
+
+i(y)k2} = R2
+i ,
+
+since
+
+hw,d
+
+i(y)i p4(yi,y) x
+
+i  hw,d
+
+Y
+
+i(y)i  1
+
+.
+
+i
+
+p4(yi,y)
+
+Proposition 16 (SVM4s
+1
+jective is lower bounded by
+
+) For SVM4s
+1
+
+step 10 in Algorithm 1 the improvement d
+
+of the dual ob-
+
+Q  min(cid:26)Ce
+
+2n
+
+,
+
+Proof
+
+e 2
+842
+i R2
+
+i (cid:27) where 4i = max
+
+y {kd
+y {4(yi,y)} and Ri = max
+
+i(y)k} .
+
+1467
+
+d
+Y
+Y
+
+Q
+
+a
+e
+Y
+Q
+
+a
+Y
+Q
+d
+Y
+d
+Y
+Y
+Y
+x
+Q
+d
+Y
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+Case I:
+If the working set does not contain an element (iy), then we can optimize over a
+constraint that a
+
+n = D. Notice that
+
+(iy)  4(yi, y)C
+
+(iy) under the
+
+(a o) = 1hw,d
+
+(iy)
+
+i(y)i >
+
+x i + e
+4(yi, y) 
+
+,
+
+4(yi, y)
+
+yields
+
+where the rst inequality follows from the pre-condition for selecting (iy) and the last one from
+x i  0. Moreover, notice that J(iy)(iy)  R2
+i . Evoking Corollary 13 with the obvious identications
+(a o)(cid:27) 
+i (cid:27)
+4(yi, y)R2
+
+min(cid:26)D,
+min(cid:26)4(yi, y)C
+
+i 4(yi, y)2(cid:27)
+
+= min(cid:26)Ce
+
+Q 
+
+(a o)
+
+1
+2
+1
+2
+
+1
+Jrr
+
+2R2
+
+2n
+
+e 2
+
+(iy)
+
+(iy)
+
+>
+
+,
+
+,
+
+4(yi, y)
+The second term can be further bounded to yield the claim.
+Case II:
+
+n
+
+If there are already active constraints for instance xi in the current working set, i.e. Si 6= /0, then we
+may need to reduce dual variables a
+(iy) in order to get some slack for increasing the newly added
+(iy). We thus investigate search directions h
+C  0 for y  Si,
+and h
+( jy0) = 0 in all other cases. For such h
+n4(yi, y).
+In nding a suitable direction to derive a good bound, we have two (possibly conicting) goals.
+First of all, we want the directional derivative to be positively bounded away from zero. Notice that
+
+(iy) = 
+h  0 since b  C
+
+, we guarantee that a o + b
+
+such that h
+
+(iy) = 1, h
+
+4(yi,y)
+
+(iy)
+
+n
+
+h(cid:209)
+
+(a o),h i = (cid:229)
+Furthermore, by the restrictions imposed on h
+active and hence 4(yi,y) (1hw,d
+that 4(yi, y) (1hw,d
+
+y
+
+(iy) (1hw,d
+, h
+
+i(y)i) .
+
+(iy) < 0 implies that the respective constraint is
+i(y)i) = x i . Moreover the pre-condition of step 10 ensures
+
+i(y)i) = x i + d where d  e > 0. Hence
+x i
+4(yi,y)! +
+4(yi, y) 1
+
+a o
+(iy)
+
+n
+C
+
+y
+
+h(cid:209)
+
+(a o),h i =
+
+4(yi, y) 
+
+.
+
+4(yi, y)
+
+The second goal is to make sure the curvature along the chosen direction is not too large.
+
+0Jh = J(iy)(iy)  2 (cid:229)
+y6=y
+nR2
+i
+
+ R2
+
+i + 2
+
+n
+C
+
+a o
+(iy)
+4(yi, y)
+a o
+(iy) +
+
+C4(yi, y)
+y6=y
+R2
+i 4i
+4(yi, y)2 
++
+4(yi, y)
+
+i 42
+R2
+
+i
+
+ R2
+
+i + 2
+
+y06=y
+
+y6=y
+n2R2
+i
+
+J(iy)(iy) + (cid:229)
+C24(yi, y)2 (cid:229)
+y6=y
+i 42
+4(yi, y)2 .
+
+4R2
+
+i
+
+1468
+
+n
+C
+
+a o
+(iy)
+4(yi, y)
+a o
+(iy)
+
+a o
+(iy0)
+4(yi, y)
+a o
+(iy0)
+
+y06=y
+
+n
+C
+
+J(iy)(iy0)
+
+
+Q
+
+a
+Y
+e
+d
+
+Q
+
+a
+Q
+
+a
+e
+e
+a
+a
+Q
+h
+Y
+Y
+Y
+Q
+(cid:229)
+d
+e
+h
+(cid:229)
+(cid:229)
+(cid:229)
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+This follows from the fact that (cid:229) y6=y a o
+
+(iy)  4i (cid:229) y6=y
+(a o),h i
+(cid:27)h(cid:209)
+0Jh
+4(yi, y)C
+
+,
+
+n
+
+4(yi,y)
+4R2
+i 42
+4(yi,y)2
+
+i
+
+
+
+
+Q 
+
+
+
+1
+2
+
+1
+2
+
+min(cid:26)D, h(cid:209)
+min
+
+
+n . Evoking Corollary 12 yields
+
+a o
+(iy)
+
+4(yi,y)  C4i
+(a o),h i
+
+= min(cid:26)Ce
+
+2n
+
+,
+
+e 2
+i (cid:27)
+i 42
+8R2
+
+4(yi, y)
+
+Proposition 17 (SVM4m
+objective is lower bounded by
+
+1
+
+) For SVM4m
+
+1
+
+step 10 in Algorithm 1 the improvement d
+
+of the dual
+
+Q 
+
+e 2
+8R2
+i
+
+y kd
+, where Ri = max
+
+i(y)k .
+
+Proof By re-dening d
+
+since
+
+Y
+
+i(y)
+
+i(y) 
+y {4(yi,y)2kd
+
+4(yi,y) we are back to Proposition 16 with
+i(y)k2} = R2
+i ,
+
+y {kd
+i(y)k2} = max
+
+Y
+
+max
+
+hw,d
+
+i(y)i  4(yi,y) x
+
+i  hw,d
+
+Y
+
+i(y)i  1
+
+i
+
+4(yi,y)
+
+.
+
+This leads to the following polynomial bound on the maximum size of S.
+
+Theorem 18 With R = maxi Ri, 4 = maxi4i and for a given e > 0, Algorithm 1 terminates after
+
+incrementally adding at most
+e 2 (cid:27) , max(cid:26)2n 4e
+8C 43 R2
+
+max(cid:26)2n 4e
+
+,
+
+,
+
+8C 4 R2
+e 2 (cid:27) ,
+
+C 42 R2 + n 4
+
+e 2
+
+and
+
+C 4 R2 + n 4
+
+e 2
+
+1
+
+, SVM4s
+
+, SVM4m
+
+constraints to the working set S for the SVM4s
+1
+Proof With S = /0 the optimal value of the dual is 0. In each iteration a constraint is added that
+is violated by at least e , provided such a constraint exists. After solving the S-relaxed QP in step
+10, the objective will increase by at least the amounts suggested by Propositions 16, 17, 14 and 15
+respectively. Hence after t constraints, the dual objective will be at least t times these increments.
+The result follows from the fact that the dual objective is upper bounded by the minimum of the
+primal, which in turn can be bounded by C 4 and 1
+
+2C 4 for SVM1 and SVM2 respectively.
+
+2 and SVM4m
+
+respectively.
+
+2
+
+1469
+
+d
+Q
+h
+Q
+e
+e
+Q
+d
+Y
+d
+Y
+Y
+Y
+x
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+Note that the number of constraints in S does not depend on |Y |. This is crucial, since |Y | is
+exponential or innite for many interesting problems. For problems where step 6 can be computed
+in polynomial time, the overall algorithm has a runtime polynomial in n, R, 4, 1/e , since at least
+one constraint will be added while cycling through all n instances and since step 10 is polynomial.
+This shows that the algorithm considers only a small number of constraints, if one allows an extra e
+slack, and that the solution is correct up to an approximation that depends on the precision parameter
+e . The upper bound on the number of active constraints in such an approximate solution depends
+on the chosen representation, more specically, we need to upper bound the difference vectors
+kY
+(xi, y)k2 for arbitrary y, y  Y . In the following, we will thus make sure that suitable
+
+(xi,y) Y
+
+upper bounds are available.
+
+4. Specic Problems and Special Cases
+
+In the sequel, we will discuss a number of interesting special cases of the general scenario outlined
+in the previous section. To model each particular problem and to be able to run the algorithm and
+bound its complexity, we need to examine the following three questions for each case:
+
+ Modeling: How can we dene suitable feature maps Y
+(x,y) for specic problems?
+ Algorithms: How can we compute the required maximization over Y for given x?
+ Sparseness: How can we bound kY
+
+(x,y) Y
+
+(x,y0)k?
+
+4.1 Multiclass Classication
+
+A special case of Equation (1) is winner-takes-all (WTA) multiclass classication, where Y =
+{y1, . . . ,yK} and w = (v01, . . . ,v0K)0 is a stack of vectors, vk being a weight vector associated with the
+k-th class yk. The WTA rule is given by
+
+f (x) = arg max
+ykY
+
+F(x,y;w),
+
+F(x,yk;w) = hvk,F (x)i .
+
+(10)
+
+Here F (x)  RD denotes an arbitrary feature representation of the inputs, which in many cases may
+
+be dened implicitly via a kernel function.
+
+4.1.1 MODELING
+
+The above decision rule can be equivalently represented by making use of a joint feature map as
+follows. First of all, we dene the canonical (binary) representation of labels y  Y by unit vectors
+(11)
+
+c(y)  (d (y1,y),d (y2,y), . . . ,d (yK,y))0  {0,1}K ,
+
+so that hL
+c(y0)i = d (y,y0). It will turn out to be convenient to use direct tensor products 
+to combine feature maps over X and Y . In general, we thus dene the -operation in the following
+manner
+
+c(y),L
+
+ : RD  RK  RDK,
+
+(a b)i+( j1)D  ai  b j .
+
+Now we can dene a joint feature map for the multiclass problem by
+
+(x,y)  F (x) L
+
+c(y) .
+
+1470
+
+(12)
+
+L
+Y
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+It is is easy to show that this results in an equivalent formulation of the multiclass WTA as expressed
+in the following proposition.
+
+Proposition 19 F(x,y;w) = hw,Y
+
+tion (12).
+
+(x,y)i, where F is dened in Equation (10) and Y
+
+in Equa-
+
+Proof For all yk  Y : hw,Y
+hvk,F (x)i.
+
+(x,yk)i = (cid:229) DK
+
+r=1 wry
+
+4.1.2 ALGORITHMS
+
+r(x,yk) = (cid:229) K
+
+j=1 (cid:229) D
+
+d=1 v jdf d(x)d ( j, k) = (cid:229) D
+
+d=1 vkdf d(x) =
+
+It is usually assumed that the number of classes K in simple multiclass problems is small enough,
+so that an exhaustive search can be performed to maximize any objective over Y . Similarly, we can
+nd the second best y  Y .
+4.1.3 SPARSENESS
+
+In order to bound the norm of the difference feature vectors, we prove the following simple result.
+
+Proposition 20 Dene Ri  kF (xi)k. Then kY
+Proof
+
+(xi,y) Y
+
+(xi,y0)k2  2R2
+i .
+
+kY
+
+(xi,y) Y
+
+(xi,y0)k2  kY
+
+(xi,y)k2 +kY
+
+(xi,y0)k2 = 2kF (xi)k2,
+
+where the rst step follows from the Cauchy-Schwarz inequality and the second step exploits the
+sparseness of L
+
+c.
+
+4.2 Multiclass Classication with Output Features
+The rst generalization we propose is to make use of more interesting output features L
+than the
+canonical representation in Equation (11). Apparently, we could use the same approach as in Equa-
+tion (12) to dene a joint feature function, but use a more general form for L
+
+.
+
+4.2.1 MODELING
+We rst show that for any joint feature map Y
+following relation holds:
+
+constructed via the direct tensor product  the
+
+Proposition 21 For Y = F  L
+(x,y),Y
+
+(cid:10)Y
+
+the inner product can be written as
+
+(x0,y0)(cid:11) =(cid:10)F (x),F (x0)(cid:11)(cid:10)L (y),L (y0)(cid:11) .
+
+1471
+
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+Proof By simple algebra
+
+(x,y),Y
+
+(cid:10)Y
+
+(x0,y0)(cid:11) =
+D(cid:229)
+D(cid:229)
+d0=1
+
+d=1
+
+=
+
+DK(cid:229)
+
+r=1
+
+DK(cid:229)
+
+s=1
+
+r(x,y)y
+
+f d(x)f d0(x0)
+
+K(cid:229)
+
+k=1
+
+K(cid:229)
+k0=1
+
+s(x0,y0) =
+
+D(cid:229)
+
+K(cid:229)
+
+D(cid:229)
+d0=1
+
+K(cid:229)
+k0=1
+
+k=1
+
+d=1
+
+f d(x)l k(y)f d0(x0)l k0(y0)
+l k(y)l k0(y0) =(cid:10)F (x),F (x0)(cid:11)(cid:10)L (y),L (y0)(cid:11) .
+
+This implies that for feature maps F
+
+hF (x),F (x0)i, one can dene a joint kernel function as follows:
+
+that are implicitly dened via kernel functions K, K(x,x0) 
+
+J((x,y), (x0,y0)) =(cid:10)Y
+
+(x,y),Y
+
+(x0,y0)(cid:11) =(cid:10)L (y),L (y0)(cid:11) K(x,x0) .
+
+Of course, nothing prevents us from expressing the inner product in output space via yet another
+
+kernel function L(y,y0) = hL (y),L (y0)i. Notice that the kernel L is simply the identity in the stan-
+
+dard multiclass case. How can this kernel be chosen in concrete cases? It basically may encode any
+type of prior knowledge one might have about the similarity between classes. It is illuminating to
+note the following proposition.
+Proposition 22 Dene Y
+F(x,y;w) can be written as
+
+(x,y) = F (x)  L (y) with L (y)  RR; then the discriminant function
+
+F(x,y;w) =
+
+R(cid:229)
+
+r=1
+
+l r(y)hvr,F (x)i,
+
+where w = (v01, . . . ,v0R)0 is the stack of vectors vr  RD, one vector for each basis function of L
+Proof
+
+.
+
+l r(y)
+
+R(cid:229)
+
+r=1
+
+D(cid:229)
+
+d=1
+
+vrdf d(x) =
+
+D(cid:229)
+
+d=1
+
+R(cid:229)
+= hw,Y
+
+r=1
+
+wD(d1)+rl r(y)f d(x) = hw,F (x) L (y)i
+(x,y)i = F(x,y;w).
+
+We can give this a simple interpretation: For each output feature l r a corresponding weight vector vr
+is introduced. The discriminant function can then be represented as a weighted sum of contributions
+coming from the different features. In particular, in the case of binary features L
+: Y  {0,1}R,
+this will simply be a sum over all contributions hvr,F (x)i of features that are active for the class y,
+i.e. for which l r(y) = 1.
+
+It is also important to note that the orthogonal representation provides a maximally large hypoth-
+esis class and that nothing can be gained in terms of representational power by including additional
+features.
+
+1472
+
+y
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+Corollary 23 Assume a mapping L (y) = ( L (y)0,L
+L (y) and Y
+and vice versa.
+
+(x,y) = F (x)L
+
+c(y). Now, for every w there is w such that(cid:10) w, Y
+
+c(y)0)0, L (y)  RR and dene Y
+
+(x,y) = F (x)
+(x,y)i
+
+(x,y)(cid:11) = hw,Y
+
+Proof Applying Proposition 22 twice it follows that
+
+(cid:10) w, Y
+
+(x,y)(cid:11) =
+
+R+K(cid:229)
+
+r=1
+
+l r(y)hvr,F (x)i =*R+K(cid:229)
+
+r=1
+
+l r(y)vr,F (x)+ = hvy,F (x)i = hw,Y
+
+(x,y)i .
+
+where we have dened vy = (cid:229) R+K
+r=1
+vr = 0 for r = 1, . . . , R.
+
+l r(y)vr. The reverse direction is trivial and requires setting
+
+In the light of this corollary, we would like to emphasize that the rationale behind the use of class
+features is not to increase the representational power of the hypothesis space, but to re-parameterize
+(or even constrain) the hypothesis space such that a more suitable representation for Y is produced.
+We would like to generalize across classes as we want to generalize across input patterns in the stan-
+dard formulation of classication problems. Obviously, orthogonal representations (corresponding
+to diagonal kernels) will provide no generalization whatsoever across different classes y. The choice
+of a good output feature map L
+is thus expected to provide an inductive bias, namely that learning
+can occur across a set of classes sharing a common property.
+
+Let us discuss some special cases of interest.
+
+Classication with Taxonomies Assume that class labels y are arranged in a taxonomy. We will
+dene a taxonomy as a set of elements Z  Y equipped with a partial order . The partially ordered
+set (Z,) might, for example, represent a tree or a lattice. Now we can dene binary features for
+classes as follows: Associate one feature l z with every element in Z according to
+
+l z(y) =(1 if y  z or y = z
+
+0 otherwise.
+
+This includes multiclass classication as a special case of an unordered set Z = Y . In general,
+however, the features l z will be shared by all classes below z, e.g. all nodes y in the subtree
+rooted at z in the case of a tree. One may also introduce a relative weight b z for every feature
+and dene a b -weighted (instead of binary) output feature map L
+as l z = b zl z. If we reect upon
+the implication of this denition in the light of Proposition 22, one observes that this effectively
+introduces a weight vector vz for every element of Z, i.e. for every node in the hierarchy.
+
+Learning with Textual Class Descriptions As a second motivating example, we consider prob-
+lems where classes are characterized by short glosses, blurbs or other textual descriptions. We
+would like to exploit the fact that classes sharing some descriptors are likely to be similar, in order
+to specify a suitable inductive bias. This can be achieved, for example, by associating a feature l
+with every keyword used to describe classes, in addition to the class identity. Hence standard vector
+space models like term-frequency of idf representations can be applied to model classes and the
+
+inner product hL (y),L (y0)i then denes a similarity measure between classes corresponding to the
+
+standard cosine-measure used in information retrieval.
+
+1473
+
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+Learning with Class Similarities The above example can obviously be generalized to any situa-
+tion, where we have access to a positive denite similarity function for pairs of classes. To come up
+with suitable similarity functions is part of the domain modelvery much like determining a good
+representation of the inputsand we assume here that it is given.
+
+4.2.2 ALGORITHMS
+
+As in the multiclass case, we assume that the number of classes is small enough to perform an
+exhaustive search.
+
+4.2.3 SPARSENESS
+
+Proposition 20 can be generalized in the following way:
+
+Proposition 24 Dene Ri  kF (xi)k and S  maxyY kL (y)k then kY
+for all y,y0  Y .
+Proof hY
+(xi,y),Y
+
+(xi,y)i = kF (xi)k2 kL (y)k2  R2
+
+tion 21.
+
+(xi,y)Y
+
+i S2
+(xi,y0)k2  2R2
+
+i S2. In the last step, we have used Proposi-
+
+4.3 Label Sequence Learning
+
+The next problem we would like to formulate in the joint feature map framework is the problem of
+label sequence learning, or sequence segmentation/annotation. Here, the goal is to predict a label
+sequence y = (y1, . . . , yT ) for a given observation sequence x = (x1, . . . ,xT ). In order to simplify
+the presentation, let us assume all sequences are of the same length T . Let us denote by S
+the
+set of possible labels for each individual variable yt, i.e. Y = S T . Hence each sequence of labels is
+considered to be a class of its own, resulting in a multiclass classication problem with |S
+|T different
+classes. To model label sequence learning in this manner would of course not be very useful, if one
+were to apply standard multiclass classication methods. However, this can be overcome by an
+appropriate denition of the discriminant function.
+
+4.3.1 MODELING
+Inspired by hidden Markov model (HMM) type of interactions, we propose to dene Y
+to include
+interactions between input features and labels via multiple copies of the input features as well as
+features that model interactions between nearby label variables. It is perhaps most intuitive to start
+from the discriminant function
+
+F(x,y;w) =
+
+t=1
+
+T1
+
+t=1
+
+s S h ws ,F (xt)id (yt,s ) + h
+T(cid:229)
+
+T(cid:229)
+=* w,
+c denotes the orthogonal representation of labels over S
+
+c(yt)+ + h * w,
+
+s S
+c(yt) L
+
+F (xt) L
+
+s S
+T1
+
+ws
+
+, s
+
+t=1
+
+t=1
+
+d (yt,s )d (yt+1, s )
+c(yt+1)+ .
+, and h  0 is a scaling
+
+(13)
+
+Here w = ( w0, w0)0, L
+factor which balances the two types of contributions. It is straightforward to read off the joint feature
+
+1474
+
+(cid:229)
+(cid:229)
+(cid:229)
+(cid:229)
+(cid:229)
+L
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+map implicit in the denition of the HMM discriminant from Equation (13),
+
+(x,y) =(cid:18) (cid:229) T
+
+t=1
+(cid:229) T1
+t=1
+
+F (xt) L
+c(yt) L
+
+c(yt)
+
+c(yt+1)(cid:19) .
+
+Notice that similar to the multiclass case, we can apply Proposition 21 in the case of an implicit
+representation of F
+via a kernel function K and the inner product between labeled sequences can
+thus be written as
+
+((x,y)),Y
+
+hY
+
+(x, y)i =
+
+T(cid:229)
+
+s,t=1
+
+d (yt, ys)K(xt, xs) + h 2
+
+T1
+
+s,t=1
+
+d (yt, ys)d (yt+1, ys+1) .
+
+(14)
+
+A larger family of discriminant functions can be obtained by using more powerful feature functions
+. We would like to mention three ways of extending the previous HMM discriminant. First of
+all, one can extract features not just from xt, but from a window around xt, e.g. replacing F (xt)
+with F (xtr, . . . ,xt, . . . ,xt+r). Since the same input pattern xt now occurs in multiple terms, this has
+been called the use of overlapping features (Lafferty et al., 2001) in the context of label sequence
+learning. Secondly, it is also straightforward to include higher order label-label interactions beyond
+pairwise interactions by including higher order tensor terms, for instance, label triplets (cid:229)
+c(yt)
+c(yt+1) L
+c(yt+2), etc. Thirdly, one can also combine higher order y features with input features,
+for example, by including terms of the type (cid:229)
+
+c(yt+1).
+
+t L
+
+t F (xt) L
+
+c(yt) L
+
+4.3.2 ALGORITHMS
+
+The maximization of hw,Y
+(xi,y)i over y can be carried out by dynamic programming, since the
+cost contributions are additive over sites and contain only linear and nearest neighbor quadratic
+contributions. In particular, in order to nd the best label sequence y 6= yi, one can perform Viterbi
+decoding (Forney Jr., 1973; Schwarz and Chow, 1990), which can also determine the second best
+sequence for the zero-one loss (2-best Viterbi decoding). Viterbi decoding can also be used with
+other loss functions by computing the maximization for all possible values of the loss function.
+
+4.3.3 SPARSENESS
+
+(xi,y)k2 = k(cid:229)
+squared norm can be upper bounded by
+
+Proposition 25 Dene Ri  maxt kF (xt
+Proof Notice that kY
+k(cid:229)
+
+i) L
+
+F (xt
+
+c(yt)k2 = (cid:229)
+
+t
+
+i)k; then kY
+(xi,y) Y
+i)  L
+t F (xt
+c(yt)k2 + h 2k(cid:229)
+t (cid:10)F (xs
+
+i ),F (xt
+
+s
+
+and the second one by h 2T 2, which yields the claim.
+
+(xi,y0)k2  2T 2(R2
+
+i + h 2).
+
+c(yt+1)k2. The rst
+
+t L
+
+c(yt)  L
+i)(cid:11)d (ys, yt)  T 2R2
+
+i
+
+4.4 Sequence Alignment
+
+Next we show how to apply the proposed algorithm to the problem of learning to align sequences
+. For a given pair of sequences
+
+x  S , where S  is the set of all strings over some nite alphabet S
+
+1475
+
+Y
+h
+L
+(cid:229)
+Y
+L
+(cid:229)
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+x  S  and y  S , alignment methods like the Smith-Waterman algorithm select the sequence of
+operations (e.g. insertion, substitution) that transforms x into y and that maximizes a linear objective
+function
+
+a(x,y) = argmax
+
+aA hw,Y
+
+(x,y,a)i
+
+that is parameterized by the operation scores w. Y
+(x,y,a) is the histogram of alignment operations.
+The value of hw,Y
+(x,y, a(x,y))i can be used as a measure of similarity between x and y. It is the
+score of the highest scoring sequence of operations that transforms x into y. Such alignment models
+are used, for example, to measure the similarity of two protein sequences.
+
+4.4.1 MODELING
+
+In order to learn the score vector w we use training data of the following type. For each native
+sequence xi there is a most similar homologous sequence yi along with the optimal alignment ai.
+In addition we are given a set of decoy sequences yt
+i, t = 1, . . . , k with unknown alignments. Note
+that this data is more restrictive than what Ristad and Yianilos (1997) consider in their generative
+modeling approach. The goal is to learn a discriminant function f that recognizes the homologous
+sequence among the decoys. In our approach, this corresponds to nding a weight vector w so that
+homologous sequences align to their native sequence with high score, and that the alignment scores
+for the decoy sequences are lower. With Yi = {yi,y1
+i } as the output space for the i-th example,
+we seek a w so that hw,Y
+i,a)i for all t and a. This implies a zero-one
+loss and hypotheses of the form
+
+(xi,yi,ai)i exceeds hw,Y
+
+i , ...,yk
+(xi,yt
+
+f (xi) = argmax
+
+yYi
+
+max
+
+a
+
+hw,Y
+
+(x,y,a)i .
+
+(15)
+
+depends on the set of operations used in the sequence alignment
+
+The design of the feature map Y
+algorithm.
+
+4.4.2 ALGORITHMS
+
+In order to nd the optimal alignment between a given native sequence x and a homologous/decoy
+sequence y as the solution of
+
+max
+
+a
+
+hw,Y
+
+(x,y,a)i ,
+
+(16)
+
+we can use dynamic programming as e.g. in the Smith-Waterman algorithm. To solve the argmax
+in Equation (15), we assume that the number k of decoy sequences is small enough, so that we can
+select among the scores computed in Equation (16) via exhaustive search.
+
+4.4.3 SPARSENESS
+
+If we select insertion, deletion, and substitution as our possible operations, each (non-redundant)
+operation reads at least one character in either x or y. If the maximum sequence length is N, then
+(x,y0,a0) is at most 22N.
+the L1-norm of Y
+
+(x,y,a) is at most 2N and the L2-norm of Y
+
+(x,y,a)Y
+
+1476
+
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+4.5 Weighted Context-Free Grammars
+
+In natural language parsing, the task is to predict a labeled tree y based on a string x = (x1, ..., xk)
+of terminal symbols. For this problem, our approach extends the approaches of Collins (2000) and
+Collins and Duffy (2002b) to an efcient maximum-margin algorithm with general loss functions.
+We assume that each node in the tree corresponds to the application of a context-free grammar rule.
+The leaves of the tree are the symbols in x, while interior nodes correspond to non-terminal symbols
+from a given alphabet N . For simplicity, we assume that the trees are in Chomsky normal form.
+This means that each internal node has exactly two children. An exception are pre-terminal nodes
+(non-leaf nodes that have a terminal symbol as child) which have exactly one child.
+
+4.5.1 MODELING
+
+We consider weighted context-free grammars to model the dependency between x and y. Grammar
+rules are of the form nl[Ci  C j,Ck] or nl[Ci  xt], where Ci,C j,Ck  N are non-terminal symbols,
+and xt  T is a terminal symbol. Each such rule is parameterized by an individual weight wl. A
+particular kind of weighted context-free grammar are probabilistic context-free grammars (PCFGs),
+where this weight wl is the log-probability of expanding node Hi with rule nl. In PCFGs, the indi-
+vidual node probabilities are assumed to be independent, so that the probability P(x,y) of sequence
+x and tree y is the product of the node probabilities in the tree. The most likely parse tree to yield x
+from a designated start symbol is the predicted label h(x). This leads to the following maximization
+problem, where we use rules(y) to denote the multi-set of nodes in y,
+
+h(x) = argmax
+
+yY
+
+P(y|x) = argmax
+
+yY ( (cid:229)
+
+nlrules(y)
+
+wl) .
+
+More generally, weighted context-free grammars can be used in our framework as follows. Y
+(x,y)
+contains one feature fi jk for each node of type ni jk[Ci  C j,Ck] and one feature fit for each node
+of type nit[Ci  xt]. As illustrated in Figure 1, the number of times a particular rule occurs in the
+tree is the value of the feature. The weight vector w contains the corresponding weights so that
+hw,Y
+
+(x,y)i = (cid:229) nlrules(y) wl.
+Note that our framework also allows more complex Y
+
+(x,y), making it more exible than
+In particular, each node weight can be a (kernelized) linear function of the full x and
+
+PCFGs.
+the span of the subtree.
+
+4.5.2 ALGORITHMS
+
+The solution of argmaxyY hw,Y
+(x,y)i for a given x can be determined efciently using a CKY-
+Parser (see Manning and Schuetze, 1999), which can also return the second best parse for learn-
+ing with the zero-one loss. To implement other loss functions, like 4(yi,y) = (1 F1(yi,y)), the
+CKY algorithm can be extended to compute both argmaxyY (1hw,d
+i(y)i)4(yi,y) as well as
+argmaxyY (4(yi,y)hw,d
+i(y)i) by stratifying the maximization over all values of 4(yi,y) as
+
+described in Joachims (2005) for the case of multivariate classication.
+
+1477
+
+Y
+Y
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+t 0/1
+
+tax 0/1
+
+28.32
+1.36
+
+28.32
+1.32
+
+4 training instances per class
+acc
+4-loss
+2 training instances per class
+acc
+4-loss
+
+20.20
+1.54
+
+20.46
+1.51
+
+20.20
+1.39
+
+t 4 tax 4
++5.01 %
+29.74
+27.47
+1.21 +12.40 %
+1.30
+
+21.73
++7.57 %
+1.33 +13.67 %
+
+Table 1: Results on the WIPO-alpha corpus, section D with 160 groups using 3-fold and 5-fold
+cross validation, respectively. t is a standard (at) SVM multiclass model, tax the
+hierarchical architecture. 0/1 denotes training based on the classication loss, 4 refers
+to training based on the tree loss.
+
+4.5.3 SPARSENESS
+Since the trees branch for each internal node, a tree over a sequence x of length N has N  1 internal
+nodes. Furthermore, it has N pre-terminal nodes. This means that the L1-norm of Y
+(x,y) is 2N  1
+and that the L2-norm of Y
+
+(x,y0) is at mostp4N2 + 4(N  1)2 < 22N.
+
+(x,y) Y
+
+5. Experimental Results
+
+To demonstrate the effectiveness and versatility of our approach, we applied it to the problems of
+taxonomic text classication (see also Cai and Hofmann, 2004), named entity recognition, sequence
+alignment, and natural language parsing.
+
+5.1 Classication with Taxonomies
+
+We have performed experiments using a document collection released by the World Intellectual
+Property Organization (WIPO), which uses the International Patent Classication (IPC) scheme. We
+have restricted ourselves to one of the 8 sections, namely section D, consisting of 1,710 documents
+in the WIPO-alpha collection. For our experiments, we have indexed the title and claim tags. We
+have furthermore sub-sampled the training data to investigate the effect of the training set size.
+Document parsing, tokenization and term normalization have been performed with the MindServer
+retrieval engine.2 As a suitable loss function 4, we have used a tree loss function which denes
+the loss between two classes y and y0 as the height of the rst common ancestor of y and y0 in
+the taxonomy. The results are summarized in Table 1 and show that the proposed hierarchical
+SVM learning architecture improves performance over the standard multiclass SVM in terms of
+classication accuracy as well as in terms of the tree loss.
+
+5.2 Label Sequence Learning
+
+We study our algorithm for label sequence learning on a named entity recognition (NER) problem.
+More specically, we consider a sub-corpus consisting of 300 sentences from the Spanish news
+wire article corpus which was provided for the special session of CoNLL2002 devoted to NER.
+
+2. This software is available at http://www.recommind.com.
+
+1478
+
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+Method HMM CRF Perceptron SVM
+Error
+5.08
+
+9.36
+
+5.17
+
+5.94
+
+Table 2: Results of various algorithms on the named entity recognition task.
+
+Method
+SVM2
+SVM4s
+2
+SVM4m
+
+2
+
+Const
+
+Train Err Test Err
+Avg Loss
+0.20.1 5.10.6 2824106 1.020.01
+0.40.4 5.10.8 2626225 1.100.08
+0.30.2 5.10.7 2628119 1.170.12
+
+Table 3: Results for various SVM formulations on the named entity recognition task (e = 0.01,
+
+C = 1).
+
+The label set in this corpus consists of non-name and the beginning and continuation of person
+names, organizations, locations and miscellaneous names, resulting in a total of |S
+| = 9 different
+labels. In the setup followed in Altun et al. (2003), the joint feature map Y
+(x,y) is the histogram
+of state transition plus a set of features describing the emissions. An adapted version of the Viterbi
+algorithm is used to solve the argmax in line 6. For both perceptron and SVM a second degree
+polynomial kernel was used.
+
+The results given in Table 2 for the zero-one loss, compare the generative HMM with condi-
+tional random elds (CRF) (Lafferty et al., 2001), Collins perceptron and the SVM algorithm. All
+discriminative learning methods substantially outperform the standard HMM. In addition, the SVM
+performs slightly better than the perceptron and CRFs, demonstrating the benet of a large margin
+approach. Table 3 shows that all SVM formulations perform comparably, attributed to the fact the
+vast majority of the support label sequences end up having Hamming distance 1 to the correct label
+sequence. Notice that for 0-1 loss functions all three SVM formulations are equivalent.
+
+5.3 Sequence Alignment
+
+To analyze the behavior of the algorithm for sequence alignment, we constructed a synthetic dataset
+according to the following sequence and local alignment model. The native sequence and the decoys
+
+are generated by drawing randomly from a 20 letter alphabet S = {1, ..,20} so that letter c  S has
+probability c/210. Each sequence has length 50, and there are 10 decoys per native sequence. To
+generate the homologous sequence, we generate an alignment string of length 30 consisting of 4
+characters match, substitute, insert , delete. For simplicity of illustration, substitutions
+are always c  (c mod 20) + 1. In the following experiments, matches occur with probability 0.2,
+substitutions with 0.4, insertion with 0.2, deletion with 0.2. The homologous sequence is created
+by applying the alignment string to a randomly selected substring of the native. The shortening of
+the sequences through insertions and deletions is padded by additional random characters.
+
+We model this problem using local sequence alignment with the Smith-Waterman algorithm.
+Table 4 shows the test error rates (i.e.
+the percentage of times a decoy is selected instead of the
+homologous sequence) depending on the number of training examples. The results are averaged
+over 10 train/test samples. The model contains 400 parameters in the substitution matrix P
+and a
+cost d
+for insert/delete. We train this model using the SVM2 and compare against a generative
+
+1479
+
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+n
+1
+2
+4
+10
+20
+40
+80
+
+Train Error
+
+Test Error
+
+GenMod
+20.013.3
+20.08.2
+10.05.5
+2.01.3
+2.50.8
+2.01.0
+2.80.5
+
+SVM2
+0.00.0
+0.00.0
+2.02.0
+0.00.0
+1.00.7
+1.00.4
+2.00.5
+
+GenMod
+74.32.7
+54.53.3
+28.02.3
+10.20.7
+3.40.7
+2.30.5
+1.90.4
+
+SVM2
+47.04.6
+34.34.3
+14.41.4
+7.11.6
+5.20.5
+3.00.3
+2.80.6
+
+Table 4: Error rates and number of constraints |S| depending on the number of training examples
+
+(e = 0.1, C = 0.01).
+
+300
+
+250
+
+200
+
+150
+
+100
+
+50
+
+i
+
+s
+t
+n
+a
+r
+t
+s
+n
+o
+C
+
+
+f
+
+o
+
+
+r
+e
+b
+m
+u
+N
+e
+g
+a
+r
+e
+v
+A
+
+
+
+400
+
+350
+
+300
+
+250
+
+200
+
+150
+
+100
+
+50
+
+i
+
+s
+t
+n
+a
+r
+t
+s
+n
+o
+C
+
+
+f
+
+o
+
+
+r
+e
+b
+m
+u
+N
+e
+g
+a
+r
+e
+v
+A
+
+
+
+0
+
+0
+
+10
+
+20
+
+30
+
+40
+
+50
+
+60
+
+70
+
+80
+
+Number of Training Examples
+
+0
+0.001
+
+0.01
+
+0.1
+
+1
+
+Epsilon
+
+Figure 2: Number of constraints added to S depending on the number of training examples (middle)
+
+and the value of e
+
+(right). If not stated otherwise, e = 0.1, C = 0.01, and n = 20.
+
+sequence alignment model, where the substitution matrix is computed as P
+e.g. Durbin et al., 1998) using Laplace estimates. For the generative model, we report the results
+
+P(xi)P(z j)(cid:17) (see
+for d = 0.2, which performs best on the test set. Despite this unfair advantage, the SVM performs
+
+better for low training set sizes. For larger training sets, both methods perform similarly, with a
+small preference for the generative model. However, an advantage of the SVM approach is that it is
+straightforward to train gap penalties.
+
+i j = log(cid:16) P(xi,z j)
+
+Figure 2 shows the number of constraints that are added to S before convergence. The graph
+on the left-hand side shows the scaling with the number of training examples. As predicted by
+Theorem 18, the number of constraints is low. It appears to grow sub-linearly with the number of
+examples. The graph on the right-hand side shows how the number of constraints in the nal S
+changes with log(e ). The observed scaling appears to be better than suggested by the upper bound
+in Theorem 18. A good value for e
+is 0.1. We observed that larger values lead to worse prediction
+accuracy, while smaller values decrease efciency while not providing further benet.
+
+1480
+
+LARGE MARGIN METHODS FOR STRUCTURED AND INTERDEPENDENT OUTPUT VARIABLES
+
+Train
+
+Test
+
+Training Efciency
+
+Method
+PCFG
+SVM2
+SVM4s
+2
+SVM4m
+
+2
+
+F1
+
+Acc Prec Rec
+
+Acc Prec Rec
+F1
+61.4 92.4 88.5 90.4 55.2 86.8 85.2 86.0
+66.3 92.8 91.2 92.0 58.9 85.3 87.2 86.2
+62.2 93.9 90.4 92.1 58.9 88.9 88.1 88.5
+63.5 93.9 90.8 92.3 58.3 88.7 88.1 88.4
+
+CPU-h %SVM Iter Const
+N/A N/A
+17
+7494
+8043
+12
+16
+7117
+
+N/A
+81.6
+10.5
+18.0
+
+0
+1.2
+3.4
+3.5
+
+Table 5: Results for learning a weighted context-free grammar on the Penn Treebank.
+
+5.4 Weighted Context-Free Grammars
+
+We test the feasibility of our approach for learning a weighted context-free grammar (see Figure 1)
+on a subset of the Penn Treebank Wall Street Journal corpus. We consider the 4098 sentences of
+length at most 10 from sections F2-21 as the training set, and the 163 sentences of length at most 10
+from F22 as the test set. Following the setup in Johnson (1998), we start based on the part-of-speech
+tags and learn a weighted grammar consisting of all rules that occur in the training data. To solve the
+argmax in line 6 of the algorithm, we use a modied version of the CKY parser of Mark Johnson.3
+The results are given in Table 5. They show micro-averaged precision, recall, and F1 for the
+training and the test set. The rst line shows the performance of the generative PCFG model using
+the maximum likelihood estimate (MLE) as computed by Johnsons implementation. The second
+line show the SVM2 with zero-one loss, while the following lines give the results for the F1-loss
+. All results are for C = 1 and e = 0.01. All val-
+4(yi,y) = (1F1(yi,y)) using SVM4s
+ues of C between 101 to 102 gave comparable prediction performance. While the zero-one loss
+which is also implicitly used in Perceptrons (Collins and Duffy, 2002a; Collins, 2002)achieves
+better accuracy (i.e. predicting the complete tree correctly), the F1-score is only marginally better
+compared to the PCFG model. However, optimizing the SVM for the F1-loss gives substantially
+better F1-scores, outperforming the PCFG substantially. The difference is signicant according to a
+McNemar test on the F1-scores. We conjecture that we can achieve further gains by incorporating
+more complex features into the grammar, which would be impossible or at best awkward to use in
+a generative PCFG model. Note that our approach can handle arbitrary models (e.g. with kernels
+and overlapping features) for which the argmax in line 6 can be computed. Experiments with such
+complex features were independently conducted by Taskar et al. (2004b) based on the algorithm
+in Taskar et al. (2004a). While their algorithm cannot optimize F1-score as the training loss, they
+report substantial gains from the use of complex features.
+
+2 and SVM4m
+
+2
+
+In terms of training time, Table 5 shows that the total number of constraints added to the working
+set is small. It is roughly twice the number of training examples in all cases. While the training is
+faster for the zero-one loss, the time for solving the QPs remains roughly comparable. The re-
+scaling formulations lose time mostly on the argmax in line 6 of the algorithm. This might be sped
+up, since we were using a rather naive algorithm in the experiments.
+
+6. Conclusions
+
+We presented a maximum-margin approach to learning functional dependencies for complex output
+spaces.
+In particular, we considered cases where the prediction is a structured object or where
+the prediction consists of multiple dependent variables. The key idea is to model the problem as
+
+3. This software is available at http://www.cog.brown.edu/mj/Software.htm.
+
+1481
+
+TSOCHANTARIDIS, JOACHIMS, HOFMANN AND ALTUN
+
+a (kernelized) linear discriminant function over a joint feature space of inputs and outputs. We
+demonstrated that our approach is very general, covering problems from natural language parsing
+and label sequence learning to multilabel classication and classication with output features.
+
+While the resulting learning problem can be exponential in size, we presented an algorithm for
+which we prove polynomial convergence for a large class of problems. We also evaluated the al-
+gorithm empirically on a broad range of applications. The experiments show that the algorithm is
+feasible in practice and that it produces promising results in comparison to conventional genera-
+tive models. A key advantage of the algorithm is the exibility to include different loss functions,
+making it possible to directly optimize the desired performance criterion. Furthermore, the ability
+to include kernels opens the opportunity to learn more complex dependencies compared to conven-
+tional, mostly linear models.
+

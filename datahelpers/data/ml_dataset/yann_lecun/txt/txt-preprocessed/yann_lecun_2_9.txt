@@ -1,0 +1,1228 @@
+Abstract
+
+We describe a novel method for simultaneously detecting faces and estimating their pose in real
+time. The method employs a convolutional network to map images of faces to points on a low-
+dimensional manifold parametrized by pose, and images of non-faces to points far away from that
+manifold. Given an image, detecting a face and estimating its pose is viewed as minimizing an en-
+ergy function with respect to the face/non-face binary variable and the continuous pose parameters.
+The system is trained to minimize a loss function that drives correct combinations of labels and
+pose to be associated with lower energy values than incorrect ones.
+
+The system is designed to handle very large range of poses without retraining. The performance
+of the system was tested on three standard data setsfor frontal views, rotated faces, and proles
+is comparable to previous systems that are designed to handle a single one of these data sets.
+
+We show that a system trained simuiltaneously for detection and pose estimation is more accu-
+
+rate on both tasks than similar systems trained for each task separately.1
+Keywords: face detection, pose estimation, convolutional networks, energy based models, object
+recognition
+
+1. Introduction
+
+The detection of human faces in natural images and videos is a key component in a wide variety of
+applications of human-computer interaction, search and indexing, security, and surveillance. Many
+real-world applications would prot from view-independent detectors that can detect faces under a
+wide range of poses: looking left or right (yaw axis), up or down (pitch axis), or tilting left or right
+(roll axis).
+
+In this paper we describe a novel method that can not only detect faces independently of their
+poses, but also simultaneously estimate those poses. The system is highly reliable, runs in real time
+
+1. A more preliminary version of this work appears as: Osadchy et al. (2005).
+
+c(cid:13)2007 Margarita Osadchy, Yan Le Cun and Matthew L. Miller.
+
+OSADCHY, LECUN AND MILLER
+
+on standard hardware, and is robust to variations in yaw ((cid:6)90(cid:14)), roll ((cid:6)45(cid:14)), pitch ((cid:6)60(cid:14)), as well
+as partial occlusions.
+The method is motivated by the idea that multi-view face detection and pose estimation are
+so closely related that they should not be performed separately. The tasks are related in the sense
+that they could use similar features and internal representations, and must be robust against the
+same sorts of variation: skin color, glasses, facial hair, lighting, scale, expressions, etc. We suspect
+that, when trained together, each task can serve as an inductive bias for the other, yielding better
+generalization or requiring fewer training examples (Caruana, 1997).
+
+To exploit the synergy between these two tasks, we train a learning machine to map input images
+to points in a low-dimensional space. In the low-dimensional output space we embed a face mani-
+fold which is parameterized by facial pose parameters (e.g., pitch, yaw, and roll). A convolutional
+network is trained to map face images to points on the face manifold that correspond to the pose of
+the faces and non-face images to points far away from that manifold. After training, a detection is
+performed by measuring whether the distance of the output point from the manifold is lower than a
+threshold. If the point is close to the manifold, indicating that a face is present in the image, its pose
+parameters can be inferred from the position of the projection of the point onto the manifold.
+
+To map input images to points in the low-dimensional space, we employ a convolutional network
+architecture (LeCun et al., 1998). Convolutional networks are specically designed to learn invariant
+representation of images. They can easily learn the type of shift-invariant local features that are
+relevant to face detection and pose estimation. More importantly, they can be replicated over large
+images (applied to every sub-windows in a large image) at a small fraction of the cost of applying
+more traditional classiers to every sub-windows in an image. This is a considerable advantage for
+building real-time systems.
+
+As a learning machine we use the recently proposed Energy-Based Models (EBM) that provide a
+description and the inference process and the learning process in a single, well-principled framework
+(LeCun and Huang, 2005; LeCun et al., 2006).
+
+Given an input (an image), an Energy-Based Model associates an energy to each conguration
+of the variables to be modeled (the face/non-face label and the pose parameters in our case). Making
+an inference with an EBM consists in searching for a conguration of the variables to be predicted
+that minimizes the energy, or comparing the energies of a small number of congurations of those
+variables. EBMs have a number of advantages over probabilistic models: (1) There is no need to
+compute partition functions (normalization constants) that may be intractable; (2) because there is
+no requirement for normalization, the repertoire of possible model architectures that can be used
+is considerably richer.
+In our application we dene an Energy-Based Model as a scalar-valued
+energy function of three variables: image, label, and pose, and we treat pose as a deterministic
+latent variable. Thus both label of an image and pose are inferred through the energy-minimization
+process.
+
+Training an EBM consists in nding values of the trainable parameters (which parameterize
+the energy function) that associate low energies to desired congurations of variables, and high
+energies to undesired congurations. With probabilistic models, making the probability of some
+values large automatically makes the probabilities of other values small because of the normaliza-
+tion. With EBMs making the energy of desired congurations low may not necessarily make the
+energies of other congurations high. Therefore, one must be very careful when designing loss
+functions for EBMs. In our application to face detection we derive a new type of contrastive loss
+function that is tailored to such detection tasks.
+
+1198
+
+SYNERGISTIC FACE DETECTION AND POSE ESTIMATION WITH ENERGY-BASED MODELS
+
+The paper is organized as follows. First, some of the relevant prior works on multi-view face
+detection are briey discussed. Section 2 discusses the synergy between pose estimation and face
+detection, and describes the basic methods for integrating them. Section 3 discusses the learning
+machine, and Section 4 gives the results of experiments conducted with our system. Section 5 draws
+some conclusions.
+
+1.1 Previous Work
+
+Learning-based approaches to face detection abound, including real-time methods (Viola and Jones,
+2001), and approaches based on convolutional networks (Vaillant et al., 1994; Garcia and Delakis,
+2002). Most multi-view systems take a view-based approach, which involves building separate
+detectors for different views and either applying them in parallel (Pentland et al., 1994; Sung and
+Poggio, 1998; Schneiderman and Kanade, 2000; Li et al., 2002) or using a pose estimator to select
+the most appropriate detector (Jones and Viola, 2003; Huang et al., 2004). Another approach is
+to estimate and correct in-plane rotations before applying a single pose-specic detector (Rowley
+et al., 1998b). Some attempts have been done in integrating pose search and detection, but in much
+smaller space of pose parameters (Fleuret and Geman, 2001).
+
+Closer to our approach is that of Li et al. (2000), in which a number of Support Vector Regressors
+are trained to approximate smooth functions, each of which has a maximum for a face at a particular
+pose. Another machine is trained to convert the resulting values to estimates of poses, and a third
+machine is trained to convert the values into a face/non-face score. The resulting system is rather
+slow. See Yang et al. (2002) for survey of face detection methods.
+
+2. Integrating Face Detection and Pose Estimation
+
+To exploit the posited synergy between face detection and pose estimation, we must design a system
+that integrates the solutions to the two problems. Merely cascading two systems where the answer
+to one problem is used to assist in solving the other will not optimally take advantage of the synergy.
+Therefore, both answers must be derived from one underlying analysis of the input, and both tasks
+must be trained together.
+
+Our approach is to build a trainable system that can map raw images X to points in a low-
+dimensional space (Figure 1). In that space, we pre-dene a face manifold F(Z) that we parameter-
+ize by the pose Z. We train the system to map face images with known poses to the corresponding
+points on the manifold. We also train it to map images of non-faces to points far away from the
+manifold. During recognition, the system maps the input image X to a point in the low dimensional
+space G(X). The proximity of G(X) to the manifold then tells us whether or not an image X is a
+face. By nding the pose parameters Z that correspond to the point on the manifold that is closest
+to the point G(X) (projection), we obtain an estimate of the pose (Figure 2).
+
+2.1 Parameterizing the Face Manifold
+
+We will now describe the details of the parameterizations of the face manifold. Three criteria di-
+rected the design of the face manifold: (1) preserving the topology and geometry of the problem;
+(2) providing enough space for mapping the background images far from the manifold (since the
+proximity to the manifold indicates whether the input image contains a face); and (3) minimizing
+
+1199
+
+OSADCHY, LECUN AND MILLER
+
+Low dimensional space
+
+Face Manifold
+
+parameterized by pose
+
+F(Z)
+
+Train
+
+Mapping: G
+
+Figure 1: Manifold MappingTraining
+
+Low dimensional space
+
+G(
+
+ G(
+
+Face Manifold
+
+parameterized by pose
+
+Apply
+
+Mapping: G
+
+Image X
+
+Figure 2: Manifold Mapping Recognition and Pose Estimation.
+
+1200
+
+F
+(
+Z
+)
+X
+)
+X
+)
+-
+F
+(
+Z
+)
+
+SYNERGISTIC FACE DETECTION AND POSE ESTIMATION WITH ENERGY-BASED MODELS
+
+the computational cost of nding the parameters of the closest point on the manifold to any point in
+the space.
+
+Lets start with the simplest case of one pose parameter Z = q
+
+, representing, say, yaw. If we want
+to preserve the natural topology and geometry of the problem (the rst criterion), the face manifold
+under yaw variations in the interval [(cid:0)90(cid:14);90(cid:14)] should be a half circle (with constant curvature).
+The natural way of representing a circle is with sine and cosine functions. In this case we embed
+the angle parameter in two dimensional space. Now images of faces will be mapped to points on
+the half circle manifold corresponding to q
+, and non-face images will be mapped to points in the
+rest of the two dimensional space. Having lots of free space to represent non-face images may
+be necessary, due to the considerable amount of variability in non-face images. So increasing the
+dimension of embedding might help us in better separation of face and non-face images (the second
+criterion). In the case of single pose parameter we suggest 3D embedding.
+
+To make the projection and parameter estimation simple (the third criterion), we embed this
+half-circle in a three-dimensional space using three equally-spaced shifted cosine functions (Figure
+3):
+
+Fi(q ) = cos(q (cid:0) a
+
+a = f(cid:0)
+];
+is F(q ) = [F1(q ); F2(q ); F3(q )].
+A point on the face manifold parameterized by the yaw angle q
+When we run the network on an image X, it outputs a vector G(X). The yaw angle q corresponding
+to the point on the manifold that is closest to G(X) can be expressed analytically as:
+
+q = [(cid:0)
+
+i = 1;2;3;
+
+3g:
+
+;0;
+
+i);
+
+2
+
+2
+
+3
+
+;
+
+q = arctan
+
+i=1 Gi(X)cos(a
+(cid:229) 3
+i=1 Gi(X)sin(a
+(cid:229) 3
+
+i)
+i)
+
+:
+
+The point on the manifold closest to G(X) is just F(q ).
+
+The function choice is not limited to cosine. However cosines are preferable since they allow
+computing the pose analytically from the output of the network. Without this property, nding
+the pose could be an expensive optimization process, or even require the use of a second learning
+machine.
+
+The same idea can be generalized to any number of pose parameters. Let us consider the set of
+all faces with yaw in [(cid:0)90;90] and roll in [(cid:0)45;45]. In an abstract way, this set is isomorphic to a
+portion of a sphere. Consequently, we can represent a point on the face manifold as a function of
+the two pose parameters by 9 basis functions that are the cross-products of three shifted cosines for
+one of the angles, and three shifted cosines for the other angle:
+
+Fi j(q ;f ) = cos(q (cid:0) a
+
+i)cos(f (cid:0) b
+
+j);
+
+i; j = 1;2;3:
+
+For convenience, we rescale the roll angles to the range [(cid:0)90;90] which allows us to set b
+
+i.
+With this parameterization, the manifold has constant curvature, which ensures that the effect of er-
+rors will be the same regardless of pose. Given a 9-dimensional output vector from the convolutional
+network Gi j(X), we compute the corresponding yaw and roll angles q ;f as follows:
+i)sin(b
+i)sin(b
+
+i j Gi j(X)cos(a
+i j Gi j(X)sin(a
+
+i j Gi j(X)cos(a
+i j Gi j(X)sin(a
+q = 0:5(atan2(cs + sc; cc(cid:0) ss) + atan2(sc(cid:0) cs; cc + ss))
+f = 0:5(atan2(cs + sc; cc(cid:0) ss)(cid:0) atan2(sc(cid:0) cs; cc + ss))
+
+cc = (cid:229)
+sc = (cid:229)
+
+cs = (cid:229)
+ss = (cid:229)
+
+i)cos(b
+i)cos(b
+
+The process can easily be extended to include pitch in addition to yaw and roll, as well as other
+parameters if necessary.
+
+j);
+j);
+
+j);
+j);
+
+i = a
+
+;
+.
+
+1201
+
+p
+p
+p
+p
+OSADCHY, LECUN AND MILLER
+
+F3
+
+F1
+
+Face Manifold
+
+F2
+
+2
+
+3
+
+3
+
+2
+
+pose
+
+Figure 3: Left: face manifold embedding; right: manifold parametrization by single pose parame-
+ter. The value of each cosine function for one pose angle constitute the three components
+of a point on the face manifold corresponding to that pose.
+
+3. Learning Machine
+
+To map input images to points in the low-dimensional space, we employ a convolutional network
+architecture trained using Energy Minimization Framework. Next we present the details of the
+learning machine.
+
+3.1 Energy Minimization Framework
+
+We propose the following conguration of the Energy Based Model (LeCun and Huang, 2005;
+LeCun et al., 2006). Consider a scalar-valued function EW (Y; Z; X), where X is a raw image, Z is
+a facial pose (e.g., yaw and roll as dened above), Y is a binary label: Y = 1 for face, Y = 0 for
+non-face. W is a parameter vector subject to learning. EW (Y; Z; X) can be interpreted as an energy
+function that measures the degree of compatibility between the values of X; Z;Y . The inference
+process consists in clamping X to the observed value (the image), and searching for congurations
+of Z and Y that minimize the energy EW (Y; Z; X):
+
+(Y ; Z) = argminY2fYg; Z2fZg
+
+EW (Y; Z; X)
+
+where fYg = f0;1g and fZg = [(cid:0)90;90](cid:2) [(cid:0)45;45] for yaw and roll variables.
+Ideally, if the input X is the image of a face with pose Z, then a properly trained system
+should give a lower energy to the face label Y = 1 than to the non-face label Y = 0 for any pose:
+EW (1; Z; X) < EW (0; Z0; X), 8Z0. For accurate pose estimation, the system should give a lower en-
+ergy to the correct pose than to any other pose: EW (1; Z0; X) > EW (1; Z; X), 8Z0 6= Z. Training a
+machine to satisfy those two conditions for any image will guarantee that the energy-minimizing
+inference process will produce the correct answer.
+
+Transforming energies to probabilities can easily be done via Gibbs distribution:
+
+P(Y; ZjX) = exp((cid:0)b EW (Y; Z; X))=Zy2fYg;z2fZg
+
+exp((cid:0)b EW (y; z; X))
+
+where b
+is an arbitrary positive constant, and fYg and fZg are the sets of possible values of y and
+z. With this formulation, we can easily interpret the energy minimization with respect to Y and Z as
+
+1202
+
+
+
+
+
+SYNERGISTIC FACE DETECTION AND POSE ESTIMATION WITH ENERGY-BASED MODELS
+
+E
+
+( energy
+
+Sw
+
+itch
+
+( X)
+
+- F( Z)
+
+ Gw
+
+T
+
+Gw
+
+( X)
+
+F( Z)
+
+W
+
+( param)
+
+Convolutional
+
+netw ork
+
+A naly tical  mapping
+onto  face  manifold
+
+X
+
+( image)
+
+Z
+
+( pose)
+
+Y
+
+( label)
+
+Figure 4: Architecture of the Minimum Energy Machine.
+
+a maximum conditional likelihood estimation of Y and Z. This probabilistic interpretation assumes
+that the integral in the denominator (the partition function) converges. It is easy to design such
+an energy function for our case. However, a proper probabilistic formulation would require us to
+use the negative log-likelihood of the training samples as our loss function for training. This will
+require us to compute the derivative of the denominator with respect to the trainable parameters W .
+This is unnecessary complication which can be alleviated by adopting the energy-based formulation.
+Removing the necessity for normalization gives us complete freedom in the choice of the internal
+architecture and parameterization of EW (Y; Z; X), as well as considerable exibility in the choice of
+the loss function for training.
+
+Our energy function for a face EW (1; Z; X) is dened as the distance between the point produced
+
+by the network GW (X) and the point with pose Z on the manifold F(Z):
+
+EW (1; Z; X) = kGW (X)(cid:0) F(Z)k:
+
+The energy function for a non-face EW (0; Z; X) is equal to a constant T that we can interpret as a
+threshold (it is independent of Z and X). The complete energy function is:
+
+EW (Y; Z; X) = YkGW (X)(cid:0) F(Z)k + (1(cid:0)Y )T:
+
+The architecture of the machine is depicted in Figure 4. Operating this machine (nding the output
+label and pose with the smallest energy) comes down to rst nding: Z = argminZ2fZgjjGW (X)(cid:0) F(Z)jj,
+and then comparing this minimum distance, kGW (X)(cid:0) F(Z)k, to the threshold T . If its smaller
+than T , then X is classied as a face, otherwise X is classied as a non-face. This decision is
+implemented in the architecture as a switch, that depends upon the binary variable Y .
+
+For simplicity we x T to be a constant. Although it is also possible to make T a function of
+
+pose Z.
+
+1203
+
+
+)
+OSADCHY, LECUN AND MILLER
+
+3.2 Convolutional Network
+
+We employ a Convolutional Network as the basic architecture for the GW (X) function that maps
+image points in the face-space. The architecture of convolutional nets is somewhat inspired by the
+structure of biological visual systems. Convolutional nets have been used successfully in a number
+of vision applications such as handwriting recognition (LeCun et al., 1989, 1998), and generic object
+recognition (LeCun et al., 2004). Several authors have advocated the use of Convolutional Networks
+for object detection (Vaillant et al., 1994; Nowlan and Platt, 1995; LeCun et al., 1998; Garcia and
+Delakis, 2002).
+
+Convolutional networks are end-to-end trainable system that can operate on raw pixel images
+and learn low-level features and high-level representation in an integrated fashion. Each layer in
+a convolutional net is composed units organized in planes called feature maps. Each unit in a
+feature map takes inputs from a small neighborhood within the feature maps of the previous layer.
+Neighboring units in a feature map are connected to neighboring (possibly overlapping) windows.
+Each unit computes a weighted sum of its inputs and passes the result through a sigmoid saturation
+function. All units within a feature map share the same weights. Therefore, each feature map can be
+seen as convolving the feature maps of the previous layers with small-size kernels, and passing the
+sum of those convolutions through sigmoid functions. Units in a feature map detect local features
+at all locations on the previous layer.
+
+Convolutional nets are advantageous because they can operate on raw images and can easily
+learn the type of shift-invariant local features that are relevant to image recognition. Furthermore,
+they are very efcient computationally for detection and recognition tasks involving a sliding win-
+dow over large images (Vaillant et al., 1994; LeCun et al., 1998).
+
+The network architecture used for training is shown in Figure 5. It is similar to LeNet5 (LeCun
+et al., 1998), but contains more feature maps. The network input is a 32 (cid:2) 32 pixel gray-scale
+image. The rst layer C1 is a convolutional layer with 8 feature maps of size 28(cid:2) 28. Each unit
+in each feature map is connected to a 5 (cid:2) 5 neighborhood in the input. Contiguous units in C1
+take input from neighborhood on the input that overlap by 4 pixels. The next layer, S2, is a so-
+called subsampling layer with 8 feature maps of size 14(cid:2) 14. Each unit in each map is connected
+to a 2 (cid:2) 2 neighborhood in the corresponding feature map in C1. Contiguous units in S2 take
+input from contiguous, non-overlapping 2x2 neighborhoods in the corresponding map in C1. C3 is
+convolutional with 20 feature maps of size 10(cid:2) 10. Each unit in each feature map is connected to
+several 5(cid:2) 5 neighborhoods at identical locations in a subset of S2s feature maps. Different C3
+maps take input from different subsets of S2 to break the symmetry and to force the maps to extract
+different features. S4 is a subsampling layer with 2(cid:2) 2 subsampling ratios containing 20 feature
+maps of size 5(cid:2) 5. Layer C5 is a convolutional layer with 120 feature maps of size 1(cid:2) 1 with 5(cid:2) 5
+kernels. Each C5 map takes input from all 20 of S4s feature maps. The output layer has 9 outputs
+(since the face manifold is nine-dimensional) and is fully connected to C5 (such a full connection
+can be seen as a convolution with 1(cid:2) 1 kernels).
+
+3.3 Training with a Contrastive Loss Function
+
+The vector W contains all 63;493 weights and kernel coefcients in the convolutional network.
+They are all subject to training by minimizing a single loss function. A key element, and a novel
+contribution, of this paper is the design of the loss function.
+
+1204
+
+SYNERGISTIC FACE DETECTION AND POSE ESTIMATION WITH ENERGY-BASED MODELS
+
+Figure 5: Architecture of convolutional network used for training. This represents one slice of the
+network with with a 32(cid:2) 32 input window. The slice includes all the elements that are
+necessary to compute a single output vector. The trained network is replicated over the
+full input image, producing one output vector for each 32(cid:2) 32 window stepped every 4
+pixels horizontally and vertically. The process is repeated at multiple scales.
+
+The training set S is composed of two subsets: the set S1 of training samples (1; X i; Zi) contain-
+ing a face annotated with the pose; and the set S0 of training sample (0; X i) containing a non-face
+image (background). The loss function L(W;S ) is dened as the average over S1 of a per-sample
+loss function L1(W; Zi; X i), plus the average over S0 of a per-sample loss function L0(W; X i):
+
+L(W;S ) =
+
+1
+jS1j
+
+i2S1
+
+L1(W; Zi; X i) +
+
+1
+jS0j
+
+i2S0
+
+L0(W; X i):
+
+(1)
+
+Face samples whose pose is unknown can easily be accommodated by viewing Z as a deterministic
+latent variable over which the energy must be minimized. However, experiments reported in this
+paper only use training samples manually labeled with the pose.
+
+For a particular positive training sample (X i; Zi;1), the per-sample loss L1 should be designed in
+such a way that its minimization with respect to W will make the energy of the correct answer lower
+than the energies of all possible incorrect answers. Minimizing such a loss function will make the
+machine produce the right answer when running the energy-minimizing inference procedure. We
+can write this condition as:
+
+Condition 1
+
+EW (Y i = 1; Zi; X i) < EW (Y; Z; X i) for Y 6= Y i or Z 6= Zi:
+Satisfying this condition can be done by satisfying the two following conditions
+
+Condition 2
+
+EW (1; Zi; X i) < T and EW (1; Zi; X i) < min
+Z6=Zi
+
+EW (1; Z; X i):
+
+1205
+
+(cid:229)
+(cid:229)
+OSADCHY, LECUN AND MILLER
+
+Following LeCun and Huang (2005), we assume that the loss is a functional that depends on X only
+through the set of energies associated with X and all the possible values of Z and Y . This assumption
+allows us to decouple the design of the loss function from the internal structure (architecture) of the
+energy function. We also assume that there exist a W for which condition 2 is satised. This is a
+reasonable assumption, we merely ensure that the learning machine can produce the correct output
+for any single sample. We now show that, with our architecture, if we choose L1 to be a strictly
+monotonically increasing function of EW (1; Zi; X i) (over the domain of E), then minimizing L1 with
+respect to W will cause the machine to satisfy condition 2. The rst inequality in 2 will obviously
+be satised by minimizing such a loss. The second inequality will be satised if EW (1; Z; X i) has a
+single (non-degenerate) global minimum as a function of Z. The minimization of L1 with respect to
+W will place this minimum at Zi, and therefore will ensure that all other values of Z will have higher
+energy. Our energy function EW (1; Z; X) = jjGW (X)(cid:0) F(Z)jj indeed has a single global minimum
+as a function of Z, because F(Z) is injective and the norm is convex. The single global minimum is
+attained for GW (X) = F(Z). For our experiments, we simply chose:
+
+L1(W;1; Z; X) = EW (1; Z; X)2:
+
+For a particular negative (non-face) training sample (X i;0), the per-sample loss L0 should be
+designed in such a way that its minimization with respect to W will make the energy for Y = 1
+and any value of Z higher than the energy for Y = 0 (which is equal to T ). Minimizing such a
+loss function will make the machine produce the right answer when running the energy-minimizing
+inference procedure. We can write the condition for correct output as:
+
+Condition 3
+
+which can be re-written as:
+
+Condition 4
+
+EW (1; Z; X i) > T 8Z
+
+EW (1; Z; X i) > T Z = argminzEW (1; z; X i):
+
+Again, we assume that there exists a W for which condition 4 is satised. It is easy to see that, with
+our architecture, if we choose L0 to be a strictly monotonically decreasing function of EW (1; Z; X i)
+(over the domain of E), then minimizing L0 with respect to W will cause the machine to satisfy
+condition 4. For our experiments, we simply chose:
+
+L0(W;0; X i) = K exp[(cid:0)E(1; Z; X i)]
+
+where K is a positive constant. A nice property of this function is that it is bounded below by 0, and
+that its gradient vanishes we approach the minimum.
+
+The entire system was trained by minimizing average value of the loss function in Eq. (1) with
+respect to the parameter W . We used a stochastic version of the Levenberg-Marquardt algorithm
+with diagonal approximation of the Hessian (LeCun et al., 1998).
+
+1206
+
+SYNERGISTIC FACE DETECTION AND POSE ESTIMATION WITH ENERGY-BASED MODELS
+
+Figure 6: Screenshot from annotation tool.
+
+3.4 Running the Machine
+
+The detection system operates on raw grayscale images. The convolutional network is applied to
+all 32(cid:2) 32 sub-windows of the image, stepped every 4 pixels horizontally and vertically. Because
+the layers are convolutional, applying two replicas of the network in Figure 5 to two overlapping
+input windows leads to a considerable amount of redundant computation. Eliminating the redundant
+computation yields a dramatic speed up: each layer of the convolutional network is extended so as
+to cover the entire input image. The output is also replicated the same way. Due to the two 2(cid:2) 2
+subsampling layers, we obtain one output vector every 4(cid:2) 4 pixels.
+To detect faces in a size-invariant fashion, the network is applied to multiple down-scaled ver-
+sions of the image over a range of scales stepped by a factor of p2. At each scale and location, the
+networks 9-dimensional output vector is compared to the closest point on the face manifold (whose
+position indicates the pose of the candidate face). The system collects a list of all locations and
+scales of output vectors closer to the face manifold than the detection threshold. After examining
+all scales, the system identies groups of overlapping detections in the list and discards all but the
+strongest (closest to the manifold) from each group within an exclusion area of a preset size. No
+attempt is made to combine detections or apply any voting scheme.
+
+4. Experiments and Results
+
+Using the architecture described in Section 3, we built a detector to locate faces and estimate two
+pose parameters: yaw from left to right prole, and in-plane rotation from (cid:0)45 to 45 degrees. The
+machine was trained to be robust against pitch variation.
+
+In this section, we rst describe the training protocol for this network, and then give the results
+of two sets of experiments. The rst set of experiments tests whether training for the two tasks
+together improves performance on both. The second set allows comparisons between our system
+and other published multi-view detectors.
+
+1207
+
+OSADCHY, LECUN AND MILLER
+
+4.1 Training
+
+The images we used for training were collected at NEC Labs. All face images were manually
+annotated with appropriate poses. The annotation process was greatly simplied by using a simple
+tool for specifying a location and approximate pose of a face. The user interface for this tool is
+shown in Figure 6. Annotation process is done by rst clicking on the midpoint between the eyes
+and on the center of the mouth. The tool then draws a perspective grid in front of the face and
+the user adjusts it to be parallel to the face plane. This process yields estimates for all six pose
+parameters: location (x; y), three angles (yaw, pitch, and roll) and scale. The images were annotated
+in such a way that the midpoint between the eyes and on the center of the mouth are positioned in
+the center of the image. This allows these two points to stay xed when the pose changes from left
+to right prole. The downside is that proles occupy only half of the image.
+
+In this manner we annotated about 30,000 faces in images from various sources. Each face
+was then cropped and scaled so that the eye midpoint and the mouth midpoint appeared in canonical
+positions, 10 pixels apart, in 32(cid:2)32-pixel image with some moderate variation of location and scale.
+The resulting images where mirrored horizontally, to yield roughly 60,000 faces. We removed some
+portion of faces from this set to yield a roughly uniform distribution of poses from left prole to
+right prole. Unfortunately, the amount of variation in pitch (up/down) was not sufcient to do the
+same. This was the reason for training our system to be robust against pitch variation instead of
+estimating the pitch angle. The roll variation was added by randomly rotating the images in the
+range of [(cid:0)45;45] degrees. The resulting training set consisted of 52;850, 32x32 grey-level images
+of faces with uniform distribution of poses.
+The initial set of negative training samples consisted of 52;850 image patches chosen randomly
+from non-face areas in a variety of images. For the second set of tests, half of these images were
+replaced with image patches obtained by running the initial version of the detector on the training
+images and collecting false detections.
+
+Each training image was used 5 times during training, with random variations in scale (from
+
+xp2 to x(1 +p2)), in-plane rotation ((cid:6)45(cid:14)), brightness ((cid:6)20), and contrast (from 0.8 to 1.3).
+
+To train the network, we made 9 passes through this data, though it mostly converged after about
+the rst 6 passes. The training system was implemented in the Lush language (Bottou and LeCun,
+2002). The total training time was about 26 hours on a 2Ghz Pentium 4. At the end of training, the
+network had converged to an equal error rate of 5% on the training data and 6% on a separate test
+set of 90,000 images.
+
+A standalone version of the detection system was implemented in the C language. It can detect,
+locate, and estimate the pose of faces that are between 40 and 250 pixels high in a 640(cid:2) 480 image
+at roughly 5 frames per second on a 2.4GHz Pentium 4.
+
+4.2 Synergy Tests
+
+The goal of the synergy test was to verify that both face detection and pose estimation benet from
+learning and running in parallel. To test this claim we built three networks with almost identical
+architectures, but trained to perform different tasks. The rst one was trained for simultaneous face
+detection and pose estimation (combined), the second was trained for detection only and the third
+for pose estimation only. The detection only network had only one output for indicating whether
+or not its input was a face. The pose only network was identical to the combined network, but
+trained on faces only (no negative examples). Figure 7 shows the results of running these networks
+
+1208
+
+SYNERGISTIC FACE DETECTION AND POSE ESTIMATION WITH ENERGY-BASED MODELS
+
+100
+
+d
+e
+t
+c
+e
+t
+e
+d
+
+
+s
+e
+c
+a
+f
+
+f
+o
+
+e
+g
+a
+t
+n
+e
+c
+r
+e
+P
+
+95
+
+90
+
+85
+
+80
+
+75
+
+70
+
+65
+
+60
+
+55
+
+50
+
+
+
+Pose + detection
+Detection only
+
+
+
+0
+
+2
+
+4
+
+6
+
+8
+
+10
+
+12
+
+14
+
+16
+
+18
+
+20
+
+False positive rate
+
+100
+
+d
+e
+t
+a
+m
+
+i
+t
+s
+e
+
+
+y
+l
+t
+c
+e
+r
+r
+o
+c
+
+s
+w
+a
+y
+
+
+f
+o
+
+
+e
+g
+a
+t
+n
+e
+c
+r
+e
+P
+
+95
+
+90
+
+85
+
+80
+
+75
+
+70
+
+65
+
+60
+
+55
+
+50
+
+
+
+Pose + detection
+Pose only
+
+0
+
+5
+
+10
+
+15
+
+20
+
+25
+
+30
+
+Yaw-error tolerance (degrees)
+
+Figure 7: Synergy test. Left: ROC curves for the pose-plus-detection and detection-only networks.
+(The x axis is the false positive rate per image). Right: frequency with which the pose-
+plus-detection and pose-only networks correctly estimated the yaws within various error
+tolerances.
+
+100
+
+d
+e
+t
+c
+e
+t
+e
+d
+
+s
+e
+c
+a
+f
+
+f
+o
+
+e
+g
+a
+t
+n
+e
+c
+r
+e
+P
+
+95
+
+90
+
+85
+
+80
+
+75
+
+70
+
+65
+
+60
+
+55
+
+50
+
+0
+
+0.5
+
+1
+
+Frontal
+Rotated in plane
+Profile
+
+
+
+2
+
+1.5
+3.5
+False positives per image
+
+2.5
+
+3
+
+4
+
+4.5
+
+5
+
+100
+
+d
+e
+t
+a
+m
+
+i
+t
+s
+e
+
+y
+l
+t
+c
+e
+r
+r
+o
+c
+
+s
+e
+s
+o
+p
+
+f
+o
+
+e
+g
+a
+t
+n
+e
+c
+r
+e
+P
+
+95
+
+90
+
+85
+
+80
+
+75
+
+70
+
+65
+
+60
+
+55
+
+50
+
+
+
+In-plane rotation
+Yaw
+
+0
+
+5
+
+10
+
+15
+
+20
+
+25
+
+30
+
+Pose-error tolerance (degrees)
+
+Figure 8: Results on standard data sets. Left: ROC curves for our detector on the three data sets.
+The x axis is the average number of false positives per image over all three sets, so each
+point corresponds to a single detection threshold. Right: frequency with which yaw and
+roll are estimated within various error tolerances.
+
+on our 10,000 test images. In both these graphs, we see that the pose-plus-detection network had
+better performance, conrming that training for each task benets the other.
+
+4.3 Standard Data Sets
+
+There is no standard data set that spans the range of poses our system is designed to handle. There
+are, however, data sets that have been used to test more restricted face detectors, each set focusing
+on a particular variation in pose. By testing a single detector with all of these sets, we can compare
+our performance against published systems. As far as we know, we are the rst to publish results
+for a single detector on all these data sets. The details of these sets are described below:
+(cid:15) MIT+CMU (Sung and Poggio, 1998; Rowley et al., 1998a)  130 images for testing frontal face
+
+1209
+
+OSADCHY, LECUN AND MILLER
+
+detectors. We count 517 faces in this set, but the standard tests only use a subset of 507 faces,
+because 10 faces are in the wrong pose or otherwise not suitable for the test. (Note: about 2% of the
+faces in the standard subset are badly-drawn cartoons, which we do not intend our system to detect.
+Nevertheless, we include them in the results we report.)
+(cid:15) TILTED (Rowley et al., 1998b)  50 images of frontal faces with in-plane rotations. 223 faces out
+of 225 are in the standard subset. (Note: about 20% of the faces in the standard subset are outside
+of the (cid:6)45(cid:14) rotation range for which our system is designed. Again, we still include these in our
+results.)
+(cid:15) PROFILE (Schneiderman and Kanade, 2000)  208 images of faces in prole. There seems to
+be some disagreement about the number of faces in the standard set of annotations: Schneiderman
+and Kanade (2000) reports using 347 faces of the 462 that we found, Jones and Viola (2003) reports
+using 355, and we found 353 annotations. However, these discrepancies should not signicantly
+effect the reported results.
+
+We counted a face as being detected if 1) at least one detection lay within a circle centered on
+the midpoint between the eyes, with a radius equal to 1.25 times the distance from that point to the
+midpoint of the mouth, and 2) that detection came at a scale within a factor of two of the correct
+scale for the faces size. We counted a detection as a false positive if it did not lie within this range
+for any of the faces in the image, including those faces not in the standard subset.
+
+The left graph in Figure 8 shows ROC curves for our detector on the three data sets. Figures 9, 10
+show detection results on various poses. Table 1 shows our detection rates compared against other
+multi-view systems for which results were given on these data sets. We want to stress here that all
+these systems are tested in a pose specic manner: for example, a detector tested on TILTED set is
+trained only on frontal tilted faces. Such a detector will not be able to detect non frontal tilted faces.
+Combining all pose variations in one system obviously will increase the number of false positives,
+since false positives of view-based detectors are not necessarily correlated. Our system is designed
+to handle all pose variations. This makes the comparison in Table 1 somewhat unfair to our system,
+but we dont see any other way of comparison against other systems.
+
+The table shows that our results on the TILTED and PROFILE sets are similar to those of the two
+Jones & Viola detectors, and even approach those of the Rowley et al and Schneiderman & Kanade
+non-real-time detectors. Those detectors, however, are not designed to handle all variations in pose,
+and do not yield pose estimates. More recent system reported in Huang et al. (2004) is also real-
+time and can handle all pose variation, but doesnt yield pose estimates. Unfortunately, they also
+report the results of pose specic detectors. These results are not shown in Table 1, because they
+report different points on ROC curve in the PROFILE experiment (86:2% for 0.42 f.p per image)
+and they didnt test on the TILTED set. Even though they trained a combined detector for all pose
+variations, they did not test it the way we did. Their test consists in running the full detector on
+the PROFILE set rotated by [-30, 30] degrees in-plane. Unfortunately, they do not provide enough
+details to recreate their test set.
+
+The right side of Figure 8 shows our performance at pose estimation. To make this graph, we
+xed the detection threshold at a value that resulted in about 0.5 false positives per image over all
+three data sets. We then compared the pose estimates for all detected faces (including those not in
+the standard subsets) against our manual pose annotations. Note that this test is more difcult than
+typical tests of pose estimation systems, where faces are rst localized by hand. When we hand-
+localize these faces, 89% of yaws and 100% of in-plane rotations are correctly estimated to within
+15(cid:14).
+
+1210
+
+SYNERGISTIC FACE DETECTION AND POSE ESTIMATION WITH ENERGY-BASED MODELS
+
+Figure 9: Some example face detections. Each white box shows the location of a detected face. The
+angle of each box indicates the estimated in-plane rotation. The black crosshairs within
+each box indicate the estimated yaw.
+
+1211
+
+OSADCHY, LECUN AND MILLER
+
+Figure 10: More examples of face detections.
+
+1212
+
+SYNERGISTIC FACE DETECTION AND POSE ESTIMATION WITH ENERGY-BASED MODELS
+
+False positives per image ! 4.42
+
+Our detector
+Jones and Viola (2003) (tilted)
+Jones and Viola (2003) (prole)
+Rowley et al. (1998a)
+Schneiderman and Kanade (2000)
+
+89%
+
+x
+
+x
+
+70% 83%
+
+96%
+
+x
+
+86% 93%
+
+Data set !
+
+TILTED
+
+26.90
+
+PROFILE
+.44
+3.36
+
+MIT+CMU
+.50
+1.28
+90% 97% 67% 83% 83% 88%
+90% 95%
+
+x
+
+x
+x
+x
+x
+
+Table 1: Comparisons of our results with other multi-view detectors. Each column shows the detec-
+tion rates for a given average number of false positives per image (these rates correspond
+to those for which other authors have reported results). Results for real-time detectors are
+shown in bold. Note that ours is the only single detector that can be tested on all data sets
+simultaneously.
+
+5. Conclusion
+
+The system we have presented here integrates detection and pose estimation by training a convolu-
+tional network to map faces to points on a manifold, parameterized by pose, and non-faces to points
+far from the manifold. The network is trained by optimizing a loss function of three variables
+image, pose, and face/non-face label. When the three variables match, the energy function is trained
+to have a small value, when they do not match, it is trained to have a large value.
+
+This system has several desirable properties:
+
+(cid:15) The use of a convolutional network makes it fast. At typical webcam resolutions, it can process 5
+frames per second on a 2.4Ghz Pentium 4.
+(cid:15) It is robust to a wide range of poses, including variations in yaw up to (cid:6)90(cid:14), in-plane rotation up
+to (cid:6)45(cid:14), and pitch up to (cid:6)60(cid:14). This has been veried with tests on three standard data sets, each
+designed to test robustness against a single dimension of pose variation.
+(cid:15) At the same time that it detects faces, it produces estimates of their pose. On the standard data
+sets, the estimates of yaw and in-plane rotation are within 15(cid:14) of manual estimates over 80% and
+95% of the time, respectively.
+
+We have shown experimentally that our systems accuracy at both pose estimation and face
+
+detection is increased by training for the two tasks together.
+

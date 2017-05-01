@@ -1,0 +1,4125 @@
+Abstract
+
+While classical kernel-based learning algorithms are based on a single kernel, in practice it is often
+desirable to use multiple kernels. Lanckriet et al. (2004) considered conic combinations of kernel
+matrices for classication, leading to a convex quadratically constrained quadratic program. We
+show that it can be rewritten as a semi-innite linear program that can be efciently solved by recy-
+cling the standard SVM implementations. Moreover, we generalize the formulation and our method
+to a larger class of problems, including regression and one-class classication. Experimental re-
+sults show that the proposed algorithm works for hundred thousands of examples or hundreds of
+kernels to be combined, and helps for automatic model selection, improving the interpretability of
+the learning result. In a second part we discuss general speed up mechanism for SVMs, especially
+when used with sparse feature maps as appear for string kernels, allowing us to train a string kernel
+SVM on a 10 million real-world splice data set from computational biology. We integrated multi-
+ple kernel learning in our machine learning toolbox SHOGUN for which the source code is publicly
+available at http://www.fml.tuebingen.mpg.de/raetsch/projects/shogun.
+
+Keywords: multiple kernel learning, string kernels, large scale optimization, support vector ma-
+chines, support vector regression, column generation, semi-innite linear programming
+
+1. Introduction
+
+Kernel based methods such as support vector machines (SVMs) have proven to be powerful for a
+wide range of different data analysis problems. They employ a so-called kernel function k(xi,x j)
+which intuitively computes the similarity between two examples xi and x j. The result of SVM
+
+2006 Sren Sonnenburg, Gunnar Rtsch, Christin Schfer and Bernhard Schlkopf.
+
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+learning is an a -weighted linear combination of kernels with a bias b
+
+f (x) = sign  N(cid:229)
+
+i=1
+
+iyik(xi,x) + b! ,
+
+(1)
+
+where the xi, i = 1, . . . , N are labeled training examples (yi  {1}).
+
+Recent developments in the literature on SVMs and other kernel methods have shown the need
+to consider multiple kernels. This provides exibility and reects the fact that typical learning
+problems often involve multiple, heterogeneous data sources. Furthermore, as we shall see below, it
+leads to an elegant method to interpret the results, which can lead to a deeper understanding of the
+application.
+
+While this so-called multiple kernel learning (MKL) problem can in principle be solved via
+cross-validation, several recent papers have focused on more efcient methods for multiple kernel
+learning (Chapelle et al., 2002; Bennett et al., 2002; Grandvalet and Canu, 2003; Ong et al., 2003;
+Bach et al., 2004; Lanckriet et al., 2004; Bi et al., 2004).
+
+One of the problems with kernel methods compared to other techniques is that the resulting
+decision function (1) is hard to interpret and, hence, is difcult to use in order to extract relevant
+knowledge about the problem at hand. One can approach this problem by considering convex
+combinations of K kernels, i.e.
+
+k(xi,x j) =
+
+K(cid:229)
+
+b kkk(xi,x j)
+
+(2)
+
+k=1
+
+with b k  0 and (cid:229) K
+b k = 1, where each kernel kk uses only a distinct set of features. For ap-
+k=1
+propriately designed sub-kernels kk, the optimized combination coefcients can then be used to
+understand which features of the examples are of importance for discrimination: if one is able to
+obtain an accurate classication by a sparse weighting b k, then one can quite easily interpret the re-
+sulting decision function. This is an important property missing in current kernel based algorithms.
+Note that this is in contrast to the kernel mixture framework of Bennett et al. (2002) and Bi et al.
+(2004) where each kernel and each example are assigned an independent weight and therefore do
+not offer an easy way to interpret the decision function. We will illustrate that the considered MKL
+formulation provides useful insights and at the same time is very efcient.
+
+We consider the framework proposed by Lanckriet et al. (2004), which results in a convex op-
+timization problem - a quadratically-constrained quadratic program (QCQP). This problem is more
+challenging than the standard SVM QP, but it can in principle be solved by general-purpose opti-
+mization toolboxes. Since the use of such algorithms will only be feasible for small problems with
+few data points and kernels, Bach et al. (2004) suggested an algorithm based on sequential mini-
+mization optimization (SMO Platt, 1999). While the kernel learning problem is convex, it is also
+non-smooth, making the direct application of simple local descent algorithms such as SMO infeasi-
+ble. Bach et al. (2004) therefore considered a smoothed version of the problem to which SMO can
+be applied.
+
+In the rst part of the paper we follow a different direction: We reformulate the binary clas-
+sication MKL problem (Lanckriet et al., 2004) as a semi-innite linear program, which can be
+efciently solved using an off-the-shelf LP solver and a standard SVM implementation (cf. Sec-
+tion 2.1 for details). In a second step, we show how easily the MKL formulation and the algorithm
+is generalized to a much larger class of convex loss functions (cf. Section 2.2). Our proposed wrap-
+per method works for any kernel and many loss functions: In order to obtain an efcient MKL
+
+1532
+
+a
+LARGE SCALE MKL
+
+algorithm for a new loss function, it now sufces to have an LP solver and the corresponding single
+kernel algorithm (which is assumed to be efcient). Using this general algorithm we were able to
+solve MKL problems with up to 30,000 examples and 20 kernels within reasonable time.1
+
+We also consider a chunking algorithm that can be considerably more efcient, since it optimizes
+the SVM a multipliers and the kernel coefcients b
+at the same time. However, for large scale
+problems it needs to compute and cache the K kernels separately, instead of only one kernel as
+in the single kernel algorithm. This becomes particularly important when the sample size N is
+large. If, on the other hand, the number of kernels K is large, then the amount of memory available
+for caching is drastically reduced and, hence, kernel caching is not effective anymore. (The same
+statements also apply to the SMO-like MKL algorithm proposed in Bach et al. (2004).)
+
+Since kernel caching cannot help to solve large scale MKL problems, we sought for ways to
+avoid kernel caching. This is of course not always possible, but it certainly is for the class of
+kernels where the feature map F (x) can be explicitly computed and computations with F (x) can
+be implemented efciently. In Section 3.1.1 we describe several string kernels that are frequently
+used in biological sequence analysis and exhibit this property. Here, the feature space can be very
+high dimensional, but F (x) is typically very sparse. In Section 3.1.2 we discuss several methods for
+efciently dealing with high dimensional sparse vectors, which not only is of interest for MKL but
+also for speeding up ordinary SVM classiers. Finally, we suggest a modication of the previously
+proposed chunking algorithm that exploits these properties (Section 3.1.3). In the experimental part
+we show that the resulting algorithm is more than 70 times faster than the plain chunking algorithm
+(for 50,000 examples), even though large kernel caches were used. Also, we were able to solve
+MKL problems with up to one million examples and 20 kernels and a 10 million real-world splice
+site classication problem from computational biology. We conclude the paper by illustrating the
+usefulness of our algorithms in several examples relating to the interpretation of results and to
+automatic model selection. Moreover, we provide an extensive benchmark study comparing the
+effect of different improvements on the running time of the algorithms.
+
+We have implemented all algorithms discussed in this work in C++ with interfaces to Matlab,
+
+Octave, Rand Python. The source code is freely available at
+
+http://www.fml.tuebingen.mpg.de/raetsch/projects/shogun.
+
+The examples used to generate the gures are implemented in Matlab using the Matlab inter-
+face of the SHOGUN toolbox. They can be found together with the data sets used in this paper at
+http://www.fml.tuebingen.mpg.de/raetsch/projects/lsmkl.
+
+2. A General and Efcient Multiple Kernel Learning Algorithm
+
+In this section we rst derive our MKL formulation for the binary classication case and then show
+how it can be extended to general cost functions. In the last subsection we will propose algorithms
+for solving the resulting semi-innite linear programs (SILPs).
+
+2.1 Multiple Kernel Learning for Classication Using SILP
+In the multiple kernel learning problem for binary classication one is given N data points (xi, yi)
+(yi  {1}), where xi is translated via K mappings F
+k(x) 7 RDk , k = 1, . . . , K, from the input into K
+1. The results are not shown.
+
+1533
+
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+feature spaces (F
+1(xi), . . . ,F K(xi)) where Dk denotes the dimensionality of the k-th feature space.
+Then one solves the following optimization problem (Bach et al., 2004), which is equivalent to the
+linear SVM for K = 1:2
+
+MKL Primal for Classication
+
+N(cid:229)
+
+i
+
+(3)
+
++C
+
+min
+
+w.r.t.
+
+s.t.
+
+i=1
+wk  RDk ,x  RN, b  R,
+
+1
+
+k=1
+
+kwkk2!2
+2  K(cid:229)
+i  0 and yi  K(cid:229)
+
+hwk,F
+
+k=1
+
+k(xi)i + b!  1  x
+
+i, i = 1, . . . , N
+
+b k = 1 (Bach et al., 2004). Note that therefore the 1-norm of b
+
+k with b k  0, k = 1, . . . , K and
+Note that the problems solution can be written as wk = b kw
+(cid:229) K
+is constrained to one, while
+k=1
+one is penalizing the 2-norm of wk in each block k separately. The idea is that 1-norm constrained
+or penalized variables tend to have sparse optimal solutions, while 2-norm penalized variables do
+not (e.g. Rtsch, 2001, Chapter 5.2). Thus the above optimization problem offers the possibility to
+nd sparse solutions on the block level with non-sparse solutions within the blocks.
+
+Bach et al. (2004) derived the dual for problem (3). Taking their problem (DK), squaring the
+leads to the
+
+2 and nally substituting 1
+2
+
+constraints on gamma, multiplying the constraints by 1
+to the following equivalent multiple kernel learning dual:
+
+g 2 7 g
+
+MKL Dual for Classication
+
+min
+
+w.r.t.
+
+s.t.
+
+g 
+
+N(cid:229)
+
+i
+
+i=1
+
+g  R,a  RN
+0  a  1C,
+
+N(cid:229)
+
+i=1
+
+iyi = 0
+
+1
+2
+
+N(cid:229)
+
+i, j=1
+
+ia
+
+jyiy jkk(xi,x j)  g , k = 1, . . . , K
+
+k(xi),F
+
+k(x j)i. Note that we have one quadratic constraint per kernel (Sk(a ) 
+where kk(xi,x j) = hF
+g ). In the case of K = 1, the above problem reduces to the original SVM dual. We will now move
+the term (cid:229) N
+i to
+i=1
+both sides of the constraints and substituting g  (cid:229) N
+i=1
+
+i, into the constraints on g . This can be equivalently done by adding (cid:229) N
+i=1
+
+i 7 g :
+
+2. We assume tr(Kk) = 1, k = 1, . . . , K and set d j in Bach et al. (2004) to one.
+
+1534
+
+x
+x
+a
+a
+a
+a
+a
+a
+LARGE SCALE MKL
+
+MKL Dual for Classication
+
+min
+w.r.t.
+
+s.t.
+
+g  R,a  RN
+0  a  1C,
+
+N(cid:229)
+
+i=1
+
+iyi = 0
+
+1
+2
+
+N(cid:229)
+
+i, j=1
+
+ia
+
+jyiy jkk(xi,x j) 
+
+N(cid:229)
+
+i=1
+
+ g , k = 1, . . . , K
+
+i
+
+In order to solve (4), one may solve the following saddle point problem: minimize
+
+|
+
+=:Sk(a )
+
+{z
+
+}
+
+L := g +
+
+K(cid:229)
+
+b k(Sk(a )  g )
+
+(4)
+
+(5)
+
+w.r.t. a  RN,g  R (with 0  a  C1 and (cid:229)
+Setting the derivative w.r.t. to g
+to: L = S(a
+maximizes w.r.t. the kernel weighting b
+Min-Max Problem
+
+,b ) := (cid:229) K
+
+k=1
+
+to zero, one obtains the constraint (cid:229) K
+
+b kSk(a ). While one minimizes the objective w.r.t. a
+
+i a
+
+k=1
+iyi = 0), and maximize it w.r.t. b  RK, where 0  b
+.
+b k = 1 and (5) simplies
+, at the same time one
+
+k=1
+
+. This leads to a
+
+max
+
+mina
+
+w.r.t.
+
+s.t.
+
+b kSk(a )
+
+K(cid:229)
+k=1
+a  RN, b  RK
+0  a  C , 0  b ,
+
+N(cid:229)
+
+i=1
+
+iyi = 0 and
+
+b k = 1.
+
+K(cid:229)
+
+k=1
+
+(6)
+
+This problem is very similar to Equation (9) in Bi et al. (2004) when composite kernels, i.e. linear
+combinations of kernels are considered. There the rst term of Sk(a ) has been moved into the
+constraint, still b
+
+including the (cid:229) K
+
+b k = 1 is missing.3
+
+Assume a  were the optimal solution, then q  := S(a ,b ) would be minimal and, hence, S(a
+
+,b ) 
+(subject to the above constraints). Hence, nding a saddle-point of (5) is equivalent to
+
+q  for all a
+solving the following semi-innite linear program:
+
+k=1
+
+Semi-Innite Linear Program (SILP)
+
+max
+w.r.t.
+
+s.t.
+
+q  R,b  RK
+0  b , (cid:229)
+b kSk(a )  q
+for all a  RN with 0  a  C1 and (cid:229)
+
+b k = 1 and
+
+K(cid:229)
+
+k=1
+
+k
+
+(7)
+
+(8)
+
+yia
+
+i = 0
+
+i
+
+3. In Bi et al. (2004) it is argued that the approximation quality of composite kernels is inferior to mixtures of kernels
+where a weight is assigned per example and kernel as in Bennett et al. (2002). For that reason and as no efcient
+methods were available to solve the composite kernel problem, they only considered mixtures of kernels and in the
+experimental validation used a uniform weighting in the composite kernel experiment. Also they did not consider to
+use composite kernels as a method to interpret the resulting classier but looked at classication accuracy instead.
+
+1535
+
+g
+a
+a
+a
+b
+a
+q
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+Note that this is a linear program, as q
+innitely many constraints: one for each a  RN satisfying 0  a  C and (cid:229) N
+i=1
+problems (6) and (7) have the same solution. To illustrate that, consider b
+
+and b
+
+in (6). Let a  be the solution that minimizes (6). Then we can increase the value of q
+
+are only linearly constrained. However there are
+iyi = 0. Both
+is xed and we minimize
+in (7) as
+b kSk(a ). On the
+is found. We will discuss in Section 2.3
+
+k=1
+
+long as none of the innitely many a -constraints (8) is violated, i.e. up to q = (cid:229) K
+other hand as we increase q
+how to solve such semi-innite linear programs.
+
+the maximizing b
+
+for a xed a
+
+2.2 Multiple Kernel Learning with General Cost Functions
+
+In this section we consider a more general class of MKL problems, where one is given an arbitrary
+strictly convex and differentiable loss function, for which we derive its MKL SILP formulation.
+We will then investigate in this general MKL SILP using different loss functions, in particular the
+soft-margin loss, the e -insensitive loss and the quadratic loss.
+
+We dene the MKL primal formulation for a strictly convex and differentiable loss function
+
+L( f (x), y) as:
+
+MKL Primal for Generic Loss Functions
+
+min
+
+1
+
+2  K(cid:229)
+
+k=1
+
+kwkk!2
+
++
+
+N(cid:229)
+
+i=1
+
+L( f (xi), yi)
+
+(9)
+
+w.r.t.
+
+w = (w1, . . . ,wK)  RD1      RDK
+
+s.t.
+
+f (xi) =
+
+K(cid:229)
+
+hF
+k=1
+
+k(xi),wki + b, i = 1, . . . , N
+
+In analogy to Bach et al. (2004) we treat problem (9) as a second order cone program (SOCP)
+
+leading to the following dual (see Appendix A for the derivation):
+
+MKL Dual for Generic Loss Functions
+
+min
+w.r.t.
+
+s.t.
+
+g  R, a  RN
+N(cid:229)
+
+i = 0
+
+and
+
+i=1
+
+(10)
+
+N(cid:229)
+
+iF
+
+i=1
+
+
+
+N(cid:229)
+
+i=1
+
+L(L1(a
+
+i, yi), yi) +
+
+N(cid:229)
+
+i=1
+
+iL1(a
+
+i, yi)  g , k = 1, . . . ,K
+
+1
+
+2(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+2
+
+2
+
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+Here L1 denotes the inverse of the derivative of L( f (x), y) w.r.t. the prediction f (x). To derive the
+SILP formulation we follow the same recipe as in Section 2.1: deriving the Lagrangian leads to a
+max-min problem formulation to be eventually reformulated as a SILP:
+
+1536
+
+a
+a
+g
+a
+a
+a
+LARGE SCALE MKL
+
+SILP for Generic Loss Functions
+
+max
+w.r.t.
+
+s.t.
+
+q  R,b  RK
+0  b ,
+
+K(cid:229)
+
+b k = 1 and
+
+k=1
+
+where
+
+(11)
+
+b kSk(a )  q , a  RN,
+
+K(cid:229)
+
+k=1
+
+N(cid:229)
+
+i=1
+
+i = 0,
+
+Sk(a ) = 
+
+N(cid:229)
+
+i=1
+
+L(L1(a
+
+i, yi), yi) +
+
+N(cid:229)
+
+i=1
+
+iL1(a
+
+i, yi) +
+
+N(cid:229)
+
+iF
+
+i=1
+
+1
+
+2(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+.
+
+2
+
+2
+
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+We assumed that L(x, y) is strictly convex and differentiable in x. Unfortunately, the soft margin and
+e -insensitive loss do not have these properties. We therefore consider them separately in the sequel.
+
+Soft Margin Loss We use the following loss in order to approximate the soft margin loss:
+
+Ls (x, y) =
+
+C
+
+log(1 + exp(s (1  xy))).
+
+It is easy to verify that
+
+lims  Ls (x, y) = C(1  xy)+.
+
+Moreover, Ls
+{1}, we obtain (cf. Appendix B.3):
+
+is strictly convex and differentiable for s < 
+
+. Using this loss and assuming yi 
+
+C
+
+N(cid:229)
+
+Sk(a ) = 
+
+s (cid:18)log(cid:18) Cyi
+
+i +Cyi(cid:19)(cid:19) +
+, then the rst two terms vanish provided that C  a
+
+i +Cyi(cid:19) + log(cid:18)
+
+i=1
+
+i
+
+N(cid:229)
+
+i=1
+
+iyi +
+
+N(cid:229)
+
+iF
+
+i=1
+
+1
+
+2(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+.
+
+2
+
+2
+
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+i  0 if yi = 1 and 0  a
+
+i  C if
+
+If s  
+yi = 1. Substituting a
+
+i =  a
+
+iyi, we obtain
+
+Sk( a ) = 
+
+a
+
+i +
+
+N(cid:229)
+
+i=1
+
+N(cid:229)
+
+a
+
+iyiF
+
+i=1
+
+and
+
+a
+
+N(cid:229)
+
+i=1
+
+iyi = 0,
+
+1
+
+2(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+2
+
+2
+
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+with 0  a
+
+i  C (i = 1, . . . , N) which is the same as (7).
+
+One-Class Soft Margin Loss The one-class SVM soft margin (e.g. Schlkopf and Smola, 2002)
+is very similar to the two-class case and leads to
+
+subject to 0  a  1
+
+n N 1 and (cid:229) N
+
+i=1
+
+Sk(a ) =
+
+i = 1.
+
+N(cid:229)
+
+iF
+
+i=1
+
+1
+
+2(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+2
+
+2
+
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+1537
+
+q
+a
+a
+a
+s
+a
+a
+a
+a
+a
+a
+a
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+e -insensitive Loss Using the same technique for the epsilon insensitive loss L(x, y) = C(1  |x 
+y|)+, we obtain
+
+Sk(a
+
+,a ) =
+
+and
+
+i  a 
+i )F
+
+N(cid:229)
+
+(a
+i=1
+i  a 
+
+1
+
+2(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+N(cid:229)
+
+(a
+i=1
+
+
+
+N(cid:229)
+
+(a
+i=1
+
+i + a 
+
+i )e 
+
+N(cid:229)
+
+(a
+i=1
+
+i  a 
+
+i )yi
+
+2
+
+2
+
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+i )yi = 0, with 0  a
+
+,a   C1.
+
+It is easy to derive the dual problem for other loss functions such as the quadratic loss or logistic
+loss (see Appendix B.1 & B.2). Note that the dual SILPs only differ in the denition of Sk and the
+domains of the a s.
+
+2.3 Algorithms to Solve SILPs
+
+All semi-innite linear programs considered in this work have the following structure:
+
+max
+w.r.t.
+
+s.t.
+
+q  R,b  RK
+0  b ,
+
+K(cid:229)
+
+b k = 1
+
+k=1
+
+(12)
+
+and
+
+K(cid:229)
+
+k=1
+
+b kSk(a )  q
+
+for all a  C .
+
+They have to be optimized with respect to b
+. The constraints depend on denition of Sk
+and therefore on the choice of the cost function. Using Theorem 5 in Rtsch et al. (2002) one can
+show that the above SILP has a solution if the corresponding primal is feasible and bounded (see also
+Hettich and Kortanek, 1993). Moreover, there is no duality gap, if M = co{[S1(a ), . . . , SK(a )] | a 
+C } is a closed set. For all loss functions considered in this paper this condition is satised.
+
+and q
+
+We propose to use a technique called Column Generation to solve (12). The basic idea is to
+compute the optimal (b ,q ) in (12) for a restricted subset of constraints. It is called the restricted
+master problem. Then a second algorithm generates a new, yet unsatised constraint determined by
+. In the best case the other algorithm nds the constraint that maximizes the constraint violation
+for the given intermediate solution (b ,q ), i.e.
+
+b kSk(a ).
+
+k
+
+(13)
+
+:= argmin
+
+a C
+b )  q
+
+b satises the constraint (cid:229) K
+
+If a
+constraint is added to the set of constraints and the iterations continue.
+
+b kSk(a
+
+k=1
+
+, then the solution (q ,b ) is optimal. Otherwise, the
+
+Algorithm 1 is a special case of a set of SILP algorithms known as exchange methods. These
+methods are known to converge (cf. Theorem 7.2 in Hettich and Kortanek, 1993). However, no
+convergence rates for such algorithm are known.4
+
+Since it is often sufcient to obtain an approximate solution, we have to dene a suitable con-
+vergence criterion. Note that the problem is solved when all constraints are satised. Hence, it is a
+
+4. It has been shown that solving semi-innite problems like (7), using a method related to boosting (e.g.
+Meir and Rtsch, 2003) one requires at most T = O (log(M)/e 2) iterations, where e
+is the remaining constraint viola-
+tion and the constants may depend on the kernels and the number of examples N (Rtsch, 2001; Rtsch and Warmuth,
+2005; Warmuth et al., 2006). At least for not too small values of e
+this technique produces reasonably fast good ap-
+proximate solutions.
+
+1538
+
+q
+a
+a
+b
+(cid:229)
+LARGE SCALE MKL
+
+natural choice to use the normalized maximal constraint violation as a convergence criterion, i.e. the
+(cid:229) K
+algorithm stops if e MKL  e
+t)
+is the optimal solution at iteration t  1 and a
+t corresponds to the newly found maximally violating
+constraint of the next iteration.
+
+, where e MKL is an accuracy parameter, (b
+
+In the following we will formulate algorithms that alternately optimize the parameters a and b .
+
+t
+
+MKL :=(cid:12)(cid:12)(cid:12)
+
+1 
+
+(cid:12)(cid:12)(cid:12)
+
+t,q
+
+k=1
+
+t
+
+kSk(a
+
+t
+
+t )
+
+2.3.1 A WRAPPER ALGORITHM
+
+The wrapper algorithm (see Algorithm 1) divides the problem into an inner and an outer subproblem.
+The solution is obtained by alternatively solving the outer problem using the results of the inner
+problem as input and vice versa until convergence. The outer loop constitutes the restricted master
+problem which determines the optimal b
+for a xed a using an of-the-shelf linear optimizer. In the
+inner loop one has to identify unsatised constraints, which, fortunately, turns out to be particularly
+simple. Note that (13) is for all considered cases exactly the dual optimization problem of the single
+kernel case for xed b
+. For instance for binary classication with soft-margin loss, (13) reduces to
+the standard SVM dual using the kernel k(xi,x j) = (cid:229)
+
+k b kkk(xi,x j):
+
+v =
+
+min
+a RN
+
+N(cid:229)
+
+i, j=1
+
+ia
+
+jyiy jk(xi,x j) 
+
+s.t.
+
+0  a  C1 and
+
+N(cid:229)
+
+i=1
+
+N(cid:229)
+
+i=1
+
+i
+
+iyi = 0.
+
+Hence, we can use a standard SVM implementation with a single kernel in order to identify the most
+violated constraint v  q
+. Since there exists a large number of efcient algorithms to solve the single
+kernel problems for all sorts of cost functions, we have therefore found an easy way to extend their
+applicability to the problem of Multiple Kernel Learning. Also, if the kernels are computed on-the-
+y within the SVM still only a single kernel cache is required. The wrapper algorithm is very easy to
+implement, very generic and already reasonably fast for small to medium size problems. However,
+determining a up to a xed high precision even for intermediate solutions, while b
+is still far away
+from the global optimal is unnecessarily costly. Thus there is room for improvement motivating the
+next section.
+
+2.3.2 A CHUNKING ALGORITHM FOR SIMULTANEOUS OPTIMIZATION OF a AND b
+The goal is to simultaneously optimize a and b
+in SVM training. Usually it is infeasible to use stan-
+dard optimization tools (e.g. MINOS, CPLEX, LOQO) for solving even the SVM training problems
+on data sets containing more than a few thousand examples. So-called decomposition techniques as
+chunking (e.g. used in Joachims, 1998) overcome this limitation by exploiting the special structure
+of the SVM problem. The key idea of decomposition is to freeze all but a small number of opti-
+mization variables (working set) and to solve a sequence of constant-size problems (subproblems of
+the SVM dual).
+
+Here we would like to propose an extension of the chunking algorithm to optimize the kernel
+weights b and the example weights a
+at the same time. The algorithm is motivated from an insuf-
+ciency of the wrapper algorithm described in the previous section: If the b s are not optimal yet,
+then the optimization of the a s until optimality is not necessary and therefore inefcient. It would
+
+1539
+
+b
+q
+a
+a
+a
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+Algorithm 1 The MKL-wrapper algorithm optimizes a convex combination of K kernels and em-
+ploys a linear programming solver to iteratively solve the semi-innite linear optimization problem
+(12). The accuracy parameter e MKL is a parameter of the algorithm. Sk(a ) and C are determined by
+the cost function.
+S0 = 1, q 1 = 
+for t = 1,2, . . . do
+
+k = 1
+
+, b 1
+
+K for k = 1, . . . ,K
+K(cid:229)
+
+t
+
+t = argmin
+
+a C
+
+k=1
+
+t
+kSt
+
+k, where St
+
+k = Sk(a
+
+t)
+
+kSk(a ) by single kernel algorithm with k =
+
+K(cid:229)
+
+k=1
+
+t
+kkk
+
+Compute a
+
+St =
+
+K(cid:229)
+
+k=1
+St
+
+if(cid:12)(cid:12)(cid:12)(cid:12)
+
+(b
+
+1 
+t+1,q
+
+t(cid:12)(cid:12)(cid:12)(cid:12)
+
+w.r.t.
+
+s.t.
+
+end for
+
+ e MKL then break
+
+t+1) = argmax q
+
+b  RK,q  R
+0  b ,
+
+K(cid:229)
+
+k=1
+
+b k = 1 and
+
+K(cid:229)
+
+k=1
+
+b kSr
+
+k  q
+
+for r = 1, . . . ,t
+
+in the chunking iterations, we could efciently
+
+be considerably faster if for any newly obtained a
+recompute the optimal b and then continue optimizing the a s using the new kernel weighting.
+Intermediate Recomputation of b
+involves solving a linear program and the
+problem grows with each additional a -induced constraint. Hence, after many iterations solving
+the LP may become infeasible. Fortunately, there are two facts making it still possible: (a) only
+a small number of the added constraints remain active and one may as well remove inactive ones
+ this prevents the LP from growing arbitrarily and (b) for Simplex-based LP optimizers such as
+CPLEX there exists the so-called hot-start feature which allows one to efciently recompute the new
+solution, if for instance only a few additional constraints are added.
+
+Recomputing b
+
+The SVMlight optimizer which we are going to modify, internally needs the output
+
+gi =
+
+N(cid:229)
+
+j=1
+
+jy jk(xi,x j)
+
+for all training examples i = 1, . . . , N in order to select the next variables for optimization (Joachims,
+1999). However, if one changes the kernel weights, then the stored gi values become invalid and
+need to be recomputed. In order to avoid the full recomputation one has to additionally store a K N
+jy jkk(xi,x j), i.e. the outputs for each kernel separately. If the b s change, then gi
+matrix gk,i = (cid:229) N
+j=1
+k b kgk,i. We implemented the nal chunking algorithm
+can be quite efciently recomputed by gi = (cid:229)
+for the MKL regression and classication case and display the latter in Algorithm 2.
+
+2.3.3 DISCUSSION
+
+The Wrapper as well as the chunking algorithm have both their merits: The Wrapper algorithm
+only relies on the repeated efcient computation of the single kernel solution, for which typically
+large scale algorithms exist. The chunking algorithm is faster, since it exploits the intermediate a s
+ however, it needs to compute and cache the K kernels separately (particularly important when
+
+1540
+
+b
+b
+b
+q
+a
+a
+LARGE SCALE MKL
+
+and the kernel weighting b
+
+Algorithm 2 Outline of the MKL-chunking algorithm for the classication case (extension to
+SVMlight) that optimizes a
+simultaneously. The accuracy parameter
+e MKL and the subproblem size Q are assumed to be given to the algorithm. For simplicity we omit
+the removal of inactive constraints. Also note that from one iteration to the next the LP only differs
+by one additional constraint. This can usually be exploited to save computing time for solving the
+LP.
+
+gk,i = 0, gi = 0, a
+for t = 1,2, . . . do
+
+i = 0, b 1
+
+k = 1
+
+K for k = 1, . . . ,K and i = 1, . . . ,N
+
+Check optimality conditions and stop if optimal
+select Q suboptimal variables i1, . . . ,iQ based on g and a
+a old = a
+solve SVM dual with respect to the selected variables and update a
+q=1(a
+gk,i = gk,i + (cid:229) Q
+for k = 1, . . . ,K do
+t
+
+iq  a old
+iq )yiqkk(xiq ,xi) for all k = 1, . . . ,M and i = 1, . . . ,N
+r a
+
+r gk,ra
+
+ryr  (cid:229)
+
+t
+r
+
+k = 1
+St
+2
+end for
+St = (cid:229) K
+k=1
+1  St
+
+if(cid:12)(cid:12)(cid:12)
+
+(b
+
+t
+kSt
+k
+
+t(cid:12)(cid:12)(cid:12)  e MKL
+
+t+1,q
+
+t+1) = argmax q
+w.r.t. b  RK,q  R
+s.t.
+
+0  b ,
+
+k b k = 1 and (cid:229) M
+k=1
+
+b kSr
+
+k  q
+
+for r = 1, . . . ,t
+
+else
+
+t+1 = q
+
+t
+
+end if
+gi = (cid:229)
+end for
+
+k b
+
+t+1
+k gk,i for all i = 1, . . . ,N
+
+N is large). If, on the other hand, K is large, then the amount of memory available for caching
+is drastically reduced and, hence, kernel caching is not effective anymore. The same statements
+also apply to the SMO-like MKL algorithm proposed in Bach et al. (2004). In this case one is left
+with the Wrapper algorithm, unless one is able to exploit properties of the particular problem or the
+sub-kernels (see next section).
+
+3. Sparse Feature Maps and Parallel Computations
+
+In this section we discuss two strategies to accelerate SVM training. First we consider the case
+where the explicit mapping F
+into the kernel feature space is known as well as sparse. For this case
+we show that MKL training (and also SVM training in general) can be made drastically faster, in
+particular, when N and K are large. In the second part we discuss a simple, yet efcient way to
+parallelize MKL as well as SVM training.
+
+3.1 Explicit Computations with Sparse Feature Maps
+
+We assume that all K sub-kernels are given as
+
+kk(x,x) = hF
+
+k(x),F
+
+k(x)i
+
+1541
+
+(cid:229)
+b
+q
+(cid:229)
+q
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+and the mappings F
+k are given explicitly (k = 1, . . . , K). Moreover, we suppose that the mapped
+examples F
+k(x) are very sparse. We start by giving examples of such kernels and discuss two
+In Section 3.1.2 we
+kernels that are often used in biological sequence analysis (Section 3.1.1).
+discuss several strategies for efciently storing and computing with high dimensional sparse vectors
+(in particular for these two kernels). Finally in Section 3.1.3 we discuss how we can exploit these
+properties to accelerate chunking algorithms, such as SVMlight, by a factor of up to Q (the chunking
+subproblem size).
+
+3.1.1 STRING KERNELS
+
+The Spectrum Kernel The spectrum kernel (Leslie et al., 2002) implements the n-gram or bag-
+of-words kernel (Joachims, 1998) as originally dened for text classication in the context of bio-
+logical sequence analysis. The idea is to count how often a d-mer (a contiguous string of length d)
+is contained in the sequences x and x. Summing up the product of these counts for every possible
+d-mer (note that there are exponentially many) gives rise to the kernel value which formally is de-
+ned as follows: Let S be an alphabet and u  S d a d-mer and #u(x) the number of occurrences of
+u in x. Then the spectrum kernel is dened as the inner product of k(x,x) = hF (x),F (x)i, where
+F (x) = (#u(x))uS d . Note that spectrum-like kernels cannot extract any positional information from
+the sequence which goes beyond the d-mer length. It is well suited for describing the content of a
+sequence but is less suitable for instance for analyzing signals where motifs may appear in a cer-
+tain order or at specic positions. Also note that spectrum-like kernels are capable of dealing with
+sequences with varying length.
+
+The spectrum kernel can be efciently computed in O (d(|x| + |x|)) using tries (Leslie et al.,
+2002), where |x| denotes the length of sequence x. An easier way to compute the kernel for two
+sequences x and x is to separately extract and sort the N d-mers in each sequence, which can be
+done in a preprocessing step. Note that for instance DNA d-mers of length d  16 can be efciently
+represented as a 32-bit integer value. Then one iterates over all d-mers of sequences x and x
+simultaneously and counts which d-mers appear in both sequences and sums up the product of their
+counts. The computational complexity of the kernel computation is O (log(|S
+The Weighted Degree Kernel The so-called weighted degree (WD) kernel (Rtsch and Sonnenburg,
+2004) efciently computes similarities between sequences while taking positional information of k-
+mers into account. The main idea of the WD kernel is to count the (exact) co-occurrences of k-mers
+at corresponding positions in the two sequences to be compared. The WD kernel of order d com-
+pares two sequences xi and x j of length L by summing all contributions of k-mer matches of lengths
+k  {1, . . . , d}, weighted by coefcients b k:
+
+|)d(|x| + |x|)).
+
+k(xi,x j) =
+
+b k
+
+d(cid:229)
+
+k=1
+
+Lk+1
+
+l=1
+
+I(uk,l(xi) = uk,l(x j)).
+
+(14)
+
+Here, uk,l(x) is the string of length k starting at position l of the sequence x and I() is the indicator
+function which evaluates to 1 when its argument is true and to 0 otherwise. For the weighting
+coefcients, Rtsch and Sonnenburg (2004) proposed to use b k = 2 dk+1
+d(d+1) . Matching substrings are
+thus rewarded with a score depending on the length of the substring.5
+5. Note that although in our case b k+1 < b k, longer matches nevertheless contribute more strongly than shorter ones: this
+is due to the fact that each long match also implies several short matches, adding to the value of (14). Exploiting this
+
+1542
+
+(cid:229)
+LARGE SCALE MKL
+
+Note that the WD kernel can be understood as a Spectrum kernel where the k-mers starting at
+different positions are treated independently of each other.6 Moreover, it does not only consider
+substrings of length exactly d, but also all shorter matches. Hence, the feature space for each
+|d+11
+position has (cid:229) d
+|1  1 dimensions and is additionally duplicated L times (leading to
+|S
+O (L|S
+|d) dimensions). However, the computational complexity of the WD kernel is in the worst
+case O (dL) as can be directly seen from (14).
+
+|k = |S
+
+k=1 |S
+
+3.1.2 EFFICIENT STORAGE OF SPARSE WEIGHTS
+
+The considered string kernels correspond to a feature space that can be huge. For instance in the
+case of the WD kernel on DNA sequences of length 100 with K = 20, the corresponding feature
+space is 1014 dimensional. However, most dimensions in the feature space are not used since only
+a few of the many different k-mers actually appear in the sequences.
+In this section we briey
+discuss three methods to efciently deal with sparse vectors v. We assume that the elements of the
+vector v are indexed by some index set U (for sequences, e.g. U = S d) and that we only need three
+operations: clear, add and lookup. The rst operation sets the vector v to zero, the add operation
+increases the weight of a dimension for an element u  U by some amount a
+and
+lookup requests the value vu. The latter two operations need to be performed as quickly as possible
+(whereas the performance of the lookup operation is of higher importance).
+
+, i.e. vu = vu + a
+
+Explicit Map If the dimensionality of the feature space is small enough, then one might consider
+keeping the whole vector v in memory and to perform direct operations on its elements. Then each
+read or write operation is O (1).7 This approach has expensive memory requirements (O (|S
+|d)), but
+is very fast and best suited for instance for the Spectrum kernel on DNA sequences with d  14 and
+on protein sequences with d  6.
+
+Sorted Arrays More memory efcient but computationally more expensive are sorted arrays of
+index-value pairs (u, vu). Assuming the L indexes are given and sorted in advance, one can ef-
+ciently change or look up a single vu for a corresponding u by employing a binary search procedure
+(O (log(L))). When given L look up indexes at once, one may sort them in advance and then si-
+multaneously traverse the two arrays in order to determine which elements appear in the rst array
+(i.e. O (L + L) operations  omitting the sorting of the second array  instead of O (log(L)L)). This
+method is well suited for cases where L and L are of comparable size, as for instance for compu-
+tations of single Spectrum kernel elements (as proposed in Leslie et al., 2004). If, L  L, then the
+binary search procedure should be preferred.
+
+Tries Another way of organizing the non-zero elements are tries (Fredkin, 1960): The idea is to
+use a tree with at most |S
+| siblings of depth d. The leaves store a single value: the element vu, where
+u  S d is a d-mer and the path to the leaf corresponds to u.
+
+knowledge allows for a O (L) reformulation of the kernel using block-weights as has been done in Sonnenburg et al.
+(2005b).
+
+6. It therefore is very position dependent and does not tolerate any positional shift. For that reason we proposed in
+Rtsch et al. (2005) a WD kernel with shifts, which tolerates a small number of shifts, that lies in between the WD
+and the Spectrum kernel.
+
+7. More precisely, it is log d, but for small enough d (which we have to assume anyway) the computational effort is
+
+exactly one memory access.
+
+1543
+
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+To add or lookup an element one only needs d operations to reach a leaf of the tree (and to
+create necessary nodes on the way in an add operation). Note that the worst-case computational
+complexity of the operations is independent of the number of d-mers/elements stored in the tree.
+
+While tries are not faster than sorted arrays in lookup and need considerably more storage (e.g.
+for pointers to its parent and siblings), they are useful for the previously discussed WD kernel. Here
+we not only have to lookup one substring u  S d, but also all prexes of u. For sorted arrays this
+amounts to d separate lookup operations, while for tries all prexes of u are already known when
+the bottom of the tree is reached. In this case the trie has to store weights also on the internal nodes.
+This is illustrated for the WD kernel in Figure 1.
+
+1 + 2
+
+1
+
+2
+
+3
+
+3
+
+1 2
+
+3
+
+Figure 1: Three sequences AAA, AGA, GAA with weights a 1,a 2 & a 3 are added to the trie. The
+
+gure displays the resulting weights at the nodes.
+
+3.1.3 SPEEDING UP SVM TRAINING
+
+As it is not feasible to use standard optimization toolboxes for solving large scale SVM train-
+ing problem, decomposition techniques are used in practice. Most chunking algorithms work by
+rst selecting Q variables (working set W  {1, . . . , N}, Q := |W |) based on the current solution
+and then solve the reduced problem with respect to the working set variables. These two steps
+are repeated until some optimality conditions are satised (see e.g. Joachims (1998)). For se-
+lecting the working set and checking the termination criteria in each iteration, the vector g with
+gi = (cid:229) N
+i = 1, . . . , N is usually needed. Computing g from scratch in every iter-
+ation which would require O (N2) kernel computations. To avoid recomputation of g one typically
+starts with g = 0 and only computes updates of g on the working set W
+
+jy jk(xi, x j),
+
+j=1
+
+gi  gold
+
+i + (cid:229)
+
+jW
+
+(a
+
+j  a old
+
+j )y jk(xi, x j), i = 1, . . . , N.
+
+1544
+
+a
+LARGE SCALE MKL
+
+As a result the effort decreases to O (QN) kernel computations, which can be further speed up by
+using kernel caching (e.g. Joachims, 1998). However kernel caching is not efcient enough for
+large scale problems8 and thus most time is spend computing kernel rows for the updates of g on
+the working set W . Note however that this update as well as computing the Q kernel rows can be
+easily parallelized; cf. Section 4.2.1.
+
+Exploiting k(xi,x j) = hF (xi),F (x j)i and w = (cid:229) N
+i=1
+
+iyiF (xi) we can rewrite the update rule as
+
+gi  gold
+
+i + (cid:229)
+
+jW
+
+(a
+
+j  a old
+
+j )y jhF (xi),F (x j)i = gold
+
+i + hwW ,F (xi)i,
+
+(15)
+
+where wW = (cid:229)
+
+jW (a
+
+j  a old
+
+j )y jF (x j) is the normal (update) vector on the working set.
+
+If the kernel feature map can be computed explicitly and is sparse (as discussed before), then
+computing the update in (15) can be accelerated. One only needs to compute and store wW (using
+j(xq) 6= 0}| add operations) and performing the scalar product hwW ,F (xi)i
+the clear and (cid:229) qW |{F
+(using |{F
+
+j(xi) 6= 0}| lookup operations).
+
+Depending on the kernel, the way the sparse vectors are stored Section 3.1.2 and on the sparse-
+ness of the feature vectors, the speedup can be quite drastic. For instance for the WD kernel one
+kernel computation requires O (Ld) operations (L is the length of the sequence). Hence, computing
+(15) N times requires O(NQLd) operations. When using tries, then one needs QL add operations
+(each O (d)) and NL lookup operations (each O (d)). Therefore only O (QLd + NLd) basic opera-
+tions are needed in total. When N is large enough it leads to a speedup by a factor of Q. Finally note
+that kernel caching is no longer required and as Q is small in practice (e.g. Q = 42) the resulting trie
+has rather few leaves and thus only needs little storage.
+
+The pseudo-code of our linadd SVM chunking algorithm is given in Algorithm 3.
+
+Algorithm 3 Outline of the chunking algorithm that exploits the fast computations of linear combi-
+nations of kernels (e.g. by tries).
+
+{INITIALIZATION}
+gi = 0, a
+{LOOP UNTIL CONVERGENCE}
+for t = 1,2, . . . do
+
+i = 0 for i = 1, . . . , N
+
+Check optimality conditions and stop if optimal
+select working set W based on g and a
+solve reduced problem W and update a
+
+, store a old = a
+
+clear w
+w  w + (a
+update gi = gi + hw,F (xi)i for all i = 1, . . . , N (using lookup)
+
+j )y jF (x j) for all j  W (using add)
+
+j  a old
+
+end for
+
+MKL Case As elaborated in Section 2.3.2 and Algorithm 2, for MKL one stores K vectors
+k = 1, . . . , K: one for each kernel in order to avoid full recomputation of g if a kernel weight b k
+gk,
+is updated. Thus to use the idea above in Algorithm 2 all one has to do is to store K normal vectors
+
+8. For instance when using a million examples one can only t 268 rows into 1 GB. Moreover, caching 268 rows is
+
+insufcient when for instance having many thousands of active variables.
+
+1545
+
+a
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+(e.g. tries)
+
+k = (cid:229)
+wW
+
+jW
+
+(a
+
+j  a old
+
+j )y jF
+
+k(x j),
+
+k = 1, . . . , K
+
+which are then used to update the K  N matrix gk,i = gold
+i = 1 . . .N) by which gi = (cid:229)
+
+k ,F
+k,i + hwW
+k b kgk,i, (for all i = 1 . . .N) is computed.
+
+k(xi)i (for all k = 1 . . .K and
+
+3.2 A Simple Parallel Chunking Algorithm
+
+As still most time is spent in evaluating g(x) for all training examples further speedups are gained
+when parallelizing the evaluation of g(x). When using the linadd algorithm, one rst constructs
+the trie (or any of the other possible more appropriate data structures) and then performs parallel
+lookup operations using several CPUs (e.g. using shared memory or several copies of the data
+structure on separate computing nodes). We have implemented this algorithm based on multiple
+threads (using shared memory) and gain reasonable speedups (see next section).
+
+Note that this part of the computations is almost ideal to distribute to many CPUs, as only the
+(or w depending on the communication costs and size) have to be transfered before each
+
+updated a
+CPU computes a large chunk Ik  {1, . . . , N} of
+
+i = hw,F (xi)i, i  Ik, k = 1, . . . , N, where (I1      In) = (1, . . . , N)
+h(k)
+
+which is transfered to a master node that nally computes g  g + h, as illustrated in Algorithm 4.
+
+4. Results and Discussion
+
+In the following subsections we will rst apply multiple kernel learning to knowledge discovery
+tasks, demonstrating that it can be used for automated model selection and to interpret the learned
+model (Section 4.1), followed by a benchmark comparing the running times of SVMs and MKL
+using any of the proposed algorithmic optimizations (Section 4.2).
+
+4.1 MKL for Knowledge Discovery
+
+In this section we will discuss toy examples for binary classication and regression, showing that
+MKL can recover information about the problem at hand, followed by a brief review on problems
+for which MKL has been successfully used.
+
+4.1.1 CLASSIFICATION
+
+The rst example we deal with is a binary classication problem. The task is to separate two
+concentric classes shaped like the outline of stars. By varying the distance between the boundary of
+the stars we can control the separability of the problem. Starting with a non-separable scenario with
+zero distance, the data quickly becomes separable as the distance between the stars increases, and
+the boundary needed for separation will gradually tend towards a circle. In Figure 2 three scatter
+plots of data sets with varied separation distances are displayed.
+
+We generate several training and test sets for a wide range of distances (the radius of the inner
+star is xed at 4.0, the outer stars radius is varied from 4.1 . . .9.9). Each data set contains 2,000
+observations (1,000 positive and 1,000 negative) using a moderate noise level (Gaussian noise with
+zero mean and standard deviation 0.3). The MKL-SVM was trained for different values of the
+
+1546
+
+LARGE SCALE MKL
+
+Algorithm 4 Outline of the parallel chunking algorithm that exploits the fast computations of linear
+combinations of kernels.
+
+{ Master node }
+{INITIALIZATION}
+gi = 0, a
+{LOOP UNTIL CONVERGENCE}
+for t = 1,2, . . . do
+
+i = 0 for i = 1, . . . , N
+
+Check optimality conditions and stop if optimal
+select working set W based on g and a
+solve reduced problem W and update a
+transfer to Slave nodes: a
+for all j  W
+fetch from n Slave nodes: h = (h(1), . . . ,h(n))
+update gi = gi + hi for all i = 1, . . . , N
+
+j  a old
+
+j
+
+, store a old = a
+
+end for
+signal convergence to slave nodes
+
+{ Slave nodes }
+{LOOP UNTIL CONVERGENCE}
+while not converged do
+
+fetch from Master node a
+clear w
+w  w + (a
+j  a old
+node k computes h(k)
+
+for all i = (k  1) N
+transfer to master: h(k)
+
+j  a old
+
+j
+
+for all j  W
+
+j )y jF (x j) for all j  W (using add)
+i = hw,F (xi)i
+
+n , . . . , k N
+
+n  1 (using lookup)
+
+end while
+
+regularization parameter C, where we set e MKL = 103. For every value of C we averaged the test
+errors of all setups and choose the value of C that led to the smallest overall error (C = 0.5).9
+
+The choice of the kernel width of the Gaussian RBF (below, denoted by RBF) kernel used
+for classication is expected to depend on the separation distance of the learning problem: An
+increased distance between the stars will correspond to a larger optimal kernel width. This effect
+should be visible in the results of the MKL, where we used MKL-SVMs with ve RBF kernels with
+different widths (2s 2  {0.01,0.1,1,10,100}). In Figure 2 we show the obtained kernel weightings
+for the ve kernels and the test error (circled line) which quickly drops to zero as the problem
+becomes separable. Every column shows one MKL-SVM weighting. The courses of the kernel
+weightings reect the development of the learning problem: as long as the problem is difcult the
+best separation can be obtained when using the kernel with smallest width. The low width kernel
+looses importance when the distance between the stars increases and larger kernel widths obtain a
+larger weight in MKL. Increasing the distance between the stars, kernels with greater widths are
+used. Note that the RBF kernel with largest width was not appropriate and thus never chosen. This
+illustrates that MKL can indeed recover information about the structure of the learning problem.
+
+9. Note that we are aware of the fact that the test error might be slightly underestimated.
+
+1547
+
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+width 0.01
+width 0.1
+width 1
+
+width 10
+width 100
+testerror
+
+0.5
+
+1
+
+1.5
+
+2
+
+2.5
+
+3
+
+3.5
+
+4
+
+separation distance
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+0
+
+0
+
+t
+h
+g
+e
+w
+
+i
+
+
+l
+
+e
+n
+r
+e
+k
+
+Figure 2: A 2-class toy problem where the dark gray (or green) star-like shape is to be distinguished
+from the light gray (or red) star inside of the dark gray star. The distance between the dark
+star-like shape and the light star increases from the left to the right.
+
+4.1.2 REGRESSION
+
+We applied the newly derived MKL support vector regression formulation to the task of learning a
+sine function using three RBF-kernels with different widths (2s 2  {0.005,0.05,0.5,1,10}). To this
+end, we generated several data sets with increasing frequency of the sine wave. The sample size was
+chosen to be 1,000. Analogous to the procedure described above we choose the value of C = 10,
+minimizing the overall test error. In Figure 3 exemplarily three sine waves are depicted, where the
+frequency increases from left to right. For every frequency the computed weights for each kernel
+width are shown. One can see that MKL-SV regression switches to the width of the RBF-kernel
+tting the regression problem best.
+
+In another regression experiment, we combined a linear function with two sine waves, one
+of lower frequency and one of high frequency, i.e. f (x) = sin(ax) + sin(bx) + cx. Furthermore we
+increase the frequency of the higher frequency sine wave, i.e. we varied a leaving b and c unchanged.
+The MKL weighting should show a combination of different kernels. Using ten RBF-kernels of
+different width (see Figure 4) we trained a MKL-SVR and display the learned weights (a column
+in the gure). Again the sample size is 1,000 and one value for C = 5 is chosen via a previous
+experiment (e MKL = 105). The largest selected width (100) models the linear component (since
+RBF kernels with large widths are effectively linear) and the medium width (1) corresponds to
+the lower frequency sine. We varied the frequency of the high frequency sine wave from low to
+high (left to right in the gure). One observes that MKL determines an appropriate combination of
+kernels of low and high widths, while decreasing the RBF kernel width with increased frequency.
+
+1548
+
+LARGE SCALE MKL
+
+width 0.005
+width 0.05
+width 0.5
+width 1
+width 10
+
+1
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+t
+h
+g
+e
+w
+
+i
+
+
+l
+
+e
+n
+r
+e
+k
+
+0
+
+0
+
+1
+
+2
+
+frequency
+
+3
+
+4
+
+5
+
+Figure 3: MKL-Support Vector Regression for the task of learning a sine wave (please see text for
+
+details).
+
+Additionally one can observe that MKL leads to sparse solutions since most of the kernel weights
+in Figure 4 are depicted in blue, that is they are zero.10
+
+4.1.3 REAL WORLD APPLICATIONS IN BIOINFORMATICS
+
+MKL has been successfully used on real-world data sets in the eld of computational biology
+(Lanckriet et al., 2004; Sonnenburg et al., 2005a). It was shown to improve classication perfor-
+mance on the task of ribosomal and membrane protein prediction (Lanckriet et al., 2004), where a
+weighting over different kernels each corresponding to a different feature set was learned. In their
+result, the included random channels obtained low kernel weights. However, as the data sets was
+rather small ( 1,000 examples) the kernel matrices could be precomputed and simultaneously kept
+in memory, which was not possible in Sonnenburg et al. (2005a), where a splice site recognition task
+for the worm C. elegans was considered. Here data is available in abundance (up to one million ex-
+amples) and larger amounts are indeed needed to obtain state of the art results (Sonnenburg et al.,
+2005b).11 On that data set we were able to solve the classication MKL SILP for N = 1,000,000
+examples and K = 20 kernels, as well as for N = 10,000 examples and K = 550 kernels, using the
+linadd optimizations with the weighted degree kernel. As a result we a) were able to learn the
+weighting b
+instead of choosing a heuristic and b) were able to use MKL as a tool for interpreting
+the SVM classier as in Sonnenburg et al. (2005a); Rtsch et al. (2005).
+
+As an example we learned the weighting of a WD kernel of degree 20, which consist of a
+weighted sum of 20 sub-kernels each counting matching d-mers, for d = 1, . . . ,20. The learned
+
+10. The training time for MKL-SVR in this setup but with 10,000 examples was about 40 minutes, when kernel caches
+
+of size 100MB are used.
+
+11. In Section 4.2 we will use a human splice data set containing 15 million examples, and train WD kernel based SVM
+
+classiers on up to 10 million examples using the parallelized linadd algorithm.
+
+1549
+
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+1
+
+5
+1
+
+0
+0
+
+.
+.
+
+0
+0
+
+h
+t
+d
+w
+
+i
+
+
+l
+
+e
+n
+r
+e
+k
+F
+B
+R
+
+
+
+0
+0
+
+0
+
+.
+.
+
+5
+
+1
+
+0
+
+0
+0
+
+0
+0
+
+0
+
+1
+0
+
+.
+
+0
+0
+
+5
+
+11
+
+0
+
+0
+
+1
+
+2
+
+4
+
+6
+
+.
+.
+.
+.
+.
+.
+.
+
+7
+6
+5
+4
+3
+2
+
+1
+
+0
+0
+0
+0
+0
+0
+00
+
+8
+
+frequency
+
+1
+
+0
+
+1
+
+2
+
+1
+
+4
+
+1
+
+6
+
+1
+
+8
+
+2
+
+0
+
+Figure 4: MKL support vector regression on a linear combination of three functions:
+
+f (x) =
+sin(ax) + sin(bx) + cx. MKL recovers that the original function is a combination of func-
+tions of low and high complexity. For more details see text.
+
+t
+h
+g
+e
+w
+
+i
+
+
+l
+
+e
+n
+r
+e
+k
+
+0.35
+
+0. 3
+
+0.25
+
+0. 2
+
+0.15
+
+0.1
+
+0.05
+
+0
+
+0
+
+5
+
+10
+
+15
+
+20
+
+25
+
+kernel index d (length of substring)
+
+Figure 5: The learned WD kernel weighting on a million of examples.
+
+weighting is displayed in Figure 5 and shows a peak for 6-mers and 9&10-mers. It should be noted
+that the obtained weighting in this experiment is only partially useful for interpretation. In the case
+of splice site detection, it is unlikely that k-mers of length 9 or 10 are playing the most important
+role. More likely to be important are substrings of length up to six. We believe that the large weights
+for the longest k-mers are an artifact which comes from the fact that we are combining kernels with
+
+1550
+
+LARGE SCALE MKL
+
+quite different properties, i.e. the 9th and 10th kernel leads to a combined kernel matrix that is most
+diagonally dominant (since the sequences are only similar to themselves but not to other sequences),
+which we believe is the reason for having a large weight.12
+
+In the following example we consider one weight per position. In this case the combined ker-
+nels are more similar to each other and we expect more interpretable results. Figure 6 shows an
+
+t
+h
+g
+e
+w
+
+i
+
+
+l
+
+e
+n
+r
+e
+k
+
+0.05
+
+0.045
+
+0.04
+
+0.035
+
+0.03
+
+0.025
+
+0.02
+
+0.015
+
+0.01
+
+0.005
+
+0
+
+50  40  30  20  10  Exon
+Start
+
++10  +20  +30  +40  +50
+
+position relative to the exon start
+
+Figure 6: The gure shows an importance weighting for each position in a DNA sequence (around
+a so called splice site). MKL was used to determine these weights, each corresponding
+to a sub-kernel which uses information at that position to discriminate splice sites from
+non-splice sites. Different peaks correspond to different biologically known signals (see
+text for details). We used 65,000 examples for training with 54 sub-kernels.
+
+importance weighting for each position in a DNA sequence (around a so called acceptor splice site,
+the start of an exon). We used MKL on 65,000 examples to compute these 54 weights, each cor-
+responding to a sub-kernel which uses information at that position to discriminate true splice sites
+from fake ones. We repeated that experiment on ten bootstrap runs of the data set. We can iden-
+tify several interesting regions that we can match to current biological knowledge about splice site
+recognition: a) The region 50 nucleotides (nt) to 40nt, which corresponds to the donor splice
+site of the previous exon (many introns in C. elegans are very short, often only 50nt), b) the region
+25nt to 15nt that coincides with the location of the branch point, c) the intronic region closest
+to the splice site with greatest weight (8nt to 1nt; the weights for the AG dimer are zero, since
+it appears in splice sites and decoys) and d) the exonic region (0nt to +50nt). Slightly surprising
+are the high weights in the exonic region, which we suspect only model triplet frequencies. The
+
+12. This problem might be partially alleviated by including the identity matrix in the convex combination. However as
+2-norm soft margin SVMs can be implemented by adding a constant to the diagonal of the kernel (Cortes and Vapnik,
+1995), this leads to an additional 2-norm penalization.
+
+1551
+
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+decay of the weights seen from +15nt to +45nt might be explained by the fact that not all exons are
+actually long enough. Furthermore, since the sequence ends in our case at +60nt, the decay after
++45nt is an edge effect as longer substrings cannot be matched.
+
+4.2 Benchmarking the Algorithms
+
+Experimental Setup To demonstrate the effect of the several proposed algorithmic optimiza-
+tions, namely the linadd SVM training (Algorithm 3) and for MKL the SILP formulation with
+and without the linadd extension for single, four and eight CPUs, we applied each of the algo-
+rithms to a human splice site data set,13 comparing it to the original WD formulation and the case
+where the weighting coefcients were learned using multiple kernel learning. The splice data set
+contains 159,771 true acceptor splice site sequences and 14,868,555 decoys, leading to a total of
+15,028,326 sequences each 141 base pairs in length. It was generated following a procedure similar
+to the one in Sonnenburg et al. (2005a) for C. elegans which however contained only 1,026,036
+examples. Note that the data set is very unbalanced as 98.94% of the examples are negatively la-
+beled. We are using this data set in all benchmark experiments and trained (MKL-)SVMs using
+the SHOGUN machine learning toolbox which contains a modied version of SVMlight (Joachims,
+1999) on 500, 1,000, 5,000, 10,000, 30,000, 50,000, 100,000, 200,000, 500,000, 1,000,000,
+2,000,000, 5,000,000 and 10,000,000 randomly sub-sampled examples and measured the time
+needed in SVM training. For classication performance evaluation we always use the same re-
+maining 5,028,326 examples as a test data set. We set the degree parameter to d = 20 for the WD
+kernel and to d = 8 for the spectrum kernel xing the SVMs regularization parameter to C = 5.
+Thus in the MKL case also K = 20 sub-kernels were used. SVMlights subproblem size (parameter
+qpsize), convergence criterion (parameter epsilon) and MKL convergence criterion were set to
+Q = 112, e SV M = 105 and e MKL = 105, respectively. A kernel cache of 1GB was used for all
+kernels except the precomputed kernel and algorithms using the linadd-SMO extension for which
+the kernel-cache was disabled. Later on we measure whether changing the quadratic subproblem
+size Q inuences SVM training time. Experiments were performed on a PC powered by eight
+2.4GHz AMD Opteron(tm) processors running Linux. We measured the training time for each of
+the algorithms (single, quad or eight CPU version) and data set sizes.
+
+4.2.1 BENCHMARKING SVM
+
+The obtained training times for the different SVM algorithms are displayed in Table 1 and in Figure
+7. First, SVMs were trained using standard SVMlight with the Weighted Degree Kernel precomputed
+(WDPre), the standard WD kernel (WD1) and the precomputed (SpecPre) and standard spectrum
+kernel (Spec). Then SVMs utilizing the linadd extension14 were trained using the WD (LinWD)
+and spectrum (LinSpec) kernel. Finally SVMs were trained on four and eight CPUs using the
+parallel version of the linadd algorithm (LinWD4, LinWD8). WD4 and WD8 demonstrate the
+effect of a simple parallelization strategy where the computation of kernel rows and updates on the
+working set are parallelized, which works with any kernel.
+
+The training times obtained when precomputing the kernel matrix (which includes the time
+needed to precompute the full kernel matrix) is lower when no more than 1,000 examples are used.
+
+13. The splice data set can be downloaded from http://www.fml.tuebingen.mpg.de/raetsch/projects/lsmkl.
+14. More precisely the linadd and O (L) block formulation of the WD kernel as proposed in Sonnenburg et al. (2005b)
+
+was used.
+
+1552
+
+LARGE SCALE MKL
+
+Note that this is a direct cause of the relatively large subproblem size Q = 112. The picture is
+different for, say, Q = 42 (data not shown) where the WDPre training time is in all cases larger
+than the times obtained using the original WD kernel demonstrating the effectiveness of SVMlights
+kernel cache. The overhead of constructing a trie on Q = 112 examples becomes even more visible:
+only starting from 50,000 examples linadd optimization becomes more efcient than the original
+WD kernel algorithm as the kernel cache cannot hold all kernel elements anymore.15 Thus it would
+be appropriate to lower the chunking size Q as can be seen in Table 3.
+
+The linadd formulation outperforms the original WD kernel by a factor of 3.9 on a million
+examples. The picture is similar for the spectrum kernel, here speedups of factor 64 on 500,000
+examples are reached which stems from the fact that explicit maps (and not tries as in the WD
+kernel case) as discussed in Section 3.1.2 could be used leading to a lookup cost of O (1) and a
+dramatically reduced map construction time. For that reason the parallelization effort benets the
+WD kernel more than the Spectrum kernel: on one million examples the parallelization using 4
+CPUs (8 CPUs) leads to a speedup of factor 3.25 (5.42) for the WD kernel, but only 1.67 (1.97) for
+the Spectrum kernel. Thus parallelization will help more if the kernel computation is slow. Training
+with the original WD kernel with a sample size of 1,000,000 takes about 28 hours, the linadd
+version still requires 7 hours while with the 8 CPU parallel implementation only about 6 hours and
+in conjunction with the linadd optimization a single hour and 20 minutes are needed. Finally,
+training on 10 million examples takes about 4 days. Note that this data set is already 2.1GB in size.
+
+Classication Performance Figure 8 and Table 2 show the classication performance in terms of
+classication accuracy, area under the Receiver Operator Characteristic (ROC) Curve (Metz, 1978;
+Fawcett, 2003) and the area under the Precision Recall Curve (PRC) (see e.g. Davis and Goadrich
+(2006)) of SVMs on the human splice data set for different data set sizes using the WD kernel.
+
+Recall the denition of the ROC and PRC curves: The sensitivity (or recall) is dened as
+the fraction of correctly classied positive examples among the total number of positive exam-
+ples, i.e. it equals the true positive rate T PR = T P/(T P + FN). Analogously, the fraction FPR =
+FP/(T N + FP) of negative examples wrongly classied positive is called the false positive rate.
+Plotting FPR against TPR results in the Receiver Operator Characteristic Curve (ROC) Metz (1978);
+Fawcett (2003). Plotting the true positive rate against the positive predictive value (also precision)
+PPV = T P/(FP+T P), i.e. the fraction of correct positive predictions among all positively predicted
+examples, one obtains the Precision Recall Curve (PRC) (see e.g. Davis and Goadrich (2006)). Note
+that as this is a very unbalanced data set the accuracy and the area under the ROC curve are almost
+meaningless, since both measures are independent of class ratios. The more sensible auPRC, how-
+ever, steadily increases as more training examples are used for learning. Thus one should train using
+all available data to obtain state-of-the-art results.
+
+Varying SVMlights qpsize parameter As discussed in Section 3.1.3 and Algorithm 3, using the
+linadd algorithm for computing the output for all training examples w.r.t. to some working set can
+be speed up by a factor of Q (i.e. the size of the quadratic subproblems, termed qpsize in SVMlight).
+However, there is a trade-off in choosing Q as solving larger quadratic subproblems is expensive
+(quadratic to cubic effort). Table 3 shows the dependence of the computing time from Q and N.
+For example the gain in speed between choosing Q = 12 and Q = 42 for 1 million of examples is
+54%. Sticking with a mid-range Q (here Q = 42) seems to be a good idea for this task. However,
+
+15. When single precision 4-byte oating point numbers are used, caching all kernel elements is possible when training
+
+with up to 16384 examples.
+
+1553
+
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+WDPrecompute
+WD 1CPU
+WD 4CPU
+WD 8CPU
+WDLinadd 1CPU
+WDLinadd 4CPU
+WDLinadd 8CPU
+
+100000
+
+10000
+
+1000
+
+)
+c
+i
+m
+h
+t
+i
+r
+a
+g
+o
+l
+(
+
+s
+d
+n
+o
+c
+e
+s
+
+n
+
+i
+
+
+e
+m
+
+i
+
+i
+t
+
+g
+n
+n
+a
+r
+t
+
+
+i
+
+1000
+
+10000
+
+100000
+
+1000000
+
+10000000
+
+Number of training examples (logarithmic)
+
+SpecPrecompute
+Specorig
+Speclinadd 1CPU
+Speclinadd 4CPU
+Speclinadd 8CPU
+
+100
+
+M
+V
+S
+
+i
+
+)
+c
+m
+h
+
+t
+i
+r
+a
+g
+o
+l
+(
+
+s
+d
+n
+o
+c
+e
+s
+
+
+n
+
+i
+
+
+e
+m
+
+i
+t
+
+
+10000
+
+1000
+
+100
+
+i
+
+g
+n
+n
+a
+r
+t
+
+
+i
+
+M
+V
+S
+
+10
+
+1
+
+1000
+
+10000
+
+100000
+
+1000000
+
+Number of training examples (logarithmic)
+
+Figure 7: Comparison of the running time of the different SVM training algorithms using the
+weighted degree kernel. Note that as this is a log-log plot small appearing distances are
+large for larger N and that each slope corresponds to a different exponent. In the upper
+gure the Weighted Degree kernel training times are measured, the lower gure displays
+Spectrum kernel training times.
+
+a large variance can be observed, as the SVM training time depends to a large extend on which Q
+variables are selected in each optimization step. For example on the related C. elegans splice data
+set Q = 141 was optimal for large sample sizes while a midrange Q = 71 lead to the overall best
+
+1554
+
+LARGE SCALE MKL
+
+N WDPre WD1 WD4 WD8 LinWD1 LinWD4 LinWD8
+80
+75
+80
+87
+116
+139
+212
+379
+1,544
+4,835
+14,493
+95,518
+353,227
+
+17
+17
+28
+47
+195
+441
+1,794
+5,153
+31,320
+102,384
+-
+-
+-
+
+83
+83
+105
+134
+266
+389
+740
+1,631
+7,757
+26,190
+-
+-
+-
+
+17
+17
+23
+31
+92
+197
+708
+1,915
+10,749
+33,432
+-
+-
+-
+
+17
+17
+22
+30
+90
+196
+557
+1,380
+7,588
+23,127
+-
+-
+-
+
+500
+1,000
+5,000
+10,000
+30,000
+50,000
+100,000
+200,000
+500,000
+1,000,000
+2,000,000
+5,000,000
+10,000,000
+
+12
+13
+40
+102
+636
+-
+-
+-
+-
+-
+-
+-
+-
+
+83
+78
+82
+90
+139
+179
+294
+569
+2,498
+8,053
+-
+-
+-
+
+N SpecPre
+1
+2
+52
+136
+957
+-
+-
+-
+-
+-
+
+500
+1,000
+5,000
+10,000
+30,000
+50,000
+100,000
+200,000
+500,000
+1,000,000
+
+Spec LinSpec1 LinSpec4 LinSpec8
+1
+1
+21
+24
+32
+46
+74
+185
+728
+3,894
+
+1
+1
+19
+24
+36
+54
+107
+312
+1,420
+7,676
+
+1
+1
+21
+23
+32
+47
+75
+192
+809
+4,607
+
+1
+2
+30
+68
+315
+733
+3,127
+11,564
+91,075
+-
+
+Table 1: (top) Speed Comparison of the original single CPU Weighted Degree Kernel algorithm
+(WD1) in SVMlight training, compared to the four (WD4)and eight (WD8) CPUs par-
+allelized version, the precomputed version (Pre) and the linadd extension used in con-
+junction with the original WD kernel for 1,4 and 8 CPUs (LinWD1,LinWD4,LinWD8).
+(bottom) Speed Comparison of the spectrum kernel without (Spec) and with linadd (Lin-
+Spec1,LinSpec4,LinSpec8using 1,4 and 8 processors). SpecPredenotes the precomputed
+version. The rst column shows the sample size N of the data set used in SVM training
+while the following columns display the time (measured in seconds) needed in the training
+phase.
+
+performance. Nevertheless, one observes the trend that for larger training set sizes slightly larger
+subproblems sizes decrease the SVM training time.
+
+1555
+
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+90
+
+80
+
+70
+
+60
+
+50
+
+40
+
+30
+
+20
+
+10
+
+Accuracy
+Area under the ROC
+Area under the PRC
+
+1000
+
+10000
+
+100000
+
+1000000
+
+10000000
+
+Number of training examples
+
+
+
+
+
+)
+t
+n
+e
+c
+r
+e
+p
+n
+i
+(
+
+e
+c
+n
+a
+m
+r
+o
+f
+r
+e
+P
+n
+o
+i
+t
+a
+c
+i
+f
+i
+s
+s
+a
+C
+
+l
+
+Figure 8: Comparison of the classication performance of the Weighted Degree kernel based SVM
+classier for different training set sizes. The area under the Receiver Operator Charac-
+teristic (ROC) Curve, the area under the Precision Recall Curve (PRC) as well as the
+classication accuracy are displayed (in percent). Note that as this is a very unbalanced
+data set, the accuracy and the area under the ROC curve are less meaningful than the area
+under the PRC.
+
+4.2.2 BENCHMARKING MKL
+
+The WD kernel of degree 20 consist of a weighted sum of 20 sub-kernels each counting matching d-
+mers, for d = 1, . . . ,20. Using MKL we learned the weighting on the splice site recognition task for
+one million examples as displayed in Figure 5 and discussed in Section 4.1.3. Focusing on a speed
+comparison we now show the obtained training times for the different MKL algorithms applied
+to learning weightings of the WD kernel on the splice site classication task. To do so, several
+MKL-SVMs were trained using precomputed kernel matrices (PreMKL), kernel matrices which
+are computed on the y employing kernel caching (MKL16), MKL using the linadd extension
+(LinMKL1) and linadd with its parallel implementation17 (LinMKL4 and LinMKL8 - on 4 and 8
+CPUs). The results are displayed in Table 4 and in Figure 9. While precomputing kernel matrices
+seems benecial, it cannot be applied to large scale cases (e.g. > 10,000 examples) due to the
+O (KN2) memory constraints of storing the kernel matrices.18 On-the-y-computation of the kernel
+matrices is computationally extremely demanding, but since kernel caching19 is used, it is still
+possible on 50,000 examples in about 57 hours. Note that no WD-kernel specic optimizations are
+involved here, so one expects a similar result for arbitrary kernels.
+
+16. Algorithm 2.
+17. Algorithm 2 with the linadd extensions including parallelization of Algorithm 4.
+18. Using 20 kernels on 10,000 examples requires already 7.5GB, on 30,000 examples 67GB would be required (both
+
+using single precision oats).
+
+19. Each kernel has a cache of 1GB.
+
+1556
+
+LARGE SCALE MKL
+
+N Accuracy auROC auPRC
+3.97
+6.12
+14.66
+24.95
+34.17
+40.35
+47.11
+52.70
+58.62
+62.80
+65.83
+68.76
+70.57
+44.64
+
+75.61
+79.70
+90.38
+92.79
+94.73
+95.48
+96.13
+96.58
+96.93
+97.20
+97.36
+97.52
+97.64
+96.03
+
+500
+1,000
+5,000
+10,000
+30,000
+50,000
+100,000
+200,000
+500,000
+1,000,000
+2,000,000
+5,000,000
+10,000,000
+10,000,000
+
+98.93
+98.93
+98.93
+98.93
+98.93
+98.94
+98.98
+99.05
+99.14
+99.21
+99.26
+99.31
+99.35
+-
+
+Table 2: Comparison of the classication performance of the Weighted Degree kernel based SVM
+classier for different training set sizes. The area under the ROC curve (auROC), the area
+under the Precision Recall Curve (auPRC) as well as the classication accuracy (Accuracy)
+are displayed (in percent). Larger values are better. A optimal classier would achieve
+100% Note that as this is a very unbalanced data set the accuracy and the area under
+the ROC curve are almost meaningless. For comparison, the classication performance
+achieved using a 4th order Markov chain on 10 million examples (order 4 was chosen
+based on model selection, where order 1 to 8 using several pseudo-counts were tried) is
+displayed in the last row (marked ).
+
+The linadd variants outperform the other algorithms by far (speedup factor 53 on 50,000 exam-
+ples) and are still applicable to data sets of size up to one million. Note that without parallelization
+MKL on one million examples would take more than a week, compared with 2.5 (2) days in the
+quad-CPU (eight-CPU) version. The parallel versions outperform the single processor version from
+the start achieving a speedup for 10,000 examples of 2.27 (2.75), quickly reaching a plateau at a
+speedup factor of 2.98 (4.49) at a level of 50,000 examples and approaching a speedup factor of
+3.28 (5.53) on 500,000 examples (efciency: 82% (69%)). Note that the performance gain using 8
+CPUs is relatively small as e.g. solving the QP and constructing the tree is not parallelized.
+
+5. Conclusion
+
+In the rst part of the paper we have proposed a simple, yet efcient algorithm to solve the multiple
+kernel learning problem for a large class of loss functions. The proposed method is able to exploit
+the existing single kernel algorithms, thereby extending their applicability. In experiments we have
+illustrated that MKL for classication and regression can be useful for automatic model selection
+and for obtaining comprehensible information about the learning problem at hand. It would be of
+interest to develop and evaluate MKL algorithms for unsupervised learning such as Kernel PCA
+
+1557
+
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+N
+500
+1,000
+5,000
+10,000
+30,000
+50,000
+100,000
+200,000
+500,000
+1,000,000
+
+112
+
+83
+83
+105
+134
+266
+389
+740
+1,631
+7,757
+26,190
+
+12
+
+4
+7
+15
+32
+128
+258
+696
+1,875
+9,411
+31,145
+
+32
+
+1
+7
+21
+38
+128
+217
+494
+1,361
+6,558
+20,831
+
+Q
+42
+
+22
+11
+33
+54
+127
+242
+585
+1,320
+6,203
+20,136
+
+52
+
+68
+34
+31
+67
+160
+252
+573
+1,417
+6,583
+21,591
+
+72
+
+67
+60
+68
+97
+187
+309
+643
+1,610
+7,883
+24,043
+
+Table 3: Inuence on training time when varying the size of the quadratic program Q in SVMlight,
+when using the linadd formulation of the WD kernel. While training times do not vary
+dramatically one still observes the tendency that with larger sample size a larger Q becomes
+optimal. The Q = 112 column displays the same result as column LinWD1in Table 1.
+
+MKL WD precompute
+MKL WD cache
+MKL WD linadd 1CPU
+MKL WD linadd 4CPU
+MKL WD linadd 8CPU
+
+100000
+
+10000
+
+1000
+
+i
+
+)
+c
+m
+h
+
+t
+i
+r
+a
+g
+o
+l
+(
+
+s
+d
+n
+o
+c
+e
+s
+
+
+n
+
+i
+
+
+e
+m
+
+i
+t
+
+
+i
+
+g
+n
+n
+a
+r
+t
+
+
+i
+
+L
+K
+M
+
+100
+
+10
+
+1000
+
+10000
+
+100000
+
+1000000
+
+Number of training examples (logarithmic)
+
+Figure 9: Comparison of the running time of the different MKL algorithms when used with the
+weighted degree kernel. Note that as this is a log-log plot, small appearing distances are
+large for larger N and that each slope corresponds to a different exponent.
+
+and one-class classication and to try different losses on the kernel weighting b
+(such as L2). In
+the second part we proposed performance enhancements to make large scale MKL practical: the
+SILP wrapper, SILP chunking and (for the special case of kernels that can be written as an inner
+product of sparse feature vectors, e.g., string kernels) the linadd algorithm, which also speeds up
+
+1558
+
+LARGE SCALE MKL
+
+N PreMKL MKL LinMKL1 LinMKL4 LinMKL8
+80
+116
+108
+172
+462
+857
+2,145
+6,540
+33,625
+124,691
+
+11
+139
+223
+474
+1,853
+3,849
+10,745
+34,933
+185,886
+-
+
+22
+64
+393
+1,181
+25,227
+204,492
+-
+-
+-
+-
+
+10
+116
+124
+209
+648
+1292
+3,456
+10,677
+56,614
+214,021
+
+500
+1,000
+5,000
+10,000
+30,000
+50,000
+100,000
+200,000
+500,000
+1,000,000
+
+22
+56
+518
+2,786
+-
+-
+-
+-
+-
+-
+
+Table 4: Speed Comparison when determining the WD kernel weight by multiple kernel learn-
+ing using the chunking algorithm (MKL) and MKL in conjunction with the (parallelized)
+linadd algorithm using 1, 4, and 8 processors (LinMKL1, LinMKL4, LinMKL8). The
+rst column shows the sample size N of the data set used in SVM training while the fol-
+lowing columns display the time (measured in seconds) needed in the training phase.
+
+standalone SVM training. For the standalone SVM using the spectrum kernel we achieved speedups
+of factor 64 (for the weighted degree kernel, about 4). For MKL we gained a speedup of factor 53.
+Finally we proposed a parallel version of the linadd algorithm running on a 8 CPU multiprocessor
+system which lead to additional speedups of factor up to 5.5 for MKL, and 5.4 for vanilla SVM
+training.
+
+Acknowledgments
+
+The authors gratefully acknowledge partial support from the PASCAL Network of Excellence (EU
+#506778), DFG grants JA 379 / 13-2 and MU 987/2-1. We thank Guido Dornhege, Olivier Chapelle,
+Cheng Soon Ong, Joaquin Quioero Candela, Sebastian Mika, Jason Weston, Manfred Warmuth
+and K.-R. Mller for great discussions.
+
+Appendix A. Derivation of the MKL Dual for Generic Loss Functions
+
+We start from the MKL primal problem Equation (9):
+
+min
+
+1
+
+2  K(cid:229)
+
+k=1
+
+kwkk!2
+
++
+
+N(cid:229)
+
+i=1
+
+L( f (xi), yi)
+
+w.r.t.
+
+w = (w1, . . . ,wK)  RD1      RDK
+
+s.t.
+
+f (xi) =
+
+K(cid:229)
+
+hF
+k=1
+
+k(xi),wki + b, i = 1, . . . , N
+
+1559
+
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+Introducing u  R allows us to move (cid:229) K
+equivalent problem
+
+k=1 kwkk into the constraints and leads to the following
+
+min
+
+w.r.t.
+
+N(cid:229)
+
+u2 +
+
+L( f (xi), yi)
+
+1
+2
+u  R, (w1, . . . ,wK)  RD1      RDK
+
+i=1
+
+k(xi),wki + b, i = 1, . . . , N
+
+s.t.
+
+f (xi) =
+
+K(cid:229)
+
+hF
+k=1
+
+K(cid:229)
+
+k=1
+
+kwkk  u
+
+Using tk  R, k = 1, . . . , K, it can be equivalently transformed into
+
+min
+
+w.r.t.
+
+N(cid:229)
+
+u2 +
+
+L( f (xi), yi)
+
+1
+2
+u  R, tk  R,wk  RDk , k = 1, . . . , K
+
+i=1
+
+s.t.
+
+f (xi) =
+
+K(cid:229)
+
+hF
+k=1
+
+k(xi),wki + b, i = 1, . . . , N
+
+kwkk  tk,
+
+K(cid:229)
+
+k=1
+
+tk  u.
+
+Recall that the second-order cone of dimensionality D is dened as
+
+K D = {(x, c)  RD  R, kxk2  c}.
+
+We can thus reformulate the original MKL primal problem (Equation (9)) using the following equiv-
+alent second-order cone program, as the norm constraint on wk is implicitly taken care of:
+
+Conic Primal
+
+min
+
+w.r.t.
+
+N(cid:229)
+
+u2 +
+
+L( f (xi), yi)
+
+1
+2
+u  R, tk  R, (wk,tk)  K Dk, k = 1, . . . , K
+
+i=1
+
+k(xi),wki + b, i = 1, . . . , N
+
+s.t.
+
+f (xi) =
+
+K(cid:229)
+
+hF
+k=1
+
+K(cid:229)
+
+k=1
+
+tk  u
+
+We are now going to derive the conic dual following the recipe of Boyd and Vandenberghe
+(2004) (see p. 266). First we derive the conic Lagrangian and then using the inmum w.r.t. the
+primal variables in order to obtain the conic dual. We therefore introduce Lagrange multipliers
+a  RK, g  R, g  0 and (l k, k)  K 
+D = K D. Then the conic
+
+D living on the self dual cone K 
+
+1560
+
+LARGE SCALE MKL
+
+Lagrangian is given as
+
+L (w, b,t, u,a
+
+,g ,l , ) =
+
+1
+2
+
+N(cid:229)
+
+u2 +
+
+i=1
+
+L( f (xi), yi) 
+
+i f (xi) +
+
+i=1
+
+N(cid:229)
+tk  u! 
+
++
+
+N(cid:229)
+
+i=1
+
+K(cid:229)
+
+i
+
+k=1
+
+(hF
+
+k(xi),wki + b) + g   K(cid:229)
+
+k=1
+
+(hl k,wki + ktk) .
+
+K(cid:229)
+
+k=1
+
+To obtain the dual, the derivatives of the Lagrangian w.r.t. the primal variables, w, b,t, u have to
+vanish which leads to the following constraints
+
+ wk L =
+
+N(cid:229)
+
+i=1
+
+iF
+
+k(xi)  l k  l k =
+
+N(cid:229)
+
+i=1
+
+iF
+
+k(xi)
+
+N(cid:229)
+
+i = 0
+
+N(cid:229)
+
+i=1
+
+i 
+
+ bL =
+tk L = g  k  g = k
+ uL = u  g  g = u
+f (xi)L = L( f (xi), yi)  a
+
+i=1
+
+i  f (xi) = L1(a
+
+i, yi).
+
+In the equation L is the derivative of the loss function w.r.t. f (x) and L1 is the inverse of L (w.r.t.
+f (x)) for which to exist L is required to be strictly convex and differentiable. We now plug in what
+we have obtained above, which makes l k, k and all of the primal variables vanish. Thus the dual
+function is
+
+1
+2
+N(cid:229)
+
+D(a
+
+,g ) = 
+
++
+
+= 
+
+g 2 +
+
+N(cid:229)
+
+L(L1(a
+
+i, yi), yi) 
+
+N(cid:229)
+
+iL1(a
+
+i, yi) +
+
+i=1
+hF
+k=1
+
+K(cid:229)
+
+i
+
+k(xi),wki 
+
+i=1
+ihF
+
+N(cid:229)
+
+K(cid:229)
+
+k=1
+
+i=1
+
+k(xi),wki
+
+L(L1(a
+
+i, yi), yi) 
+
+N(cid:229)
+
+i=1
+
+N(cid:229)
+
+i=1
+
+iL1(a
+
+i, yi).
+
+i=1
+1
+g 2 +
+2
+
+As constraints remain g  0, due to the bias (cid:229) N
+i=1
+
+i = 0 and the second-order cone constraints
+
+This leads to:
+
+ g , k = 1, . . . , K.
+
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)2
+
+N(cid:229)
+
+iF
+
+i=1
+
+kl kk =(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+g 2 +
+
+1
+2
+
+N(cid:229)
+
+i=1
+
+w.r.t.
+
+s.t.
+
+g  R, a  RN
+g  0,
+
+N(cid:229)
+
+i = 0
+
+max
+
+
+
+L(L1(a
+
+i, yi), yi) 
+
+N(cid:229)
+
+i=1
+
+iL1(a
+
+i, yi)
+
+N(cid:229)
+
+iF
+
+i=1
+
+(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+i=1
+
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)2
+
+ g , k = 1, . . . , K
+
+1561
+
+a
+a
+a
+a
+a
+a
+
+
+a
+a
+a
+a
+a
+a
+a
+a
+a
+SONNENBURG, RTSCH, SCHFER AND SCHLKOPF
+
+Squaring the latter constraint, multiplying by 1
+as it is fullled implicitly, we obtain the MKL dual for arbitrary strictly convex loss functions.
+
+g 2 7 g and dropping the g  0 constraint
+
+2 , relabeling 1
+2
+
+Conic Dual
+
+min
+
+g 
+
+N(cid:229)
+
+L(L1(a
+
+i, yi), yi) +
+
+i=1
+
+|
+g  R, a  RN
+N(cid:229)
+
+i = 0
+
+i=1
+
+w.r.t.
+
+s.t.
+
+:=T
+
+{z
+
+N(cid:229)
+
+i=1
+
+iL1(a
+
+i, yi)
+
+}
+
+ g , k = 1, . . . , K.
+
+N(cid:229)
+
+iF
+
+i=1
+
+1
+
+2(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+2
+
+2
+
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+Finally adding the second term in the objective (T ) to the constraint on g and relabeling g +T 7 g
+leads to the reformulated dual Equation (10), the starting point from which one can derive the SILP
+formulation in analogy to the classication case.
+
+Appendix B. Loss Functions
+
+B.1 Quadratic Loss
+For the quadratic loss case L(x, y) = C(x  y)2 we obtain as the derivative L(x, y) = 2C(x  y) =: z
+and L1(z, y) = 1
+
+2C z + y for the inverse of the derivative. Recall the denition of
+
+Sk(a ) = 
+
+N(cid:229)
+
+i=1
+
+L(L1(a
+
+i, yi), yi) +
+
+N(cid:229)
+
+i=1
+
+iL1(a
+
+i, yi) +
+
+iF
+
+N(cid:229)
+
+i=1
+
+i=1
+
+1
+
+N(cid:229)
+
+2(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+2(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+1
+
+2
+
+.
+
+2
+
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+iF
+
+2
+
+2
+
+Plugging in L, L1 leads to
+
+Sk(a ) = 
+
+N(cid:229)
+
+(
+i=1
+
+1
+2C
+
+i + yi  yi)2 +
+
+N(cid:229)
+
+i=1
+
+i(
+
+1
+2C
+
+=
+
+1
+4C
+
+N(cid:229)
+
+i=1
+
+a 2
+i +
+
+N(cid:229)
+
+i=1
+
+iyi +
+
+N(cid:229)
+
+iF
+
+i=1
+
+i + yi) +
+
+.
+
+2
+
+2
+
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+1
+
+2(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+L(x, y) =
+
+yexy
+1 + exy = 
+
+ye(1xy)
+1 + e(1xy)
+
+=: z.
+
+The inverse function for y 6= 0 and y + z 6= 0 is given by
+
+L1(z, y) = 
+
+1
+y
+
+log(cid:18)
+
+z
+
+y + z(cid:19)
+
+1562
+
+B.2 Logistic Loss
+Very similar to the Hinge loss the derivation for the logistic loss L(x, y) = log(1 +exy) will be given
+for completeness.
+
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+LARGE SCALE MKL
+
+and nally we obtain
+
+Sk(a ) =
+
+N(cid:229)
+
+i=1
+
+log(cid:18)1 
+
+i
+
+yi + a
+
+i(cid:19) 
+
+N(cid:229)
+
+i=1
+
+i
+yi
+
+log(cid:18)
+
+i
+
+yi + a
+
+i(cid:19) +
+
+N(cid:229)
+
+iF
+
+i=1
+
+1
+
+2(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+.
+
+2
+
+2
+
+k(xi)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+B.3 Smooth Hinge Loss
+Using the Hinge Loss L(x, y) = C
+derivative
+
+log(1 + es (1xy)) with s > 0, y  R xed, x  R one obtains as
+
+L(x, y) =
+
+s Cyes (1xy)
+s (1 + es (1xy))
+
+= 
+
+Cyes (1xy)
+1 + es (1xy)
+
+=: z.
+
+Note that with y xed, z is bounded: 0  abs(z)  abs(Cy) and sign(y) = sign(z) and therefore
+ z
+
+Cy+z > 0 for Cy + z 6= 0. The inverse function is derived as
+
+z + ze
+(Cy + z)e
+
+s (1xy) = Cye
+s (1xy) = z
+s (1xy) = 
+e
+
+z
+
+s (1xy)
+
+s (1  xy) = log(
+
+Cy + z
+
+z
+
+)
+
+Cy + z
+z
+
+1  xy =
+
+x =
+
+L1(z, y) =
+
+1
+
+1
+y
+1
+y
+
+log(
+
+1
+
+1
+
+(1 
+
+(1 
+
+Cy + z
+
+log(
+
+log(
+
+)
+
+z
+
+Cy + z
+
+z
+
+Cy + z
+
+)), y 6= 0
+
+))
+
+Dene C1 = 1
+
+2 and C2 = (cid:229) N
+i=1
+Using these ingredients it follows for Sk(a )
+
+i=1
+
+2
+
+iF
+
+i
+
+1
+
+yi(cid:16)1  1
+
+2(cid:13)(cid:13)(cid:229) N
+
+N(cid:229)
+
+i=1
+
+k(xi)(cid:13)(cid:13)
+L(cid:18) 1
+yi(cid:18)1 
+log(cid:18)1 + e
+log(cid:18)1 
+
+1
+
+1
+
+i=1
+
+N(cid:229)
+
+N(cid:229)
+
+i=1
+
+1
+
+log(
+
+s (cid:16)1(cid:16) yi
+
+i
+
+Cyi + a
+
+i
+
+log(
+
+i
+
+Cyi + a
+yi(cid:16)1 1
+i(cid:19) +
+
+N(cid:229)
+
+i=1
+
+i
+
+i
+Cyi+a
+
+log(
+
+)(cid:17)
+)(cid:19) , yi(cid:19) +C2 +C1
+)(cid:17)(cid:17)(cid:17)(cid:19) +C2 +C1
+
+i
+Cyi+a
+
+i
+
+i
+
+yi (cid:18)1 
+
+1
+
+log(
+
+i
+
+Cyi + a
+
+)(cid:19) +C1.
+
+i
+
+Sk(a ) = 
+
+= 
+
+= 
+

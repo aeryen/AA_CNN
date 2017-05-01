@@ -1,0 +1,3204 @@
+Abstract
+
+The World Wide Web is a vast source of information accessible to computers, but
+understandable only to humans. The goal of the research described here is to auto-
+matically create a computer understandable knowledge base whose content mirrors
+that of the World Wide Web. Such a knowledge base would enable much more
+e(cid:11)ective retrieval of Web information, and promote new uses of the Web to sup-
+port knowledge-based inference and problem solving. Our approach is to develop a
+trainable information extraction system that takes two inputs. The (cid:12)rst is an ontol-
+ogy that de(cid:12)nes the classes (e.g., company, person, employee, product) and relations
+(e.g., employed by, produced by) of interest when creating the knowledge base. The
+second is a set of training data consisting of labeled regions of hypertext that repre-
+sent instances of these classes and relations. Given these inputs, the system learns
+to extract information from other pages and hyperlinks on the Web. This article
+describes our general approach, several machine learning algorithms for this task,
+and promising initial results with a prototype system that has created a knowledge
+base describing university people, courses, and research projects.
+
+? This research has been supported in part by the DARPA HPKB program under
+research contract F30602-97-1-0215. The views and conclusions contained in this
+document are those of the authors and should not be interpreted as representing
+the o(cid:14)cial policies, either expressed or implied, of DARPA or the U.S. government.
+
+Preprint submitted to Arti(cid:12)cial Intelligence
+
+1 November 1999
+
+1 The Opportunity
+
+The rise of the World Wide Web has made it possible for your workstation to
+retrieve over 350,000,000 Web pages for your personal perusal. The Web has
+already become one of the largest and most diverse sources of information on
+the planet, and many expect it to grow into the worlds primary knowledge
+resource over the next decade.
+
+The research described here is motivated by a simple observation: although
+your workstation can currently retrieve over 350,000,000 Web pages, it cur-
+rently understands none of these Web pages. The goal of our Web!KB re-
+search project is to automatically create a computer-understandable knowl-
+edge base whose content mirrors that of the World Wide Web. Such a \World
+Wide Knowledge Base" would consist of computer understandable assertions
+in symbolic, probabilistic form (e.g., employed by(mark craven, carnegie mellon univ),
+probability=.99). We expect such a world wide knowledge base would have
+many uses. At a minimum, it would allow much more e(cid:11)ective information
+retrieval by supporting queries such as \(cid:12)nd all universities within 20 miles
+of Pittsburgh that o(cid:11)er evening courses on Java programming." Going a step
+further, it would enable new uses of the Web to support knowledge-based infer-
+ence and problem solving. For example, it would provide the knowledge base
+needed by a software travel agent that might handle requests such as \make me
+hotel and ight arrangements for the upcoming ACM conference." Notice that
+information about the ACM conference, nearby hotels, and ights is already
+available in human-readable form, spread across multiple text pages on the
+Web. A knowledge base that makes this information computer-understandable
+would support a variety of intelligent knowledge-based agents.
+
+How might we construct and maintain such a world wide knowledge base? The
+thesis explored in this article is that one can develop such a knowledge base by
+(1) using machine learning to create information extraction methods for each
+of the desired types of knowledge, then (2) applying these learned information
+extraction methods to extract symbolic, probabilistic statements directly from
+Web hypertext. Each assertion in the knowledge base can therefore carry with
+it a justi(cid:12)cation, in terms of the Web sources and information extraction
+method, that provide its evidential support. As the Web evolves over time, the
+knowledge base can be automatically updated to reect its changing content.
+
+This article explores the above thesis by proposing and evaluating several
+learning algorithms relevant to this information extraction task, and by pre-
+senting the prototype Web!KB system which has successfully built a knowl-
+edge base containing several thousand assertions about computer science de-
+partments using these learned information extractors.
+
+Ontology:
+
+entity
+home_page:
+home_page_title:
+
+other
+
+activity
+
+person
+department_of:
+projects_of:
+courses_taught_by:
+name_of:
+
+department
+members_of_department:
+
+research_project
+members_of_project:
+Pls_of:
+
+course
+instructors_of:
+TAs_of:
+
+faculty
+projects_led_by:
+students_of:
+
+staff
+
+student
+advisors_of:
+courses_TAed_by:
+
+KB Instances:
+
+fundamentalsofCS
+
+instructors_of: jim, tom
+home_page:
+
+jim
+courses_taught_by: fundamentalsofCS
+introductiontoAI
+home_page:
+
+Web Pages:
+
+Fundamentals of CS Home Page
+
+Instructors:
+Jim
+Tom
+
+
+Jims Home Page
+
+I teach several courses:
+Fundamentals of CS
+Intro to AI
+
+My research includes
+Intelligent web agents
+
+Human computer interaction
+
+Fig. 1. An overview of the Web!KB system. The top part of the (cid:12)gure shows an
+ontology that de(cid:12)nes the classes and relations of interest. Each partial box repre-
+sents a class, and the arrows indicate specialization relationships. The other de(cid:12)ned
+relations for each class are listed inside of its corresponding box. The bottom part
+shows two Web pages identi(cid:12)ed as training examples of the classes course and fac-
+ulty. Together,these two pages also constitute a training example for the relations
+instructors of and courses taught by. Given the ontology and a set of training data,
+Web!KB learns to interpret additional Web pages and hyperlinks to add new
+instances to the knowledge base, such as those shown in the middle of the (cid:12)gure.
+These instances are represented by dashed partial boxes. The dashed lines show the
+relationships between the instances and their Web sources.
+
+We begin by briey surveying the capabilities of the Web!KB system in the
+next section. The subsequent section considers in detail the representational
+assumptions underlying our approach. The remaining sections present our
+experimental testbed, several learning algorithms and experimental results for
+the various information extraction tasks, related work, and conclusions.
+
+2 Overview of the Web!KB System
+
+The Web!KB system is (cid:12)rst trained to extract information of the desired
+types, and is then allowed to browse new Web sites in order to automatically
+populate a knowledge base with new assertions. When training this system,
+the user must provide two inputs:
+
+(1) A speci(cid:12)cation of the classes and relations of interest. This is the ontology
+that de(cid:12)nes the vocabulary for the target knowledge base. An example
+of such an ontology is provided in the top half of Figure 1. This par-
+ticular ontology de(cid:12)nes a hierarchy of classes including person, student,
+research project, course, etc. It also de(cid:12)nes relations between these classes
+such as advisors of (which relates an instance of a student to the instances
+of faculty who are the advisors of the given student). This ontology, and
+optionally instances of some of the classes and relations, constitutes the
+initial version of the knowledge base.
+
+(2) Training examples that describe instances of the ontology classes and
+relations. For example, the two Web pages shown at the bottom of Figure
+1 represent instances of course and faculty classes. Furthermore, this pair
+of pages represents an instance of the relation courses taught by (i.e., the
+courses taught by jim includes fundamentals-of-CS).
+
+Given such an ontology and a set of training examples, the Web!KB system
+learns general procedures for extracting new instances of these classes and
+relations from the Web. In the current prototype, this is accomplished by
+learning to classify arbitrary Web pages and hyperlink paths according to
+the classes and relations de(cid:12)ned by the ontology. When exploring the Web,
+the Web!KB system starts from a given input URL and explores pages
+using a breadth-(cid:12)rst search to follow links. Each explored page is examined,
+using learned class descriptions, to see if it represents a member of one of
+the ontology classes. If a page is determined to be a class member, an entity
+representing that page is placed into the knowledge base, and the ontology
+relations for that page are instantiated based on learned rules and the local
+structure of the Web around the page. If a page is not a class member, the
+search is truncated, and links from this page are not followed.
+
+In one such crawling experiment the system was given a training set of ap-
+proximately 8,000 Web pages and 1,400 Web-page pairs taken from the com-
+puter science department Web sites at four universities (Cornell, University
+of Texas at Austin, University of Washington, and University of Wisconsin).
+These training examples were hand labeled according to the ontology shown
+in Figure 1. The system was then allowed to explore the Web site of a (cid:12)fth
+computer science department (at Carnegie Mellon University), and to add new
+knowledge base entries based on information extracted from this new Web site.
+
+davidgarlan
+generalizations: faculty
+name: "David Garlan"
+courses_taught_by: cmucs15675architecturesofsoftwaresystems
+projects_of: architecturalmismatch
+cmucscomposablesoftwaresystemshomepage
+ableproject
+department_of: schoolofcomputerscience
+home_page: "http://www.cs.cmu.edu/afs/cs/user/garlan/www/home.html"
+
+ableproject
+generalizations: research_project
+members_of_project: bridgetspitznagel
+davidgarlan
+ralphmelton
+heatherrichter
+home_page: "http://www.cs.cmu.edu/afs/cs/project/able/www/index.html"
+
+Fig. 2. Two of the entities automatically extracted from the CMU computer science
+department Web site after training on four other university computer science sites.
+These entities were added as new instances of faculty and project to the knowledge
+base shown in Figure 1. The identi(cid:12)ers used to reference entities (e.g., david-garlan
+and able-project) are automatically generated from the titles of the pages from which
+the entities are extracted.
+
+research
+
+student
+
+faculty
+
+person
+
+project
+
+course
+
+department Overall
+
+Extracted
+
+Correct
+
+180
+
+130
+
+66
+
+28
+
+246
+
+194
+
+99
+
+72
+
+28
+
+25
+
+1
+
+1
+
+374
+
+256
+
+42%
+
+79%
+
+72%
+
+Accuracy
+Table 1
+Class instance recogni tion accuracy when exploring CMU computer science de-
+partment Web site, after training on computer science departments at four other
+universities.
+
+100%
+
+73%
+
+89%
+
+68%
+
+Two new instances added by the system to its knowledge base, as a result
+of browsing this new university Web site, are shown in Figure 2. The top
+instance describes a new faculty added to the knowledge base, as a result
+of examining a Web page that the system classi(cid:12)ed into this category. As a
+result, the system created the new faculty instance in the knowledge base,
+and extracted several relations involving this instance. For example, it de-
+termined (correctly) the name of this faculty member, a course taught by
+the faculty member, and three instances of the projects of relation for this
+faculty member: architectural-mismatch, cmu-cs-composable-software-systems-
+home-page, and able-project. These three projects are themselves instances of
+the research project class, extracted from other Web pages. The description
+of one of these, the able-project, is shown at the bottom of the (cid:12)gure. The
+identi(cid:12)ers used to reference these instances are automatically generated from
+the titles of the pages from which the instances are extracted.
+
+How accurate is the system in extracting such information? In this experiment,
+the system visited 2722 Web pages at the new Carnegie Mellon site, and as
+
+instructors of members of project
+
+department of Overall
+
+Extracted
+
+Correct
+
+Accuracy
+
+23
+
+18
+
+78%
+
+125
+
+92
+
+74%
+
+213
+
+181
+
+85%
+
+361
+
+291
+
+81%
+
+Table 2
+Relation instance recognition accuracy when exploring CMU computer science de-
+partment Web site, after training on computer science departments at four other
+universities.
+a result added 374 new class instances to its knowledge base. The fraction
+of correctly extracted instances is summarized in Table 1. For example, this
+table indicates that the system created 28 new knowledge base instances of the
+class course. Of these 28 new instances, 25 in fact represented courses and the
+other 3 did not. Its accuracy 1 in extracting relation instances is summarized
+in a similar fashion in Table 2. Note that since we dont have a labelling for
+all the pages and relations at Carnegie Mellon, we have no way of calculating
+coverage results for these tasks.
+
+Figure 3 shows the information displayed by the system as it browses. Note
+this display shows the Web page that is currently being visited (top right), and
+the information extracted by the system from this Web page (middle left). The
+interface also contains a control panel that allows the user to interact with the
+system (top left), and to browse the growing knowledge base (bottom right).
+
+3 Problem Formulation
+
+As summarized in the previous section, the Web!KB system provides exper-
+imental support for our thesis that a system can be trained to automatically
+populate a knowledge base by browsing Web hypertext. Later sections describe
+in detail the learning algorithms used by this Web!KB system. In this sec-
+tion, we consider the precise problem formulation and the representational
+assumptions that underlie our current approach.
+
+To summarize, we are interested in the following general problem:
+
+Given:
+(cid:1) a knowledge base consisting of an ontology de(cid:12)ning the classes (e.g., per-
+son) and relations (e.g., instructor of) of interest, and optionally, instances
+
+1 Throughout the article, when we refer to accuracy on a per-class basis, it is
+equivalent to the precision measure commonly used in the information-retrieval
+community. Similarly, when we refer to coverage on a per-class basis, it is equivalent
+to the recall measure.
+
+Fig. 3. The Web interface to the Web!KB system. The upper left pane serves as a
+control panel. The middle left pane describes the current activity of the Web!KB
+system, and the lower left pane summarizes the session. The upper right pane shows
+the page currently being processed, and the lower right pane provides a mechanism
+for browsing the extracted knowledge base.
+
+of some of these classes and relations,
+(cid:1) training examples from the Web that describe instances of these classes
+and relations.
+Determine:
+(cid:1) general procedures capable of extracting additional instances of these
+classes and relations by browsing the rest of the Web.
+
+Note that we do not necessarily extract new instances for all of the classes and
+
+relations in the ontology. For example, our ontology may have a class country
+and the initial knowledge base may include instances for all of the countries
+in the world. In this case, since we already know all instances, we do not need
+to learn procedures to recognize new ones.
+
+To pursue the problem of learning to extract instances from the Web, we must
+make some assumptions about the types of knowledge to be extracted from
+the Web, and the way in which this knowledge is represented in hypertext on
+the Web. These assumption are:
+(cid:15) Assumptions about how class instances are described on the Web. We as-
+sume that each instance of an ontology class is represented by one or more
+segments of hypertext on the Web. By segment of hypertext, we mean either
+a single Web page, or a contiguous string of text within a Web page, or a
+rooted graph of several Web pages linked by the directed edges of hyper-
+links. For example, an instance of a person might be described by a single
+page (the persons home page), or by a reference to the person in a string
+of text within an arbitrary Web page, or by a collection of interconnected
+Web pages that jointly describe the person.
+(cid:15) Assumptions about how relation instances are described on the Web. Con-
+sider an arbitrary instance R(A,B) of a relation R. We assume that each in-
+stance of a relation is represented on the Web in one of three ways. First, the
+instance R(A,B) may be represented by an undirected path of hyperlinks and
+pages that connects the segment representing A to the segment representing
+B. For example, the bottom of Figure 1 shows two hyperlinks that connect
+the segment representing jim to the segment representing fundamentals-of-
+CS. These hyperlinks represent the relation instructor of(fundamentals-of-CS,
+jim). Second, the instance R(A,B) may alternatively be represented by a seg-
+ment of text representing A that contains the segment that represents B.
+For example, the relation instance courses taught by(jim, introduction-to-AI)
+is represented in Figure 1 by the fact that Jims home page contains the
+phrase \Intro to AI" in a particular context. Finally, the instance R(A,B)
+may be represented by the fact that the hypertext segment for A satis(cid:12)es
+some learned model for relatedness to B. For example, we might extract the
+instance research area of(jim, arti(cid:12)cial-intelligence) by classifying Jims page
+using a statistical model of the words typically found in pages describing
+AI research.
+
+Appendix A provides a more formal presentation of these assumptions. In
+addition to these assumptions about the mapping between Web hypertext and
+the ontology, we make several simplifying assumptions in our initial research
+reported in this article. We plan to relax the following assumptions in the
+future as our research progresses.
+(cid:15) We assume in this article that each class instance is represented by a single
+
+Web page (e.g., a person is represented by their home page). If an instance
+happens to be described by multiple pages (e.g., if a person is described
+by their home page plus a collection of neighboring pages describing their
+publications, hobbies, etc.), our current system is trained to classify only
+the primary home page as the description of the person, and to ignore
+the neighboring a(cid:14)liated pages. Alternatively, if an instance happens to
+be described by a text fragment, our system does not currently create a
+knowledge base instance for this. It does, however, extract certain relation
+values from such text fragments (e.g., the name of the person, as illustrated
+in Figure 1).
+(cid:15) We assume that each class instance is represented by a single segment of
+hypertext. In other words, if the system encounters two unlinked Web pages
+that represent instances of the same class, it creates two distinct instances of
+this class in its knowledge base. While this assumption will often be satis(cid:12)ed
+(e.g., two distinct personal home pages typically represent two distinct peo-
+ple), there are clearly exceptions (e.g., there are many di(cid:11)erent Web pages
+describing Elvis). Overcoming this \multiple Elvis problem" will require
+methods that hypothesize equivalences between independently discovered
+instances.
+(cid:15) We assume that all relations are two-place relations; that is, each relation
+has only two arguments. We believe that it will be fairly easy to relax this
+assumption.
+
+Given this problem de(cid:12)nition and our current set of assumptions, we view the
+following as the three primary learning tasks that are involved in extracting
+knowledge-base instances from the Web:
+
+(1) Recognizing class instances by classifying bodies of hypertext. Section 5
+looks at this problem, using both statistical and relational learning tech-
+niques. It also examines how to relax our assumption about class instances
+being represented by single Web pages.
+
+(2) Recognizing relation instances by classifying chains of hyperlinks. Sec-
+
+tion 6 investigates a relational learning solution to this problem.
+
+(3) Recognizing class and relation instances by extracting small (cid:12)elds of text
+from Web pages. Section 7 looks at this task and also uses a relational
+learning approach.
+
+4 Experimental Testbed
+
+All experiments reported in this article are based on the ontology for computer
+science departments shown in Figure 1. This ontology includes the classes de-
+partment, faculty, sta(cid:11), student, research project, and course. Our Web page
+classi(cid:12)cation experiments also use the class other as the label for Web pages
+
+that fall into none of these ontology classes. Each ontology class has an asso-
+ciated set of slots, or relations, that exist among instances of this class and
+other class instances in the ontology. For example, the course class has a slot
+called instructors of that relates courses to people.
+
+We assembled two data sets 2 for the experiments reported here. The (cid:12)rst is
+a set of pages and hyperlinks drawn from four CS departments: University of
+Texas at Austin, Cornell University, University of Washington, and University
+of Wisconsin. The second is a set of pages from numerous other computer
+science departments. The four-department set includes 4,127 pages and 10,945
+hyperlinks interconnecting them. The second set includes 4,120 additional
+pages. The pages for most of the classes in our data set were collected using
+\index" pages for our classes of interest (e.g., a page that has hyperlinks to all
+of the students in a department), so labeling this data was straightforward.
+After gathering this initial set of pages, we then collected every page that was
+both (i) pointed to by a hyperlink in the initial set, and (ii) from the same
+university as the page pointing to it. Most of the pages gathered in the second
+step were labeled as other.
+
+In addition to labeling pages, we also labeled relation instances. Each of
+these relation instances consists of a pair of pages corresponding to the class
+instances involved in the relation. For example, an instance of the instruc-
+tors of relation consists of a course home page and a person home page. Our
+data set of relation instances comprises 251 instructors of instances, 392 mem-
+bers of project instances, and 748 members of department instances. These in-
+stances are all from the four-department set.
+
+Finally, we also labeled the name of the owner of pages in the person class.
+This was done automatically by tagging any text fragment in the persons
+home page that matched the name as it appeared in the hyperlink pointing
+to the page from the index page. The matching heuristics were conservative,
+favoring precision over recall. Consequently, we believe that, although some
+name occurrences were missed, there were no false positives. From 174 person
+pages, this procedure yielded 525 distinct name occurrences. These instances
+are all from the four-department set as well.
+
+For all of the subsequent experiments in this article, we use a four-fold cross-
+validation methodology to evaluate our algorithms. We conduct four runs in
+which we train classi(cid:12)ers using data from three of the universities in our data
+set (plus the second set of pages where applicable), and test the classi(cid:12)ers
+using data from the remaining university. On each iteration we hold out a
+di(cid:11)erent university for the test set.
+
+2 These data sets are publicly available at http://www.cs.cmu.edu/~webkb/.
+
+5 Learning to Recognize Class Instances
+
+The (cid:12)rst task for our system is to identify new instances of ontology classes
+from the text sources on the Web. In this section we address the case in which
+class instances are represented by Web pages; for example, a given instance of
+the student class is represented by the students home page.
+
+In the (cid:12)rst part of this section we discuss a statistical bag{of{words approach
+to classifying Web pages. We use this method along with three di(cid:11)erent repre-
+sentations of pages. In the second part of this section we discuss learning (cid:12)rst-
+order rules to classify Web pages. An appealing aspect of the second approach
+is that (cid:12)rst-order rules can describe page classes using a rich description of the
+local graph structure around the page. Finally, we evaluate the e(cid:11)ectiveness
+of combining the predictions made by all four of these classi(cid:12)ers.
+
+5.1 Statistical Text Classi(cid:12)cation
+
+In this section we consider classifying Web pages using statistical methods.
+Our approach is similar to a growing body of work in text classi(cid:12)cation that
+involves using a so-called bag of words or unigram representation. However, we
+apply our method in novel ways that take advantage of the redundancy of hy-
+pertext. Speci(cid:12)cally, we train three independent classi(cid:12)ers which use di(cid:11)erent
+representations for page classi(cid:12)cation:
+(cid:15) Full-Text: the words that occur anywhere in the page,
+(cid:15) Title/Heading: the words that occur in the title and HTML headings of the
+(cid:15) Hyperlink: the words that occur in hyperlinks (i.e., the words in the anchor
+
+page,
+
+text) that point to the page.
+
+5.1.1 Approach
+
+Our approach involves building a probabilistic model of each class using la-
+beled training data, and then classifying newly seen pages by selecting the
+class that is most probable given the evidence of words describing the new
+page.
+
+The method that we use for classifying Web pages is naive Bayes, with minor
+modi(cid:12)cations based on Kullback-Leibler Divergence. Given a document d to
+
+classify, we calculate a score for each class c as follows:
+
+Scorec(d) =
+
+log Pr(c)
+
+n
+
+Pr(wijd) log
+
+TX
+
++
+
+i=1
+
+
+
+!
+
+Pr(wijc)
+Pr(wijd)
+
+(1)
+
+that a randomly drawn word from a randomly drawn document in class c will
+
+where n is the number of words in d, T is the size of the vocabulary, and wi
+is the ith word in the vocabulary. P r(wijc) thus represents the probability
+be the word wi. P r(wijd) represents the proportion of words in document d
+that are word wi. The class predicted by the method for a given document
+is simply the class with the greatest score. This method makes exactly the
+same classi(cid:12)cations as naive Bayes, but produces classi(cid:12)cation scores that are
+less extreme. Below we explain naive Bayes; in Appendix B we detail our
+modi(cid:12)cations to it.
+
+Naive Bayes
+
+The probabilistic models we use ignore the sequence in which the words occur.
+Such models are often called unigram or bag-of-words models because they are
+based on statistics about single words in isolation.
+
+Since the unigram model naively assumes that the presence of each word in
+a document is conditionally independent of all other words in the the docu-
+ment given its class, this approach, when used with Bayes Rule is often called
+naive Bayes. The conditional independence assumption is clearly violated in
+real-world data, however, despite these violations, empirically the naive Bayes
+classi(cid:12)er does a good job of classifying text documents [37,67,27,42]. This ob-
+servation is in part explained by the fact that classi(cid:12)cation estimation is only
+a function of the sign (in binary cases) of the function estimation [17,24]. The
+word independence assumption causes naive Bayes to give extreme (almost 0
+or 1) class probability estimates. However, these estimates can still be poor
+while classi(cid:12)cation accuracy remains high.
+
+There are two common approaches to naive Bayes text classi(cid:12)cation. One, the
+multi-variate Bernoulli model, is a Bayesian Network with no dependencies
+between words and binary word counts; the document is considered to be
+the \event" and each feature is a Boolean variable indicating the presence
+or absence of a particular word in that document. The other approach, the
+multinomial model, is a unigram language model with integer word counts; the
+words are considered to \events" and the document is comprised of a collection
+of these events. We use the second approach, since it has been found to out-
+perform the (cid:12)rst on several data sets [43].
+
+We formulate naive Bayes for text classi(cid:12)cation as follows. Given a set of
+
+classes C = fc1; :::cNg and a document consisting of n words, (w1; w2; :::wn),
+
+we classify the document as a member of the class, c?, that is most probable,
+given the words in the document:
+
+c? = argmaxc Pr(cjw1; :::; wn):
+
+(2)
+
+We transform Pr(cjw1; :::; wn) into a computable expression by applying Bayes
+
+Rule (Eq. 3); rewriting the expression using the product rule and dropping
+the denominator, since this term is a constant across all classes, (Eq. 4); and
+assuming that words are independent of each other (Eq. 5).
+
+Pr(cjw1; :::; wn) =
+
+Pr(c) Pr(w1; :::; wnjc)
+
+Pr(w1; :::; wn)
+
+nY
+nY
+
+i=1
+
+/ Pr(c)
+ Pr(c)
+
+Pr(wijc; w1; :::; wi1)
+Pr(wijc)
+
+(3)
+
+(4)
+
+(5)
+
+i=1
+
+The modi(cid:12)cations that transform this traditional formulation of naive Bayes
+into the form we use (shown in Equation 1) are described in Appendix B.
+
+Estimating Word Probabilities
+
+A key step in implementing naive Bayes is estimating the word probabili-
+
+ties, Pr(wijc). To make our probability estimates more robust with respect
+
+to infrequently encountered words, we use a smoothing method to modify the
+probabilities that would have been obtained by simple event counting. One
+important e(cid:11)ect of smoothing is that it avoids assigning probability values
+of zero to words that do not occur in the training data for a particular class.
+Since naive Bayes involves taking a product of word probabilities, a single zero
+for a class would prevent that class from being the maximum even if there are
+many other words that strongly indicate that class. Rather than smoothing
+with the common Laplace Estimates (i.e., adding one to all the word counts
+for a class), we use Witten-Bell smoothing [66], which we have found to per-
+form better in some cases, particularly when the amount of training data in
+each class di(cid:11)ers dramatically. Witten-Bell di(cid:11)ers from Laplace smoothing in
+that it strength of the prior depends on the relationship between the number
+of unique words and the total number of word occurrences in the training
+data for the class; if most of the word occurences are unique words, the prior
+is stronger, if words are often repeated, the prior is weaker. More precisely
+
+Witten-Bell sets Pr(wijC) as follows:
+P
+P
+
+Pr(wijc) =
+
+8>><>>:
+
+Tc+
+
+N (wi;c)
+
+j N (wj;c)
+T
+N (wj;c)
+
+j
+
+Tc+
+
+if N(wi; c) 6= 0
+if N(wi; c) = 0
+
+1
+
+TTc
+
+(6)
+
+where N(wi; c) is the count of the number of times word wi occurs in the
+training data for class c, Tc is the total number of unique words in class c,
+and T is the total number of unique words across all classes. Note that if we
+set T and Tc to zero, (and de(cid:12)ne 0=0 = 0), we obtain the standard maximum
+likelihood estimates for Pr(wijc).
+
+Feature Selection
+
+Another important implementation issue is deciding upon the vocabulary size
+to be used for the problem domain. We have found empirically that we get
+slightly more accurate classi(cid:12)cations when using a restricted vocabulary size.
+Thus we limit our vocabulary to 2000 words in all of our experiments. The
+vocabulary is selected by ranking words according to their average mutual
+information with respect to the class labels [14]. We write Wi for a random
+variable indicating whether word wi is present or absent in a document, and
+write vi 2 fwi;:wig for the values it takes on. We write C for a random
+variable taking values of all the class labels, c 2 C. Then, average mutual
+information is
+
+I(C; Wi) = H(C)  H(CjWi)
+
+=X
+  X
+X
+X
+
+c2C
+
+vi2fwi;:wig
+
+=
+
+vi2fwi;:wig
+
+c2C
+
+Pr(c; vi) log
+
+Pr(c; vi)
+
+Pr(c) Pr(vi)
+
+Pr(c) log(Pr(c))
+
+X
+
+Pr(vi)
+
+c2C
+
+Pr(cjvi) log(Pr(cjvi))
+
+
+!
+
+(7)
+
+(8)
+
+This feature selection method has been found to perform best among sev-
+eral alternatives [67], and has been used in many text classi(cid:12)cation studies
+[27,31,32,48,42].
+
+5.1.2 Experimental Evaluation
+
+We evaluate our method using the data sets and cross-validation methodology
+described in Section 4. On each iteration of the cross-validation run, we train
+a classi(cid:12)er for each of the page representations described at the beginning of
+
+Actual
+
+e
+s
+r
+u
+o
+c
+
+t
+n
+e
+d
+u
+t
+s
+
+y
+t
+l
+u
+c
+a
+f
+
+202
+
+17
+
+0
+
+5
+
+0
+
+8
+
+10
+
+19
+
+421
+
+56
+
+15
+
+9
+
+8
+
+32
+
+0
+
+14
+
+118
+
+1
+
+10
+
+3
+
+7
+
+(cid:11)
+a
+t
+s
+
+0
+
+17
+
+16
+
+4
+
+5
+
+1
+
+3
+
+Predicted
+
+course
+
+student
+
+faculty
+
+sta(cid:11)
+
+research project
+
+department
+
+other
+
+t
+c
+e
+j
+o
+r
+p
+
+h
+c
+r
+a
+e
+s
+e
+r
+
+1
+
+2
+
+3
+
+0
+
+62
+
+5
+
+12
+
+t
+n
+e
+m
+
+t
+r
+a
+p
+e
+d
+
+0
+
+0
+
+0
+
+0
+
+0
+
+4
+
+0
+
+r
+e
+h
+t
+o
+
+552
+
+519
+
+264
+
+45
+
+384
+
+209
+
+1064
+
+Accuracy
+
+26.2
+
+43.3
+
+17.9
+
+6.2
+
+13.0
+
+1.7
+
+93.6
+
+Coverage
+
+82.8
+
+75.4
+
+77.1
+
+8.7
+
+72.9
+
+100.0
+
+35.0
+
+Table 3
+A confusion matrix showing the results of classifying Web pages using the full-text
+classi(cid:12)er. Results are combined across all of the four-university test runs. The overall
+coverage and accuracy are also shown.
+
+this section: full-text, title/heading, and hyperlink. Table 3 shows the resulting
+confusion matrix (summed over the four test sets) for the full-text classi(cid:12)ers.
+Each column of the matrix represents one class and shows how the instances
+of this class are classi(cid:12)ed. Each row represents the instances that are predicted
+to belong to a given class, and shows the true classes of these instances. This
+table illustrates several interesting results. First, note that for most classes,
+coverage is quite high. For example, 83% of the course and 77% of the faculty
+instances are correctly classi(cid:12)ed. The notable exception to this trend is the
+other class; only 35% of the instances belonging to this class are correctly
+classi(cid:12)ed. We discuss this result in more detail below. A second interesting
+result is that many of the remaining mistakes made by the classi(cid:12)ers involve
+confusing di(cid:11)erent subclasses of person. For example, although only 9% of
+the sta(cid:11) instances are correctly assigned to the sta(cid:11) category, 80% of them are
+correct at the superclass level of person. As this result suggests, not all mistakes
+are equally harmful; even when we fail to correctly classify an instance into one
+of the leaf classes in our ontology, we can still make many correct inferences
+about the instance if we correctly assign it to a more general class.
+
+The low level of classi(cid:12)cation accuracy for the other class is largely explained
+by the nature of this class. Recall from Section 4 that the instances of this
+
+class were collected by gathering pages that were one hyperlink away from the
+instances in the other six classes. For this reason, many of the instances of the
+other class have content, and hence word statistics, very similar to instances
+in one of the \core" classes. For example, whereas the home page for a course
+will belong to the course class, \secondary" pages for the course, such as a
+page describing reading assignments, will belong to the other class. Although
+the content of many of the pages in the other class might suggest that they
+properly belong in one of the core classes, our motivation for not including
+them in these classes is the following. When our system is browsing the Web
+and adding new instances to the knowledge base, we want to ensure that we
+do not add multiple instances that correspond to the same real-world object.
+For example, we should not add two new instances to the knowledge base
+when we encounter a course home page and its secondary page listing the
+reading assignments. Because of this requirement, we have framed our page
+classi(cid:12)cation task as one of correctly recognizing the \primary" pages for the
+classes of interest. As Table 3 indicates, this is a very di(cid:14)cult task, but as we
+will show shortly, by combining several sources of evidence for each page, it is
+one we can perform with high accuracy.
+
+One way to obtain insight into the learned classi(cid:12)ers is to ask which words
+contribute most highly to the quantity Scorec(d) for each class. To measure
+this, we used one of our training sets (consisting of data from three of the four
+universities) to calculate
+
+
+
+!
+
+Pr(wijc) log
+
+Pr(wijc)
+Pr(wij:c)
+
+(9)
+
+for each word wi and class c. Figure 4 shows the ten words for each class that
+have the greatest value of this weighted log-odds ratio. For space reasons, we
+do not show the words for the sta(cid:11) class. As the table illustrates, most of the
+highly weighted words are intuitively prototypical for their class. The excep-
+tions to this generalization are mostly from the other class which represents
+an extremely diverse set of pages.
+
+Another interesting result illustrated by this table is that many words which
+are conventionally included in stop lists 3 are highly weighted by our models.
+For example, the words my, me, and am are typical stop-list words but they
+are among the top ten words for the student class. Although these are common
+words, they are clearly predictive of the student class since (cid:12)rst-person pro-
+nouns and verb conjugations do not appear frequently on pages in the other
+
+3 A stop list is a set of words that are commonly removed from documents before
+they are processed by an information-retrieval or text-classi(cid:12)cation system. There
+are standard stop lists which include words generally thought to convey little infor-
+mation about the document topic.
+
+student
+
+faculty
+
+course
+
+my
+
+page
+
+home
+
+am
+
+0.0247
+
+0.0109
+
+0.0104
+
+0.0085
+
+DDDD
+
+of
+
+and
+
+0.0138
+
+0.0113
+
+0.0109
+
+professor
+
+0.0088
+
+university 0.0061
+
+computer
+
+0.0073
+
+computer
+
+0.0060
+
+science
+
+me
+
+at
+
+here
+
+0.0059
+
+0.0058
+
+0.0049
+
+0.0046
+
+research
+
+science
+
+0.0060
+
+0.0057
+
+university 0.0049
+
+DDD
+
+systems
+
+0.0042
+
+0.0042
+
+research project
+
+department
+
+group
+
+project
+
+research
+
+of
+
+0.0060
+
+0.0049
+
+0.0049
+
+0.0030
+
+department
+
+science
+
+computer
+
+faculty
+
+laboratory 0.0029
+
+information
+
+0.0179
+
+0.0153
+
+0.0111
+
+0.0070
+
+0.0069
+
+course
+
+DD:DD
+
+homework
+
+will
+
+D
+
+0.0151
+
+0.0130
+
+0.0106
+
+0.0088
+
+0.0080
+
+assignments
+
+0.0079
+
+class
+
+hours
+
+0.0073
+
+0.0059
+
+assignment
+
+0.0058
+
+due
+
+D
+
+DD
+
+the
+
+eros
+
+0.0058
+
+other
+
+0.0374
+
+0.0246
+
+0.0153
+
+0.0010
+
+hplayD 0.0097
+
+systems
+
+and
+
+our
+
+system
+
+projects
+
+0.0028
+
+0.0027
+
+0.0026
+
+0.0024
+
+0.0020
+
+undergraduate
+
+0.0058
+
+uDDb
+
+graduate
+
+sta(cid:11)
+
+server
+
+courses
+
+0.0047
+
+0.0045
+
+0.0042
+
+0.0042
+
+to
+
+bluto
+
+gt
+
+that
+
+0.0067
+
+0.0064
+
+0.0052
+
+0.0050
+
+0.0043
+
+Table 4
+The top ten most highly weighted words. For each class, the table shows the ten
+words that are most highly weighted by one of our learned full-text models. The
+weights shown represent the weighted log-odds ratio of the words given the class.
+The symbol D is used to represent an arbitrary digit. For example, the top word
+shown for the faculty class, DDDD, represents any four-digit token (such as that
+occurring in a phone number).
+
+classes. This result suggests that it is advantageous to select a vocabulary in
+a domain speci(cid:12)c way (as we did using mutual information), instead of using
+a general purpose stop list.
+
+Table 3 shows the results when we assign each page to the class with the high-
+est score. One approach to improving classi(cid:12)cation accuracy is to limit the
+
+course
+student
+faculty
+research_project
+department
+staff
+
+100%
+
+80%
+
+60%
+
+40%
+
+20%
+
+y
+c
+a
+r
+u
+c
+c
+A
+
+0%
+
+20%
+
+40%
+
+Coverage
+
+60%
+
+80%
+
+100%
+
+Fig. 4. Accuracy/coverage tradeo(cid:11) for full-text classi(cid:12)ers. Predictions within each
+class are ordered according to their con(cid:12)dence. Each curve shows the behavior of
+the classi(cid:12)er as a threshold on this con(cid:12)dence is varied. The x-axis represents the
+percentage of pages of a given class that are correctly classi(cid:12)ed as belonging to the
+class. The y-axis represents the percentage of pages assigned to a given class that
+are actually members of that class.
+
+predictions made by the classi(cid:12)ers to just those predictions in which they are
+most con(cid:12)dent. This is easily achieved with our method because the quantity
+Scorec(d) calculated when classifying a page can be taken as a measure of
+the con(cid:12)dence in the classi(cid:12)cation. By setting a minimum threshold on this
+con(cid:12)dence, we can select a point that sacri(cid:12)ces some coverage in order to ob-
+tain increased accuracy. Given our goal of automatically extracting knowledge
+base information from the Web, it is desirable to begin with a high-accuracy
+classi(cid:12)er, even if we need to limit coverage to only, say, 10% of the 350,000,000
+pages available on the Web.
+
+The e(cid:11)ect of trading o(cid:11) coverage for accuracy using our full-text classi(cid:12)ers is
+shown in Figure 4. The horizontal axis on this plot represents coverage: the
+percentage of pages of a given class that are correctly classi(cid:12)ed as belonging to
+the class. The vertical axis represents accuracy: the percentage of pages classi-
+(cid:12)ed into a given class that are actually members of that class. To understand
+these results, consider, for example, the class student. As the results in Table 3
+show, when the classi(cid:12)ers predict that a page belongs to the student class they
+are correct 43% of the time. The rightmost point on the student curve in the
+Table 4 corresponds to this point. As we raise the con(cid:12)dence threshold for
+this class, however, the accuracy of our predictions rises. For example, at a
+
+100%
+
+80%
+
+60%
+
+40%
+
+20%
+
+course
+student
+faculty
+research_project
+department
+staff
+
+0%
+
+20%
+
+40%
+
+Coverage
+
+60%
+
+80%
+
+100%
+
+Fig. 5. Accuracy/coverage tradeo(cid:11) for hyperlink classi(cid:12)ers.
+
+course
+student
+faculty
+research_project
+department
+staff
+
+100%
+
+80%
+
+60%
+
+40%
+
+20%
+
+y
+c
+a
+r
+u
+c
+c
+A
+
+y
+c
+a
+r
+u
+c
+c
+A
+
+0%
+
+20%
+
+40%
+
+Coverage
+
+60%
+
+80%
+
+100%
+
+Fig. 6. Accuracy/coverage tradeo(cid:11) for title/heading classi(cid:12)ers.
+
+coverage of 20%, accuracy reaches a level of 67%.
+
+So far, we have discussed the results only for the full-text classi(cid:12)ers. Figures 5
+and 6 show the accuracy/coverage curves for the hyperlink and title/heading
+classi(cid:12)ers, respectively. As before, these curves show the aggregate results for
+
+all four test sets in our cross-validation run.
+
+As we discussed earlier, one of the aspects that distinguishes learning in hy-
+pertext from learning in at-text domains is that hypertext provides multiple,
+somewhat independent sources of evidence for the meaning of a given piece of
+text. As we hypothesized, the results in Figures 5 and 6 indicate that these
+multiple sources of evidence can be potentially combined to make better pre-
+dictions.
+
+Consider, for example, the accuracy of the department predictions made by
+the hyperlink classi(cid:12)ers. Whereas the full-text classi(cid:12)ers are only 9% accu-
+rate at full coverage, the hyperlink classi(cid:12)ers are 57% accurate. Moreover, the
+department accuracy/coverage curve for the hyperlink classi(cid:12)ers is uniformly
+superior to the curve for the full-text classi(cid:12)ers. The reason for this di(cid:11)er-
+ence in accuracy is that although our data set includes few department pages
+from which to generalize, it includes many hyperlinks that point to department
+pages. Thus the hyperlink classi(cid:12)ers have relatively large samples of data from
+which to learn the word statistics of hyperlinks that point to department pages,
+and similarly they have a fairly large number of hyperlinks on which to base
+their prediction when classifying a page after training.
+
+The title/heading classi(cid:12)ers also illustrate cases in which using a hypertext-
+based representation for page classi(cid:12)cation can result in better predictive accu-
+racy than simply using a at-text representation. The title/heading classi(cid:12)ers
+curve for both the faculty and research project classes, for example, are better
+than the corresponding curves for the full-text classi(cid:12)ers at coverage levels of
+40% and less. One explanation for this result is that titles and headings pro-
+vide something of a summary of a given page and thus tend to contain words
+that are highly predictive of the pages class.
+
+5.2 First-Order Text Classi(cid:12)cation
+
+As noted previously, the hypertext structure of the Web can be thought of as
+a graph in which Web pages are the nodes of the graph and hyperlinks are
+the edges. The methods for classifying Web pages that we discussed in the
+previous sections consider the words in either a single node of the graph or in
+a set of edges impinging on the same node. However, these methods do not
+allow us to learn models that take into account such features as the pattern
+of connectivity around a given page, or the words occurring in neighboring
+pages. It might be pro(cid:12)table to learn, for example, a rule of the form \A page
+is a course home page if it contains the words textbook and TA and is linked to
+a page that contains the word assignment." Rules of this type, that are able to
+represent general characteristics of a graph, can be concisely represented using
+
+a (cid:12)rst-order representation. In this section, we consider the task of learning
+to classify pages using a learner that is able to induce (cid:12)rst-order rules.
+
+5.2.1 Approach
+
+The learning algorithm that we use in this section is Quinlans Foil algorithm
+[52,53]. Foil is a greedy covering algorithm for learning function-free Horn
+clauses 4 . Foil induces each Horn clause by beginning with an empty tail
+and using a hill-climbing search to add literals to the tail until the clause
+covers only (mostly) positive instances. The evaluation function used for the
+hill-climbing search is an information-theoretic measure.
+
+The representation we provide to the learning algorithm consists of the fol-
+lowing background relations:
+(cid:15) has word(Page): This set of relations indicate which words occur in which
+pages. Each boolean relation indicates the pages in which the word word
+occurs. A distinct relation is used for each allowed word (e.g. has apple,
+has study, etc.). The vocabulary for this set includes stemmed 5 words that
+have at least 200 occurrences but that do not occur in more than 30% of the
+training-set pages. These two constraints were selected with the intention
+of assembling a vocabulary of reasonable size that would likely include the
+words with the most discrimination power. We had between 592 and 729 of
+these predicates in each of the cross-validation runs. Since we do not know
+a priori which subsets of pages it will pro(cid:12)table to describe in learned rules,
+we do not select the vocabulary using mutual information, as we did with
+our statistical text classi(cid:12)ers.
+(cid:15) link to(Page, Page): This relation represents the hyperlinks that interconnect
+
+the pages in the data set.
+
+We apply Foil to learn a separate set of clauses for six of the seven classes
+considered in the previous section 6 . We do not learn a description of the other
+class, but instead treat it as a default class.
+
+When classifying test instances, we calculate an associated measure of con-
+(cid:12)dence along with each prediction. We calculate these con(cid:12)dence values for
+two reasons. First, we use them to resolve conicting predictions from our six
+
+4 We use the terms clause and rule interchangeably
+5 Stemming refers to the process of heuristically reducing words to their root form.
+For example the words compute, computers and computing would be stemmed to
+the root comput.
+6 There is a version of Foil speci(cid:12)cally designed for multi-class problems such as
+ours. We found, however, that the inductive bias of this version is not well suited
+to our particular task.
+
+independently learned rule sets. Second, we are interested in measuring how
+the accuracy of our learned rule sets varies as we adjust their coverage.
+
+We use the following procedure to calculate the con(cid:12)dence of each of our
+predictions. First, we estimate the accuray of each of our learned clauses by
+calculating an m-estimate [12] of the rules accuracy over the training exam-
+ples. The m-estimate of a rules accuracy is de(cid:12)ned as follows:
+
+mestimate accuracy =
+
+nc + mp
+n + m
+
+where nc is the number of instances correctly classi(cid:12)ed by the rule, n is the
+total number of instances classi(cid:12)ed by the rule, p is a prior estimate of the
+rules accuracy, and m is a constant called the equivalent sample size which
+determines how heavily p is weighted relative to the observed data. In our
+experiments, we set m = 2 and we set p to the proportion of instances in the
+training set that belong to the target class. We then use these scores to sort
+the clauses in order of descending accuracy. 7 To integrate the predictions of
+our six independently learned classi(cid:12)ers, we use the following procedure:
+(cid:15) If no classi(cid:12)er had a rule that matched the given page, then we predict other
+(cid:15) If only one classi(cid:12)er had a matching rule, then we predict the associated
+class with con(cid:12)dence corresponding to the rules score. The other class is
+predicted with con(cid:12)dence of one minus this score.
+(cid:15) If more than one classi(cid:12)er has a matching rule for the given example, then
+we predict each class with con(cid:12)dence equal to the score of its best matching
+rule divided by the total number of classi(cid:12)ers that had matching rules. The
+other class is predicted with a con(cid:12)dence value that would make the total
+con(cid:12)dence sum to one.
+
+with con(cid:12)dence 1.0.
+
+5.2.2 Experimental Evaluation
+
+For the experiments reported here, we used release 6.4 of Foil with the default
+settings. As with the experiments in Section 5.1, we use a four-fold cross-
+validation methodology. The resulting accuracy/coverage plot for each class is
+shown in Figure 7. Comparing these results to those in Figure 4, one can see
+that although the (cid:12)rst-order rules generally provide lower coverage than the
+statistical classi(cid:12)ers, they provide superior accuracy for several classes.
+
+Figure 8 shows three of the rules 8 learned by Foil in its various cross-
+
+7 This change does not a(cid:11)ect the classi(cid:12)cations made by a learned set of clauses.
+It a(cid:11)ects only our con(cid:12)dence associated with each prediction.
+8 Throughout the article, we use a Prolog-like syntax for learned rules. The symbol
+
+100%
+
+80%
+
+60%
+
+40%
+
+20%
+
+y
+c
+a
+r
+u
+c
+c
+A
+
+course
+student
+faculty
+research_project
+department
+staff
+
+0%
+
+20%
+
+40%
+
+Coverage
+
+60%
+
+80%
+
+100%
+
+Fig. 7. Accuracy/coverage tradeo(cid:11) for Foil page classi(cid:12)ers.
+
+validation runs. The learned rule for course shown here illustrates the power
+of a (cid:12)rst-order representation. This rule classi(cid:12)es a page as the home page for
+a course if it passes three groups of tests:
+
+(1) The page has the word instructor, but doesnt have the word good.
+(2) The page contains a hyperlink to a page which does not contain any
+
+hyperlinks to other pages.
+
+(3) This linked page contains the word assign.
+
+The sample rule learned for the student class comes from the cross-validation
+run leaving pages from the University of Washington out of the training set.
+Notice that this rule refers to a page (bound to the variable B) that has two
+common (cid:12)rst names on it (paul and jame, the stemmed version of james). This
+rule (and similar rules learned with the other three training sets) illustrates
+that Foil has learned to exploit \student directory" pages in order to identify
+student home pages. For example, when Washington is the test set, all of the
+correct applications of the rule bind B to a page entitled \Graduate Students
+at UW CS&E". Similarly, the faculty rule will not classify a page as faculty
+unless there is a page containing the stemmed variant of faculty that points
+into the given page.
+
+:- represents the implication operator, with the head of the rule on the left side
+of the operator and the body on the right side. Constants, such as the names of
+our ontology classes and relations, start with lowercase letters. Variables start with
+uppercase letters.
+
+student(A) :- not(has data(A)), not(has comment(A)), link to(B,A), has jame(B),
+
+has paul(B), not(has mail(B)).
+
+Training Set: 147 Pos, 0 Neg; Test Set: 126 Pos, 5 Neg
+
+faculty(A) :- has professor(A), has ph(A), link to(B,A), has faculti(B).
+Training Set: 47 Pos, 0 Neg; Test Set: 18 Pos, 3 Neg
+
+course(A) :- has instructor(A), not(has good(A)), link to(A,B), not(link to(B, 1)),
+
+has assign(B).
+
+Training Set: 31 Pos, 0 Neg; Test Set: 31 Pos, 3 Neg
+
+Fig. 8. A few of the rules learned by Foil for classifying pages.
+
+All three of these rules show how Web-page classi(cid:12)cation is di(cid:11)erent from
+ordinary text classi(cid:12)cation in that neighboring pages may provide strong ev-
+idence about the class of a given page. Learning methods which can use this
+information e(cid:11)ectively should perform better than standard techniques in this
+domain.
+
+5.3 Combining Learners
+
+The previous experiments show that the best representation for page clas-
+si(cid:12)cation depends on the class. This observation suggests that it might be
+pro(cid:12)table to combine the predictions made by our four classi(cid:12)ers. In this sec-
+tion, we describe and evaluate a simple approach to this task.
+
+5.3.1 Approach
+
+The method that we employ for combining the predictions of our classi(cid:12)ers
+takes advantage of the fact that each classi(cid:12)er produces a measure of con-
+(cid:12)dence along with each prediction. The method we use is a simple voting
+scheme that uses con(cid:12)dence values as tie-breakers. That is, given the predic-
+tions made by our four classi(cid:12)ers for a given Web page, we predict the class
+that has a plurality of the votes made by the individual classi(cid:12)ers, if there is
+one. If no class has a plurality, then we select the class associated with the
+highest con(cid:12)dence prediction.
+
+In order to ensure that the con(cid:12)dence measures output by our di(cid:11)erent classi-
+(cid:12)ers are comparable, we calibrate each classi(cid:12)er by inducing a mapping from
+its output scores to the probability of a prediction being correct. We do this
+by partitioning the scores produced by each classi(cid:12)er into bins and then mea-
+suring the training-set accuracy of the scores that fall into each bin.
+
+course
+student
+faculty
+research_project
+department
+staff
+
+100%
+
+80%
+
+60%
+
+40%
+
+20%
+
+y
+c
+a
+r
+u
+c
+c
+A
+
+0%
+
+20%
+
+40%
+
+Coverage
+
+60%
+
+80%
+
+100%
+
+Fig. 9. Accuracy/coverage tradeo(cid:11) for combined classi(cid:12)ers with vocabulary size of
+2000 words.
+
+5.3.2 Experimental Evaluation
+
+Figure 9 shows the accuracy/coverage curves for the voting predictors. By com-
+paring this (cid:12)gure to the accuracy/coverage curves for the full-text classi(cid:12)ers
+shown in Figure 4 one can see that, in general, more accurate predictions are
+achieved by considering evidence other than full-text when classifying pages.
+At high levels of coverage, the voting classi(cid:12)ers are more accurate than the
+full-text classi(cid:12)ers for the course and department classes. Additionally, the re-
+search project predictions made by the voting classi(cid:12)er are signi(cid:12)cantly more
+accurate than the full-text predictions, although the coverage attained by the
+voting classi(cid:12)er is not as good.
+
+Although Figure 9 indicates that predictive accuracy is helped in some cases
+by combining multiple classi(cid:12)ers, the results of this experiment are somewhat
+disappointing. The accuracy/coverage curves for the voting classi(cid:12)ers are not
+uniformly better than the corresponding curves of the constituent classi(cid:12)ers.
+Ideally, we would like the accuracy/coverage curve for each class to be as good
+or better than the best counterpart curve among the constituent classi(cid:12)ers.
+
+We believe that the results shown in Figure 9 are disappointing because our
+method for combining the predictions of multiple classi(cid:12)ers is overly simple.
+Speci(cid:12)cally, we believe that the method fails to accurately map classi(cid:12)cation
+scores to estimated accuracies. Interestingly, we have observed that the voting
+method performs much better when our statistical classi(cid:12)ers are limited to
+very small vocabularies. Figure 10 shows the accuracy/coverage curves for
+
+course
+student
+faculty
+research_project
+department
+staff
+
+100%
+
+80%
+
+60%
+
+40%
+
+20%
+
+y
+c
+a
+r
+u
+c
+c
+A
+
+0%
+
+20%
+
+40%
+
+Coverage
+
+60%
+
+80%
+
+100%
+
+Fig. 10. Accuracy/coverage tradeo(cid:11) for combined classi(cid:12)ers with vocabulary size of
+200 words.
+
+voting when we use statistical classi(cid:12)ers trained with a vocabulary size of 200
+words. In comparing this (cid:12)gure to our baseline full-text classi(cid:12)er (Figure 4),
+one can see that the curves produced by the small-vocabulary voting method
+are generally superior to the full-text classi(cid:12)er curves. Moreover, the small-
+vocabulary voting classi(cid:12)ers achieved this result using constituent classi(cid:12)ers
+that were not as accurate as their 2000-word vocabulary counterparts.
+
+In future work, we plan to consider alternative combining functions that might
+be better able to exploit the specialized areas of expertise exhibited by our
+individual classi(cid:12)ers.
+
+5.4 Identifying Multi-Page Segments
+
+As discussed in Section 3, our representational assumption is that each class
+instance in the knowledge base corresponds to some contiguous segment of
+hypertext on the Web. This allows, for example, that a particular student
+might be represented on the Web by a single Web page, or by a cluster of
+interlinked Web pages centered around their home page.
+
+In the experiments reported thus far, we have e(cid:11)ectively made a simpler as-
+sumption: that each instance is represented by a single Web page. In fact, in
+labeling our training data, we encountered a variety of students (and instances
+of other ontology classes) that were described by several interlinked Web pages
+
+rather than a single page. In these cases we hand labeled the primary home
+page as student, and labeled any interlinked pages associated with the same
+student as other.
+
+To remove this simplifying assumption we must develop methods for identify-
+ing sets of interlinked pages that represent a single knowledge base instance.
+In this section we present a set of hand-written heuristics that identify groups
+of related pages and also identify the \primary" home page in the group. We
+show here that classi(cid:12)cation accuracy in the previous sections is signi(cid:12)cantly
+improved when these heuristics are used to group pages and to automatically
+assign the label other to non-primary pages, to (cid:12)t the assumption we made
+while hand labeling the data.
+
+5.4.1 Approach
+
+Consider the Web pages of a prototypical faculty member. She might have a
+main page (http://www.my.edu/user/jdoe/index.html), a page listing her
+publications (http://www.my.edu/user/jdoe/pubs.html), and a page de-
+scribing her research interests ( http://www.my.edu/user/jdoe/work/research.
+html). Our working assumption about entity-Web relationships indicates that
+we should recognize that these pages correspond to a single entity, identify
+the best representative page for that entity, classify that page as a faculty, and
+classify the rest of the pages as other. We accomplish this by solving two sub-
+tasks: grouping related pages together, and identifying the most representative
+page of a group.
+
+Spertus [64] identi(cid:12)es regularities in URL structure and naming, and presents
+several heuristics for discovering page groupings and identifying representa-
+tive home page. We use a similar, slightly expanded, approach. Although one
+could imagine trying to learn these heuristics from examples, in the following
+experiment we have instead provided these rules by hand.
+
+The most obvious groupings that can be extracted from a URL are based on di-
+rectory structure pre(cid:12)xes. Key directory components of a URL indicate a log-
+ical grouping of Web pages into an entity. For example, given the URL http:
+//www.my.edu/user/jdoe/research.html, we can deduce the existence of
+an entity corresponding to the URL pre(cid:12)x http://www.my.edu/user/jdoe/,
+because the keyword /user/ in the penultimate directory position typically in-
+dicates the presence of a person entity in the directory space denoted by jdoe.
+Other typical penultimate pre(cid:12)x markers are /faculty/, /people/, /home/,
+and /projects/. Three ultimate pre(cid:12)x markers (in UNIX-style globbing pat-
+tern) are /cs???/, /www/ and /(cid:24)*/, the (cid:12)rst being a typical indicator of a
+course, and the last being a typical indicator of the username of a person or or-
+ganization. Our algorithm groups URLs by their longest directory pre(cid:12)x that
+
+matches one of these given patterns. In the event that no pattern matches, the
+entire directory pre(cid:12)x is used for the grouping. In our example above, the three
+URLs would each have the entity pre(cid:12)x as http://www.my.edu/user/jdoe/,
+and thus would be grouped together.
+
+Applying these grouping heuristics results in sets of Web pages that are con-
+jectured to represent a single ontology entity. From these sets, we identify the
+single primary page that is most representative of that entity. Usually this
+corresponds to the \home page" of the entity. Thus, we take any page that
+has the (cid:12)lename pattern \index.html", \home.html", \homepage.html", or
+\cs???.html" and label it the primary page. Additionally, any page in which
+the complete URL is the directory pre(cid:12)x, (for example, the URL http://
+www.my.edu/user/jdoe/) or one in which the (cid:12)lename matches the directory
+above it (as in http://www.my.edu/user/jdoe/jdoe.html) is also identi-
+(cid:12)ed as a primary page. All pages that do not match any of these patterns
+in a group, are classi(cid:12)ed automatically as other. In the event that no page
+in a group matches any of these heuristics, the page with the highest (non-
+other) classi(cid:12)cation con(cid:12)dence is labeled the primary page. In our example,
+http://www.my.edu/user/jdoe/index.html would be classi(cid:12)ed as faculty
+(assuming our classi(cid:12)er was correct), and the other pages would be classi-
+(cid:12)ed as other regardless of the classi(cid:12)er prediction. A precise de(cid:12)nition of the
+algorithm used is given in Appendix C.
+
+5.4.2 Experimental Evaluation
+
+The impact of using the URL heuristics with the original full-text page clas-
+si(cid:12)er is summarized in Figure 11. Comparing these curves to Figure 4 one
+can see the striking increase in accuracy for any given level of coverage across
+all classes. Also note some degradation in total coverage. This occurs because
+some pages that were previously correctly classi(cid:12)ed have been misidenti(cid:12)ed
+as being \secondary" pages.
+
+5.5 Section Summary
+
+This section focused on the task of recognizing class instances by Web page
+classi(cid:12)cation. We showed that, because hypertext provides much redundant
+information, Web pages can be classi(cid:12)ed using several sources of information:
+the full text of pages, the text in titles and headings, the text associated with
+hyperlinks, text in neighboring pages, and the (cid:12)le organization represented
+in URLs. Our experiments suggest that none of these approaches alone is
+su(cid:14)cient for recognizing instances of ontology classes with high accuracy. In
+the experiments described in Section 2, we used both full-text classi(cid:12)ers and
+
+100%
+
+80%
+
+60%
+
+40%
+
+20%
+
+y
+c
+a
+r
+u
+c
+c
+A
+
+course
+student
+faculty
+research_project
+department
+staff
+
+0%
+
+20%
+
+40%
+
+Coverage
+
+60%
+
+80%
+
+100%
+
+Fig. 11. Accuracy/coverage tradeo(cid:11) for the full-text classi(cid:12)er after the application
+of URL heuristics.
+URL heuristics. We also showed in this section that one promising line of
+research is to combine the predictions of multiple classi(cid:12)ers that use di(cid:11)erent
+sources of evidence.
+
+6 Learning to Recognize Relation Instances
+
+In the previous section we discussed the task of learning to extract instances
+of ontology classes from the Web. Our approach to this task assumed that the
+class instances of interest are represented by whole Web pages or by clusters
+of Web pages. In this section, we discuss the task of learning to recognize
+relations of interest that exist among extracted class instances. The hypothe-
+sis underlying our approach is that relations among class instances are often
+represented by hyperlink paths in the Web. Thus, the task of learning to rec-
+ognize instances of such relations involves inducing rules that characterize the
+prototypical paths of the relation.
+
+For example, an instance of the instructors of relation might be represented by
+a hyperlink directly from the home page of a course to the home page of the
+instructor, as described by the following rule:
+
+instructors of(A, B) :- course(A), person(B), link to(A, B).
+
+Here, the variables A and B represent Web pages, the literals course(B) and
+
+person(A) represent the predicted classi(cid:12)cations of the pages, and the literal
+link to(A, B) tests for the existence of a hyperlink from page A to page B.
+
+6.1 Problem Representation
+
+Because this task involves discovering hyperlink paths of unknown and variable
+size, we employ a learning method that uses a (cid:12)rst-order representation for
+its learned rules. Speci(cid:12)cally, the algorithm we have developed for this task is
+based on the Foil algorithm [52,53] which we used for page classi(cid:12)cation in
+Section 5.2. We discuss our algorithm in more detail below.
+
+The problem representation we use for this relation learning tasks consists of
+the following background relations:
+(cid:15) class(Page) : For each class in the set of page classes considered in Section 5,
+the class relation lists the pages that represent instances of class. For pages
+in the training set, the instances of these relations are determined using the
+actual classes of the pages. For pages in the test set, however, we use the
+predicted page classes given by the classi(cid:12)ers discussed in Section 5. Since
+the Web!KB system has access only to predicted page classes, our test
+set conditions are representative of those the system faces.
+(cid:15) link to(Hyperlink, Page, Page) : This relation represents Web hyperlinks. For
+a given hyperlink, the (cid:12)rst argument of the relation speci(cid:12)es an identi(cid:12)er for
+the hyperlink, the second argument speci(cid:12)es the page in which the hyperlink
+is located, and the third argument indicates the page to which the hyperlink
+points.
+(cid:15) has word(Hyperlink) : This set of relations indicates the words that are found
+in the anchor (i.e., underlined) text of each hyperlink. The vocabulary for
+this set of relations includes words that occur at least n times (we set n = 3
+in our experiments) in the hyperlinks of the training set. Note that whereas
+the has word relations used in Section 5.2 describes Web pages, the set used
+here characterizes hyperlinks.
+(cid:15) all words capitalized(Hyperlink) : The instances of this relation are those hy-
+perlinks in which all of the words in the anchor text start with a capital
+letter.
+(cid:15) has alphanumeric word(Hyperlink) : The instances of this relation are those
+hyperlinks which contain a word with both alphabetic and numeric charac-
+ters (e.g., I teach CS760).
+(cid:15) has neighborhood word(Hyperlink) : This set of relations indicates the words
+that are found in the \neighborhood" of each hyperlink. The neighborhood
+of a hyperlink includes words in a single paragraph, list item, table entry,
+title or heading in which the hyperlink is contained. The vocabulary for
+this set of relations includes the 200 most frequently occurring words in
+
+each training set, except for words on a stoplist.
+
+We learn de(cid:12)nitions for the following target relations from the data set de-
+scribed in Section 4: members of project(Page, Page), instructors of course(Page,
+Page), and department of person(Page, Page). In addition to the positive in-
+stances for these relations, our training sets include approximately 300,000
+negative examples. We form the set of negative training instances for each
+target relation by enumerating each pair of non-other pages from the same
+university that is not a positive instance of the target relation. This selection
+criterion results in a sample of negative instances that is biased toward con-
+nected pairs of pages and is small enough to allow reasonable learning times.
+For the department of person relation, we augment the negative instances with
+each person{department pair which is not a positive instance. These additional
+negative instances preclude the learner from learning the trivial (and wrong)
+rule that every person is a member of every department.
+
+6.2 Learning Methods
+
+As stated above, the algorithm we use for learning relation rules is similar to
+Foil in that it uses a greedy covering approach to learn a set of Horn clauses.
+The primary di(cid:11)erences between our method and Foil are twofold. First,
+unlike Foil our method does not simply use hill-climbing when searching for
+the next clause to add to a concept de(cid:12)nition. Second, our method uses a
+di(cid:11)erent evaluation function for this search process. We discuss each of these
+di(cid:11)erences in turn.
+
+As described in Section 5.2, Foil constructs clauses using a hill-climbing
+search through a space of candidate literals. We have found that, for our
+relation-learning tasks, such a hill-climbing strategy is unable to learn rules
+for paths consisting of more than one hyperlink. The search process that our
+method employs instead consists of two phases. In the (cid:12)rst phase, the \path"
+part of the clause is learned, and in the second phase, additional literals are
+added to the clause using a hill-climbing search.
+
+Our algorithm for constructing the path part of a clause is a variant of Richards
+and Mooneys relational path(cid:12)nding method [55]. This method is designed to
+alleviate the basic weakness of hill-climbing search, namely that to learn good
+de(cid:12)nitions it is often necessary to take a step in the search space which does not
+exhibit any immediate gain. The basic idea underlying relational path(cid:12)nding
+is that a relational problem domain can be thought of as a directed graph in
+which the nodes are the domains constants and the edges correspond to rela-
+tions which hold among constants. The relational-path(cid:12)nding algorithm tries
+to (cid:12)nd a small number of prototypical paths in this graph that characterize
+
+Input: training set of negative and uncovered positive instances
+
+1.
+2.
+3.
+
+4.
+5.
+6.
+
+for each uncovered positive instance
+
+(cid:12)nd a path (up to bounded length) using the background relations
+select the most common path prototype for which clause search hasnt
+yet failed
+generalize the path into an initial clause
+do hill-climbing to re(cid:12)ne the clause
+if hill-climbing fails to (cid:12)nd an acceptable clause, backtrack to step 3.
+
+Return: learned clause
+
+Fig. 12. The procedure for learning a clause in our deterministic variant of relational
+path(cid:12)nding.
+
+expand subgraphs
+
+return path
+
+p1
+
+p4
+
+p7
+
+p2
+
+p5
+
+p8
+
+p3
+
+p6
+
+p9
+
+p2
+
+p5
+
+p5
+
+p6
+
+p9
+
+p2
+
+p5
+
+p9
+
+Fig. 13. Finding a path in the background relations. On the left is shown a graph
+of constants linked by a single binary relation. This graph can be thought of as
+representing Web pages connected by hyperlinks. Suppose the pair hp2, p9i is an un-
+covered positive instance. Path(cid:12)nding proceeds by expanding the subgraphs around
+the two constants until an intersection is detected, and then returning the path that
+links the two constants.
+
+the instances of the target relation.
+
+Figure 12 provides an overview of our path(cid:12)nding procedure for learning a
+single clause. This procedure is iterated until a complete de(cid:12)nition has been
+learned. The (cid:12)rst step in the method is to (cid:12)nd the shortest path of a bounded
+length (when one exists) for each positive instance (of the target relation) that
+has not been covered by a previously learned clause. This process, illustrated
+in Figure 13 involves expanding a subgraph around each of the constants in
+the instance. Each subgraph is expanded by (cid:12)nding all constants which can
+be reached using an instance of one of the background relations to connect to
+a constant at the frontier of the subgraph.
+
+After (cid:12)nding such a path for each uncovered positive instance, the most com-
+
+find path for each positive instance
+
+return most common path
+
+p1
+
+p4
+
+p2
+
+p2
+
+p5
+
+p5
+
+p3
+
+p6
+
+p7
+
+p7
+
+p9
+
+p9
+
+A
+
+B
+
+C
+
+Fig. 14. Finding the most common path for a set of positive instances. Given the
+graph shown in Figure 13, suppose that the positive instances are hp1, p7i, hp2,
+p7i, hp2, p9i, and hp3, p9i. Our algorithm (cid:12)nds the shortest path for each instance
+and then returns the most common path prototype. In this example the (cid:12)rst three
+instances have the same path prototype, whereas the instance hp3, p9i has di(cid:11)erent
+one (notice the direction of the hyperlinks). This path prototype is converted into
+an initial clause.
+mon path prototype is used for the initial clause. 9 A path prototype speci(cid:12)es
+the number of hyperlinks in the path and their directions, but it does not
+reference the particular pages and hyperlinks in any particular instance. The
+notion of the most common path prototype is illustrated in Figure 14. The
+initial clause is formed by replacing each constant in the path with a unique
+variable. This clause is then further re(cid:12)ned by a simple hill-climbing search,
+such as that used in Foil. If the hill-climbing search fails to (cid:12)nd an accept-
+able clause, then the procedure backtracks by removing the last selected path
+prototype from the list of candidates and then trying the next most common
+prototype.
+
+We further bias the search for clauses by initializing each one with the classes
+of the pair of pages in the relation. For example, when learning clauses for the
+target relation members of project(A, B), we initialize the tail of each clause
+with the literal research project(A) and person(B). This bias takes advantage
+of domain knowledge which is present in the ontology given to the Web!KB
+system.
+
+The second di(cid:11)erence between our relation-learning algorithm and Foil is that
+whereas Foil uses an information-theoretic measure to guide its hill-climbing
+search, our method, like D(cid:20)zeroski and Bratkos m-Foil [19], uses m-estimates
+of a clauses error to guide its construction. We have found that using this
+evaluation function causes the algorithm to learn fewer, more general clauses
+
+9 If the method is constrained from learning recursive de(cid:12)nitions, the path for each
+positive instance needs to be found only once since it will not change as clauses
+are added for the target relation. In this case, before learning each new clause the
+algorithm needs only to update counts indicating the number of instances covered
+by each path prototype.
+
+than when Foils information gain measure is used.
+
+6.3 Experimental Evaluation
+
+We evaluate our approach to learning relation rules using the data and four-
+fold cross-validation methodology described in Section 4. On each iteration,
+we learn the target relations using training instances from three of the univer-
+sities in our data set, and test learned clauses using instances from the fourth
+university.
+
+Figure 15 shows a learned clause for each of the instructors of, department of,
+and members of project relations. On average, there were 7.3, 3.8, and 6.5
+clauses learned for these target concepts respectively. Along with each rule,
+we show how well the rule classi(cid:12)ed test-set instances. Each of these rules was
+learned on more than one of the training sets, therefore the test-set statistics
+represent aggregates over the four test sets.
+
+The rules learned for the instructors of relation are the simplest among the
+three target relations. The learned rule shown for this relation, for example,
+matches cases in which a course page has a hyperlink pointing to a person
+page. The rule shown for the members of project relation is more interesting.
+It describes members of project instances in which the projects home page
+points to an intermediate page which points to personal home pages. The
+hyperlink from the project page to the intermediate page must have the word
+\people" near it. This rule covers cases in which the members of a research
+project are listed on a subsidiary \members" page instead of on the home page
+of the project. The rule shown for the department of relation involves a three-
+hyperlink path that links a department home page to a personal home page.
+The rule requires that the word \graduate" occur near the second hyperlink
+in the path. In this case, the algorithm has learned to exploit the fact that
+departments often have a page that serves as a graduate student directory,
+and that any student whose home page is pointed to by this directory is a
+member of the department.
+
+Along with each of our predicted relation instances, we calculate an associated
+con(cid:12)dence in the prediction. We can then vary the coverage of our learned
+rule sets by varying a threshold on these con(cid:12)dence values. We calculate the
+con(cid:12)dence of each prediction by considering where most of the uncertainty in
+the prediction lies: in the page classi(cid:12)cations that are tested by each learned
+clause. The con(cid:12)dence measure for a predicted relation instance is simply the
+product of the con(cid:12)dence measures for the page classi(cid:12)cations that factor into
+the relation prediction.
+
+Using these con(cid:12)dence measures, Figure 16 shows the test-set accuracy/coverage
+
+instructors of(A,B) :- course(A), person(B), link to(C,B,A).
+
+Test Set: 133 Pos, 5 Neg
+
+department of(A,B) :- person(A), department(B), link to(C,D,A), link to(E,F,D),
+
+link to(G,B,F), has neighborhood word graduate(E).
+
+Test Set: 371 Pos, 4 Neg
+
+members of project(A,B) :- research project(A), person(B), link to(C,A,D),
+
+link to(E,D,B), has neighborhood word people(C).
+
+Test Set: 18 Pos, 0 Neg
+
+Fig. 15. A few of the rules learned for recognizing relation instances.
+
+100%
+
+80%
+
+60%
+
+40%
+
+20%
+
+y
+c
+a
+r
+u
+c
+c
+A
+
+department_of_person
+instructors_of_course
+members_of_project
+
+0%
+
+20%
+
+40%
+
+Coverage
+
+60%
+
+80%
+
+100%
+
+Fig. 16. Accuracy/coverage tradeo(cid:11) for learned relation rules.
+
+curves for the three target relations. The accuracy levels of all three rule sets
+are fairly high. The members of project rules are better than 70% accurate
+at coverage levels of up to about 46%. The instructors of rules are over 80%
+accurate at coverage levels of 66% and above. The department of rules are at
+least 97% accurate at coverage levels of up to 84%. The limited coverage levels
+of the learned rules is due primarily to the limited coverage of our page clas-
+si(cid:12)ers. Note that all of the learned rules include literals which test predicted
+page classi(cid:12)cations. As Figure 11 shows, the coverage exhibited by our page
+classi(cid:12)ers is below 80% for most classes.
+
+7 Learning to Extract Text Fields
+
+In some cases, the information we want to extract will not be represented by
+Web pages or relations among pages, but by small fragments of text embedded
+in pages. For example, given a personal home page, we might be interested in
+extracting the persons name. This type of task is commonly called informa-
+tion extraction. This section discusses our approach to learning rules for such
+information extraction tasks.
+
+7.1 Approach
+
+We have developed an information extraction learning algorithm called Srv
+for \Sequence Rules with Validation." Srv is a (cid:12)rst-order learner in the spirit
+of Foil. It shares Foils top-down approach and gain metric, but is designed
+with the information extraction problem in mind. Consequently, it is limited
+to a few pre-de(cid:12)ned predicates, and it encompasses search heuristics speci(cid:12)c to
+the information extraction problem. Input to Srv is a set of pages, labeled to
+identify instances of the (cid:12)eld we want to extract, and a set of features de(cid:12)ned
+over tokens. Output is a set of information extraction rules. The extraction
+process involves examining every possible text fragment of appropriate size to
+see whether it matches any of the rules.
+
+As in Foil, \growing" a rule in Srv means hill-climbing through a space of
+possible literals, at each step adding a literal that matches as many positive
+examples as possible while excluding a large number of previously covered
+negative examples. When a rule is deemed good enough (either it covers only
+positive examples, or further specialization is judged to be unproductive), all
+positive examples matching it are removed from the training set, and the
+process is repeated. In our particular domain, a positive example is a labeled
+text fragment|a sequence of tokens|in one of our training documents; a
+negative example is any unlabeled token sequence having the same size as
+some positive example. During training we assess the goodness of a literal
+using all such negative examples.
+
+The representation used by our rule learner attempts to express the salient
+characteristics of positive examples mainly in terms of the individual tokens
+contained within them and surrounding them. Srv is given as input a set of
+features de(cid:12)ned over individual tokens. These features come in two varieties:
+simple features map tokens to arbitrary discrete (but typically Boolean) values;
+relational features map tokens to other tokens in the same document. An ex-
+ample simple feature is capitalized. An example relational feature is next token
+which, given a token, returns the token immediately following it.
+
+Let F = wi;(cid:1)(cid:1)(cid:1) ; wj be a fragment of text, an unbroken sequence of tokens (wi)
+
+from some document. At each step in rule growth, a literal is generated from
+one of four templates:
+(cid:15) length(Relop, N): Constrains the length of F . Relop is one of f<; >; =g and
+N is an integer. For example, the literal length(<, 3) means jFj < 3, where
+jFj is the number of tokens in F . 10
+(cid:15) some(Var, Path, Feat, Value): Posits a feature-value test for some token in
+the sequence. Var is a variable, Path is a list of relational features, Feat is
+a simple feature and Value is a legal value of Feat. For example, the literal
+some(B, [ ], capitalized, true) asserts that F contains a capitalized token and
+binds this token to the variable B. Each distinct variable in a rule must bind
+to a distinct token in a matching fragment. In logical terms, if in some other
+literal in the current rule Srv has introduced the variable A and now makes
+the above assertion, there is an implicit assertion of inequality between A
+and B:
+
+9A; B 2 F:A 6= B ^ capitalized(B) = true
+
+The Path argument, which is empty in the above example, is used to exploit
+relational structure in the domain (see below).
+(cid:15) position(Var, From, Relop, N): Constrains the position of a token bound by
+a some-literal in the current rule. From is either start or end, Relop is one of
+f<; >; =g, and N is an integer. For example, the literal position(A, start, <, 2)
+asserts that the token bound to A is either the (cid:12)rst or second in F . In logic,
+we might write this 9A 2 F:index(A)  index(start(F )) < 2 ^ (cid:1)(cid:1)(cid:1), where the
+ellipsis ((cid:1)(cid:1)(cid:1)) stands for whatever other assertions are made about A in the
+same rule.
+(cid:15) relpos(Var1, Var2, Relop, N): Constrains the relative position an ordering of
+two tokens bound by di(cid:11)erent variables in the same rule. Relop is one of
+f<; >; =g, and N is an integer. For example, the literal relpos(A, B, =, 1)
+means token B immediately follows token A. In logic:
+9A; B 2 F:index(B)  index(A) = 1 ^ (cid:1)(cid:1)(cid:1).
+
+Like Foil, Srv can exploit relational structure in the domain. For Srv, the
+only possible form of relational structure is that relating tokens to each other.
+The most obvious example is the successor relation, which connects adjacent
+tokens, but more interesting kinds of structure can be exploited, such as syn-
+tactic structure. The Path argument to the some-predicate takes a list of rela-
+tional features which posits a relationship between the token bound to the vari-
+able (which is in F ) and the token reached by composing the relational features
+(which need not be in F ). The feature-value test is applied to the \indirect"
+token. For example, the literal some(A, [next token next token], numeric, true)
+might be rendered in logic as 9A 2 F:numeric(next token(next token(A))) = true.
+
+10 Note that all literals added to a rule implicitly refer to some fragment F , so we
+omit the fragment variable from Srv literals for the sake of conciseness.
+
+ownername(Fragment) :- some(B, [ ], in title, true),
+
+length(<, 3),
+some(B, [prev token], word, \gmt"),
+some(A, [ ], longp, true),
+some(B, [ ], word, unknown),
+some(B, [ ], quadrupletonp, false)
+
+Fig. 17. An extraction rule for name of home page owner. The English rendering of
+this rule is, \a sequence of two tokens, one of which (A) is in a HTML title (cid:12)eld and
+longer than four characters, the other of which (B) is preceded by the token gmt, is
+unknown from training, and is not a four-character token." This is a high-accuracy
+rule, achieving 10 correct out of 12 matched on a validation set.
+
+Initially, the learner may only use paths of length zero or one; whenever a
+non-empty path is used in a some predicate, the system makes longer paths
+available. In this way, the computational expense that this facility entails is
+kept under control.
+
+7.2 Experimental Evaluation
+
+As in the previous experiments, we followed the leave-one-university-out method-
+ology, repeatedly holding the pages belonging to one of the four universities
+out for testing and training on the remaining three. The data set for the
+present experiment consists of all person pages in the data set. The unit of
+measurement in this experiment is an individual page. If Srvs most con(cid:12)dent
+prediction on a page corresponds exactly to some instance of the page owners
+name, or if it makes no prediction for a page containing no name, its behavior
+is counted as correct. Otherwise, it is counted as an error.
+Last-Modified: Wednesday, 26-Jun-96 01:37:46 GMT
+
+<title> Bruce Randall
+
+Donald</title>
+
+<h1>
+<img src="ftp://ftp.cs.cornell.edu/pub/brd/images/brd.gif">
+<p>
+Bruce Randall Donald<br>
+Associate Professor<br>
+
+Fig. 18. An example HTML fragment which the rule in Figure 17 matches. In this
+case, the fragment Bruce Randall in the title is extracted. Note that this is an
+erroneous prediction since it misses the last name of the person.
+
+Figures 17 and 18 show a learned rule and its application to a test case.
+Figure 19 shows the accuracy-coverage curve for Srv on the name-extraction
+task. Under the criteria described above, it achieves 65.1% accuracy when
+all pages are processed. A full 16% of the (cid:12)les did not contain their owners
+
+name_of
+
+100%
+
+80%
+
+60%
+
+40%
+
+20%
+
+y
+c
+a
+r
+u
+c
+c
+A
+
+0%
+
+20%
+
+40%
+
+Coverage
+
+60%
+
+80%
+
+100%
+
+Fig. 19. Accuracy/coverage tradeo(cid:11) using Srv for name extraction. A prediction on
+a (cid:12)le that does not contain a name is counted as an error.
+names, however, and a large part of the learners error is because of spurious
+predictions over these (cid:12)les. If we consider only the pages containing names,
+Srvs performance is 77.4%.
+
+8 Related Work
+
+There are several signi(cid:12)cant bodies of research that are related to the tasks
+and methods discussed in this article. In this section we briey review the
+main areas of related work.
+
+8.1 Document Classi(cid:12)cation
+
+Our work is related to research in document classi(cid:12)cation, such as that re-
+ported at recent Text REtrieval Conferences (TREC) [3,4]. A wide variety of
+methods have been applied to the document-classi(cid:12)cation task.
+
+The TFIDF approach to information retrieval is the basis for the Rocchio
+classi(cid:12)cation algorithm which has become a standard baseline algorithm for
+text classi(cid:12)cation [8,15,34]. Its \word-vector" approach involves describing
+classes with a vector of weights, where each weight indicates how important
+the corresponding word is to the class. This representation has been used with
+
+many di(cid:11)erent learning algorithms, including memory based reasoning [40],
+neural networks [49,58], linear discriminant analysis [58], logistic regression
+[58], Widrow-Ho(cid:11) and the exponentiated gradient (EG) algorithm [36].
+
+Another useful line of research in text classi(cid:12)cation comes from basic ideas in
+probability and information theory. Bayes Rule has been the starting point
+for a number of classi(cid:12)cation algorithms [5,6,35,37,45,49], and the Minimum
+Description Length principle has been used as the basis of an algorithm as
+well [34].
+
+Another line of research has been to use symbolic learning methods for text
+classi(cid:12)cation. Numerous studies have used algorithms such as decision trees,
+Swap-1, Ripper and Charade can be found in [5,6,8,13,36,37,45,46,49,65]. These
+studies indicate that these algorithms are quite competitive with statistical-
+based methods.
+
+8.2
+
+Information Extraction
+
+The problem that we are addressing is related to the traditional informa-
+tion extraction task, such as the research done in the Message Understanding
+(MUC) [1,2] community. The work in the MUC community has considered
+problems such as extracting symbolic descriptions of terrorist attacks from
+news articles, constructing case frames that indicate (cid:12)elds such as the per-
+petrator, victim, etc. One key di(cid:11)erence between this work and the research
+reported here is that we are concerned with extracting information from hy-
+pertext, whereas the MUC work has focused on ordinary at text. In addition,
+our approach relies heavily on machine learning methods that can be trained
+to extract information, whereas most early work in the MUC community relied
+on hand-crafted methods for extracting information.
+
+Recently, the problem of using machine-learning methods to induce information-
+extraction routines has received more attention. PALKA [30] and AutoSlog
+[57] are machine learning systems which learn extraction patterns from col-
+lections of parsed documents that have been annotated to identify fragments
+of interest. These patterns are then reviewed and manually installed into a
+larger information extraction system. AutoSlog-TS [56] removes the require-
+ment that documents be annotated.
+
+CRYSTAL [61] and RAPIER [11] both demonstrate that machine learning
+techniques can be used to learn rules that perform extraction autonomously.
+CRYSTAL is a covering algorithm which takes parsed, annotated sentences as
+input and produces rules for extracting from novel sentences. Rapier uses ideas
+from relational learning and relaxes somewhat the reliance on syntactic pre-
+processing. Starting with maximally speci(cid:12)c extraction patterns, both systems
+
+learn by dropping constraints and merging patterns. This contrasts with the
+general-to-speci(cid:12)c approach introduced here.
+
+Several researchers have explored the problem of text extraction from the Web
+and other Internet sources. One example is ILA [50], a system designed to learn
+the semantics of the human-readable output of online databases by comparing
+it with information whose is already known. Shopbot [18], a bargain hunting
+agent, is designed to learn patterns from HTML to support the extraction of
+pricing information from online commerical catalogs. Shopbot is one solution
+to the general problem of \wrapper induction" [33,47,26], learning extraction
+patterns for highly regular sources. At the same time, ideas that have proven
+useful for general text have also been shown to work well for Web pages. Web-
+foot [62] is a modi(cid:12)cation of CRYSTAL in which parsed sentence fragments
+are replaced by segments of HTML. WHISK [63] combines the capabilities of
+CRYSTAL and Webfoot in a system that is able to learn extraction patterns
+for semi-structured or free text.
+
+8.3 Extracting Semantic Information from Hypertext
+
+Several other research groups have considered the semantic information that
+can be automatically inferred and extracted from hypertext. Spertus [64]
+presents a set of heuristics that relate hypertext conventions to semantic re-
+lationships. Speci(cid:12)cally, she considers relationships that can often be inferred
+from hyperlink structure, (cid:12)le system organization, and HTML page structure.
+
+Monge and Elkan [44] have developed a system that (cid:12)nds the Web page for
+a paper given a bibliographic citation to it. Part of the task performed by
+this system is to (cid:12)nd the personal home page and the publications page of an
+author starting from the home page of the persons institution. For this task,
+Monge and Elkan use search-control rules which are somewhat similar to the
+relation-recognition rules we learned in Section 6. Their rules look for certain
+keywords in hyperlinks to decide which ones to follow in the search. Whereas
+their rules are hand-coded for a speci(cid:12)c task, our work considers the problem
+of learning such rules for arbitrary relations.
+
+Pirolli et al. [51] consider the task of classifying pages into functional categories
+such as head, index and reference. They characterize the classes using features
+such as (cid:12)le size, number of incoming and outgoing hyperlinks, average depth of
+children pages in the hyperlink graph, etc. Whereas our work has not directly
+involved learning functional classes of pages, we have observed that our (cid:12)rst-
+order learners for both page and relation classi(cid:12)cation often implicitly learn
+such functional categories. Recall, for example, that our learned (cid:12)rst-order
+rules for recognizing student pages prominently exploited the class of person
+
+index pages. The features we use also di(cid:11)er somewhat from those of Pirolli et
+al., but common to both approaches is the central importance of vector-based
+text similarity and hyperlink connectivity.
+
+8.4 Extracting Knowledge Bases from the Web
+
+Other groups have worked on extracting propositional knowledge-base infor-
+mation from the Web. Luke et al. [39] have proposed an extension to HTML
+called SHOE whereby Web page authors can encode ontological information on
+their pages. The have also developed a system, Expose, that extracts SHOE-
+encoded information from Web pages, and stores it in a local knowledge base.
+Their hope is that a library of standard ontologies will come into common
+usage, enabling agents such as Expose to learn the information encoded on
+the Web.
+
+The START Information Server [29] provides a natural language interface to
+a knowledge base collected from the Web. The knowledge base contains meta-
+information about the content of the Web, so that a query to START returns
+relevant hypertext segments. START builds its knowledge base by discovering
+mostly manually added natural language annotations on Web pages.
+
+The most signi(cid:12)cant recent development in this area is the advent of Extensible
+Markup Language (XML) [10]. Whereas HTML is designed to describe the
+layout of information in a page, XML can be used to describe information
+about the contents of the page. As with SHOE, Web page authors can use
+XML to encode ontological information about their pages. Since XML is a
+World Wide Web Consortium standard, however, it is sure to be widely used.
+We believe that methods for annotating the contents of Web pages, such as
+SHOE and XML, can assist with the task of extracting knowledge bases from
+the Web, but do not obviate the need for our Web!KB approach. There
+are two notable limitations of approaches such as SHOE and XML. First,
+they are of no use when Web page authors do not employ them. Second, they
+presuppose a universal ontology. That is, since individual Web page authors
+are responsible for annotating Web pages, the success of these approaches
+hinges on the extent to which authors employ standard, shared ontologies in a
+consistent manner. Moreover, ontological decisions are largely in the hands of
+Web page authors in this approach. There may be cases where the ontological
+categories used to describe a given Web page are not appropriate or relevant
+categories for the tasks to which an extracted knowledge base will be applied.
+In the Web!KB approach, on the other hand, these ontological decisions
+can be made by the users of the system. One interesting way in the XML and
+Web!KB approaches can potentially be combined, is by exploiting XML-
+annotated pages as pre-labeled training data. That is, Web!KB could learn
+
+to predict the XML annotations associated with a page, using the non-XML
+elements of the page as input features. We plan to explore this issue in future
+research.
+
+8.5 Web Agents
+
+The Web!KB system described here is an example of a Web agent that
+browses the Web, extracting information as it goes. Many other Web agents
+have been developed over the past few years, including several that involve
+some form of learning. However, the vast majority of these systems use learn-
+ing to improve their ability to retrieve text information, rather that to extract
+computer-understandable information. For example, Joachims et al. [28] de-
+scribe a Web agent called WebWatcher that serves as a tour guide for users
+browsing the Web. WebWatcher learns to suggest appropriate hyperlinks given
+users interests, based on the hyperlinks followed by previous users with similar
+interests. As such, it involves learning to classify hyperlinks { a task similar to
+the work reported here on learning to extract relational information. A system
+with a similar goal is Letizia [38], which learns the interests of a single user,
+in contrast to WebWatcher which learns from a community of users. Syskill
+and Webert [49] o(cid:11)ers a more restricted way of browsing than WebWatcher
+and Letizia. Starting from a manually constructed index page for a particular
+topic, the user can rate hyperlinks o(cid:11) this page. The system uses the ratings
+to learn a user speci(cid:12)c topic pro(cid:12)le that can be used to suggest unexplored
+hyperlinks on the page. Syskill and Webert can also use search engines like
+LYCOS to retrieve pages by turning the topic pro(cid:12)le into a query. Lira [7]
+works in an o(cid:11)-line setting. A general model of one users interest is learned
+by asking the user to rate pages. Lira uses the model to browse the Web o(cid:11)-
+line and returns a set of pages that match the users interest. One related
+system that is closer in spirit to our work is Shakes et al.s [59] Ahoy system,
+which attempts to locate the home page of a person, given information such
+as the persons name, organizational a(cid:14)liation etc. Ahoy uses knowledge of
+home page placement conventions to search for personal home pages, and in
+fact learns these conventions from experience.
+
+9 Conclusions and Future Work
+
+We began this article with a goal and a thesis. The goal is to automatically
+create a large knowledge base whose content mirrors that of the World Wide.
+The thesis is that one can automatically create knowledge bases from the
+Web by (cid:12)rst using machine learning algorithms to create information extrac-
+tion methods for each of the desired types of knowledge, and then applying
+
+these methods to extract probabilistic, symbolic statements directly from Web
+hypertext.
+
+This article provides support for our thesis by proposing and testing a variety
+of machine learning algorithms for information extraction, and by describing
+the Web!KB system that incorporates the learned information extractors
+to browse Web sites and populate a knowledge base. As shown in Section 2
+and elsewhere, our system has achieved an accuracy of better than 70% at
+coverage levels of approximately 30% when using these learned information
+extractors to populate its university knowledge base while browsing new Web
+sites. These results provide encouraging initial support for our thesis, and
+suggest many routes for future research.
+
+We have explored a variety of learning methods for this task, including statisti-
+cal bag-of-words classi(cid:12)ers, (cid:12)rst-order rule learners, and multi-strategy learn-
+ing methods. We have found that statistical bag of words methods, derived
+from document classi(cid:12)cation methods in information retrieval, work well for
+classifying individual Web pages. However, these methods do not take advan-
+tage of the special hypertext structure available on the Web. Therefore, we de-
+veloped (cid:12)rst-order learning algorithms both for learning to classify pages and
+learning to recognize relations among several pages. These (cid:12)rst-order methods
+are capable of describing patterns that occur across multiple Web pages, their
+hyperlinks, and speci(cid:12)c words that appear on these pages and hyperlinks. Our
+experiments indicate that these methods tend to have higher accuracy than
+the bag of words classi(cid:12)ers, though they frequently provide lower coverage. In
+addition to these (cid:12)rst-order learning methods that \look outward" from the
+page to consider its neighbors, we also have developed methods that \look
+inward" to consider the detailed structure of hypertext and speci(cid:12)c text frag-
+ments within a single Web page. The Srv algorithm described in Section 7
+learns relational rules that extract speci(cid:12)c types of text (cid:12)elds within a Web
+page, such as a persons name.
+
+We believe that the toolbox of methods we have described here will be ap-
+plicable to a wide range of problem domains. For new domains, however, we
+may apply and combine the methods in ways not explored in this article. For
+example, in current work in a new problem domain, we are using page classi-
+(cid:12)ers to recognize instances of a particular relation (the economic sector of a
+company), whereas in the work described here we used page classi(cid:12)ers to rec-
+ognize class instances. In short, the most appropriate method for recognizing
+instances for a particular class or relation will depend on how these instances
+tend to be represented in the Web.
+
+Based on the initial results reported here, we are optimistic about the future
+prospects for automatically constructing and maintaining a symbolic knowl-
+edge base by interpreting hypertext on the Web. Key questions remain, how-
+
+ever. For example, what level of accuracy can be achieved by learned proce-
+dures for extracting information from the Web, and what level of accuracy will
+be required of them? For some tasks the required accuracy will be quite high
+(e.g., for an intelligent system that automatically invests money on behalf of its
+user). However, for tasks such as information retrieval on the Web, the system
+need only be su(cid:14)ciently accurate to outperform the current keyword-based
+retrieval systems that have no real notion of an ontology. Although further
+research toward stronger learning methods is warranted, we conjecture that
+there will be a steady stream of applications where even an approximately
+correct knowledge base will outperform current keyword retrieval methods. A
+second type of question for our system is how much e(cid:11)ort will be required
+to train the system for each new ontology, or for each extension to the grow-
+ing ontology? In the experiments reported here, the system was trained using
+thousands of hand-labeled Web pages that were collected at a cost of approx-
+imately one or two person-weeks of e(cid:11)ort. In newer work we are beginning to
+explore methods for reducing the dependence on hand labeled data. Below is
+a list of these and other research opportunities that merit further research:
+(cid:15) Develop learning methods that exploit the hierarchical relationships that
+exist among classes in the hierarchy. For example, in recent work we have
+shown that the accuracy of our Bayesian bag of words classi(cid:12)er can be
+improved by using the class hierarchy to obtain more accurate estimates of
+class conditional word probabilities [42].
+(cid:15) Use the vast pool of unlabeled Web pages to supplement the available hand-
+labeled data to improve learning accuracy. Recently we have shown that the
+EM algorithm can be used to combine labeled and unlabeled data to boost
+accuracy [48]. We are also exploring the combination of EM with pool-based
+training for active learning in which the learner requests labels for speci(cid:12)c
+Web pages whose label will be especially helpful [41].
+(cid:15) Co-training multiple classi(cid:12)ers. For example, consider a problem setting in
+which one Web page classi(cid:12)er examines the words on the page, and a second
+classi(cid:12)er examines instead the words on the incoming hyperlinks to that
+page. In recent work, we have proposed a method by which each classi(cid:12)er
+acts as a trainer for the other, and we have provided initial experiments and
+theoretical analysis showing the promise of this approach [9].
+(cid:15) Exploit more linguistic structure. We plan to explore ways in which noun,
+verb, and prepositional phrases extracted from the text can be used as
+features for information extraction. We have conducted preliminary exper-
+iments that show improved accuracy in some cases when our bag of words
+representation is augmented by these extracted phrases [25]. We conjecture
+that such linguistic features will be even more useful for tasks with few
+words, such as classifying individual hyperlinks.
+(cid:15) Explore multiple strategies for learning to extract text (cid:12)elds from Web
+pages. We have developed a number of approaches to this task [20,21,23],
+including multi-strategy learning [22].
+
+(cid:15) Integrate statistical bag-of-words methods into (cid:12)rst-order learning tasks.
+We have begun developing methods that augment (cid:12)rst-order learning with
+the ability to use bag-of-words classi(cid:12)ers to invent new predicates for char-
+acterizing the pages and hyperlinks referenced in learned rules [60].
+(cid:15) Exploit more HTML structure. We plan to investigate the utility of repre-
+senting the HTML structure of pages when learning rules for relation classi-
+(cid:12)cation and information extraction. We have investigated one approach to
+representing HTML structure and exploiting it for learning tasks [16].
+(cid:15) Learn regularities over the growing knowledge base. We plan to use learning
+methods to discover interesting regularities over the facts that have been
+extracted from the Web, and to use these learned facts to improve future
+fact extraction. For example, in the university knowledge base we might
+expect to learn how to predict the department of a faculty member based
+on the department of her student advisees.
+(cid:15) Extend the ontology to new problem domains. We are currently applying
+our methods to the task of extracting information about companies from
+the Web.
+
+A Assumptions About How Class and Relation Instances Are Rep-
+
+resented
+
+In this appendix we provide a formal treatment of the assumptions we make
+about how class and relation instances can be represented in the Web.
+
+1; tp
+Let a Web page p be a sequence of tokens, (tp
+words and HTML tags. De(cid:12)ne the function page(tp
+page p in which a sequence of tokens resides.
+
+2; :::tp
+s; :::tp
+
+n), where the tokens are
+e) so that it returns the
+
+Some tokens represent hyperlinks. Let the predicate hyperlink(tp
+the ith token in page p is a hyperlink, and let the function range(tp
+the page that is pointed to by a given hyperlink.
+
+i ) be true if
+i ) return
+
+We de(cid:12)ne a relation linked(u; v) that represents the cases where there is a
+direct hyperlink from u to v, or where there is a path from u to v following
+the directed edges of hyperlinks:
+(1) 9tu
+(2) 9w such that linked(u; w) and linked(w; v).
+
+i such that hyperlink(tu
+
+i ) = true and range(tu
+
+i ) = v, or
+
+We de(cid:12)ne a relation connected(u; v) that represents the cases where there is a
+path from u to v following the undirected edges of hyperlinks:
+(1) 9tu
+(2) 9tv
+(3) 9w such that connected(u; w) and connected(w; v).
+
+i such that hyperlink(tu
+i such that hyperlink(tv
+
+i ) = true and range(tu
+i ) = true and range(tv
+
+i ) = v, or
+i ) = u, or
+
+Let us de(cid:12)ne a segment of hypertext as follows:
+
+(1) A segment can consist of a subsequence of tokens in a page, (tp
+
+s; :::tp
+
+e),
+
+where 1 (cid:20) s (cid:20) e (cid:20) n.
+
+(2) A segment can consist of a page itself, p = (tp
+(3) A segment can consist of a rooted subgraph of pages: P = p0[fpi j 9pj 2
+
+P; linked(pj; pi)g. Here, p0 represents the root of the subgraph.
+
+2; :::tp
+
+1; tp
+
+n).
+
+We de(cid:12)ne a relation contains(u; v) that holds between two segments, u and v
+under the following conditions:
+
+(1) both u and v are pages or sequences of tokens within pages, tu
+s
+
+(cid:21) tv
+
+s, and
+
+(cid:20) tv
+e.
+
+tu
+e
+graph, and page(u) 2 v,
+
+(2) u is a either a page or a sequence of tokens within a page, v is a rooted
+(3) both u and v are rooted graphs, and u (cid:26) v.
+
+Finally, let the predicate modelu(v) be true when the segment v satis(cid:12)es an
+
+arbitrary statistical model representing vs relatedness to u.
+
+Now, using these de(cid:12)nitions, we state our assumptions about how class and
+relation instances can be represented on the Web.
+(cid:15) We assume that each instance of an ontology class is represented by one or
+(cid:15) We assume that each instance R(a,b) of a relation R is represented in one
+of three ways. Let sa be the segment representing a and sb be the segment
+representing b. Then R(a, b) can be represented by:
+
+more hypertext segments as de(cid:12)ned above.
+
+(1) connected(sa; sb),
+(2) contains(sa; sb), or
+(3) modelb(sa) = true.
+
+B Obtaining More Evenly Distributed Scores from Naive Bayes
+
+While naive Bayes often provides accurate classi(cid:12)cations, it presents problems
+when one wants to interpret the score for each class as an estimate of un-
+certainty. Per-class scores for the winning class tend to gravitate toward 1.0
+and scores for the losing class tend toward 0.0. Often the e(cid:11)ect is so strong
+that oating-point round-o(cid:11) error causes the probability to be calculated as
+exactly 1.0 for the winning class and 0.0 for the others. These extreme values
+are an artifact of the independence assumption. If for each word, the value
+of Pr(wjC) between di(cid:11)erent classes di(cid:11)ers by one order of magnitude, then
+the (cid:12)nal probabilities will di(cid:11)er by as many orders of magnitude as there are
+words in the document. Class-conditional word probabilities would be much
+more similar across classes if word dependencies were taken into account.
+
+We would like scores that accurately reect the uncertainty in each predic-
+tion and enable us to sensibly compare the scores of multiple documents. We
+attempt to counter the extreme values, while still avoiding the complexity of
+modeling word-dependencies, in two steps.
+
+First, instead of using the product of the word likelihoods, we use the geometric
+mean of the likelihoods. This approach is closely related to the concept of
+perplexity in language modeling for speech recognition [54]. Perplexity is a
+measure of the likelihood of some data given a model, where the likelihood
+is normalized for the length of the data. We begin with naive Bayes (Eq. 5),
+rewrite the sum to an equivalent expression that sums over all words in the
+vocabulary T instead of just the words in the document (Eq. B.1), take the
+log, (Eq. B.2), and divide by the number of words in the document (Eq. B.3).
+This results in the log of the geometric mean of the word likelihoods, plus a
+term for the class prior.
+
+nY
+
+i=1
+
+Pr(c)
+
+Pr(wijc) = Pr(c)
+
+TY
+
+i=1
+
+/ log(Pr(c)) +
+
+/ log(Pr(c))
+
+n
+
++
+
+i=1
+
+n
+
+Pr(wijc)N (wi;d)
+
+TX
+N(wi; d) log(Pr(wijc))
+TX
+
+i=1
+
+N(wi; d)
+
+log(Pr(wijc))
+
+(B.1)
+
+(B.2)
+
+(B.3)
+
+If we interpret N(wi; d)=n as Pr(wijd), the right-hand term of this expression
+
+is the negative Cross Entropy [14] between the distribution of words induced
+
+by the document with the distribution of words induced by the class:
+
+TX
+
++
+
+i=1
+
+log(Pr(c))
+
+n
+
+Pr(wijd) log(Pr(wijc)):
+
+(B.4)
+
+Thus, the second term speci(cid:12)es that the class c with the highest score will be
+the one with the lowest Cross Entropy|the class that could \compress" the
+document most e(cid:14)ciently. This expression results in scores for each class that
+vary smoothly, without tendencies toward extreme values.
+
+Cross Entropy in Equation B.4 can be intuitively understood as the average
+number of bits necessary to encode a word from the document using an en-
+coding that is optimal for the distribution of words independently drawn from
+the class. Cross Entropy does not, however, account for the varying di(cid:14)culty
+of encoding di(cid:11)erent documents|some documents are more complex, and in-
+herently require more bits on average to encode. We want scores that can be
+sensibly compared between documents. A way to account for di(cid:11)erences be-
+tween documents is to use Kulback-Leibler Divergence|that is, to subtract
+the average number of bits it would take to encode the document using its
+optimal encoding (assuming again, that the words are independent of one an-
+other). This results in an expression that can be intuitively understood as
+the average number of extra bits required because we are using a subopti-
+mal encoding instead of the optimal encoding. We modify the second term of
+Equation B.4 so that it expresses the KL Divergence score for each class:
+
+TX
+
++
+
+i=1
+
+log(Pr(c))
+
+n
+
+Pr(wijd) log
+
+!
+
+
+
+Pr(wijc)
+Pr(wijd)
+
+:
+
+(B.5)
+
+We also normalize the scores across all classes so that they sum to a con-
+stant. This normalization also has the e(cid:11)ect of increasing our con(cid:12)dence in
+the classi(cid:12)cation of documents with high word entropy. This is intuitively de-
+sirable because high-entropy documents have more unique words, which can
+be considered as stronger evidence, and more likely to result in a correct clas-
+si(cid:12)cation.
+
+Note that the modi(cid:12)cations to 5 do not change the ordering of class estimates
+for a given document. Consequently, the classi(cid:12)cations made by naive Bayes
+are not a(cid:11)ected. These modi(cid:12)cations only serve to provide well-distributed,
+comparable scores.
+
+Note that none of the changes since straightforward naive Bayes in Equation 5
+has changed the scored ordering of di(cid:11)erent classes for the same document|
+they have not changed classi(cid:12)cation that would have resulted from naive
+
+Bayes. They have only served to provide well-distributed, comparable scores.
+
+C The URL Grouping Algorithm
+
+In this appendix, we present the details of the algorithm used to identify
+multi-page segments. As discussed in Section 5.4, we use the regularities in
+URL structure and naming to group related pages together, and to identify
+the any primary home pages in each group.
+
+In the algorithm below, all wildcards must match some text. The wildcard
+* does not match across directory boundaries, but the wildcard @ does. The
+wildcard ? matches a single digit. The wildcard variable %1 does not match
+across directories.
+(cid:15) Inputs: A set of web pages, each with a URL, a tentative classi(cid:12)cation and
+a score.
+(cid:15) For each web page, identify its group:
+(cid:15) The group is the longest pre(cid:12)x (indicated in parentheses) when the URL
+
+matches any of the patterns:
+
+- (@/fuser,faculty,people,home,projectsg/*)/*.fhtml,htmg
+- (@/fuser,faculty,people,home,projectsg/*)/
+- (@/fuser,faculty,people,home,projectsg/*)
+- (@/fcs???,www/,(cid:24)*g)/*.fhtml,htmg
+- (@/fcs???,www/,(cid:24)*g)/
+- (@/fcs???,www/,(cid:24)*g)
+
+(cid:15) If no pre(cid:12)x matches, the group is the complete directory portion of the
+(cid:15) For each group, identify at least one primary page:
+(cid:15) A primary page is any page which URL matches:
+
+URL.
+
+- @/index.fhtml,htmg
+- @/home.fhtml,htmg
+- @/homepage.fhtml,htmg
+- @/cs???.fhtml,htmg
+- @/%1/%1.fhtml,htmg
+
+(cid:15) If no page in the group matches one of these patterns, then the page with
+the highest score for any non-other class is a primary page.
+(cid:15) Change the classi(cid:12)cation of all non-primary pages to other.
+(cid:15) Outputs: The (cid:12)nal classi(cid:12)cation and score of each web page.
+

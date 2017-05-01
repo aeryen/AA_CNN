@@ -1,0 +1,1227 @@
+Abstract
+
+We present a new machine learning frame-
+work called \self-taught learning" for using
+unlabeled data in supervised classi(cid:12)cation
+tasks. We do not assume that the unla-
+beled data follows the same class labels or
+generative distribution as the labeled data.
+Thus, we would like to use a large number
+of unlabeled images (or audio samples, or
+text documents) randomly downloaded from
+the Internet to improve performance on a
+given image (or audio, or text) classi(cid:12)cation
+task. Such unlabeled data is signi(cid:12)cantly eas-
+ier to obtain than in typical semi-supervised
+or transfer learning settings, making self-
+taught learning widely applicable to many
+practical learning problems. We describe an
+approach to self-taught learning that uses
+sparse coding to construct higher-level fea-
+tures using the unlabeled data. These fea-
+tures form a succinct input representation
+and signi(cid:12)cantly improve classi(cid:12)cation per-
+formance. When using an SVM for classi(cid:12)-
+cation, we further show how a Fisher kernel
+can be learned for this representation.
+
+1. Introduction
+
+Labeled data for machine learning is often very di(cid:14)-
+cult and expensive to obtain, and thus the ability to
+use unlabeled data holds signi(cid:12)cant promise in terms
+of vastly expanding the applicability of learning meth-
+ods. In this paper, we study a novel use of unlabeled
+data for improving performance on supervised learn-
+ing tasks. To motivate our discussion, consider as a
+running example the computer vision task of classi-
+fying images of elephants and rhinos. For this task,
+it is di(cid:14)cult to obtain many labeled examples of ele-
+phants and rhinos; indeed, it is di(cid:14)cult even to obtain
+many unlabeled examples of elephants and rhinos. (In
+fact, we (cid:12)nd it di(cid:14)cult to envision a process for col-
+lecting such unlabeled images, that does not immedi-
+
+Appearing in Proceedings of the 24 th International Confer-
+ence on Machine Learning, Corvallis, OR, 2007. Copyright
+2007 by the author(s)/owner(s).
+
+ately also provide the class labels.) This makes the
+classi(cid:12)cation task quite hard with existing algorithms
+for using labeled and unlabeled data, including most
+semi-supervised learning algorithms such as the one
+by Nigam et al. (2000). In this paper, we ask how un-
+labeled images from other object classes|which are
+much easier to obtain than images speci(cid:12)cally of ele-
+phants and rhinos|can be used. For example, given
+unlimited access to unlabeled, randomly chosen im-
+ages downloaded from the Internet (probably none of
+which contain elephants or rhinos), can we do better
+on the given supervised classi(cid:12)cation task?
+Our approach is motivated by the observation that
+even many randomly downloaded images will contain
+basic visual patterns (such as edges) that are similar
+to those in images of elephants and rhinos. If, there-
+fore, we can learn to recognize such patterns from the
+unlabeled data, these patterns can be used for the su-
+pervised learning task of interest, such as recognizing
+elephants and rhinos. Concretely, our approach learns
+a succinct, higher-level feature representation of the in-
+puts using unlabeled data; this representation makes
+the classi(cid:12)cation task of interest easier.
+Although we use computer vision as a running exam-
+ple, the problem that we pose to the machine learning
+community is more general. Formally, we consider
+solving a supervised learning task given labeled and
+unlabeled data, where the unlabeled data does not
+share the class labels or the generative distribution of
+the labeled data. For example, given unlimited access
+to natural sounds (audio), can we perform better
+speaker identi(cid:12)cation? Given unlimited access to news
+articles (text), can we perform better email foldering
+of \ICML reviewing" vs. \NIPS reviewing" emails?
+Like semi-supervised learning (Nigam et al., 2000),
+our algorithms will therefore use labeled and unlabeled
+data. But unlike semi-supervised learning as it is typ-
+ically studied in the literature, we do not assume that
+the unlabeled data can be assigned to the supervised
+learning tasks class labels. To thus distinguish our
+formalism from such forms of semi-supervised learn-
+ing, we will call our task self-taught learning.
+There is no prior general, principled framework for
+incorporating such unlabeled data into a supervised
+
+Self-taught Learning
+
+learning algorithm. Semi-supervised learning typically
+makes the additional assumption that the unlabeled
+data can be labeled with the same labels as the clas-
+si(cid:12)cation task, and that these labels are merely unob-
+served (Nigam et al., 2000). Transfer learning typi-
+cally requires further labeled data from a di(cid:11)erent but
+related task, and at its heart typically transfers knowl-
+edge from one supervised learning task to another;
+thus it requires additional labeled (and therefore often
+expensive-to-obtain) data, rather than unlabeled data,
+for these other supervised learning tasks.1 (Thrun,
+1996; Caruana, 1997; Ando & Zhang, 2005) Because
+self-taught learning places signi(cid:12)cantly fewer restric-
+tions on the type of unlabeled data, in many practi-
+cal applications (such as image, audio or text classi-
+(cid:12)cation) it is much easier to apply than typical semi-
+supervised learning or transfer learning methods. For
+example, it is far easier to obtain 100,000 Internet im-
+ages than to obtain 100,000 images of elephants and
+rhinos; far easier to obtain 100,000 newswire articles
+than 100,000 articles on ICML reviewing and NIPS
+reviewing, and so on. Using our running example of
+image classi(cid:12)cation, Figure 1 illustrates these crucial
+distinctions between the self-taught learning problem
+that we pose, and previous, related formalisms.
+
+We pose the self-taught learning problem mainly to
+formalize a machine learning framework that we think
+has the potential to make learning signi(cid:12)cantly eas-
+ier and cheaper. And while we treat any biologi-
+cal motivation for algorithms with great caution, the
+self-taught learning problem perhaps also more accu-
+rately re(cid:13)ects how humans may learn than previous
+formalisms, since much of human learning is believed
+to be from unlabeled data. Consider the following in-
+formal order-of-magnitude argument.2 A typical adult
+human brain has about 1014 synapses (connections),
+and a typical human lives on the order of 109 seconds.
+Thus, even if each synapse is parameterized by just a
+one bit parameter, a learning algorithm would require
+about 1014=109 = 105 bits of information per second
+to \learn" all the connections in the brain. It seems
+extremely unlikely that this many bits of labeled infor-
+mation are available (say, from a humans parents or
+teachers in his/her youth). While this argument has
+many (known) (cid:13)aws and is not to be taken too seri-
+ously, it strongly suggests that most of human learn-
+ing is unsupervised, requiring only data without any
+labels (such as whatever natural images, sounds, etc.
+one may encounter in ones life).
+
+1We note that these additional supervised learning tasks
+can sometimes be created via ingenious heuristics, as in
+Ando & Zhang (2005).
+
+2This argument was (cid:12)rst described to us by Geo(cid:11)rey
+Hinton (personal communication) but appears to re(cid:13)ect a
+view that is fairly widely held in neuroscience.
+
+Supervised Classi(cid:12)cation
+
+Semi-supervised Learning
+
+Transfer Learning
+
+Self-taught Learning
+
+Figure 1. Machine learning formalisms for classifying im-
+ages of elephants and rhinos. Images on orange background
+are labeled; others are unlabeled. Top to bottom: Super-
+vised classi(cid:12)cation uses labeled examples of elephants and
+rhinos; semi-supervised learning uses additional unlabeled
+examples of elephants and rhinos; transfer learning uses ad-
+ditional labeled datasets; self-taught learning just requires
+additional unlabeled images, such as ones randomly down-
+loaded from the Internet.
+
+Inspired by these observations, in this paper we present
+largely unsupervised learning algorithms for improving
+performance on supervised classi(cid:12)cation tasks. Our
+algorithms apply straightforwardly to di(cid:11)erent input
+modalities, including images, audio and text. Our ap-
+proach to self-taught learning consists of two stages:
+First we learn a representation using only unlabeled
+data. Then, we apply this representation to the la-
+beled data, and use it for the classi(cid:12)cation task. Once
+the representation has been learned in the (cid:12)rst stage,
+it can then be applied repeatedly to di(cid:11)erent classi(cid:12)-
+cation tasks; in our example, once a representation has
+been learned from Internet images, it can be applied
+not only to images of elephants and rhinos, but also to
+other image classi(cid:12)cation tasks.
+2. Problem Formalism
+
+l
+
+; y(1)); (x(2)
+
+l
+
+l
+
+learning, we are given a labeled
+In self-taught
+training set of m examples f(x(1)
+; y(2));
+: : : ; (x(m)
+; y(m))g drawn i.i.d. from some distribution
+D. Here, each x(i)
+l 2 Rn is an input feature vector (the
+\l" subscript indicates that it is a labeled example),
+and y(i) 2 f1; : : : ; Cg is the corresponding class label.
+In addition, we are given a set of k unlabeled examples
+x(1)
+u ; x(2)
+u 2 Rn. Crucially, we do not assume
+that the unlabeled data x(j)
+u was drawn from the same
+distribution as, nor that it can be associated with the
+
+u ; : : : ; x(k)
+
+Self-taught Learning
+
+Figure 2. Left: Example sparse coding bases learned from
+image patches (14x14 pixels) drawn from random grayscale
+images of natural scenery. Each square in the grid repre-
+sents one basis. Right: Example acoustic bases learned by
+the same algorithm, using 25ms sound samples from speech
+data. Each of the four rectangles in the 2x2 grid shows the
+25ms long acoustic signal represented by a basis vector.
+
+same class labels as, the labeled data. Clearly, as in
+transfer learning (Thrun, 1996; Caruana, 1997), the
+labeled and unlabeled data should not be completely
+irrelevant to each other if unlabeled data is to help the
+classi(cid:12)cation task. For example, we would typically
+expect that x(i)
+come from the same input
+\type" or \modality," such as images, audio, text, etc.
+
+and x(j)
+
+u
+
+l
+
+Given the labeled and unlabeled training set, a self-
+taught learning algorithm outputs a hypothesis h :
+Rn ! f1; : : : ; Cg that tries to mimic the input-label
+relationship represented by the labeled training data;
+this hypothesis h is then tested under the same distri-
+bution D from which the labeled data was drawn.
+
+3. A Self-taught Learning Algorithm
+
+We hope that the self-taught learning formalism that
+we have proposed will engender much novel research
+in machine learning. In this paper, we describe just
+one approach to the problem.
+
+u (and x(i)
+
+We present an algorithm that begins by using the un-
+labeled data x(i)
+u to learn a slightly higher-level, more
+succinct, representation of the inputs. For example, if
+the inputs x(i)
+l ) are vectors of pixel intensity
+values that represent images, our algorithm will use
+x(i)
+u to learn the \basic elements" that comprise an im-
+age. For example, it may discover (through examining
+the statistics of the unlabeled images) certain strong
+correlations between rows of pixels, and therefore learn
+that most images have many edges. Through this, it
+then learns to represent images in terms of the edges
+that appear in it, rather than in terms of the raw pixel
+intensity values. This representation of an image in
+terms of the edges that appear in it|rather than the
+raw pixel intensity values|is a higher level, or more
+abstract, representation of the input. By applying this
+learned representation to the labeled data x(i)
+, we ob-
+tain a higher level representation of the labeled data
+also, and thus an easier supervised learning task.
+
+l
+
+3.1. Learning Higher-level Representations
+
+We learn the higher-level representation using a mod-
+i(cid:12)ed version of the sparse coding algorithm due to Ol-
+
+Figure 3. The features computed for an image patch (left)
+by representing the patch as a sparse weighted combina-
+tion of bases (right). These features act as robust edge
+detectors.
+
+Figure 4. Left: An example platypus image from the Cal-
+tech 101 dataset. Right: Features computed for the platy-
+pus image using four sample image patch bases (trained
+on color images, and shown in the small colored squares)
+by computing features at di(cid:11)erent locations in the image.
+In the large (cid:12)gures on the right, white pixels represents
+highly positive feature values for the corresponding basis,
+and black pixels represents highly negative feature values.
+These activations capture higher-level structure of the in-
+put image.
+(Bases have been magni(cid:12)ed for clarity; best
+viewed in color.)
+
+shausen & Field (1996), which was originally proposed
+as an unsupervised computational model of low-level
+sensory processing in humans. More speci(cid:12)cally, given
+the unlabeled data fx(1)
+u 2 Rn,
+we pose the following optimization problem:
+
+u g with each x(i)
+
+u ; :::; x(k)
+
+minimizeb;a Pi kx(i)
+
+u (cid:0) Pj a(i)
+kbjk2 (cid:20) 1;
+
+s:t:
+
+j bjk2
+
+2 + (cid:12) ka(i)k1 (1)
+
+8j 2 1; :::; s
+
+j
+
+The optimization variables in this problem are the ba-
+sis vectors b = fb1; b2; : : : ; bsg with each bj 2 Rn,
+and the activations a = fa(1); : : : ; a(k)g with each
+a(i) 2 Rs; here, a(i)
+is the activation of basis bj for
+input x(i)
+u . The number of bases s can be much larger
+than the input dimension n. The optimization objec-
+tive (1) balances two terms: (i) The (cid:12)rst quadratic
+term encourages each input x(i)
+u to be reconstructed
+well as a weighted linear combination of the bases bj
+(with corresponding weights given by the activations
+a(i)
+j ); and (ii) it encourages the activations to have low
+L1 norm. The latter term therefore encourages the ac-
+tivations a to be sparse|in other words, for most of
+its elements to be zero. (Tibshirani, 1996; Ng, 2004)
+This formulation is actually a modi(cid:12)ed version of Ol-
+shausen & Fields, and can be solved signi(cid:12)cantly more
+e(cid:14)ciently. Speci(cid:12)cally, the problem (1) is convex over
+each subset of variables a and b (though not jointly
+convex); in particular, the optimization over activa-
+tions a is an L1-regularized least squares problem,
+and the optimization over basis vectors b is an L2-
+constrained least squares problem. These two convex
+sub-problems can be solved e(cid:14)ciently, and the objec-
+
+Self-taught Learning
+
+tive in problem (1) can be iteratively optimized over
+a and b alternatingly while holding the other set of
+variables (cid:12)xed. (Lee et al., 2007)
+As an example, when this algorithm is applied to small
+14x14 images, it learns to detect di(cid:11)erent edges in the
+image, as shown in Figure 2 (left). Exactly the same
+algorithm can be applied to other input types, such as
+audio. When applied to speech sequences, sparse cod-
+ing learns to detect di(cid:11)erent patterns of frequencies,
+as shown in Figure 2 (right).
+Importantly, by using an L1 regularization term, we
+obtain extremely sparse activations|only a few bases
+are used to reconstruct any input x(i)
+u ; this will give
+us a succinct representation for x(i)
+u (described later).
+We note that other regularization terms that result
+in most of the a(i)
+j being non-zero (such as that used
+in the original Olshausen & Field algorithm) do not
+lead to good self-taught learning performance; this is
+described in more detail in Section 4.
+
+3.2. Unsupervised Feature Construction
+
+It is often easy to obtain large amounts of unlabeled
+data that shares several salient features with the la-
+beled data from the classi(cid:12)cation task of interest. In
+image classi(cid:12)cation, most images contain many edges
+and other visual structures; in optical character recog-
+nition, characters from di(cid:11)erent scripts mostly com-
+prise di(cid:11)erent pen \strokes"; and for speaker identi(cid:12)-
+cation, speech even in di(cid:11)erent languages can often be
+broken down into common sounds (such as phones).
+Building on this observation, we propose the follow-
+ing approach to self-taught learning: We (cid:12)rst apply
+sparse coding to the unlabeled data x(i)
+u 2 Rn to learn
+a set of bases b, as described in Section 3.1. Then, for
+each training input x(i)
+l 2 Rn from the classi(cid:12)cation
+task, we compute features ^a(x(i)
+l ) 2 Rs by solving the
+following optimization problem:
+^a(x(i)
+This is a convex L1-regularized least squares problem
+and can be solved e(cid:14)ciently (Efron et al., 2004; Lee
+et al., 2007). It approximately expresses the input x(i)
+as a sparse linear combination of the bases bj. The
+sparse vector ^a(x(i)
+l ) is our new representation for x(i)
+.
+Using a set of 512 learned image bases (as in Fig-
+ure 2, left), Figure 3 illustrates a solution to this op-
+timization problem, where the input image x is ap-
+proximately expressed as a combination of three ba-
+sis vectors b142; b381; b497. The image x can now be
+represented via the vector ^a 2 R512 with ^a142 = 0:6,
+^a381 = 0:8, ^a497 = 0:4. Figure 4 shows such features ^a
+computed for a large image. In both of these cases, the
+computed features capture aspects of the higher-level
+structure of the input images. This method applies
+
+l ) = arg mina(i) kx(i)
+
+l (cid:0) Pj a(i)
+
+j bjk2
+
+l
+
+l
+
+2 + (cid:12) ka(i)k1 (2)
+
+equally well to other input types; the features com-
+puted on audio samples or text documents similarly
+detect useful higher-level patterns in the inputs.
+We use these features as input to standard supervised
+classi(cid:12)cation algorithms (such as SVMs). To classify a
+test example, we solve (2) to obtain our representation
+^a for it, and use that as input to the trained classi(cid:12)er.
+Algorithm 1 summarizes our algorithm for self-taught
+learning.
+
+Algorithm 1 Self-taught Learning via Sparse Coding
+input Labeled training set
+
+T = f(x(1)
+; y(1)); (x(2)
+Unlabeled data fx(1)
+
+l
+
+l
+
+; y(2)); : : : ; (x(m)
+u g.
+
+u ; : : : ; x(k)
+
+l
+
+u ; x(2)
+
+; y(m))g.
+
+output Learned classi(cid:12)er for the classi(cid:12)cation task.
+algorithm Using unlabeled data fx(i)
+
+u g, solve the op-
+
+for
+
+the
+
+features
+
+l ); y(i))gm
+
+classi(cid:12)cation task
+^T =
+
+timization problem (1) to obtain bases b.
+Compute
+to obtain a new labeled training set
+f(^a(x(i)
+^a(x(i)
+2 + (cid:12) ka(i)k1.
+Learn a classi(cid:12)er C by applying a supervised learning
+algorithm (e.g., SVM) to the labeled training set ^T .
+return the learned classi(cid:12)er C.
+
+i=1, where
+l ) = arg mina(i) kx(i)
+
+l (cid:0) Pj a(i)
+
+j bjk2
+
+3.3. Comparison with Other Methods
+
+It seems that any algorithm for the self-taught learning
+problem must, at some abstract level, detect structure
+using the unlabeled data. Many unsupervised learn-
+ing algorithms have been devised to model di(cid:11)erent
+aspects of \higher-level" structure; however, their ap-
+plication to self-taught learning is more challenging
+than might be apparent at (cid:12)rst blush.
+Principal component analysis (PCA) is among the
+most commonly used unsupervised learning algo-
+It identi(cid:12)es a low-dimensional subspace
+rithms.
+of maximal variation within unlabeled data.
+In-
+terestingly, the top T (cid:20) n principal components
+b1; b2; : : : ; bT are a solution to an optimization problem
+that is cosmetically similar to our formulation in (1):
+
+minimizeb;a
+s:t:
+
+Pi kx(i)
+
+u (cid:0) Pj a(i)
+
+j bjk2
+2
+
+b1; b2; : : : ; bT are orthogonal
+
+(3)
+
+j
+
+PCA is convenient because the above optimization
+problem can be solved e(cid:14)ciently using standard nu-
+merical software; further, the features a(i)
+can be com-
+puted easily because of the orthogonality constraint,
+and are simply a(i)
+When compared with sparse coding as a method for
+constructing self-taught learning features, PCA has
+two limitations. First, PCA results in linear feature
+extraction, in that the features a(i)
+j are simply a linear
+function of the input.3 Second, since PCA assumes
+
+j = bT
+
+j x(i)
+u .
+
+3As an example of a nonlinear but useful feature for im-
+
+character
+
+Domain
+Image
+classi(cid:12)cation
+Handwritten char-
+acter recognition
+Font
+recognition
+Song genre
+classi(cid:12)cation
+Webpage
+classi(cid:12)cation
+UseNet article
+classi(cid:12)cation
+
+digits
+
+Unlabeled data
+10 images of outdoor
+scenes
+Handwritten
+(\0"{\9")
+Handwritten
+characters (\a"{\z")
+Song snippets from 10
+genres
+100,000 news articles
+(Reuters newswire)
+100,000 news articles
+(Reuters newswire)
+
+English
+
+Self-taught Learning
+
+Labeled data
+Caltech101 image classi(cid:12)-
+cation dataset
+Handwritten English char-
+acters (\a"{\z")
+Font characters (\a"/\A" {
+\z"/\Z")
+Song snippets from 7 dif-
+ferent genres
+Categorized webpages
+(from DMOZ hierarchy)
+Categorized UseNet posts
+(from \SRAA" dataset)
+
+26
+
+26
+
+7
+
+2
+
+2
+
+Classes Raw features
+101
+
+in 28x28 pixel
+
+in 28x28 pixel
+
+in 14x14 pixel
+
+Intensities
+patch
+Intensities
+character/digit image
+Intensities
+character image
+Log-frequency spectrogram
+over 50ms time windows
+Bag-of-words with 500 word
+vocabulary
+Bag-of-words with 377 word
+vocabulary
+
+Table 1. Details of self-taught learning applications evaluated in the experiments.
+
+Features
+
+PCA
+
+Number of regions
+
+1
+
+4
+
+9
+
+16
+
+Sparse coding
+Published baseline (Fei-Fei et al., 2004)
+
+20.1% 30.6% 36.8% 37.0%
+30.8% 40.9% 46.0% 46.6%
+
+16%
+
+Table 2. Classi(cid:12)cation accuracy on the Caltech 101 image
+classi(cid:12)cation dataset. For PCA and sparse coding results,
+each image was split into the speci(cid:12)ed number of regions,
+and features were aggregated within each region by taking
+the maximum absolute value.
+
+the bases bj to be orthogonal, the number of PCA fea-
+tures cannot be greater than the dimension n of the
+input. Sparse coding does not have either of these lim-
+itations. Its features ^a(x) are an inherently nonlinear
+function of the input x, due to the presence of the L1
+term in Equation (1).4 Further, sparse coding can use
+more basis vectors/features than the input dimension
+n. By learning a large number of basis vectors but
+using only a small number of them for any particular
+input, sparse coding gives a higher-level representation
+in terms of the many possible \basic patterns," such as
+edges, that may appear in an input. Section 6 further
+discusses other unsupervised learning algorithms.
+4. Experiments
+We apply our algorithm to several self-taught learn-
+ing tasks shown in Table 1. Note that the unlabeled
+data in each case cannot be assigned the labels from
+the labeled task. For each application, the raw input
+examples x were represented in a standard way: raw
+pixel intensities for images, the frequency spectrogram
+for audio, and the bag-of-words (vector) representation
+for text. For computational reasons, the unlabeled
+data was preprocessed by applying PCA to reduce its
+
+ages, consider the phenomenon called end-stopping (which
+is known to occur in biological visual perception) in which
+a feature is maximally activated by edges of only a speci(cid:12)c
+orientation and length; increasing the length of the edge
+further signi(cid:12)cantly decreases the features activation. A
+linear response model cannot exhibit end-stopping.
+can exhibit
+
+end-
+stopping (Lee et al., 2007). Note also that even though
+sparse coding attempts to express x as a linear combina-
+tion of the bases bj, the optimization problem (2) results
+in the activations aj being a non-linear function of x.
+
+example,
+
+coding
+
+sparse
+
+4For
+
+dimension;5 the sparse coding basis learning algorithm
+was then applied in the resulting principal component
+space.6 Then, the learned bases were used to construct
+features for each input from the supervised classi(cid:12)ca-
+tion task.7 For each such task, we report the result
+from the better of two standard, o(cid:11)-the-shelf super-
+vised learning algorithms: a support vector machine
+(SVM) and Gaussian discriminant analysis (GDA). (A
+classi(cid:12)er speci(cid:12)cally customized to sparse coding fea-
+tures is described in Section 5.)
+
+We compare our self-taught learning algorithm against
+two baselines, also trained with an SVM or GDA: us-
+ing the raw inputs themselves as features, and using
+principal component projections as features, where the
+principal components were computed on the unlabeled
+
+5We picked the number of principal components to pre-
+
+serve approximately 96% of the unlabeled data variance.
+
+smooth approximation such as (Pj qa2
+
+6Reasonable bases can often be learned even using a
+j + (cid:15)) to the L1-
+norm sparsity penalty kak1. However, such approximations
+do not produce sparse features, and in our experiments, we
+found that classi(cid:12)cation performance is signi(cid:12)cantly worse
+if such approximations are used to compute ^a(x). Since
+the labeled and unlabeled data can sometimes lead to very
+di(cid:11)erent numbers of non-zero coe(cid:14)cients ai, in our exper-
+iments (cid:12) was also recalibrated prior to computing the la-
+beled datas representations ^a(xl).
+
+7Partly for scaling and computational reasons, an ad-
+ditional feature aggregation step was applied to the image
+and audio classi(cid:12)cation tasks (since a single image is several
+times larger than the individual/small image patch bases
+that can be learned tractably by sparse coding). We aggre-
+gated features for the large image by extracting features for
+small image patches in di(cid:11)erent locations in the large im-
+age, and then aggregating the features per-basis by taking
+the feature value with the maximum absolute value. The
+aggregation procedure e(cid:11)ectively looks for the \strongest"
+occurrence of each basis pattern within the image. (Even
+better performance is obtained by aggregating features over
+a KxK grid of regions, thus looking for strong activations
+separately in di(cid:11)erent parts of the large image; see Ta-
+ble 2.) These region-wise aggregated features were used
+as input to the classi(cid:12)cation algorithms (SVM or GDA).
+Features for audio snippets were similarly aggregated by
+computing the maximum activation per basis vector over
+50ms windows in the snippet.
+
+Self-taught Learning
+
+Training set size
+
+100
+1000
+5000
+
+PCA
+Raw
+28.3% 28.6%
+34.0% 26.3%
+38.1% 38.1%
+
+Sparse coding
+
+44.0%
+45.5%
+44.3%
+
+Figure 5. Left: Example images from the handwritten digit
+dataset (top), the handwritten character dataset (middle)
+and the font character dataset (bottom). Right: Example
+sparse coding bases learned on handwritten digits.
+
+Digits ! English handwritten characters
+
+Training set size
+
+Raw
+
+Sparse coding
+
+PCA
+39.8% 25.3%
+54.8% 54.8%
+61.9% 64.5%
+
+100
+500
+1000
+Handwritten characters ! Font characters
+
+39.7%
+58.5%
+65.3%
+
+Training set size
+
+100
+500
+1000
+
+PCA
+5.7%
+
+Raw
+8.2%
+17.9% 14.5% 16.6% (20.2%)
+25.6% 23.7% 23.2% (28.3%)
+
+Sparse coding
+7.0% (9.2%)
+
+Table 3. Top: Classi(cid:12)cation accuracy on 26-way handwrit-
+ten English character classi(cid:12)cation, using bases trained on
+handwritten digits. Bottom: Classi(cid:12)cation accuracy on
+26-way English font character classi(cid:12)cation, using bases
+trained on English handwritten characters. The numbers
+in parentheses denote the accuracy using raw and sparse
+coding features together. Here, sparse coding features
+alone do not perform as well as the raw features, but per-
+form signi(cid:12)cantly better when used in combination with
+the raw features.
+data (as described in Section 3.3).
+In the PCA re-
+sults presented in this paper, the number of principal
+components used was always (cid:12)xed at the number of
+principal components used for preprocessing the raw
+input before applying sparse coding. This control ex-
+periment allows us to evaluate the e(cid:11)ects of PCA pre-
+processing and the later sparse coding step separately,
+but should therefore not be treated as a direct evalua-
+tion of PCA as a self-taught learning algorithm (where
+the number of principal components could then also be
+varied).
+Tables 2-6 report the results for various domains.
+Sparse coding features, possibly in combination with
+raw features, signi(cid:12)cantly outperform the raw features
+alone as well as PCA features on most of the domains.
+On the 101-way Caltech 101 image classi(cid:12)cation task
+with 15 training images per class (Table 2), sparse cod-
+ing features achieve a test accuracy of 46.6%. In com-
+parison, the (cid:12)rst published supervised learning algo-
+rithm for this dataset achieved only 16% test accuracy
+even with computer vision speci(cid:12)c features (instead of
+raw pixel intensities).8
+
+8Since the time we ran our experiments, other re-
+searchers have reported better results using highly spe-
+cialized computer vision algorithms (Zhang et al., 2006:
+59.1%; Lazebnik et al., 2006: 56.4%). We note that our
+algorithm was until recently state-of-the-art for this well-
+
+Table 4. Accuracy on 7-way music genre classi(cid:12)cation.
+design, company, product, work, market
+car, sale, vehicle, motor, market, import
+infect, report, virus, hiv, decline, product
+
+Design
+Business
+vaccine
+movie
+
+share, disney, abc, release, o(cid:14)ce, movie, pay
+
+Table 5. Text bases learned on 100,000 Reuters newswire
+documents. Top: Each row represents the basis most ac-
+tive on average for documents with the class label at the
+left. For each basis vector, the words corresponding to the
+largest magnitude elements are displayed. Bottom: Each
+row represents the basis that contains the largest magni-
+tude element for the word at the left. The words corre-
+sponding to other large magnitude elements are displayed.
+
+Figure 5 shows example inputs from the three char-
+acter datasets, and some of the learned bases. The
+learned bases appear to represent \pen strokes." In
+Table 3,
+it is thus not surprising that sparse cod-
+ing is able to use bases (\strokes") learned on dig-
+its to signi(cid:12)cantly improve performance on handwrit-
+ten characters|it allows the supervised learning algo-
+rithm to \see" the characters as comprising strokes,
+rather than as comprising pixels.
+For audio classi(cid:12)cation, our algorithm outperforms the
+original (spectral) features (Table 4).9 When applied
+to text, sparse coding discovers word relations that
+might be useful for classi(cid:12)cation (Table 5). The per-
+formance improvement over raw features is small (Ta-
+ble 6).10 This might be because the bag-of-words rep-
+resentation of text documents is already sparse, unlike
+the raw inputs for the other applications.11
+We envision self-taught learning as being most use-
+ful when labeled data is scarce. Table 7 shows that
+with small amounts of labeled data, classi(cid:12)cation per-
+formance deteriorates signi(cid:12)cantly when the bases (in
+sparse coding) or principal components (in PCA) are
+
+known dataset, even with almost no explicit computer-
+vision engineering, and indeed it signi(cid:12)cantly outperforms
+many carefully hand-designed, computer-vision speci(cid:12)c
+methods published on this task (E.g., Fei-Fei et al., 2004:
+16%; Serre et al., 2005: 35%; Holub et al., 2005: 40.1%).
+
+9Details: We learned bases over songs from 10 genres,
+and used these bases to construct features for a music genre
+classi(cid:12)cation over songs from 7 di(cid:11)erent genres (with dif-
+ferent artists, and possibly di(cid:11)erent instruments). Each
+training example comprised a labeled 50ms song snippet;
+each test example was a 1 second song snippet.
+
+10Details: Learned bases were evaluated on 30 binary
+webpage category classi(cid:12)cation tasks. PCA applied to text
+documents is commonly referred to as latent semantic anal-
+ysis. (Deerwester et al., 1990)
+
+11The results suggest that algorithms such as LDA (Blei
+et al., 2002) might also be appropriate for self-taught learn-
+ing on text (though LDA is speci(cid:12)c to a bag-of-words rep-
+resentation and would not apply to the other domains).
+
+Self-taught Learning
+
+Reuters news ! Webpages
+
+Training set size
+
+4
+10
+20
+
+PCA
+Raw
+62.8% 63.3%
+73.0% 72.9%
+79.9% 78.6%
+
+Sparse coding
+
+64.3%
+75.9%
+80.4%
+
+Reuters news ! UseNet articles
+
+Training set size
+
+4
+10
+
+PCA
+Raw
+61.3% 60.7%
+69.8% 64.6%
+
+Sparse coding
+
+63.8%
+68.7%
+
+Table 6. Classi(cid:12)cation accuracy on webpage classi(cid:12)cation
+(top) and UseNet article classi(cid:12)cation (bottom), using
+bases trained on Reuters news articles.
+
+Domain
+
+Handwritten
+characters
+
+Font
+characters
+
+Webpages
+
+UseNet
+
+Training
+set size
+100
+500
+1000
+5000
+100
+500
+1000
+
+4
+10
+20
+4
+10
+
+Unlabeled
+
+Labeled
+
+SC
+
+39.7%
+58.5%
+65.3%
+73.1%
+7.0%
+16.6%
+23.2%
+64.3%
+75.9%
+80.4%
+63.8%
+68.7%
+
+SC
+
+PCA
+36.2% 31.4%
+50.4% 50.8%
+62.5% 61.3%
+73.5% 73.0%
+5.2%
+5.1%
+11.7% 14.7%
+19.0% 22.3%
+55.9% 53.6%
+57.0% 54.8%
+62.9% 60.5%
+60.5% 50.9%
+67.9% 60.8%
+
+Table 7. Accuracy on the self-taught learning tasks when
+sparse coding bases are learned on unlabeled data (third
+column), or when principal components/sparse coding
+bases are learned on the labeled training set (fourth/(cid:12)fth
+column). Since Tables 2-6 already show the results for PCA
+trained on unlabeled data, we omit those results from this
+table. The performance trends are qualitatively preserved
+even when raw features are appended to the sparse coding
+features.
+
+learned on the labeled data itself, instead of on large
+amounts of additional unlabeled data.12 As more and
+more labeled data becomes available, the performance
+of sparse coding trained on labeled data approaches
+(and presumably will ultimately exceed) that of sparse
+coding trained on unlabeled data.
+
+Self-taught learning empirically leads to signi(cid:12)cant
+gains in a large variety of domains. An important
+theoretical question is characterizing how the \simi-
+larity" between the unlabeled and labeled data a(cid:11)ects
+the self-taught learning performance (similar to the
+analysis by Baxter, 1997, for transfer learning). We
+leave this question open for further research.
+5. Learning a Kernel via Sparse Coding
+A fundamental problem in supervised classi(cid:12)cation is
+de(cid:12)ning a \similarity" function between two input ex-
+amples. In the experiments described above, we used
+the regular notions of similarity (i.e., standard SVM
+kernels) to allow a fair comparison with the baseline
+
+algorithms. However, we now show that the sparse
+coding model also suggests a speci(cid:12)c specialized simi-
+larity function (kernel) for the learned representations.
+The sparse coding model (1) can be viewed as learn-
+ing the parameter b of the following linear generative
+model, that posits Gaussian noise on the observations
+x and a Laplacian (L1) prior over the activations:
+2=2(cid:27)2);
+P (a) / exp((cid:0)(cid:12) Pj jajj)
+
+P (x = Pj ajbj + (cid:17) j b; a) / exp((cid:0)k(cid:17)k2
+
+Once the bases b have been learned using unlabeled
+data, we obtain a complete generative model for the
+input x. Thus, we can compute the Fisher kernel to
+measure the similarity between new inputs. (Jaakkola
+& Haussler, 1998) In detail, given an input x, we
+(cid:12)rst compute the corresponding features ^a(x) by ef-
+(cid:12)ciently solving optimization problem (2). Then, the
+Fisher kernel implicitly maps the input x to the high-
+dimensional feature vector Ux = rb log P (x; ^a(x)jb),
+where we have used the MAP approximation ^a(x) for
+the random variable a.13 Importantly, for the sparse
+coding generative model, the corresponding kernel has
+a particularly intuitive form, and for inputs x(s) and
+x(t) can be computed e(cid:14)ciently as:
+K(x(s); x(t)) = (cid:16)^a(x(s))T ^a(x(t))(cid:17) (cid:1) (cid:16)r(s)T
+r(t)(cid:17) ;
+where r = x (cid:0) Pj ^ajbj represents the residual vec-
+tor corresponding to the MAP features ^a. Note that
+the (cid:12)rst term in the product above is simply the inner
+product of the MAP feature vectors, and corresponds
+to using a linear kernel over the learned sparse rep-
+resentation. The second term, however, compares the
+two residuals as well.
+We evaluate the performance of the learned kernel on
+the handwritten character recognition domain, since it
+does not require any feature aggregation. As a base-
+line, we compare against all choices of standard kernels
+(linear/polynomials of degree 2 and 3/RBF) and fea-
+tures (raw features/PCA/sparse coding features). Ta-
+ble 8 shows that an SVM with the new kernel outper-
+forms the best choice of standard kernels and features,
+even when that best combination was picked on the
+test data (thus giving the baseline a slightly unfair ad-
+vantage). In summary, using the Fisher kernel derived
+from the generative model described above, we obtain
+a classi(cid:12)er customized speci(cid:12)cally to the distribution
+of sparse coding features.
+6. Discussion and Other Methods
+In the semi-supervised learning setting, several authors
+have previously constructed features using data from
+the same domain as the labeled data (e.g., Hinton &
+Salakhutdinov, 2006). In contrast, self-taught learning
+
+12For the sake of simplicity (and due to space con-
+straints), we performed this comparison only for the do-
+mains that the basic sparse coding algorithm applies to,
+and that do not require the extra feature aggregation step.
+
+13In our experiments, the marginalized kernel (Tsuda
+et al., 2002), that takes an expectation over a (computed
+by MCMC sampling) rather than the MAP approximation,
+did not perform better.
+
+Self-taught Learning
+
+Training set size
+
+Standard kernel
+
+Sparse coding
+
+100
+500
+1000
+
+35.4%
+54.8%
+61.9%
+
+41.8%
+62.6%
+68.9%
+
+Table 8. Classi(cid:12)cation accuracy using the learned sparse
+coding kernel in the Handwritten Characters domain, com-
+pared with the accuracy using the best choice of standard
+kernel and input features. (See text for details.)
+
+poses a harder problem, and requires that the struc-
+ture learned from unlabeled data be \useful" for rep-
+resenting data from the classi(cid:12)cation task. Several ex-
+isting methods for unsupervised and semi-supervised
+learning can be applied to self-taught learning, though
+many of them do not lead to good performance. For
+example, consider the task of classifying images of En-
+glish characters (\a"|\z"), using unlabeled images of
+digits (\0"|\9"). For such a task, manifold learn-
+ing algorithms such as ISOMAP (Tenenbaum et al.,
+2000) or LLE (Roweis & Saul, 2000) can learn a low-
+dimensional manifold using the unlabeled data (dig-
+its); however, these manifold representations do not
+generalize straightforwardly to the labeled inputs (En-
+glish characters) that are dissimilar to any single unla-
+beled input (digit). We believe that these and several
+other learning algorithms such as auto-encoders (Hin-
+ton & Salakhutdinov, 2006) or non-negative matrix
+factorization (Hoyer, 2004) might be modi(cid:12)ed to make
+them suitable for self-taught learning.
+
+We note that even though semi-supervised learning
+was originally de(cid:12)ned with the assumption that the
+unlabeled and labeled data follow the same class la-
+bels (Nigam et al., 2000), it is sometimes conceived
+as \learning with labeled and unlabeled data." Un-
+der this broader de(cid:12)nition of semi-supervised learning,
+self-taught learning would be an instance (a particu-
+larly widely applicable one) of it.
+
+Examining the last two decades of progress in ma-
+chine learning, we believe that the self-taught learning
+framework introduced here represents the natural ex-
+trapolation of a sequence of machine learning problem
+formalisms posed by various authors|starting from
+purely supervised learning, through semi-supervised
+learning, to transfer learning|where researchers have
+considered problems making increasingly little use of
+expensive labeled data, and using less and less re-
+lated data. In this light, self-taught learning can also
+be described as \unsupervised transfer" or \transfer
+learning from unlabeled data." Most notably, Ando &
+Zhang (2005) propose a method for transfer learning
+that relies on using hand-picked heuristics to generate
+labeled secondary prediction problems from unlabeled
+data. It might be possible to adapt their method to
+several self-taught learning applications. It is encour-
+aging that our simple algorithms produce good results
+across a broad spectrum of domains. With this paper,
+we hope to initiate further research in this area.
+
+Acknowledgments
+We give warm thanks to Bruno Olshausen, Geo(cid:11) Hinton
+and the anonymous reviewers for helpful comments. This
+work was supported by the DARPA transfer learning pro-
+gram under contract number FA8750-05-2-0249, and by
+ONR under award number N00014-06-1-0828.

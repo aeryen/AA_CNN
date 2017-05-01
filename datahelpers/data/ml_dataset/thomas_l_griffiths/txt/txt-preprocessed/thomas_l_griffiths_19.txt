@@ -1,0 +1,1908 @@
+Abstract
+
+We introduce the author-topic model, a gen-
+erative model for documents that extends La-
+tent Dirichlet Allocation (LDA; Blei, Ng, &
+Jordan, 2003) to include authorship informa-
+tion. Each author is associated with a multi-
+nomial distribution over topics and each topic
+is associated with a multinomial distribution
+over words. A document with multiple au-
+thors is modeled as a distribution over topics
+that is a mixture of the distributions associ-
+ated with the authors. We apply the model
+to a collection of 1,700 NIPS conference pa-
+pers and 160,000 CiteSeer abstracts. Exact
+inference is intractable for these datasets and
+we use Gibbs sampling to estimate the topic
+and author distributions. We compare the
+performance with two other generative mod-
+els for documents, which are special cases of
+the author-topic model: LDA (a topic model)
+and a simple author model in which each au-
+thor is associated with a distribution over
+words rather than a distribution over top-
+ics. We show topics recovered by the author-
+topic model, and demonstrate applications
+to computing similarity between authors and
+entropy of author output.
+
+1
+
+Introduction
+
+Characterizing the content of documents is a standard
+problem addressed in information retrieval, statistical
+natural language processing, and machine learning. A
+representation of document content can be used to or-
+ganize, classify, or search a collection of documents.
+Recently, generative models for documents have begun
+to explore topic-based content representations, model-
+ing each document as a mixture of probabilistic top-
+ics (e.g., Blei, Ng, & Jordan, 2003; Hofmann, 1999).
+
+Here, we consider how these approaches can be used to
+address another fundamental problem raised by large
+document collections: modeling the interests of au-
+thors.
+
+By modeling the interests of authors, we can answer
+a range of important queries about the content of
+document collections. With an appropriate author
+model, we can establish which subjects an author
+writes about, which authors are likely to have writ-
+ten documents similar to an observed document, and
+which authors produce similar work. However, re-
+search on author modeling has tended to focus on the
+problem of authorship attribution { who wrote which
+document { for which discriminative models based on
+relatively super(cid:12)cial features are often su(cid:14)cient. For
+example, the \stylometric" approach (e.g., Holmes &
+Forsyth, 1995) (cid:12)nds stylistic features (e.g., frequency
+of certain stop words, sentence lengths, diversity of an
+authors vocabulary) that discriminate between di(cid:11)er-
+ent authors.
+
+In this paper we describe a generative model for doc-
+ument collections, the author-topic model, that simul-
+taneously models the content of documents and the
+interests of authors. This generative model represents
+each document with a mixture of topics, as in state-
+of-the-art approaches like Latent Dirichlet Allocation
+(Blei et al., 2003), and extends these approaches to
+author modeling by allowing the mixture weights for
+di(cid:11)erent topics to be determined by the authors of the
+document. By learning the parameters of the model,
+we obtain the set of topics that appear in a corpus
+and their relevance to di(cid:11)erent documents, as well as
+identifying which topics are used by which authors.
+
+The paper is organized as follows.
+In Section 2, we
+discuss generative models for documents using authors
+and topics, and introduce the author-topic model. We
+devote Section 3 to describing the Gibbs sampler used
+for inferring the model parameters, and in Section 4
+we present the results of applying this algorithm to
+two collections of computer science documents|NIPS
+
+UAI 2004ROSEN-ZVI ET AL.487conference papers and abstracts from the CiteSeer
+database. We conclude and discuss further research
+directions in Section 5.
+
+2 Generative models for documents
+
+We will describe three generative models for docu-
+ments: one that models documents as a mixture of
+topics (Blei et al., 2003), one that models authors with
+distributions over words, and one that models both
+authors and documents using topics. All three models
+use the same notation. A document d is a vector of Nd
+words, wd, where each wid is chosen from a vocabulary
+of size V , and a vector of Ad authors ad, chosen from a
+set of authors of size A. A collection of D documents
+is de(cid:12)ned by D = f(w1; a1); : : : ; (wD; aD)g.
+
+2.1 Modeling documents with topics
+
+A number of recent approaches to modeling document
+content are based upon the idea that the probabil-
+ity distribution over words in a document can be ex-
+pressed as a mixture of topics, where each topic is
+a probability distribution over words (e.g., Blei, et
+al., 2003; Hofmann, 1999). We will describe one such
+model { Latent Dirichlet Allocation (LDA; Blei et al.,
+2003).1
+In LDA, the generation of a document col-
+lection is modeled as a three step process. First, for
+each document, a distribution over topics is sampled
+from a Dirichlet distribution. Second, for each word
+in the document, a single topic is chosen according to
+this distribution. Finally, each word is sampled from
+a multinomial distribution over words speci(cid:12)c to the
+sampled topic.
+
+This generative process corresponds to the hierarchical
+Bayesian model shown (using plate notation) in Fig-
+ure 1(a). In this model, (cid:30) denotes the matrix of topic
+distributions, with a multinomial distribution over V
+vocabulary items for each of T topics being drawn in-
+dependently from a symmetric Dirichlet((cid:12)) prior. (cid:18)
+is the matrix of document-speci(cid:12)c mixture weights for
+these T topics, each being drawn independently from
+a symmetric Dirichlet((cid:11)) prior. For each word, z de-
+notes the topic responsible for generating that word,
+drawn from the (cid:18) distribution for that document, and
+w is the word itself, drawn from the topic distribution
+(cid:30) corresponding to z. Estimating (cid:30) and (cid:18) provides
+information about the topics that participate in a cor-
+pus and the weights of those topics in each document
+respectively. A variety of algorithms have been used
+
+1The model we describe is actually the smoothed LDA
+model (Blei et al., 2003) with symmetric Dirichlet priors
+(Gri(cid:14)ths & Steyvers, 2004) as this is closest to the author-
+topic model.
+
+to estimate these parameters, including variational in-
+ference (Blei et al., 2003), expectation propagation
+(Minka & La(cid:11)erty, 2002), and Gibbs sampling (Grif-
+(cid:12)ths & Steyvers, 2004). However, this topic model
+provides no explicit information about the interests of
+authors: while it is informative about the content of
+documents, authors may produce several documents {
+often with co-authors { and it is consequently unclear
+how the topics used in these documents might be used
+to describe the interests of the authors.
+
+2.2 Modeling authors with words
+
+Topic models illustrate how documents can be mod-
+eled as mixtures of probability distributions. This sug-
+gests a simple method for modeling the interests of au-
+thors. Assume that a group of authors, ad, decide to
+write the document d. For each word in the document
+an author is chosen uniformly at random, and a word
+is chosen from a probability distribution over words
+that is speci(cid:12)c to that author.
+
+This model is similar to a mixture model proposed
+by McCallum (1999) and is equivalent to a variant
+of LDA in which the mixture weights for the di(cid:11)er-
+ent topics are (cid:12)xed. The underlying graphical model
+is shown in Figure 1(b). x indicates the author of a
+given word, chosen uniformly from the set of authors
+ad. Each author is associated with a probability dis-
+tribution over words (cid:30), generated from a symmetric
+Dirichlet((cid:12)) prior. Estimating (cid:30) provides information
+about the interests of authors, and can be used to an-
+swer queries about author similarity and authors who
+write on subjects similar to an observed document.
+However, this author model does not provide any in-
+formation about document content that goes beyond
+the words that appear in the document and the au-
+thors of the document.
+
+2.3 The author-topic model
+
+The author-topic model draws upon the strengths of
+the two models de(cid:12)ned above, using a topic-based rep-
+resentation to model both the content of documents
+and the interests of authors. As in the author model,
+a group of authors, ad, decide to write the document
+d. For each word in the document an author is chosen
+uniformly at random. Then, as in the topic model, a
+topic is chosen from a distribution over topics speci(cid:12)c
+to that author, and the word is generated from the
+chosen topic.
+
+The graphical model corresponding to this process is
+shown in Figure 1(c). As in the author model, x indi-
+cates the author responsible for a given word, chosen
+from ad. Each author is associated with a distribution
+over topics, (cid:18), chosen from a symmetric Dirichlet((cid:11))
+
+488ROSEN-ZVI ET AL.UAI 2004Topic (LDA)
+
+Author
+
+Author-Topic
+
+a
+
+b
+
+f
+
+T
+
+q
+
+z
+
+w
+
+Nd
+
+D
+
+b
+
+f
+
+A
+
+da
+
+x
+
+w
+
+Nd D
+
+a
+
+b
+
+q
+
+A
+
+f
+
+T
+
+da
+
+x
+
+z
+
+w
+
+Nd
+
+D
+
+(a)
+
+(b)
+
+(c)
+
+Figure 1: Generative models for documents. (a) Latent Dirichlet Allocation (LDA; Blei et al., 2003), a topic
+model. (b) An author model. (c) The author-topic model.
+
+prior. The mixture weights corresponding to the cho-
+sen author are used to select a topic z, and a word is
+generated according to the distribution (cid:30) correspond-
+ing to that topic, drawn from a symmetric Dirichlet((cid:12))
+prior.
+
+The author-topic model subsumes the two models de-
+scribed above as special cases: topic models like LDA
+correspond to the case where each document has one
+unique author, and the author model corresponds to
+the case where each author has one unique topic. By
+estimating the parameters (cid:30) and (cid:18), we obtain informa-
+tion about which topics authors typically write about,
+as well as a representation of the content of each docu-
+ment in terms of these topics. In the remainder of the
+paper, we will describe a simple algorithm for estimat-
+ing these parameters, compare these di(cid:11)erent models,
+and illustrate how the results produced by the author-
+topic model can be used to answer questions about
+which which authors work on similar topics.
+
+3 Gibbs sampling algorithms
+
+A variety of algorithms have been used to estimate the
+parameters of topic models, from basic expectation-
+maximization (EM; Hofmann, 1999), to approximate
+inference methods like variational EM (Blei et al.,
+2003), expectation propagation (Minka & La(cid:11)erty,
+2002), and Gibbs sampling (Gri(cid:14)ths & Steyvers,
+2004). Generic EM algorithms tend to face problems
+with local maxima in these models (Blei et al., 2003),
+suggesting a move to approximate methods in which
+some of the parameters|such as (cid:30) and (cid:18)|can be in-
+tegrated out rather than explicitly estimated. In this
+paper, we will use Gibbs sampling, as it provides a sim-
+ple method for obtaining parameter estimates under
+Dirichlet priors and allows combination of estimates
+
+from several local maxima of the posterior distribu-
+tion.
+
+The LDA model has two sets of unknown parameters {
+the D document distributions (cid:18), and the T topic distri-
+butions (cid:30) { as well as the latent variables correspond-
+ing to the assignments of individual words to topics z.
+By applying Gibbs sampling (see Gilks, Richardson, &
+Spiegelhalter, 1996), we construct a Markov chain that
+converges to the posterior distribution on z and then
+use the results to infer (cid:18) and (cid:30) (Gri(cid:14)ths & Steyvers,
+2004). The transition between successive states of the
+Markov chain results from repeatedly drawing z from
+its distribution conditioned on all other variables, sum-
+ming out (cid:18) and (cid:30) using standard Dirichlet integrals:
+
+P (zi = jjwi = m; z(cid:0)i; w(cid:0)i) /
+mj + (cid:12)
+
+CW T
+
+C DT
+
+dj + (cid:11)
+
+m0j + V (cid:12)
+
+Pm0 CW T
+
+dj 0 + T (cid:11)
+
+Pj 0 C DT
+
+(1)
+
+where zi = j represents the assignments of the ith
+word in a document to topic j , wi = m represents
+the observation that the ith word is the mth word in
+the lexicon, and z(cid:0)i represents all topic assignments
+not including the ith word. Furthermore, C W T
+is the
+mj
+number of times word m is assigned to topic j, not
+including the current instance, and C DT
+is the num-
+ber of times topic j has occurred in document d, not
+including the current instance. For any sample from
+this Markov chain, being an assignment of every word
+to a topic, we can estimate (cid:30) and (cid:18) using
+
+dj
+
+(cid:30)mj =
+
+(cid:18)dj =
+
+CW T
+
+mj + (cid:12)
+
+m0j + V (cid:12)
+
+C DT
+
+Pm0 CW T
+Pj 0 C DT
+
+dj + (cid:11)
+
+dj 0 + T (cid:11)
+
+(2)
+
+(3)
+
+UAI 2004ROSEN-ZVI ET AL.489where (cid:30)mj is the probability of using word m in topic
+j, and (cid:18)dj is the probability of topic j in document d.
+These values correspond to the predictive distributions
+over new words w and new topics z conditioned on w
+and z.
+
+An analogous approach can be used to derive a Gibbs
+sampler for the author model. Speci(cid:12)cally, we have
+
+P (xi = kjwi = m; x(cid:0)i; w(cid:0)i; ad) /
+
+CW A
+
+mk + (cid:12)
+
+m0k + V (cid:12)
+
+Pm0 CW A
+
+where xi = k represents the assignments of the ith
+word in a document to author k and C W A
+mk is the num-
+ber of times word m is assigned to author k. An esti-
+mate of (cid:30) can be obtained via
+
+(cid:30)mk =
+
+similar to Equation 2.
+
+CW A
+
+mk + (cid:12)
+
+m0k + V (cid:12)
+
+Pm0 CW A
+
+In the author-topic model, we have two sets of latent
+variables: z and x. We draw each (zi; xi) pair as a
+block, conditioned on all other variables:
+
+P (zi = j; xi = kjwi = m; z(cid:0)i; x(cid:0)i; w(cid:0)i; ad) /
+kj + (cid:11)
+kj 0 + T (cid:11)
+
+m0j + V (cid:12)
+
+mj + (cid:12)
+
+CW T
+
+C AT
+
+(4)
+
+Pm0 CW T
+
+Pj 0 C AT
+
+where zi = j and xi = k represent the assignments of
+the ith word in a document to topic j and author k re-
+spectively, wi = m represents the observation that the
+ith word is the mth word in the lexicon, and z(cid:0)i; x(cid:0)i
+represent all topic and author assignments not includ-
+ing the ith word, and C AT
+is the number of times
+kj
+author k is assigned to topic j, not including the cur-
+rent instance. Equation 4 is the conditional probabil-
+ity derived by marginalizing out the random variables
+(cid:30) (the probability of a word given a topic) and (cid:18) (the
+probability of a topic given an author). These random
+variables are estimated from samples via
+
+(cid:30)mj =
+
+(cid:18)kj =
+
+CW T
+
+mj + (cid:12)
+
+m0j + V (cid:12)
+
+C AT
+
+Pm0 CW T
+Pj 0 C AT
+
+kj + (cid:11)
+kj 0 + T (cid:11)
+
+(5)
+
+(6)
+
+In the examples considered here, we do not estimate
+the hyperparameters (cid:11) and (cid:12)|instead the smoothing
+parameters are (cid:12)xed at 50=T and 0:01 respectively.
+
+Each of these algorithms requires tracking only small
+amounts of information from a corpus. For example,
+in the author-topic model, the algorithm only needs
+to keep track of a V (cid:2) T (word by topic) count ma-
+trix, and an A (cid:2) T (author by topic) count matrix,
+both of which can be represented e(cid:14)ciently in sparse
+
+format. We start the algorithm by assigning words to
+random topics and authors (from the set of authors
+on the document). Each iteration of the algorithm in-
+volves applying Equation 4 to every word token in the
+document collection, which leads to a time complex-
+ity that is of order of the total number of word tokens
+in the training data set multiplied by the number of
+topics, T (assuming that the number of authors on
+each document has negligible contribution to the com-
+plexity). The count matrices are saved at the 2000th
+iteration of this sampling process. We do this 10 times
+so that 10 samples are collected in this manner (the
+Markov chain is started 10 times from random initial
+assignments).
+
+4 Experimental results
+
+In our results we used two text data sets consisting of
+technical papers|full papers from the NIPS confer-
+ence2 and abstracts from CiteSeer (Lawrence, Giles,
+& Bollacker, 1999). We removed extremely common
+words from each corpus, a standard procedure in \bag
+of words" models. This leads to a vocabulary size of
+V = 13; 649 unique words in the NIPS data set and
+V = 30; 799 unique words in the CiteSeer data set.
+Our collection of NIPS papers contains D = 1; 740 pa-
+pers with K = 2; 037 authors and a total of 2; 301; 375
+word tokens. Our collection of CiteSeer abstracts con-
+tains D = 162; 489 abstracts with K = 85; 465 authors
+and a total of 11; 685; 514 word tokens.
+
+4.1 Examples of topic and author
+
+distributions
+
+The NIPS data set contains papers from the NIPS
+conferences between 1987 and 1999. The conference
+is characterized by contributions from a number of
+di(cid:11)erent research communities in the general area of
+learning algorithms. Figure 2 illustrates examples of
+8 topics (out of 100) as learned by the model for the
+NIPS corpus. The topics are extracted from a single
+sample at the 2000th iteration of the Gibbs sampler.
+Each topic is illustrated with (a) the top 10 words most
+likely to be generated conditioned on the topic, and
+(b) the top 10 most likely authors to have generated
+a word conditioned on the topic. The (cid:12)rst 6 topics we
+selected for display (left to right across the top and the
+(cid:12)rst two on the left on the bottom) are quite speci(cid:12)c
+representations of di(cid:11)erent topics that have been pop-
+ular at the NIPS conference over the time-period 1987{
+99: EM and mixture models, handwritten character
+recognition, reinforcement learning, SVMs and kernel
+methods, speech recognition, and Bayesian learning.
+
+2The NIPS data set in Matlab format is available on-
+line at http://www.cs.toronto.edu/~roweis/data.html.
+
+490ROSEN-ZVI ET AL.UAI 2004TOPIC 19
+
+TOPIC 24
+
+TOPIC 29
+
+TOPIC 87
+
+WORD
+
+LIKELIHOOD
+
+MIXTURE
+
+EM
+
+DENSITY
+GAUSSIAN
+ESTIMATION
+
+LOG
+
+MAXIMUM
+
+PARAMETERS
+
+ESTIMATE
+
+AUTHOR
+Tresp_V
+Singer_Y
+Jebara_T
+
+Ghahramani_Z
+
+Ueda_N
+Jordan_M
+Roweis_S
+Schuster_M
+
+Xu_L
+Saul_L
+
+PROB.
+0.0539
+0.0509
+0.0470
+0.0398
+0.0349
+0.0314
+0.0263
+0.0254
+0.0209
+0.0204
+
+PROB.
+0.0333
+0.0281
+0.0207
+0.0196
+0.0170
+0.0150
+0.0123
+0.0104
+0.0098
+0.0094
+
+WORD
+
+TANGENT
+
+PROB.
+RECOGNITION 0.0400
+CHARACTER
+0.0336
+CHARACTERS 0.0250
+0.0241
+HANDWRITTEN 0.0169
+0.0159
+0.0157
+0.0153
+0.0149
+0.0126
+
+DIGITS
+IMAGE
+
+DIGIT
+HAND
+
+DISTANCE
+
+WORD
+
+PROB.
+REINFORCEMENT 0.0411
+0.0371
+0.0332
+0.0208
+0.0208
+0.0178
+0.0165
+0.0164
+0.0136
+0.0118
+
+POLICY
+ACTION
+OPTIMAL
+ACTIONS
+FUNCTION
+REWARD
+SUTTON
+AGENT
+
+DECISION
+
+WORD
+KERNEL
+SUPPORT
+VECTOR
+KERNELS
+
+PROB.
+0.0683
+0.0377
+0.0257
+0.0217
+0.0205
+0.0204
+0.0188
+0.0168
+REGRESSION 0.0155
+0.0151
+
+MACHINES
+
+SET
+SVM
+
+MARGIN
+
+SPACE
+
+AUTHOR
+Simard_P
+Martin_G
+LeCun_Y
+Denker_J
+
+Henderson_D
+
+Revow_M
+
+Platt_J
+Keeler_J
+Rashid_M
+Sackinger_E
+
+PROB.
+0.0694
+0.0394
+0.0359
+0.0278
+0.0256
+0.0229
+0.0226
+0.0192
+0.0182
+0.0132
+
+AUTHOR
+Singh_S
+Barto_A
+Sutton_R
+Dayan_P
+Parr_R
+
+Dietterich_T
+Tsitsiklis_J
+Randlov_J
+Bradtke_S
+Schwartz_A
+
+PROB.
+0.1412
+0.0471
+0.0430
+0.0324
+0.0314
+0.0231
+0.0194
+0.0167
+0.0161
+0.0142
+
+AUTHOR
+Smola_A
+
+Scholkopf_B
+Burges_C
+Vapnik_V
+Chapelle_O
+Cristianini_N
+Ratsch_G
+Laskov_P
+Tipping_M
+Sollich_P
+
+PROB.
+0.1033
+0.0730
+0.0489
+0.0431
+0.0210
+0.0185
+0.0172
+0.0169
+0.0153
+0.0141
+
+TOPIC 31
+
+TOPIC 61
+
+TOPIC 71
+
+TOPIC 100
+
+WORD
+SPEECH
+
+RECOGNITION
+
+HMM
+
+SPEAKER
+CONTEXT
+
+WORD
+SYSTEM
+ACOUSTIC
+PHONEME
+
+CONTINUOUS
+
+AUTHOR
+Waibel_A
+Makhoul_J
+De-Mori_R
+Bourlard_H
+
+Cole_R
+Rigoll_G
+
+Hochberg_M
+
+Franco_H
+Abrash_V
+Movellan_J
+
+PROB.
+0.0823
+0.0497
+0.0234
+0.0226
+0.0224
+0.0166
+0.0151
+0.0134
+0.0131
+0.0129
+
+PROB.
+0.0936
+0.0238
+0.0225
+0.0216
+0.0200
+0.0191
+0.0176
+0.0163
+0.0157
+0.0149
+
+PRIOR
+
+WORD
+
+BAYESIAN
+GAUSSIAN
+POSTERIOR
+
+PROB.
+0.0450
+0.0364
+0.0355
+0.0345
+DISTRIBUTION 0.0259
+PARAMETERS 0.0199
+0.0127
+0.0117
+0.0117
+0.0112
+
+EVIDENCE
+SAMPLING
+
+COVARIANCE
+
+LOG
+
+AUTHOR
+Bishop_C
+Williams_C
+Barber_D
+MacKay_D
+Tipping_M
+
+Rasmussen_C
+
+Opper_M
+Attias_H
+Sollich_P
+Schottky_B
+
+PROB.
+0.0563
+0.0497
+0.0368
+0.0323
+0.0216
+0.0215
+0.0204
+0.0155
+0.0143
+0.0128
+
+WORD
+MODEL
+MODELS
+MODELING
+
+PARAMETERS
+
+BASED
+
+PROPOSED
+OBSERVED
+
+SIMILAR
+ACCOUNT
+
+PARAMETER
+
+AUTHOR
+
+Omohundro_S
+
+Zemel_R
+
+Ghahramani_Z
+
+Jordan_M
+Sejnowski_T
+Atkeson_C
+Bower_J
+Bengio_Y
+Revow_M
+Williams_C
+
+PROB.
+0.4963
+0.1445
+0.0218
+0.0205
+0.0116
+0.0103
+0.0100
+0.0083
+0.0069
+0.0068
+
+PROB.
+0.0088
+0.0084
+0.0076
+0.0075
+0.0071
+0.0070
+0.0066
+0.0062
+0.0059
+0.0054
+
+DAYAN
+
+WORD
+HINTON
+VISIBLE
+
+PROB.
+0.0329
+0.0124
+PROCEDURE 0.0120
+0.0114
+UNIVERSITY 0.0114
+0.0111
+GENERATIVE 0.0109
+0.0106
+0.0105
+PARAMETERS 0.0096
+
+WEIGHTS
+
+SINGLE
+
+COST
+
+AUTHOR
+Hinton_G
+Zemel_R
+Dayan_P
+Becker_S
+Jordan_M
+Mozer_M
+Williams_C
+
+PROB.
+0.2202
+0.0545
+0.0340
+0.0266
+0.0190
+0.0150
+0.0099
+0.0087
+Schraudolph_N 0.0078
+Schmidhuber_J 0.0056
+
+de-Sa_V
+
+Figure 2: An illustration of 8 topics from a 100-topic
+solution for the NIPS collection. Each topic is shown
+with the 10 words and authors that have the highest
+probability conditioned on that topic.
+
+For each topic, the top 10 most likely authors are well-
+known authors in terms of NIPS papers written on
+these topics (e.g., Singh, Barto, and Sutton in rein-
+forcement learning). While most (order of 80 to 90%)
+of the 100 topics in the model are similarly speci(cid:12)c
+in terms of semantic content, the remaining 2 topics
+we display illustrate some of the other types of \top-
+ics" discovered by the model. Topic 71 is somewhat
+generic, covering a broad set of terms typical to NIPS
+papers, with a somewhat (cid:13)atter distribution over au-
+thors compared to other topics. Topic 100 is somewhat
+oriented towards Geo(cid:11) Hintons group at the Univer-
+sity of Toronto, containing the words that commonly
+appeared in NIPS papers authored by members of that
+research group, with an author list largely consisting
+of Hinton plus his past students and postdocs.
+
+Figure 3 shows similar types of results for 4 selected
+topics from the CiteSeer data set, where again top-
+ics on speech recognition and Bayesian learning show
+up. However, since CiteSeer is much broader in con-
+tent (covering computer science in general) compared
+to NIPS, it also includes a large number of topics not
+
+TOPIC 10
+
+WORD
+SPEECH
+
+RECOGNITION
+
+WORD
+
+SPEAKER
+ACOUSTIC
+
+RATE
+
+SPOKEN
+SOUND
+TRAINING
+
+MUSIC
+
+AUTHOR
+Waibel_A
+Gauvain_J
+Lamel_L
+
+Woodland_P
+
+Ney_H
+
+Hansen_J
+Renals_S
+Noth_E
+Boves_L
+Young_S
+
+PROB.
+0.1134
+0.0349
+0.0295
+0.0227
+0.0205
+0.0134
+0.0132
+0.0127
+0.0104
+0.0102
+
+PROB.
+0.0156
+0.0133
+0.0128
+0.0124
+0.0080
+0.0078
+0.0072
+0.0071
+0.0070
+0.0069
+
+TOPIC 209
+
+TOPIC 87
+
+TOPIC 20
+
+WORD
+
+BAYESIAN
+
+PROBABILITY
+
+CARLO
+MONTE
+
+PROB.
+PROBABILISTIC 0.0778
+0.0671
+0.0532
+0.0309
+0.0308
+DISTRIBUTION 0.0257
+0.0253
+PROBABILITIES 0.0253
+0.0229
+CONDITIONAL
+0.0219
+
+INFERENCE
+
+PRIOR
+
+USERS
+
+INTERFACE
+
+WORD
+USER
+
+PROB.
+0.2541
+0.1080
+0.0788
+0.0433
+0.0392
+0.0354
+0.0261
+0.0203
+0.0128
+MANIPULATION 0.0099
+
+INTERFACES
+GRAPHICAL
+INTERACTIVE
+INTERACTION
+
+VISUAL
+DISPLAY
+
+SOLAR
+
+MAGNETIC
+
+WORD
+STARS
+
+PROB.
+0.0164
+OBSERVATIONS 0.0150
+0.0150
+0.0145
+0.0144
+0.0134
+0.0124
+0.0108
+0.0101
+0.0087
+
+EMISSION
+GALAXIES
+OBSERVED
+SUBJECT
+
+STAR
+
+RAY
+
+AUTHOR
+Friedman_N
+Heckerman_D
+Ghahramani_Z
+
+Koller_D
+Jordan_M
+Neal_R
+Raftery_A
+
+Lukasiewicz_T
+
+Halpern_J
+Muller_P
+
+PROB.
+0.0094
+0.0067
+0.0062
+0.0062
+0.0059
+0.0055
+0.0054
+0.0053
+0.0052
+0.0048
+
+AUTHOR
+
+Shneiderman_B
+Rauterberg_M
+
+Lavana_H
+Pentland_A
+Myers_B
+Minas_M
+Burnett_M
+
+Winiwarter_W
+
+Chang_S
+
+Korvemaker_B
+
+PROB.
+0.0060
+0.0031
+0.0024
+0.0021
+0.0021
+0.0021
+0.0021
+0.0020
+0.0019
+0.0019
+
+AUTHOR
+Linsky_J
+Falcke_H
+Mursula_K
+Butler_R
+
+Bjorkman_K
+Knapp_G
+Kundu_M
+
+Christensen-J
+Cranmer_S
+Nagar_N
+
+PROB.
+0.0143
+0.0131
+0.0089
+0.0083
+0.0078
+0.0067
+0.0063
+0.0059
+0.0055
+0.0050
+
+Figure 3: An illustration of 4 topics from a 300-topic
+solution for the CiteSeer collection. Each topic is
+shown with the 10 words and authors that have the
+highest probability conditioned on that topic.
+
+seen in NIPS, from user interfaces to solar astrophysics
+(Figure 3). Again the author lists are quite sensible|
+for example, Ben Shneiderman is a widely-known se-
+nior (cid:12)gure in the area of user-interfaces.
+
+For the NIPS data set, 2000 iterations of the Gibbs
+sampler took 12 hours of wall-clock time on a stan-
+dard PC workstation (22 seconds per iteration). Cite-
+seer took 111 hours for 700 iterations (9.5 minutes
+per iteration). The full list of tables can be found
+at http://www.datalab.uci.edu/author-topic, for
+both the 100-topic NIPS model and the 300-topic Cite-
+Seer model.
+In addition there is an online JAVA
+browser for interactively exploring authors, topics, and
+documents.
+
+The results above use a single sample from the Gibbs
+sampler. Across di(cid:11)erent samples each sample can
+contain somewhat di(cid:11)erent topics i.e., somewhat dif-
+ferent sets of most probable words and authors given
+the topic, since according to the author-topic model
+there is not a single set of conditional probabilities, (cid:18)
+and (cid:30), but rather a distribution over these conditional
+probabilities. In the experiments in the sections below,
+we average over multiple samples (restricted to 10 for
+computational convenience) in a Bayesian fashion for
+predictive purposes.
+
+4.2 Evaluating predictive power
+
+In addition to the qualitative evaluation of topic-
+author and topic-word results shown above, we also
+evaluated the proposed author-topic model in terms
+of perplexity, i.e., its ability to predict words on new
+unseen documents. We divided the D = 1; 740 NIPS
+papers into a training set of 1; 557 papers with a total
+of 2; 057; 729 words, and a test set of 183 papers of
+
+UAI 2004ROSEN-ZVI ET AL.491which 102 are single-authored papers. We chose the
+test data documents such that each of the 2; 037 au-
+thors of the NIPS collection authored at least one of
+the training documents.
+
+Perplexity is a standard measure for estimating the
+performance of a probabilistic model. The perplex-
+ity of a set of test words, (wd; ad) for d 2 Dtest, is
+de(cid:12)ned as the exponential of the negative normalized
+predictive likelihood under the model,
+
+perplexity(wdjad) = exp(cid:20)(cid:0)
+
+ln p(wdjad)
+
+Nd
+
+(cid:21) :
+
+(7)
+
+Better generalization performance is indicated by a
+lower perplexity over a held-out document.
+
+The derivation of the probability of a set of words
+given the authors is a straightforward calculation in
+the author-topic model:
+
+p(wdjad) = Z d(cid:18)Z d(cid:30)p((cid:18)jDtrain)p((cid:30)jDtrain)
+
+(cid:2)
+
+Nd
+
+Ym=1
+
+2
+4
+
+1
+
+Ad Xi2ad;j
+
+(cid:18)ij(cid:30)wmj3
+5 :
+
+(8)
+
+The term in the brackets is simply the probability for
+the word wm given the set of authors ad. We approx-
+imate the integrals over (cid:30) and (cid:18) using the point esti-
+mates obtained via Equations 5 and 6 for each sample
+of assignments x; z, and then average over samples.
+For documents with a single author this formula be-
+comes
+
+p(wdjad) =
+
+1
+S
+
+S
+
+Nd
+
+Xs=1
+
+Ym=1
+
+2
+4Xj
+
+adj(cid:30)s
+(cid:18)s
+
+wmj3
+5
+
+;
+
+adj, (cid:30)s
+
+where (cid:18)s
+wmj are point estimates from sample s,
+S is the number of samples used, and ad is no longer
+a vector but a scalar that stands for the author of the
+document.
+
+d
+
+In the (cid:12)rst set of experiments we compared the topic
+model (LDA) of Section 2.1, the author model of Sec-
+tion 2.2, and our proposed author-topic model from
+Section 2.3. For each test document, a randomly gen-
+erated set of N (train)
+training words were selected and
+combined with the training data. Each model then
+made predictions on the other words in each test doc-
+ument, conditioned on the combination of both (a)
+the documents in the training data corpus and (b) the
+words that were randomly selected from the document.
+This simulates the process of observing some of the
+words in a document and making predictions about
+the rest. We would expect that as N (train)
+increases
+the predictive power of each model would improve as it
+adapts to the document. The author-topic and author
+
+d
+
+l
+
+y
+t
+i
+x
+e
+p
+r
+e
+P
+
+4000
+
+3500
+
+3000
+
+2500
+
+2000
+
+5
+
+25%
+
+10%
+
+1%
+
+0.5%
+
+0.1%
+
+10
+
+50
+
+100
+
+200
+
+400
+
+Topics
+
+Figure 5: Perplexity of the 102 single-authored test
+documents from the NIPS collection, conditioned both
+on the correct author and authors ranked by perplexity
+using the model, as described in the text.
+
+models were both also conditioned on the identity of
+the true authors of the document. In all models, the
+topic and author distributions were all updated to new
+predictive distributions given the combination of the
+N (train)
+training words for the document being pre-
+dicted and the full training data corpus. We averaged
+over 10 samples from the Gibbs sampler when making
+predictions for each word.
+
+d
+
+d
+
+Figure 4 shows the results for the 3 models being com-
+pared. The author model is clearly poorer than either
+of the topic-based models, as illustrated by its high
+perplexity. Since a distribution over words has to be
+estimated for each author, (cid:12)tting this model involves
+(cid:12)nding the values of a large number of parameters,
+limiting its generalization performance. The author-
+topic model has lower perplexity early on (for small
+values of N (train)
+) since it uses knowledge of the au-
+thor to provide a better prior for the content of the
+document. However, as N (train)
+increases we see a
+cross-over point where the more (cid:13)exible topic model
+adapts better to the content of this particular docu-
+ment. Since no two scienti(cid:12)c papers are exactly the
+same, the expectation that this document will match
+the previous output of its authors begins to limit the
+predictive power of the author-topic model. For larger
+numbers of topics, this crossover occurs for smaller val-
+ues of N (train)
+, since the topics pick out more speci(cid:12)c
+areas of the subject domain.
+
+d
+
+d
+
+To illustrate the utility of these models in predicting
+words conditioned on authors, we derived the perplex-
+ity for each of the 102 singled-authored test documents
+in the NIPS collection using the full text of each docu-
+ment and S = 10. The averaged perplexity as a func-
+tion of the number of topics T is presented in Fig-
+
+492ROSEN-ZVI ET AL.UAI 2004y
+t
+i
+x
+e
+l
+p
+r
+e
+P
+
+3200
+
+2800
+
+2400
+
+2000
+
+1600
+
+1200
+
+y
+t
+i
+x
+e
+l
+p
+r
+e
+P
+
+3200
+2800
+2400
+2000
+1600
+1200
+
+5 topics
+
+10 topics
+
+50 topics
+
+0 1 4 16 64
+1024
+256
+(train)
+
+Nd
+
+0 1 4 16 64
+1024
+256
+(train)
+
+Nd
+
+0 1 4 16 64
+1024
+256
+(train)
+
+Nd
+
+100 topics
+
+200 topics
+
+400 topics
+
+0 1 4 16 64
+
+256
+1024
+(train)
+
+Nd
+
+0 1 4 16 64
+1024
+256
+(train)
+
+Nd
+
+0 1 4 16 64
+
+256
+1024
+(train)
+
+Nd
+
+topics (LDA)
+author-topics
+author
+
+400 topics
+
+0
+
+1
+
+256
+
+1024
+
+4 16 64
+(train)
+Nd
+
+y
+t
+i
+x
+e
+l
+p
+r
+e
+P
+
+14000
+
+12000
+
+10000
+
+8000
+
+6000
+
+4000
+
+2000
+
+Figure 4: Perplexity versus N (train)
+models.
+
+d
+
+for di(cid:11)erent numbers of topics, for the author, author-topic, and topic (LDA)
+
+ure 5 (thick line). We also derived the perplexity of
+the test documents conditioned on each one of the au-
+thors from the NIPS collection, perplexity(wdja) for
+a = 1; :::; K. This results in K = 2; 037 di(cid:11)erent per-
+plexity values. Then we ranked the results and various
+percentiles from this ranking are presented in Figure
+5. One can see that making use of the authorship
+information signi(cid:12)cantly improves the predictive log-
+likelihood: the model has accurate expectations about
+the content of documents by particular authors. As
+the number of topics increases the ranking of the cor-
+rect author improves, where for 400 topics the aver-
+aged ranking of the correct author is within the 20
+highest ranked authors (out of 2,037 possible authors).
+Consequently, the model provides a useful method for
+identifying possible authors for novel documents.
+
+Table 1: Symmetric KL divergence for pairs of authors
+
+Authors
+Bartlett P (8)
+Shawe-Taylor J (8)
+Barto A (11)
+Singh S (17)
+Amari S (9)
+Yang H (5)
+Singh S (17)
+Sutton R (7)
+Moore A (11)
+Sutton R (7)
+MEDIAN
+
+n T=400 T=200 T=100
+-
+
+0.90
+
+1.58
+
+2.52
+
+2
+
+3
+
+2
+
+-
+
+3.34
+
+3.44
+
+3.69
+
+4.25
+
+2.18
+
+2.48
+
+2.33
+
+2.89
+
+1.25
+
+1.57
+
+1.35
+
+1.87
+
+-
+MAXIMUM -
+
+5.52
+16.61
+
+4.01
+14.91
+
+3.33
+13.32
+
+Note: n is number of common papers in NIPS dataset.
+
+4.3
+
+Illustrative applications of the model
+
+distribution, p((cid:18)jDtrain).
+
+The author-topic model could be used for a variety of
+applications such as automated reviewer recommenda-
+tions, i.e., given an abstract of a paper and a list of the
+authors plus their known past collaborators, generate
+a list of other highly likely authors for this abstract
+who might serve as good reviewers. Such a task re-
+quires computing the similarity between authors. To
+illustrate how the model could be used in this respect,
+we de(cid:12)ned the distance between authors i and j as the
+symmetric KL divergence between the topics distribu-
+tion conditioned on each of the authors:
+
+sKL(i; j) =
+
+T
+
+Xt=1
+
+(cid:20)(cid:18)it log
+
+(cid:18)it
+(cid:18)jt
+
++ (cid:18)jt log
+
+(cid:18)jt
+
+(cid:18)it(cid:21) :
+
+(9)
+
+As earlier, we derived the averaged symmetric KL di-
+vergence by averaging over samples from the posterior
+
+We searched for similar pairs of authors in the NIPS
+data set using the distance measure above. We
+searched only over authors who wrote more than 5
+papers in the full NIPS data set|there are 125 such
+authors out of the full set of 2037. Table 1 shows the
+5 pairs of authors with the highest averaged sKL for
+the 400-topic model, as well as the median and min-
+imum. Results for the 200 and 100-topic models are
+also shown as are the number of papers in the data set
+for each author (in parentheses) and the number of
+co-authored papers in the data set (2nd column). All
+results were averaged over 10 samples from the Gibbs
+sampler.
+
+Again the results are quite intuitive. For example,
+although authors Bartlett and Shawe-Taylor did not
+have any co-authored documents in the NIPS collec-
+
+UAI 2004ROSEN-ZVI ET AL.493Table 2: Author entropies
+
+Author
+
+n T=400 T=200 T=100
+
+Jordan M 24
+4
+Fine T
+4
+Roweis S
+4
+Becker S
+Brand M 1
+MEDIAN
+MINIMUM
+Note: n is the number of papers by each author.
+
+4.35
+4.33
+4.32
+4.30
+4.29
+3.42
+1.23
+
+4.04
+3.94
+4.02
+4.06
+4.03
+3.16
+0.78
+
+3.61
+3.52
+3.61
+3.69
+3.65
+2.81
+0.58
+
+tion, they have in fact co-authored on other papers.
+Similarly, although A. Moore and R. Sutton have not
+co-authored any papers to our knowledge, they have
+both (separately) published extensively on the same
+topic of reinforcement learning. The distances between
+the authors ranked highly (in Table 1) are signi(cid:12)cantly
+lower than the median distances between pairs of au-
+thors.
+
+The topic distributions for di(cid:11)erent authors can also
+be used to assess the extent to which authors tend to
+address a single topic in their work, or cover multi-
+ple topics. We calculated the entropy of each authors
+distribution over topics on the NIPS data, for di(cid:11)er-
+ent numbers of topics. Table 2 shows the 5 authors
+with the highest averaged entropy (for 400 topics) as
+well as the median and the minimum|also shown are
+the entropies for 200 and 100 topics. The top-ranked
+author, Michael Jordan, is well known for producing
+NIPS papers on a variety of topics. The papers associ-
+ated with the other authors are also relatively diverse,
+e.g., for author Terrence Fine one of his papers is about
+forecasting demand for electric power while another
+concerns asymptotics of gradient-based learning. The
+number of papers produced by an author is not neces-
+sarily a good predictor of topic entropy. Sejnowski T,
+for example, who generated the greatest number of pa-
+pers in our NIPs collection, 37 of the training papers,
+is the 44th highest entropy author, with an entropy of
+4:11 for T = 400.
+
+5 Conclusions
+
+The author-topic model proposed in this paper pro-
+vides a relatively simple probabilistic model for ex-
+ploring the relationships between authors, documents,
+topics, and words. This model provides signi(cid:12)cantly
+improved predictive power in terms of perplexity com-
+pared to a more impoverished author model, where the
+interests of authors are directly modeled with proba-
+bility distributions over words. When compared to the
+LDA topic model, the author-topic model was shown
+to have more focused priors when relatively little is
+
+known about a new document, but the LDA model can
+better adapt its distribution over topics to the content
+of individual documents as more words are observed.
+The primary bene(cid:12)t of the author-topic model is that
+it allows us to explicitly include authors in document
+models, providing a general framework for answering
+queries and making predictions at the level of authors
+as well as the level of documents. Possible future direc-
+tions for this work include using citation information
+to further couple documents in the model (c.f. Cohn &
+Hofmann, 2001), combining topic models with stylom-
+etry models for author identi(cid:12)cation, and applications
+such as automated reviewer list generation given sets
+of documents for review.
+
+Acknowledgements
+
+The research in this paper was supported in part by the
+National Science Foundation under Grant IRI-9703120
+via the Knowledge Discovery and Dissemination (KD-
+D) program. We would like to thank Steve Lawrence
+and C. Lee Giles for kindly providing us with the Cite-
+Seer data used in this paper.
+

@@ -1,0 +1,1947 @@
+Abstract Kernel based algorithms such as support vector
+machines have achieved considerable success in various problems
+in the batch setting where all of the training data is available in
+advance. Support vector machines combine the so-called kernel
+trick with the large margin idea. There has been little use of these
+methods in an online setting suitable for real-time applications.
+In this paper we consider online learning in a Reproducing
+Kernel Hilbert Space. By considering classical stochastic gradient
+descent within a feature space, and the use of some straight-
+forward tricks, we develop simple and computationally efcient
+algorithms for a wide range of problems such as classication,
+regression, and novelty detection.
+
+In addition to allowing the exploitation of the kernel trick
+in an online setting, we examine the value of large margins for
+classication in the online setting with a drifting target. We derive
+worst case loss bounds and moreover we show the convergence of
+the hypothesis to the minimiser of the regularised risk functional.
+We present some experimental results that support the theory
+as well as illustrating the power of the new algorithms for online
+novelty detection.
+
+Index Terms Reproducing Kernel Hilbert Spaces, Stochastic
+Gradient Descent, Large Margin Classiers, Tracking, Novelty
+Detection, Condition Monitoring, Classication, Regression.
+
+I. INTRODUCTION
+
+K ERNEL methods have proven to be successful in many
+
+batch settings (Support Vector Machines, Gaussian Pro-
+cesses, Regularization Networks) [1]. Whilst one can apply
+batch algorithms by utilising a sliding buffer [2], it would
+be much better to have a truely online algorithm. However
+the extension of kernel methods to online settings where the
+data arrives sequentially has proven to provide some hitherto
+unsolved challenges.
+
+A. Challenges for online kernel algorithms
+
+First, the standard online settings for linear methods are in
+danger of overtting when applied to an estimator using a
+Hilbert Space method because of the high dimensionality of
+the weight vectors. This can be handled by use of regularisa-
+tion (or exploitation of prior probabilities in function space if
+the Gaussian Process view is taken).
+
+Second,
+
+the functional representation of classical kernel
+based estimators becomes more complex as the number of
+observations increases. The Representer Theorem [3] implies
+that the number of kernel functions can grow up to linearly
+
+Manuscript received July 1, 2003; revised July 1, 2010. This work was
+
+supported by the Australian Research Council.
+
+Parts of this work were presented at the 13th International Conference
+on Algorithmic Learning Theory, November 2002 and the 15th Annual
+Conference on Neural Information Processing Systems, December 2001.
+
+The authors are with the Research School of Information Sciences and
+Engineering, The Australian National University. R.C. Williamson is also with
+National ICT Australia.
+
+with the number of observations. Depending on the loss func-
+tion used [4], this will happen in practice in most cases. Thus
+the complexity of the estimator used in prediction increases
+linearly over time (in some restricted situations this can be
+reduced to logarithmical cost [5] or constant cost [6], yet with
+linear storage requirements). Clearly this is not satisfactory for
+genuine online applications.
+
+Third, the training time of batch and/or incremental update
+algorithms typically increases superlinearly with the number
+of observations. Incremental update algorithms [7] attempt
+to overcome this problem but cannot guarantee a bound on
+the number of operations required per iteration. Projection
+methods [8] on the other hand, will ensure a limited number
+of updates per iteration and also keep the complexity of
+the estimator constant. However they can be computationally
+expensive since they require a matrix multiplication at each
+step. The size of the matrix is given by the number of kernel
+functions required at each step and could typically be in the
+hundreds in the smallest dimension.
+
+In solving the above challenges it is highly desirable to
+be able to theoretically prove convergence rates and error
+bounds for any algorithms developed. One would want to be
+able to relate the performance of an online algorithm after
+seeing m observations to the quality that would be achieved
+in a batch setting. It is also desirable to be able to provide
+some theoretical insight in drifting target scenarios when a
+comparison with a batch algorithm makes little sense.
+
+In this paper we present algorithms which deal effectively
+with these three challenges as well as satisfying the above
+desiderata.
+
+B. Related Work
+
+Recently several algorithms have been proposed [5], [9]
+[11] which perform perceptron-like updates for classication
+at each step. Some algorithms work only in the noise free
+case, others not for moving targets, and others assume an upper
+bound on the complexity of the estimators. In the present paper
+we present a simple method which allows the use of kernel
+estimators for classication, regression, and novelty detection
+and which copes with a large number of kernel functions
+efciently.
+
+The stochastic gradient descent algorithms we propose (col-
+lectively called NORMA) differ from the tracking algorithms
+of Warmuth, Herbster and Auer [5], [12], [13] insofar as we
+do not require that the norm of the hypothesis be bounded
+beforehand. More importantly, we explicitly deal with the
+issues described earlier that arise when applying them to kernel
+based representations.
+
+Concerning large margin classication (which we obtain by
+performing stochastic gradient descent on the soft margin loss
+
+IEEE TRANSACTIONS ON SIGNAL PROCESSING, VOL. 100, NO. 10, OCTOBER 2010
+
+2
+
+function), our algorithm is most similar to Gentiles ALMA
+[9] and we obtain similar loss bounds to those obtained for
+ALMA. One of the advantages of a large margin classier is
+that it allows us to track changing distributions efciently [14].
+In the context of Gaussian Processes (an alternative theoret-
+ical framework that can be used to develop kernel based algo-
+rithms), related work was presented in [8]. The key difference
+to our algorithm is that Csato and Opper repeatedly project on
+to a low-dimensional subspace, which can be computationally
+costly requiring as it does a matrix multiplication.
+
+Mesterharm [15] has considered tracking arbitrary linear
+classiers with a variant of Winnow [16], and Bousquet and
+Warmuth [17] studied tracking of a small set of experts via
+posterior distributions.
+
+Finally we note that whilst not originally developed as an
+online algorithm, the Sequential Minimal Optimization (SMO)
+algorithm [18] is closely related, especially when there is
+no bias term in which case [19] it effectively becomes the
+Perceptron algorithm.
+
+C. Outline of the Paper
+
+In Section II we develop the idea of stochastic gradient
+descent
+in Hilbert Space. This provides the basis of our
+algorithms. Subsequently we show how the general form of
+the algorithm can be applied to problems of classication,
+novelty detection, and regression (Section III). Next we es-
+tablish mistake bounds with moving targets for linear large
+margin classication algorithms in Section IV. A proof that
+the stochastic gradient algorithm converges to the minimum
+of the regularised risk functional is given in Section V, and
+we conclude with experimental results and a discussion in
+Sections VI and VII.
+
+II. STOCHASTIC GRADIENT DESCENT IN HILBERT SPACE
+
+Moreover we assume that
+
+We consider a problem of function estimation, where the
+goal is to learn a mapping f : X  R based on a sequence
+S = ((x1, y1), . . . , (xm, ym)) of examples (xt, yt)  X  Y.
+there exists a loss function
+l : R  Y  R, given by l(f(x), y), which penalises the
+deviation of estimates f(x) from observed labels y. Common
+loss functions include the soft margin loss function [20] or
+the logistic loss for classication and novelty detection [21],
+and the quadratic loss, absolute loss, Hubers robust loss [22]
+and the -insensitive loss [23] for regression. We shall discuss
+these in Section III.
+The reason for allowing the range of f to be R rather
+than Y is that it allows for more renement in evaluation
+of the learning result. For example,
+in classication with
+Y = {1, 1} we could interpret sgn(f(x)) as the prediction
+given by f for the class of x, and |f(x)| as the condence
+in that classication. We call the output f of the learning
+algorithm an hypothesis, and denote the set of all possible
+hypotheses by H.
+We will always assume H is a reproducing kernel Hilbert
+there exists a kernel
+
+space (RKHS) [1]. This means that
+k : X  X  R and a dot product h,iH such that
+
+for x  X
+
+1) k has the reproducing property
+hf, k(x,)iH = f(x)
+
+(1)
+2) H is the closure of the span of all k(x,) with x  X .
+In other words, all f  H are linear combinations of kernel
+functions. The inner product h,iH induces a norm on f  H
+in the usual way: ||f||H := hf, fiH1/2. An interesting special
+case is X = Rn with k(x, y) = hx, yi (the normal dot-product
+in Rn) which corresponds to learning linear functions in Rn,
+but much more varied function classes can be learned by using
+different kernels.
+
+A. Risk Functionals
+
+In batch learning, it is typically assumed that all the exam-
+ples are immediately available and are drawn independently
+from some distribution P over X  Y. One natural measure
+of quality for f in that case is the expected risk
+R[f, P ] := E(x,y)P [l(f(x), y)].
+
+(2)
+
+Since P is unknown, given S drawn from P m, a standard
+approach [1] is to instead minimise the empirical risk
+
+mX
+
+t=1
+
+Remp[f, S] :=
+
+1
+m
+
+l(f(xt), yt).
+
+(3)
+
+However, minimising Remp[f] may lead to overtting (com-
+plex functions that t well on the training data but do not
+generalise to unseen data). One way to avoid this is to penalise
+complex functions by instead minimising the regularised risk
+
+||f||2H
+
+Rreg[f, S] := Rreg,[f, S] := Remp[f] + 
+2
+
+(4)
+where  > 0 and ||f||H = hf, fi1/2H does indeed measure
+the complexity of f in a sensible way [1]. The constant 
+needs to be chosen appropriately for each problem. If l has
+parameters (for example l  see later), we write Remp,[f, S]
+and Rreg,,[f, S].
+
+Since we are interested in online algorithms, which deal
+with one example at a time, we also dene an instantaneous
+approximation of Rreg,, the instantaneous regularised risk on
+a single example (x, y), by
+
+Rinst[f, x, y] := Rinst,[f, x, y] := Rreg,[f, ((x, y))].
+
+(5)
+
+B. Online setting
+
+In this paper we are interested in online learning, where the
+examples become available one by one, and it is desired that
+the learning algorithm produces a sequence of hypotheses f =
+(f1, . . . , fm+1). Here f1 is some arbitrary initial hypothesis
+and fi for i > 1 is the hypothesis chosen after seeing the
+(i  1)th example. Thus l(ft(xt), yt) is the loss the learning
+algorithm makes when it tries to predict yt, based on xt and
+the previous examples (x1, y1), . . . , (xt1, yt1). This kind
+of learning framework is appropriate for real-time learning
+problems and is of course analogous to the usual adaptive
+signal processing framework [24]. We may also use an online
+algorithm simply as an efcient method of approximately
+solving a batch problem. The algorithm we propose below
+
+IEEE TRANSACTIONS ON SIGNAL PROCESSING, VOL. 100, NO. 10, OCTOBER 2010
+
+3
+
+can be effectively run on huge data sets on machines with
+limited memory.
+
+A suitable measure of performance for online algorithms in
+
+an online setting is the cumulative loss
+
+mX
+
+Given: A sequence S = ((xi, yi))iN  (X Y); a regularisation
+parameter  > 0; a truncation parameter   N; a learning rate
+  (0, 1/); a piecewise differentiable convex loss function l : R 
+Y  R; and a Reproducing Kernel Hilbert Space H with reproducing
+kernel k, NORMA(S, l, k, ,  ) outputs a sequence of hypotheses
+f = (f1, f2, . . .)  H.
+Initialise t := 1; i := (1  )i
+Loop
+
+for i = 0, . . . ,  ;
+i=max(1,t ) iti1k(xi,);
+
+ft() :=Pt1
+
+t := l0(ft(xt), yt);
+t := t + 1;
+
+End Loop
+
+Fig. 1. NORMA with constant learning rate , exploiting the truncation
+approximation.
+
+Thus, at step t the t-th coefcient may receive a non-zero
+value. The coefcients for earlier terms decay by a factor
+(which is constant for constant t). Notice that the cost for
+training at each step is not much larger than the prediction
+cost: once we have computed ft(xt), t is obtained by the
+value of the derivative of l at (ft(xt), yt).
+
+D. Speedups and Truncation
+
+There are several ways of speeding up the algorithm. Instead
+of updating all old coefcients i, i = 1, . . . , t  1, one may
+simply cache the power series 1, (1  ), (1  )2, (1 
+)3, . . . and pick suitable terms as needed. This is particularly
+useful if the derivatives of the loss function l will only assume
+discrete values, say {1, 0, 1} as is the case when using the
+soft-margin type loss functions (see Section III).
+Alternatively, one can also store t = (1  )tt and
+i=1 ik(xi, xt), which only
+requires rescaling once t becomes too large for machine
+precision  this exploits the exponent in the standard oating
+point number representation.
+
+compute ft(x) = (1  )tPt1
+
+A major problem with (11) and (12) is that without ad-
+ditional measures, the kernel expansion at time t contains
+t terms. Since the amount of computations required for
+predicting grows linearly in the size of the expansion, this
+is undesirable. The regularisation term helps here. At each
+iteration the coefcients i with i 6= t are shrunk by (1 ).
+Thus after  iterations the coefcient i will be reduced to
+(1  ) i. Hence one can drop small terms and incur little
+error as the following proposition shows.
+
+Proposition 1 (Truncation Error) Suppose l(z, y) is a loss
+function satisfying |zl(z, y)|  C for all z  R, y 
+Y and k is a kernel with bounded norm kk(x,)k  X
+Pt1
+where k  k denotes either k  kL or k  kH. Let ftrunc :=
+i=max(1,t ) ik(xi,) denote the kernel expansion trun-
+kf  ftrunck  tX
+
+(1  )tiCX < (1  ) CX/.
+
+cated to  terms. The truncation error satises
+
+i=1
+
+Obviously the approximation quality increases exponen-
+
+tially with the number of terms retained.
+
+Lcum[f , S] =
+
+l(ft(xt), yt).
+
+(6)
+
+(cid:12)(cid:12)(cid:12)f =ft
+
+t=1
+
+(Again, if l has such as , we write Lcum,[f] etc.) Notice
+is tested on the example (xt, yt) which was
+that here ft
+not available for training ft, so if we can guarantee a low
+cumulative loss we are already guarding against overtting.
+Regularisation can still be useful
+if
+the target we are learning changes over time, regularisation
+prevents the hypothesis from going too far in one direction,
+thus hopefully helping recovery when a change occurs. Fur-
+thermore, if we are interested in large margin algorithms, some
+kind of complexity control is needed to make the denition of
+the margin meaningful.
+
+in the online setting:
+
+C. The General Idea of the Algorithm
+
+The algorithms we study in this paper are classical stochas-
+tic gradient descent  they perform gradient descent with
+respect to the instantaneous risk. The general form of the
+update rule is
+
+ft+1 := ft  t f Rinst,[f, xt, yt]
+
+(7)
+where for i  N, fi  H, f is short-hand for /f (the
+gradient with respect to f) and t > 0 is the learning rate
+which is often constant t = . In order to evaluate the
+gradient, note that the evaluation functional f 7 f(xi) is
+given by (1), and therefore
+
+f l(f(xt), yt) = l0(f(xt), yt)k(xt,),
+
+(8)
+where l0(z, y) := zl(z, y). Since f||f||2H = 2f, the update
+becomes
+
+ft+1 := (1  )ft  tl0(ft(xt), yt)k(xt,).
+
+(9)
+
+Clearly, given  > 0, t needs to satisfy t < 1/ for all t
+for the algorithm to work.
+
+We also allow loss functions l that are only piecewise
+differentiable, in which case  stands for subgradient. When
+the subgradient is not unique, we choose one arbitrarily; the
+choice does not make any difference either in practice or in
+theoretical analyses. All the loss functions we consider are
+convex in the rst argument.
+
+Choose a zero initial hypothesis f1 = 0. For the purposes of
+practical computations, one can write ft as a kernel expansion
+(cf. [25])
+
+ft(x) =
+
+ik(xi, x)
+
+x  X
+
+i=1
+
+where the coefcients are updated at step t via
+
+t :=  tl0(ft(xt), yt)
+i :=(1  t)i
+
+for i = t
+for i < t.
+
+(10)
+
+(11)
+(12)
+
+t1X
+
+IEEE TRANSACTIONS ON SIGNAL PROCESSING, VOL. 100, NO. 10, OCTOBER 2010
+
+The regularisation parameter  can thus be used to control
+the storage requirements for the expansion. In addition, it
+naturally allows for distributions P (x, y) that change over time
+in which cases it is desirable to forget instances (xi, yi) that
+are much older than the average time scale of the distribution
+change [26].
+
+We call our algorithm NORMA (Naive Online Rreg Min-
+imisation Algorithm) and sometimes explicitly write the pa-
+rameter : NORMA. NORMA is summarised in Figure 1. In
+the applications discussed in the next section it is sometimes
+necessary to introduce additional parameters that need to be
+updated. We nevertheless refer somewhat loosely to the whole
+family of algorithms as NORMA.
+
+III. APPLICATIONS
+
+The general idea of NORMA can be applied to a wide
+range of problems. We utilise the standard [1] addition of
+the constant offset b to the function expansion, i.e. g(x) :=
+f(x) + b where f  H and b  R. Hence we also update b
+via
+
+bt+1 := bt   bRinst[g, xt, yt]
+
+(cid:12)(cid:12)(cid:12)g=ft+bt
+
+.
+
+A. Classication
+
+In (binary) classication, we have Y = {1}. The most
+obvious loss function to use in this context is l(f(x), y) = 1
+if yf(x)  0 and l(f(x), y) = 0 otherwise. Thus, no loss is
+incurred if sgn(f(x)) is the correct prediction for y; otherwise
+we say that f makes a mistake at (x, y) and charge a unit loss.
+However, the mistake loss function has some drawbacks:
+a) it fails to take into account the margin yf(x) that can be
+considered a measure of condence in the correct prediction, a
+non-positive margin meaning an actual mistake; b) the mistake
+loss is discontinuous and non-convex and thus is unsuitable for
+use in gradient based algorithms.
+
+In order to deal with these drawbacks the main loss function
+
+we use here for classication is the soft margin loss
+
+l(f(x), y) := max(0,   yf(x))
+
+(13)
+where   0 is the margin parameter. The soft margin loss
+l(f(x), y) is positive if f fails to achieve a margin at least 
+on (x, y); in this case we say that f made a margin error. If
+f made an actual mistake, then l(f(x), y)  .
+Let t be an indicator of whether ft made a margin error
+on (xt, yt), i.e., t = 1 if ytft(xt)   and zero otherwise.
+Then
+(ft(xt), yt) = tyt =
+l0
+
+(yt
+
+if ytft(xt)  
+otherwise
+
+(14)
+
+0
+
+and the update (9) becomes
+
+ft+1 :=(1  )ft + tytk(xt,)
+bt+1 :=bt + tyt.
+
+(15)
+(16)
+Suppose now that X > 0 is a bound such that k(xt, xt) 
+
+X 2 holds for all t. Since ||f1||H = 0 and
+
+||ft+1||H  (1  )||ft||H + ||k(xt,)||H
+= (1  )||ft||H + k(xt, xt)1/2,
+
+we obtain ||ft||H  X/ for all t. Furthermore,
+|ft(xt)| = |hft, k(xt,)iH |  X 2/.
+
+4
+
+(17)
+
+Hence, when the offset parameter b is omitted (which we
+consider particularly in Sections IV and V), it is reasonable to
+require   X 2/. Then the loss function becomes effectively
+bounded, with l(ft(xt), yt)  2X 2/ for all t.
+
+The update in terms of i is (for i = 1, . . . , t  1)
+(i, t, b) := ((1  )i, tyt, b + tyt).
+
+(18)
+When  = 0 and  = 0 we recover the kernel perceptron [27].
+If  = 0 and  > 0 we have a kernel perceptron with
+regularisation.
+
+For classication with the -trick [4] we also have to take
+
+care of the margin , since there (recall g(x) = f(x) + b)
+
+l(g(x), y) := max(0,   yg(x))  .
+
+(19)
+
+Since one can show [4] that the specic choice of  has no
+inuence on the estimate in -SV classication, we may set
+ = 1 and obtain the update rule (for i = 1, . . . , t  1)
+(i, t, b, ) := ((1 )i, tyt, b+ tyt, + (t )).
+
+B. Novelty Detection
+
+Novelty detection [21] is like classication without labels.
+It is useful for condition monitoring tasks such as network
+intrusion detection. The absence of labels yi means the algo-
+rithm is not precisely a special case of NORMA as presented
+earlier, but one can derive a variant in the same spirit.
+
+The -setting is most useful here as it allows one to specify
+an upper limit on the frequency of alerts f(x) < . The loss
+function to be utilised is
+
+l(f(x), x, y) := max(0,   f(x))  
+
+and usually [21] one uses f  H rather than g = f + b where
+b  R in order to avoid trivial solutions. The update rule is
+(for i = 1, . . . , t  1)
+
+(
+
+(i, t, ) :=
+
+((1  )i, ,  + (1  ))
+((1  )i, 0,   )
+
+if f(x) < 
+otherwise.
+
+(20)
+Consideration of the update for  shows that on average only
+a fraction of  observations will be considered for updates.
+Thus it is necessary to store only a small fraction of the xis.
+
+C. Regression
+
+We consider the following three settings: squared loss, the
+-insensitive loss using the -trick, and Hubers robust loss
+function, i.e. trimmed mean estimators. For convenience we
+will only use estimates f  H rather than g = f + b where
+b  R. The extension to the latter case is straightforward.
+2(y  f(x))2. Con-
+sequently the update equation is (for i = 1, . . . , t  1)
+
+1) Squared Loss: Here l(f(x), y) := 1
+
+(i, t) := ((1  )i, (yt  f(xt))).
+
+(21)
+
+This means that we have to store every observation we
+make, or more precisely, the prediction error we made on the
+observation.
+
+IEEE TRANSACTIONS ON SIGNAL PROCESSING, VOL. 100, NO. 10, OCTOBER 2010
+
+5
+
+2) -insensitive Loss: The use of
+
+function
+l(f(x), y) = max(0,|yf(x)|) introduces a new parameter
+ the width of the insensitivity zone . By making  a variable
+of the optimisation problem we have
+
+the loss
+
+by the algorithm on S. Two key quantities are the number of
+mistakes, given by
+
+M(f , S) := |{ 1  t  m | ytft(xt)  0}|,
+
+(25)
+
+l(f(x), y) := max(0,|y  f(x)|  ) + .
+
+and the number of margin errors, given by
+
+The update equations now have to be stated in terms of i, t,
+and  which is allowed to change during the optimisation
+process. Setting t := yt  f(xt) the updates are (for i =
+1, . . . , t  1)
+
+(
+
+(i, t, ) :=
+
+((1  )i,  sgn t,  + (1  ))
+((1  )i, 0,   )
+
+if |t| > 
+otherwise.
+
+(22)
+
+This means that every time the prediction error exceeds , we
+increase the insensitive zone by . If it is smaller than , the
+insensitive zone is decreased by (1  ).
+
+3) Hubers Robust Loss: This loss function was proposed
+in [22] for robust maximum likelihood estimation among a
+family of unknown densities. It is given by
+
+(|y  f(x)|  1
+2 (y  f(x))2
+(
+
+1
+
+l(f(x), y) :=
+
+2  if |y  f(x)|  
+
+otherwise.
+
+(23)
+
+Setting t := yt  f(xt) the updates are (for i = 1, . . . , t  1)
+
+(i, t) :=
+
+((1  )i,  sgn t)
+((1  )i, 1t)
+
+if |t| > 
+otherwise.
+
+(24)
+
+Comparing (24) with (22) leads to the question of whether
+ might also be adjusted adaptively. This is a desirable goal
+since we may not know the amount of noise present in the
+data. While the -setting allowed the formation of adaptive
+estimators for batch learning with the -insensitive loss, this
+goal has proven elusive for other estimators in the standard
+batch setting.
+
+In the online situation, however, such an extension is quite
+natural (see also [28]). It is merely necessary to make  a
+variable of the optimisation problem and the updates become
+(for i = 1, . . . , t  1)
+(i, t, ) :=
+
+((1  )i,  sgn t,  + (1  ))
+((1  )i, 1t,   )
+
+if |t| > 
+otherwise.
+
+(
+
+IV. MISTAKE BOUNDS FOR NON-STATIONARY TARGETS
+In this section we theoretically analyse NORMA for clas-
+sication with the soft margin loss with margin . In the
+process we establish relative bounds for the soft margin loss. A
+detailed comparative analysis between NORMA and Gentiles
+ALMA [9] can be found in [14].
+
+A. Denitions
+
+M(f , S) := |{ 1  t  m | ytft(xt)  }|.
+
+(26)
+
+Notice that margin errors are those examples on which the
+gradient of the soft margin loss is non-zero, so M(f , S) gives
+the size of the kernel expansion of nal hypothesis fm+1.
+We use t to denote whether a margin error was made at
+trial t, i.e., t = 1 if ytft(xt)   and t = 0 otherwise.
+Thus the soft margin loss can be written as l(ft(xt), yt) =
+t(  ytft(xt)) and consequently Lcum,[f , S] denotes the
+total soft margin loss of the algorithm.
+
+In our bounds we compare the performance of NORMA to
+the performance of function sequences g = (g1, . . . , gm) from
+some comparison class G  Hm.
+Notice that we often use a different margin  6=  for the
+comparison sequence, and t always refers to the margin errors
+of the actual algorithm with respect to its margin . We always
+have
+
+l(g(x), y)    yg(x).
+
+(27)
+
+We extend the notations M(g, S), M(g, S), l(gt, yt) and
+Lcum,[g, S] to such comparison sequences in the obvious
+manner.
+
+B. A Preview
+
+To understand the form of the bounds, consider rst the
+case of a stationary target, with comparison against a constant
+sequence g = (g, . . . , g). With  =  = 0, our algorithm
+becomes the kernelised Perceptron algorithm. Assuming that
+some g achieves M(g, S) = 0 for some  > 0, the kernelised
+version of the Perceptron Convergence Theorem [27], [29]
+gives
+
+M(f , S)  ||g||2H max
+
+t
+
+k(xt, xt)/2.
+
+Consider now the more general case where the sequence is
+not linearly separable in the feature space. Then ideally we
+would wish for bounds of the form
+
+M(f , S)  min
+
+g=(g,...,g)
+
+M(g, S) + o(m),
+
+which would mean that the mistake rate of the algorithm would
+converge to the mistake rate of the best comparison function.
+Unfortunately, even approximately minimising the number of
+mistakes over the training sequence is very difcult, so such
+strong bounds for simple online algorithms seem unlikely.
+Instead, we settle for weaker bounds of the form
+M(f , S) 
+
+Lcum,[g, S]/ + o(m),
+
+min
+
+(28)
+
+g=(g,...,g),||g||HB
+
+We consider the performance of the algorithm for a xed
+sequence of observations S := ((x1, y1), . . . , (xm, ym)) and
+study the sequence of hypotheses f = (f1, . . . , fm), produced
+
+where Lcum,[g, S]/ is an upper bound for M(g, S), and the
+norm bound B appears as a constant in the o(m) term. For
+earlier bounds of this form, see [30], [31].
+
+IEEE TRANSACTIONS ON SIGNAL PROCESSING, VOL. 100, NO. 10, OCTOBER 2010
+
+6
+
+In the non-stationary case, we consider comparison classes
+
+which are allowed to change slowly, that is
+
+G(B, D1, D2)
+
+(
+m1X
+
+(cid:12)(cid:12)(cid:12)(cid:12)(cid:12)m1X
+
+t=1
+
+:=
+
+(g1, . . . , gm)
+
+||gt  gt+1||H  D1
+
+)
+
+.
+
+||gt  gt+1||2H  D2 and ||gt||H  B
+
+t=1
+
+The parameter D1 bounds the total distance travelled by the
+target. Ideally we would wish the target movement to result in
+an additional O(D1) term in the bounds, meaning there would
+be a constant cost per unit step of the target. Unfortunately,
+for technical reasons we also need the D2 parameter which
+restricts the changes of speed of the target. The meaning of the
+D2 parameter will become clearer when we state our bounds
+and discuss them.
+
+Choosing the parameters is an issue in the bounds we have.
+The bounds depend on the choice of the learning rate and
+margin parameters, and the optimal choices depend on quan-
+tities (such as ming Lcum,[g, S]) that would not be available
+when the algorithm starts. In our bounds, we handle this by
+assuming an upper bound K  ming Lcum,[g, S] that can
+be used for tuning. By substituting K = ming Lcum,[g, S],
+we obtain the kind of bound we discussed above; otherwise
+the estimate K replaces ming Lcum,[g, S] in the bound. In
+a practical application, one would probably be best served
+to ignore the formal tuning results in the bounds and just
+tune the parameters by whatever empirical methods are pre-
+ferred. Recently, online algorithms have been suggested that
+dynamically tune the parameters to almost optimal values as
+the algorithm runs [9], [32]. Applying such techniques to our
+analysis remains an open problem.
+
+C. Relative Loss Bounds
+
+Recall that the update for the case we consider is
+
+ft+1 := (1  )ft + tytk(xt,).
+
+(29)
+
+It will be convenient to give the parameter tunings in terms
+
+of the function
+
+h(x, K, C) =
+
+s
+
+(cid:18)
+
+(cid:19)
+
+C
+K
+
+x + C
+K
+
+ C
+K
+
+,
+
+(30)
+
+where we assume x, K and C to be positive. Notice that
+0  h(x, K, C)  x holds, and limK0+ h(x, K, C) = x/2.
+Accordingly, we dene h(x, 0, C) = x/2.
+
+We start by analysing margin errors with respect to a given
+
+margin .
+
+Theorem 2 Suppose f is generated by (29) on a sequence S
+of length m. Let X > 0 and suppose that k(xt, xt)  X 2 for
+all t. Fix K  0, B > 0, D1  0 and D2  0. Let
+
+and, given parameters  >   0,
+, K, C)/X 2. Choose the regularisation parameter
+
+mD2 + D1
+
+(31)
+let 0 = 2h( 
+
+C =
+
+1
+
+B2 + B
+
+(cid:16)p
+
+4 X 2(cid:16)
+ = (B0)1pD2/m,
+
+(cid:17)(cid:17)
+
+(32)
+
+and the learning rate parameter  = 0/(1 + 0). If for some
+g  G(B, D1, D2), we have Lcum,[g, S]  K then
+
+M(f , S)  K
+  
+
+(cid:18)
+
+2C
+
+(  )2 +
+
+(cid:19)1/2(cid:18) K
+
++
+
+C
+
+2
+
+  
+The proof can be found in Appendix A.
+
+(  )2
+
+(cid:19)1/2
+
+.
+
++
+
+C
+
+(  )2
+
+We now consider obtaining mistake bounds from our margin
+error result. The obvious method is to set  = 0, turning
+margin errors directly to mistakes. Interestingly, it turns out
+that a subtly different choice of parameters allows us to obtain
+the same mistake bound using a non-zero margin.
+
+Theorem 3 Suppose f is generated by (29) on a sequence
+S of length m. Let X > 0 and suppose that k(xt, xt) 
+X 2 for all t. Fix K, B, D1, D2  and dene C as in (31),
+and given  > 0 let 0 = 2r/X 2 where r = h(, K, C).
+Choose the regularisation parameter as in (32), the learning
+rate  = 0/(1 + 0), and set the margin to either  = 0 or
+ =   r. Then for either of these margin settings, if there
+exists a comparison sequence g  G(B, D1, D2) such that
+Lcum,[g, S]  K, we have
+
+(cid:18) C
+
+(cid:19)1/2(cid:18) K
+
+2
+
+
+
++ C
+2
+
+(cid:19)1/2
+
+.
+
+M(f , S)  K
+
+
++
+
+2C
+2 + 2
+
+The proof of Theorem 3 is also in Appendix A.
+To gain intuition about Theorems 2 and 3, consider rst the
+separable case K = 0 with a stationary target (D1 = D2 = 0).
+In this special case, Theorem 3 gives the familiar bound from
+the Perceptron Convergence Theorem. Theorem 2 gives an
+upper bound of X 2B2/(  )2 margin errors. The choices
+given for  in Theorem 3 for the purpose of minimising the
+mistake bound are in this case  = 0 and  = /2. Notice
+that the latter choice results in a bound of 4X 2B2/ margin
+errors. More generally, if we choose  = (1  ) for some
+0 <  < 1 and assume  to be the largest margin for which
+separation is possible, we see that the algorithm achieves in
+O(2) iterations a margin within a factor 1   of optimal.
+This bound is similar to that for ALMA [9], but ALMA is much
+more sophisticated in that it automatically tunes its parameters.
+Removing the separability assumption leads to an additional
+K/ term in the mistake bound, as we expected. To see the
+effects of the D1 and D2 terms, assume rst that the target
+has constant speed: ||gt gt+1||H =  for all t where  > 0 is
+a constant. Then D1 = m and D2 = m2, so
+mD2 = D1.
+mD2 > D1.
+If the speed is not constant, we always have
+An extreme case would be ||g1  g2||H = D1, gt+1 = gt for
+t > 1. Then
+mD1. Thus the D2 term increases
+the bound in case of changing target speed.
+
+mD2 =
+
+
+
+
+
+
+
+
+V. CONVERGENCE OF NORMA
+
+A. A Preview
+
+Next we study the performance of NORMA when it comes to
+minimising the regularised risk functional Rreg[f, S], of which
+Rinst[f, xt, yt] is the stochastic approximation at time t. We
+show that under some mild assumptions on the loss function,
+
+IEEE TRANSACTIONS ON SIGNAL PROCESSING, VOL. 100, NO. 10, OCTOBER 2010
+
+the average instantaneous risk (1/m)Pm
+of the average hypothesis (1/m)Pm
+
+t=1 Rinst[ft, xt, yt] of
+the hypotheses ft of NORMA converges towards the mini-
+mum regularised risk ming Rreg[g, S] at rate O(m1/2). This
+requires no probabilistic assumptions. If the examples are
+i.i.d., then with high probability the expected regularised risk
+t=1 ft similarly converges
+towards the minimum expected risk. Convergence can also
+be guaranteed for the truncated version of the algorithm that
+keeps its kernel expansion at a sublinear size.
+
+7
+
+mX
+
+NORMA with learning rate t = t1/2. Then for any g  H
+we have
+
+Rinst,[ft, xt, yt]  mRreg,[g, S] + am1/2 + b
+
+(35)
+
+t=1
+
+where a = 2U 2(2 + 1/()), b = U 2/(2) and U is as
+in (34).
+
+B. Assumptions and notation
+
+We assume a bound X > 0 such that k(xt, xt)  X 2 for all
+t. Then for all g  H, |g(xt)| = |hg, k(xt,)iH |  X||g||H.
+We assume that the loss function l is convex in its rst
+argument and also satises for some constant c > 0 the
+Lipschitz condition
+
+|l(z1, y)  l(z2, y)|  c|z1  z2|
+
+(33)
+
+for all z1, z2  R, y  Y.
+
+Fix now  > 0. The hypotheses ft produced by (9)
+||ft+1||H = ||(1  t)ft  tl0(f(xt), yt)k(xt,)||H
+
+ (1  t)||ft||H + tcX,
+
+and since f1 = 0 we have for all t the bound ||ft||H  U
+where
+
+U := cX
+
+
+(34)
+Since |l0(f(xt), yt)|  c, we have ||f l(f(xt), yt)||H  cX
+and ||f Rinst[f, xt, yt]|||H  cX + ||f||H  2cX for any f
+such that ||f||H  U.
+
+.
+
+Fix a sequence S and for 0 <  < 1 dene
+
+g := argmin
+
+gH
+
+Rreg[g, S],
+
+g := (1  )g.
+
+Then 0  Rreg[g, S]  Rreg[g, S]
+
+mX
+(||g||2H  ||g||2H)
+
+t=1
+
+1
+m
++ 
+2
+
+=
+
+(l(g(xt), yt)  l(g(xt), yt))
+
+ cX||g  g||H + 
+2
+= cX||g||H  ||g||2H + 2
+2
+
+((1  )2  1)||g||2H
+
+||g||2H.
+
+Considering the limit   0+ shows that ||g||H  U where
+U is as in (34).
+
+C. Basic convergence bounds
+
+We start with a simple cumulative risk bound. To achieve
+
+convergence, we use a decreasing learning rate.
+
+Theorem 4 Fix  > 0 and 0 <  < 1/. Assume that l
+is convex and satises (33). Let the example sequence S =
+t=1 be such that k(xt, xt)  X 2 holds for all t, and
+((xt, yt))m
+let (f1, . . . , fm+1) be the hypothesis sequence produced by
+
+The proof, given in Appendix B, is based on analysing the
+progress of ft towards g at update t. The basic technique is
+from [33], [34], and [32] shows how to adjust the learning
+rate (in a much more complicated setting than we have here).
+
+Note that (35) holds in particular for g = g, so
+
+Rinst,[ft, xt, yt]  Rreg,[g, S] + O(m1/2)
+
+mX
+
+t=1
+
+1
+m
+
+where the constants depend on X, c and the parameters of
+the algorithm. However, the bound does not depend on any
+probabilistic assumptions. If the example sequence is such that
+some xed predictor g has a small regularised risk, then the
+average regularised risk of the on-line algorithm will also be
+small.
+
+Consider now the implications of Theorem 4 to a situation in
+which we assume that the examples (xt, yt) are i.i.d. according
+to some xed distribution P . The bound on the cumulative
+risk can be transformed into a probabilistic bound by standard
+methods. We assume that k(x, x)  X 2 with probability 1
+for (x, y)  P . We say that the risk is bounded by L if with
+probability 1 we have Rinst,[f, xt, yt]  L for all t and f 
+{ g, f1, . . . , fm+1 }.
+As an example, consider the soft margin loss. By the
+preceding remarks, we can assume ||f||H  X/. This
+implies |f(xt)|  X 2/ so the interesting values of  satisfy
+0    X 2/. Hence l(f(xt), yt)  2X 2/, and we can
+take L = 5X 2/(2). If we wish to use an offset parameter
+b, a bound for |b| needs to be obtained and incorporated into
+L. Similarly, for regression type loss functions we may need
+a bound for |yt|.
+
+The result of Cesa-Bianchi et al. for bounded convex loss
+functions [35, Theorem 2] now directly gives the following.
+
+is bounded by L. Let fm = (1/m)Pm1
+
+Corollary 5 Assume that P is a probability distribution over
+X  Y such that k(x, x)  X 2 holds with probability 1 for
+(x, y)  P , and let the example sequence S = ((xt, yt))m
+t=1
+be drawn i.i.d. according to P . Fix  > 0 and 0 <  < 1/.
+Assume that l is convex and satises (33), and that the risk
+t=1 ft where ft is the
+t-th hypothesis produced by NORMA with learning rate t =
+t1/2. Then for any g  H and 0 <  < 1, and for a and b
+as in Theorem 4, we have
+E(x,y)P Rinst,[ fm, x, y]
+ Rreg,[g, S] +
+
+a + L(2 ln(1/))1/2(cid:17)
+
+(cid:16)
+
+1
+
+with probability at least 1   over random draws of S.
+
++ b
+m
+
+m1/2
+
+To apply Corollary 5, choose g = g where
+
+g = argmin
+
+fH
+
+E(x,y)P Rinst,[f, x, y].
+
+(36)
+
+IEEE TRANSACTIONS ON SIGNAL PROCESSING, VOL. 100, NO. 10, OCTOBER 2010
+
+8
+
+With high probability, Rreg,[g, S] will be
+to
+E(x,y)P Rinst,[g, x, y],
+probability
+E(x,y)P Rinst,[ fm, x, y] will be close to the minimum
+expected risk.
+
+close
+
+high
+
+so
+
+with
+
+D. Effects of truncation
+
+We now consider a version where at time t the hypothesis
+consist of a kernel expansion of size st, where we allow st to
+slowly (sublinearly) increase as a function of t. Thus
+
+stX
+
+ft(x) =
+
+t,tk(xt , x)
+
+ =1
+
+where t,t0 is the coefcient of k(xt,) in the kernel expansion
+at time t0. For simplicity, we assume st+1  { st, st + 1} and
+include in the expansion even the terms where t,t = 0. Thus
+at any update we add a new term to the kernel expansion; if
+st+1 = st we also drop the oldest previously remaining term.
+We can then write
+
+ft+1 = ft  tf Rinst[f, xt, yt]|f =ft  t
+
+where t = 0 if st+1 = st + 1 and t = tst,tk(xtst,)
+otherwise. Since t,t0+1 = (1  t0 )t,t0, we see that
+the kernel expansion coefcients decay almost geometrically.
+However, since we also need to use a decreasing learning rate
+t = t1/2, the factor 1  t approaches 1. Therefore it is
+somewhat complicated to choose expansion sizes st that are
+not large but still guarantee that the cumulative effect of the
+t terms remains under control.
+
+Theorem 6 Assume that l is convex and satises (33). Let the
+t=1 be such that k(xt, xt) 
+example sequence S = ((xt, yt))m
+X 2 holds for all t. Fix  > 0, 0 <  < 1/ and 0 <  < 1/2.
+Then there is a value t0(, , ) such that the following holds
+when we dene st = t for t  t0(, , ) and st = dt1/2+e for
+t > t0(, , ). Let (f1, . . . , fm+1) be the hypothesis sequence
+produced by truncated NORMA with learning rate t = t1/2
+and expansion sizes st. Then for any g  H we have
+Rinst,[ft, xt, yt]  mRreg,[g, S] + am1/2 + b
+
+mX
+
+(37)
+
+t=1
+
+where a = 2U 2(10 + 1/()), b = U 2/(2) and U is as
+in (34).
+
+The proof, and the denition of t0, is given in Appendix C.
+Conversion of the result to a probabilistic setting can be
+done as previously, although an additional step is needed to
+estimate how the t terms may affect the maximum norm of
+ft; we omit the details.
+
+VI. EXPERIMENTS
+
+The mistake bounds in Section IV are of course only worst-
+case upper bounds, and the constants may not be very tight.
+Hence we performed experiments to evaluate the performance
+of our stochastic gradient descent algorithms in practice.
+
+A. Classication
+
+Our bounds suggest that some form of regularisation is
+useful when the target is moving, and forcing a positive margin
+may give an additional benet.
+
+This hypothesis was tested using articial data, where we
+used a mixture of 2-dimensional Gaussians for the positive
+examples and another for negative ones. We removed all
+examples that would be misclassied by the Bayes-optimal
+classier (which is based on the actual distribution known to
+us) or are close to its decision boundary. This gave us data
+that were cleanly separable using a Gaussian kernel.
+
+In order to test the ability of NORMA to deal with changing
+underlying distributions we carried out random changes in
+the parameters of the Gaussians. We used two movement
+schedules:
+
+ In the drifting case, there is a relatively small parameter
+
+change after every ten trials.
+
+ In the switching case, there is a very large parameter
+
+change after every 1000 trials.
+
+Thus, given the form of our bounds, all other things being
+equal, our mistake bound would be much better in the drifting
+than in the switching case. In either case, we ran each
+algorithm for 10000 trials and cumulatively summed up the
+mistakes made by them.
+
+In our experiments we compared NORMA, with ALMA [9]
+with p = 2 and the basic Perceptron algorithm (which is the
+same stochastic gradient descent with the margin  in the loss
+function (13) and weight decay parameter  both set to zero).
+We also considered variants NORMA,0 and ALMA0 where the
+margin  is xed to zero. These algorithms are included to see
+whether regularisation, either by weight decay as in NORMA
+or by a norm bound as in ALMA, helps predicting a moving
+target even when we are not aiming for a large margin. We
+used Gaussian kernels to handle the non-linearity of the data.
+For these experiments, the parameters of the algorithms were
+tuned by hand optimally for each example distribution.
+
+Figure 2 shows the cumulative mistake counts for the
+algorithms. There does not seem to be any decisive differences
+between the algorithms.
+
+In particular, NORMA works quite well, also on switching
+data, even though our bound suggests otherwise (which is
+probably due to slack in the bound). In general, it does seem
+that using a positive margin is better than xing the margin to
+zero, and regularisation even with zero margin is better than
+the basic Perceptron algorithm.
+
+B. Novelty Detection
+
+In our experiments we studied the performance of the
+novelty detection variant of NORMA given by (20) for various
+kernel parameters and values of .
+
+We performed experiments on the USPS database of hand-
+written digits (7000 scanned images of handwritten digits at a
+resolution of 16  16 pixels, out of which 5000 were chosen
+for training and 2000 for testing purposes).
+
+Already after one pass through the database, which took in
+MATLAB less than 15s on a 433MHz Celeron, the results can
+be used for weeding out badly written digits (cf. the left plot
+
+IEEE TRANSACTIONS ON SIGNAL PROCESSING, VOL. 100, NO. 10, OCTOBER 2010
+
+9
+
+with the goal of understanding the advantage of securing a
+large margin when tracking a drifting problem. On the positive
+side, we have obtained theoretical bounds that give some
+guidance to the effects of the margin in this case. On the
+negative side, the bounds are not that well corroborated by
+the experiments we performed.
+
+ACKNOWLEDGMENTS
+
+This work was supported by the Australian Research Coun-
+cil. Thanks to Paul Wankadia for help with the implementation
+and to Ingo Steinwart and Ralf Herbrich for comments and
+suggestions.
+
+A. Proofs of Theorems 2 and 3
+
+APPENDIX
+
+The following technical lemma, which is proved by a simple
+differentiation, is used in both proofs for choosing the optimal
+parameters.
+
+Lemma 7 Given K > 0, C > 0 and  > 0 dene f(z) =
+K/(  z) + C/(z(  z)) for 0 < z < . Then f(z) is
+maximised for z = h(, K, C) where h is as in (30), and the
+maximum value is
+
+(cid:18) K
+
+
+
+(cid:19)1/2(cid:18) C
+
+(cid:19)1/2
+
+.
+
+2
+
+f(h(, K, C)) = K
+
+
++
+
+2C
+2 + 2
+
++ C
+2
+
+The main idea in the proofs is to lower bound the progress
+at update t, which we dene as ||gt ft||2H||gt+1 ft+1||2H.
+For notational convenience we introduce gm+1 := gm.
+t+1 = ft + 0tytk(xt,).
+
+Proof of Theorem 2: Dene f0
+We split the progress into three parts:
+||gt  ft||2H  ||gt+1  ft+1||2H
+= (||gt  ft||2H  ||gt  f0
+
+t+1||2H)
+
+t+1||2H  ||gt  ft+1||2H)
+
++ (||gt  f0
++ (||gt  ft+1||2H  ||gt+1  ft+1||2H).
+
+(38)
+
+By substituting the denition of f0
+t+1, using (27) and applying
+tl(gt(xt), yt)  l(gt(xt), yt), we can estimate the rst part
+of (38) as
+
+||gt  ft||2H  ||gt  f0
+
+t+1||2H
+
+= 20tyt hk(xt,), gt  ftiH  ||ft  f0
+t+1||2H
+= 20tyt(gt(xt)  ft(xt))  02tk(xt, xt)
+ 20(t  l(gt(xt), yt))
+
+ 20(t  l(ft(xt), yt))  02tX 2.
+
+(39)
+
+For the second part of (38), we have
+||gt  f0
+
+t+1||2H  ||gt  ft+1||2H
+
+= ||ft+1  f0
+t+1  ft+1 = f0
+
+Since f0
+
+(cid:11)
+H .
+t+1 = ft+1/(1  ), we have
+
+t+1  ft+1, ft+1  gt
+
+t+1||2H + 2(cid:10)f0
+(cid:18) 
+
+(cid:19)2 ||ft+1||2H
+
+1  
+
+||ft+1  f0
+
+t+1||2H =
+
+Fig. 2. Mistakes made by the algorithms on drifting data (top) and on
+switching data (bottom).
+
+of Figure 3). We chose  = 0.01 to allow for a xed fraction
+of detected outliers. Based on the theoretical analysis of
+Section V we used a decreasing learning rate with t  t 1
+2 .
+Figure 3 shows how the algorithm improves in its assess-
+ment of unusual observations (the rst digits in the left table
+are still quite regular but degrade rapidly). It could therefore
+be used as an online data lter.
+
+VII. DISCUSSION
+
+We have shown how the careful application of classical
+stochastic gradient descent can lead to novel and practical
+algorithms for online learning using kernels. The use of
+regularisation (which is essential for capacity control when
+using the rich hypothesis spaces generated by kernels) allows
+for truncation of the basis expansion and thus computationally
+efcient hypotheses. We explicitly developed parameterisa-
+tions of our algorithm for classication, novelty detection and
+regression. The algorithm is the rst we are aware of for
+online novelty detection. Furthermore, its general form is very
+efcient computationally and allows the easy application of
+kernel methods to enormous data sets, as well, of course, to
+real-time online problems.
+
+We also presented a theoretical analysis of the algorithm
+when applied to classication problems with soft margin 
+
+0200040006000800010000120000500100015002000250030003500trialsmistakesPerceptronALMA0NORMA0ALMANORMA020004000600080001000012000020040060080010001200trialsmistakesPerceptronALMA0NORMA0ALMANORMAIEEE TRANSACTIONS ON SIGNAL PROCESSING, VOL. 100, NO. 10, OCTOBER 2010
+
+10
+
+Fig. 3. Results of online novelty detection after one pass through the USPS database. The learning problem is to discover (online) novel patterns. We used
+Gaussian RBF kernels with width 22 = 0.5d = 128 and  = 0.01. The learning rate was 1
+. Left: the rst 50 patterns which incurred a margin error
+t
+ it can be seen that the algorithm at rst nds even well formed digits novel, but later only nds unusually written ones; Middle: the 50 worst patterns
+according to f (x)   on the training set  they are mostly badly written digits, Right: the 50 worst patterns on an unseen test set.
+
+and
+
+(cid:10)f0
+
+(cid:11)
+
+t+1  ft+1, ft+1  gt
+
+(cid:0)(||ft+1||2H  hft+1, gtiH
+
+H
+
+(cid:1) .
+
+=
+
+
+1  
+
+Hence, recalling the denition of , we get
+
+||gt  f0
+
+t+1||2H  ||gt  ft+1||2H
+
+= (cid:0)20 + 022(cid:1)||ft+1||2H  20hft+1, gtiH .(40)
+
+For the third part of (38) we have
+
+||gt  ft+1||2H  ||gt+1  ft+1||2H
+
+= ||gt||2H  ||gt+1||2H + 2hgt+1  gt, ft+1iH . (41)
+
+Substituting (39), (40) and (41) into (38) gives us
+
+||gt  ft||2H  ||gt+1  ft+1||2H
+
+ 20(t  l(gt(xt), yt))
+
+ 20(t  l(ft(xt), yt))
+ 02tX 2
++ ||gt||2H  ||gt+1||2H + H[ft+1]
+
+(42)
+
+where
+
+H[f] = (cid:0)20 + 022(cid:1)||f||2H
+
+ 20hf, gtiH + 2hgt+1  gt, fiH .
+
+To bound H[ft+1] from below, we write
+
+H[f] = a||f||2H  2hr, fiH = a||f  r/a||2H  ||r||2H/a
+
+where a = 20 + 022 and r = (1 + 0)gt  gt+1. Hence,
+H[ft+1]  ||r||2H/a
+1
+
+ 
+=  1
+
+(cid:18)||gt  gt+1||2H
+
+20 + 022 (||gt  gt+1||H + 0||gt||H)2
+(cid:19)
+2 + 0
++ 2||gt  gt+1||H||gt||H + 0||gt||2H
+
+0
+
+.(43)
+
+Since 1/(2 + 0) > 1/2, (42) and (43) give
+
+||gt  ft||2H  ||gt+1  ft+1||2H
+
+(cid:18)||gt+1  gt||2H
+
+ 20(t  l(ft(xt), yt))
++ 20(t  l(gt(xt), yt))
+ 02tX 2 + ||gt||2H  ||gt+1||2H
+ 1
+2
++ 2||gt||H||gt+1  gt||H + 0||gt||2H
+
+0
+
+(cid:19)
+
+. (44)
+
+By summing (44) over t = 1, . . . , m and using the assumption
+that g  G(B, D1, D2) we obtain
+
+||g1  f1||2H  ||gm+1  fm+1||2H
+
+ 20Lcum,[f , S]  20Lcum,[g, S]
+
++ 0M(f , S)(cid:0)2  2  0X 2(cid:1)
+(cid:19)
+(cid:18) D2
+
++ ||g1||2H  ||gm+1||2H
+ 1
+2
+
++ 2BD1 + m0B2
+
+0
+
+.
+
+(45)
+
+maximised for z = pD2/(mB2), we choose  as in (32)
+
+Now  appears only in (45) as a subexpression Q(0)
+z  zmB2. Since the function Q(z) is
+where Q(z) =  D2
+which gives Q(0) = 2B
+mD2. We assume f1 = 0,
+so ||g1  f1||2H  ||gm+1  fm+1||2H  ||g1||2H. By moving
+some terms around and estimating ||gm+1||H  B and
+Lcum,[g, S]  K we get
+
+Lcum,[f , S] + M(f , S)(cid:0)    0X 2/2(cid:1)
+
+
+
+
+ K + B2 + B(
+mD2 + D1)
+20
+
+.
+
+(46)
+
+To get a bound for margin errors, notice that the value 0
+given in the theorem satises   0X 2 > 0. We make the
+trivial estimate Lcum,[f , S]  0, which gives us
+
+M(f , S) 
+
+K
+
+    0X 2/2
+
++ B2 + B(
+
+mD2 + D1)
+20(    0X 2/2) .
+
+The bound follows by applying Lemma 7 with  =   and
+z = 0X 2/2.
+
+IEEE TRANSACTIONS ON SIGNAL PROCESSING, VOL. 100, NO. 10, OCTOBER 2010
+
+11
+
+Proof of Theorem 3: The claim for  = 0 follows directly
+from Theorem 2. For non-zero , we take (46) as our starting
+point. We choose 0 = 2()/X 2, so the term with M(f , S)
+vanishes and we get
+
+
+Lcum,[f , S]  K + X 2(B2 + B(
+
+4(  )
+Since Lcum,[f , S]  M(f , S), this implies
+
+mD2 + D1))
+
+
++ X 2(B2 + B(
+
+M(f , S)  K
+
+
+(48)
+The claim follows from Lemma 7 with  =  and z =  .
+
+4(  )
+
+.
+
+mD2 + D1))
+
+We use this to estimate ||t||H. If st+1 = t + 1, then clearly
+t = 0, so we consider the case t  t0(, , ). Let r = tst,
+so ||t||H  X|r,t|. We have |r,r|  rc, and |r,r+ +1| =
+(1r+ )|r,r+|  (1t)|r,r+| for  = 0, . . . , st1.
+Hence
+
+(cid:18)
+
+1  
+t1/2
+
+(cid:19)t1/2!t
+
+.
+
+.
+
+(47)
+
+|r,t|  rc(1  t)st  rc
+
+Since /t1/2  1, we have
+
+(cid:18)
+
+(cid:19) t1/2
+
+1  
+t1/2
+
+  exp(1),
+
+so |r,t|  rc exp(t)  rct1/2. Finally, since r 
+t/4, we have r  2t, so
+
+||t||H  22
+
+t cX.
+
+In particular, we have ||t||H  2tcX, so
+||ft+1||H  (1  t)||ft||H
+
++ t|l0(ft(xt, y))|||k(xt,)||H + ||t||H
+
+ (1  t)||ft||H + 3tcX.
+
+Since f1 = 0, we get ||ft||H  3cX/. Again, without loss
+of generality we can assume g = g and thus in particular
+||ft  g||H  4cX/.
+
+To estimate the progress at trial t, let ft+1 = ft+1 + t be
+
+the new hypothesis before truncation. We write
+
+||ft  g||2H  ||ft+1  g||2H
+
+= ||ft  g||2H  || ft+1  g||2H
+
++ || ft+1  g||2H  ||ft+1  g||2H.
+
+(50)
+(51)
+
+To estimate (51) we write
+|| ft+1  g||2H  ||ft+1  g||2H
+
+= ||( ft+1  ft+1) + (ft+1  g)||2H  ||ft+1  g||2H
+= 2ht, ft+1  giH + ||t||2H
+ 2||t||H||ft+1  g||H
+ 162
+
+t c2X 2.
+
+By combining this with the estimate (49) for (50) we get
+
+||ft  g||2H  ||ft+1  g||2H
+  202
+
+t c2X 2  2t(Rinst[g, xt, yt]  Rinst[ft, xt, yt]);
+
+notice the similarity to (49). The rest follows as in the proof
+of Theorem 4.
+
+(cid:19)
+
+.
+
+B. Proof of Theorem 4
+
+Without loss of generality we can assume g = g, and in
+
+particular ||g||H  U. First notice that
+
+||ft  g||2H  ||ft+1  g||2H
+
+= ||ft+1  ft||2H  2hft+1  ft, ft  giH
+= 2
+
+t ||f Rinst[f, xt, yt]|f =ft||H
+
+ 42
+
++ 2t hf Rinst[f, xt, yt]|f =ft, ft  giH
+ 2t(Rinst[g, xt, yt]  Rinst[ft, xt, yt])
+
+t c2X 2
+
+(49)
+
+where we used the Lipschitz property of l and the convexity
+of Rinst in its rst argument. This leads to
+
+1
+t
+
+=
+
+1
+t
+
+||ft+1  g||2H
+(cid:19)
+
+||ft  g||2H  1
+(cid:0)||ft  g||2H  ||ft+1  g||2H(cid:1)
+t+1
+(cid:18) 1
+(cid:18) 1
+
+||ft+1  g||2H
+(cid:19)
+
+ 1
+t+1
+
++
+
+t
+
++ 4U 2
+
+ 1
+t+1
+
+ 4tc2X 2  2Rinst[g, xt, yt] + 2Rinst[ft, xt, yt]
+
+1, and noticing that some terms telescope and Pm
+
+since ||ft+1  g||H  2U. By summing over t = 1, . . . , m +
+t=1 t 
+
+t
+
+2m1/2, we get
+||f1  g||2H
+
+m+1
+
+ ||fm+1  g||2H
+mX
+
+ 8c2X 2m1/2  2
+mX
+
+t=1
+
+Rinst[g, xt, yt]
+
+(cid:18) 1
+
+
+
++ 2
+
+Rinst[ft, xt, yt] + 4U 2
+
+t=1
+
+ (m + 1)1/2
+
+
+
+The claim now follows by rearranging terms and estimating
+||f1g||H  U, ||fm+1g||2H  0 and (m+1)1/21  m1/2.
+
+C. Proof of Theorem 6
+
+such that the following hold for all t  t0(, , ):
+
+First, let us dene t0(, , ) to be the smallest possible
+ t1/2  1,
+ exp(t)  t1/2 and
+ dt1/2+e  3t/4.
+
