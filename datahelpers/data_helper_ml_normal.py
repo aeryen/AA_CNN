@@ -77,8 +77,6 @@ class DataHelperML(DataHelper):
         origin_list = [None] * doc_count
 
         folder_list = os.listdir(self.training_data_dir)
-        if self.num_of_classes is None:
-            self.num_of_classes = len(truth_file_content[1].split(",")[1:])
         for author in folder_list:
             f = self.training_data_dir + author
             if os.path.isdir(f):
