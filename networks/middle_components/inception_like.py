@@ -10,7 +10,7 @@ class InceptionLike(object):
 
     def __init__(
             self, sequence_length, embedding_size, filter_size_lists, num_filters, previous_component, batch_normalize=False,
-            dropout = False, elu = False, n_conv=1, fc=[]):
+            dropout = False, elu = False, n_conv=1, fc=[], l2_reg_lambda=0.0):
 
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
@@ -20,6 +20,8 @@ class InceptionLike(object):
         self.last_layer = None
         self.num_filters_total = None
         self.conv_in = None
+        self.l2_reg_lambda = l2_reg_lambda
+        self.l2_sum = tf.constant(0.0)
         n_input_channels = 0
 
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
@@ -48,6 +50,8 @@ class InceptionLike(object):
                             filter_shape = [1, cols, n_input_channels, num_filters / 2]
 
                             W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
+                            if self.l2_reg_lambda > 0:
+                                self.l2_sum += tf.nn.l2_loss(W)
                             conv = tf.nn.conv2d(
                                 self.last_layer,
                                 W,
@@ -75,6 +79,8 @@ class InceptionLike(object):
 
                     # Convolution Layer
                     W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
+                    if self.l2_reg_lambda > 0:
+                        self.l2_sum += tf.nn.l2_loss(W)
                     conv = tf.nn.conv2d(
                         self.conv_in,
                         W,
@@ -119,6 +125,8 @@ class InceptionLike(object):
                     filter_shape = [1, cols, n_input_channels, num_filters]
 
                     W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
+                    if self.l2_reg_lambda > 0:
+                        self.l2_sum += tf.nn.l2_loss(W)
                     conv = tf.nn.conv2d(
                         h,
                         W,
@@ -190,6 +198,8 @@ class InceptionLike(object):
                 "W",
                 shape=[self.n_nodes_last_layer, n_nodes],
                 initializer=tf.contrib.layers.xavier_initializer())
+            if self.l2_reg_lambda > 0:
+                self.l2_sum += tf.nn.l2_loss(W)
             b = tf.Variable(tf.constant(0.1, shape=[n_nodes]), name="b")
             x = tf.matmul(self.last_layer, W) + b
 

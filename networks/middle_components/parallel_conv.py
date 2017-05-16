@@ -9,7 +9,7 @@ class NParallelConvOnePoolNFC(object):
 
     def __init__(
             self, sequence_length, embedding_size, filter_sizes, num_filters, previous_component, batch_normalize=False,
-            dropout = False, elu = False, n_conv=1, fc=[]):
+            dropout = False, elu = False, n_conv=1, fc=[], l2_reg_lambda=0.0):
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
         self.batch_normalize = batch_normalize
