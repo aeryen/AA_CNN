@@ -11,14 +11,12 @@ import math
 
 class DataHelper(object):
 
-    def __init__(self, doc_level="comb", embed_type="glove", embed_dim=100, target_doc_len=100, target_sent_len=220,
-                 train_holdout=-1, num_fold=5, fold_index=0):
+    def __init__(self, doc_level="comb", embed_type="glove", embed_dim=100, target_doc_len=100, target_sent_len=220):
         logging.info("setting: %s is %s", "doc_level", doc_level)
         logging.info("setting: %s is %s", "embed_type", embed_type)
         logging.info("setting: %s is %s", "embed_dim", embed_dim)
         logging.info("setting: %s is %s", "target_doc_len", target_doc_len)
         logging.info("setting: %s is %s", "target_sent_len", target_sent_len)
-        logging.info("setting: %s is %s", "train_holdout", train_holdout)
 
         self.num_of_classes = None
 
@@ -27,10 +25,6 @@ class DataHelper(object):
         self.embedding_dim = embed_dim
         self.target_doc_len = target_doc_len
         self.target_sent_len = target_sent_len
-        if train_holdout > 0:
-            raise ValueError("train_holdout is no longer supported.")
-        self.num_fold = num_fold
-        self.fold_index = fold_index
 
         self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
         self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"

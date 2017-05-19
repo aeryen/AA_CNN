@@ -46,12 +46,11 @@ class DataHelperMulMol6(DataHelper):
     target_sent_len = None
     target_doc_len = None
 
-    def __init__(self, doc_level=False, embed_dim=100, target_sent_len=220, target_doc_len=100):
+    def __init__(self, doc_level="comb", embed_type="glove", embed_dim=100, target_doc_len=100, target_sent_len=220):
         logging.info("Data Helper: " + __file__ + " initiated.")
 
         super(DataHelperMulMol6, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
-                                                target_doc_len=target_doc_len, target_sent_len=target_sent_len,
-                                                train_holdout=train_holdout)
+                                                target_doc_len=target_doc_len, target_sent_len=target_sent_len)
 
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
         self.truth_file_path = self.training_data_dir + "labels.csv"
@@ -311,7 +310,7 @@ class DataHelperMulMol6(DataHelper):
 
 
 if __name__ == "__main__":
-    o = DataHelperMulMol6(doc_level=True)
+    o = DataHelperMulMol6()
     o.load_data()
     # o.load_test_data()
     print("o")
