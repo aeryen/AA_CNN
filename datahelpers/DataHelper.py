@@ -258,3 +258,19 @@ class DataHelper(object):
                     training_data.extend(data_to_split[i*fold_size:(i+1)*fold_size])
 
         return training_data, testing_data
+
+    @staticmethod
+    def load_csv(csv_file_path):
+        file_id_list = []
+        label_matrix = []
+
+        truth_file_content = open(csv_file_path, "r").readlines()
+        author_list = truth_file_content[0].split(",")[1:]
+        for line in truth_file_content[1:]:
+            line = line.split(",")
+            file_id_list.append(line[0])
+            label_vector = list(map(int, line[1:]))
+            label_matrix.append(np.array(label_vector))
+        label_matrix = np.array(label_matrix)
+
+        return author_list, file_id_list, label_matrix

@@ -7,36 +7,15 @@ import logging
 import pkg_resources
 
 from datahelpers.DataHelper import DataHelper
-
+from datahelpers.Data import AAData
 
 class DataHelperML(DataHelper):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
     problem_name = "ML"
 
-    vocabulary_size = 20000
-    embedding_dim = 100
-
-    train_size = None
-    test_size = None
-
-    file_id_train = None
-    file_id_test = None
-    labels_train = None
-    labels_test = None
-    x_train = None
-    x_test = None
-    doc_size_train = None
-    doc_size_test = None
-
-    doc_labels_test = None  # document level label backup (used in evaler)
-
     vocab = None
     vocab_inv = None
     embed_matrix = None
-
-    doc_level_data = "doc"  # doc, comb, sent
-    target_sent_len = None
-    target_doc_len = None
 
     def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, truth_file="labels.csv"):
         logging.info("Data Helper: " + __file__ + " initiated.")
@@ -46,6 +25,7 @@ class DataHelperML(DataHelper):
 
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
         self.truth_file_path = self.training_data_dir + truth_file
+        self.vocabulary_size = 20000
 
     def load_original_file(self, author_code, file_name):
         if not os.path.exists(os.path.dirname(self.training_data_dir + author_code + "/")):
@@ -56,23 +36,14 @@ class DataHelperML(DataHelper):
         return original_txt
 
     def __load_data(self):
-        file_id_list = []
-        label_matrix = []
+        authors, file_ids, label_matrix = DataHelper.load_csv(csv_file_path=)
+        self.num_of_classes = len(authors)
 
-        truth_file_content = open(self.truth_file_path, "r").readlines()
-        self.author_list = truth_file_content[0].split(",")[1:]
-        if self.num_of_classes is None:
-            self.num_of_classes = len(truth_file_content[1].split(",")[1:])
-        for line in truth_file_content[1:]:
-            line = line.split(",")
-            file_id_list.append(line[0])
-            label_vector = list(map(int, line[1:]))
-            label_matrix.append(np.array(label_vector))
-        label_matrix = np.array(label_matrix)
+        data = AAData(size=len(file_ids))
+        data.file_id = file_ids
 
-        doc_count = len(file_id_list)
-        doc_size = [None] * doc_count
-        origin_list = [None] * doc_count
+        origin_list = [None] * data.size
+        doc_size = [None] * data.size
 
         folder_list = os.listdir(self.training_data_dir)
         for author in folder_list:
@@ -80,13 +51,17 @@ class DataHelperML(DataHelper):
             if os.path.isdir(f):
                 sub_file_list = os.listdir(f)
                 for file_name in sub_file_list:
-                    if file_name in file_id_list:
-                        index = file_id_list.index(file_name)
+                    if file_name in data.file_id:
+                        index = data.file_id.index(file_name)
                         original_txt = self.load_original_file(author, file_name)
-                        origin_list[index] = original_txt  # document level array instead of all sentence list
+                        origin_list[index] = original_txt
                         doc_size[index] = len(original_txt)
 
         doc_size = np.array(doc_size)
+
+        data.raw = origin_list
+        data.label = label_matrix
+        data.doc_size = doc_size
 
         return [file_id_list, label_matrix, doc_size, origin_list]
 
