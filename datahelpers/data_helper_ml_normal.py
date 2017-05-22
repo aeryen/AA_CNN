@@ -38,13 +38,11 @@ class DataHelperML(DataHelper):
     target_sent_len = None
     target_doc_len = None
 
-    def __init__(self, doc_level="comb", embed_type="glove", embed_dim=100, target_doc_len=100, target_sent_len=220,
-                 train_holdout=-1, num_fold=5, fold_index=0, truth_file="labels.csv"):
+    def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, truth_file="labels.csv"):
         logging.info("Data Helper: " + __file__ + " initiated.")
 
         super(DataHelperML, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
-                                           target_doc_len=target_doc_len, target_sent_len=target_sent_len,
-                                           train_holdout=train_holdout, num_fold=num_fold, fold_index=fold_index)
+                                           target_doc_len=target_doc_len, target_sent_len=target_sent_len)
 
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
         self.truth_file_path = self.training_data_dir + truth_file

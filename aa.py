@@ -40,7 +40,7 @@ if __name__ == "__main__":
     # * ParallelJoinedConv
     # * NCrossSizeParallelConvNFC
     # * InceptionLike
-    #   PureRNN
+    # * PureRNN
     ################################################
 
     input_component = "ML_One"

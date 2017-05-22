@@ -104,16 +104,18 @@ class DataHelperMulMol6(DataHelper):
             label_matrix.append(np.array(label_vector))
         # label_matrix = np.matrix(label_matrix)
 
-        file_name_ordered = []
-        label_matrix_ordered = []
-        doc_size = []
-        origin_list = []
-        pos_list = []
-        wl_list = []
-        p2_list = []
-        p3_list = []
-        s2_list = []
-        s3_list = []
+        doc_count = len(file_id_list)
+
+        file_name_ordered = [None] * doc_count
+        label_matrix_ordered = [None] * doc_count
+        doc_size = [None] * doc_count
+        origin_list = [None] * doc_count
+        pos_list = [None] * doc_count
+        wl_list = [None] * doc_count
+        p2_list = [None] * doc_count
+        p3_list = [None] * doc_count
+        s2_list = [None] * doc_count
+        s3_list = [None] * doc_count
 
         folder_list = os.listdir(self.training_data_dir)
         for author in folder_list:
@@ -124,23 +126,20 @@ class DataHelperMulMol6(DataHelper):
                     if file_name in file_id_list:
                         original_txt, pos_file, wl_file, p2_file, p3_file, s2_file, s3_file = \
                             self.load_channel_file(author, file_name)
-                        origin_list.append(original_txt)  # document level array instead of all sentence list
-                        pos_list.append(pos_file)
-                        wl_list.append(wl_file)
-                        p2_list.append(p2_file)
-                        p3_list.append(p3_file)
-                        s2_list.append(s2_file)
-                        s3_list.append(s3_file)
+                        index = file_id_list.index(file_name)
 
-                        file_name_ordered.append(file_name)
-                        file_index = file_id_list.index(file_name)
-                        label_matrix_ordered.append(label_matrix[file_index])  # document level array
-                        doc_size.append(len(original_txt))
+                        origin_list[index] = original_txt  # document level array instead of all sentence list
+                        pos_list[index] = pos_file
+                        wl_list[index] = wl_file
+                        p2_list[index] = p2_file
+                        p3_list[index] = p3_file
+                        s2_list[index] = s2_file
+                        s3_list[index] = s3_file
+                        doc_size[index] = len(original_txt)
 
-        label_matrix_ordered = np.array(label_matrix_ordered)
         doc_size = np.array(doc_size)
 
-        return [file_name_ordered, label_matrix_ordered, doc_size, origin_list, pos_list, wl_list, p2_list, p3_list,
+        return [file_id_list, label_matrix, doc_size, origin_list, pos_list, wl_list, p2_list, p3_list,
                 s2_list, s3_list]
 
     def build_embedding(self, vocabulary_inv, glove_words, glove_vectors):

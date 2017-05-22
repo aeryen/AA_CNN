@@ -20,9 +20,6 @@ class DataHelperMulMol6(DataHelper):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
     problem_name = "ML"
 
-    training_data_dir = "./data/ml_dataset/"
-    truth_file_path = "./data/ml_dataset/labels.csv"
-
     vocabulary_size = 20000
     embedding_dim = 100
 
@@ -42,18 +39,20 @@ class DataHelperMulMol6(DataHelper):
     vocab_inv = None
     embed_matrix = None
 
-    doc_level_data = False
+    doc_level_data = False  # doc, comb, sent
     target_sent_len = None
     target_doc_len = None
 
-    def __init__(self, doc_level="comb", embed_type="glove", embed_dim=100, target_doc_len=100, target_sent_len=220):
+    def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, truth_file="train.csv"):
         logging.info("Data Helper: " + __file__ + " initiated.")
 
         super(DataHelperMulMol6, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
                                                 target_doc_len=target_doc_len, target_sent_len=target_sent_len)
 
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
-        self.truth_file_path = self.training_data_dir + "labels.csv"
+        self.train_label_file_path = self.training_data_dir + "_new_label/" + truth_file
+        self.val_label_file_path = self.training_data_dir + "_new_label/val.csv"
+        self.test_label_file_path = self.training_data_dir + "_new_label/test.csv"
 
     def temp_write_channel_file(self, author_code, file_name, file_text_content):
         fm = featuremaker.FeatureMaker(file_text_content)
@@ -102,7 +101,7 @@ class DataHelperMulMol6(DataHelper):
         file_id_list = []
         label_matrix = []
 
-        truth_file_content = open(self.truth_file_path, "r").readlines()
+        truth_file_content = open(self.train_label_file_path, "r").readlines()
         self.author_list = truth_file_content[0].split(",")[1:]
         if self.num_of_classes is None:
             self.num_of_classes = len(truth_file_content[1].split(",")[1:])
@@ -111,12 +110,11 @@ class DataHelperMulMol6(DataHelper):
             file_id_list.append(line[0])
             label_vector = list(map(int, line[1:]))
             label_matrix.append(np.array(label_vector))
-        # label_matrix = np.matrix(label_matrix)
+        label_matrix = np.matrix(label_matrix)
 
-        file_id_ordered = []
-        label_matrix_ordered = []
-        data_list = []
-        doc_size = []
+        doc_count = len(file_id_list)
+        doc_size = [None] * doc_count
+        origin_list = [None] * doc_count
 
         folder_list = os.listdir(self.training_data_dir)
         for author in folder_list:
@@ -126,20 +124,17 @@ class DataHelperMulMol6(DataHelper):
                 sub_file_list = os.listdir(f)
                 for file_name in sub_file_list:
                     if file_name in file_id_list:
-                        content = DataHelperMulMol6.read_one_file(f + file_name)
-                        data_list.append(content)  # document level array instead of all sentence
-                        # self.write_channel_file(author, file_name, content)
-                        # data_list.extend(content)
-                        index = file_id_list.index(file_name)
-                        file_id_ordered.append(file_name)
-                        label_matrix_ordered.append(label_matrix[index])  # document level array
-                        # label_matrix_ordered.extend(np.tile(label_matrix[index], [len(content), 1]))
-                        doc_size.append(len(content))
+                        original_txt = DataHelperMulMol6.read_one_file(f + file_name)
+                        self.temp_write_channel_file(author, file_name, original_txt)
 
-        label_matrix_ordered = np.array(label_matrix_ordered)
+                        index = file_id_list.index(file_name)
+
+                        origin_list[index] = original_txt  # document level array instead of all sentence list
+                        doc_size[index] = len(original_txt)
+
         doc_size = np.array(doc_size)
 
-        return [file_id_ordered, label_matrix_ordered, data_list, doc_size]
+        return [file_id_list, label_matrix, origin_list, doc_size]
 
     def build_embedding(self, vocabulary_inv, glove_words, glove_vectors):
         np.random.seed(10)
@@ -310,7 +305,7 @@ class DataHelperMulMol6(DataHelper):
 
 
 if __name__ == "__main__":
-    o = DataHelperMulMol6()
+    o = DataHelperMulMol6(doc_level="sent", embed_type="glove", embed_dim=100, target_doc_len=400, target_sent_len=100)
     o.load_data()
     # o.load_test_data()
     print("o")
