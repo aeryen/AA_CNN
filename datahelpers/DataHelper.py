@@ -70,25 +70,6 @@ class DataHelper(object):
             paragraph = [DataHelper.clean_str(e) for e in paragraph]
         return paragraph
 
-    @staticmethod
-    def read_one_file(file_path):
-        # if "tom_mitchell_3.txt" in file_path:
-        #     print "huh"
-
-        file_content = open(file_path, "r").readlines()
-        content = []
-        paragraph = []
-        for line in file_content:
-            line = line.strip()
-            if len(line) == 0 and len(paragraph) > 0:  # end of paragraph, split and push
-                paragraph = " ".join(paragraph)
-                content.extend(DataHelper.split_sentence(paragraph))
-                paragraph = []
-            elif len(line.split()) <= 2:  # too short
-                pass
-            else:  # keep adding to paragraph
-                paragraph.append(line)
-        return content
 
     @staticmethod
     def load_glove_vector(glove_path):

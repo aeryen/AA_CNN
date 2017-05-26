@@ -89,7 +89,7 @@ class DataHelperMulMol6(DataHelper):
 
         return original_txt, pos_file, wl_file, p2_file, p3_file, s2_file, s3_file
 
-    def __load_data(self):
+    def load_origin_dir(self):
         file_id_list = []
         label_matrix = []
 
@@ -154,15 +154,6 @@ class DataHelperMulMol6(DataHelper):
                 embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=self.embedding_dim))
         embed_matrix = np.array(embed_matrix)
         return embed_matrix
-
-    @staticmethod
-    def build_input_data(docs, vocabulary, doc_level):
-        unk = vocabulary["<UNK>"]
-        if doc_level == "doc" or doc_level == "comb":
-            x = np.array([[[vocabulary.get(word, unk) for word in sent] for sent in doc] for doc in docs])
-        else:
-            x = np.array([[vocabulary.get(word, unk) for word in doc] for doc in docs])
-        return x
 
     def pad_sentences(self, docs, padding_word="<PAD>", target_length=-1):
         """
@@ -320,7 +311,7 @@ class DataHelperMulMol6(DataHelper):
     def load_data(self):
         # o = DataHelper(file_to_load)
         file_name_ordered, label_matrix_ordered, doc_size, \
-        origin_list, pos_list, wl_list, p2_list, p3_list, s2_list, s3_list = self.__load_data()
+        origin_list, pos_list, wl_list, p2_list, p3_list, s2_list, s3_list = self.load_origin_dir()
 
         [self.file_id_train, self.file_id_test, self.labels_train, self.labels_test,
          self.doc_size_train, self.doc_size_test,

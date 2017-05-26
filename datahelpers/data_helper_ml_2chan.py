@@ -55,7 +55,7 @@ class DataHelperML_2CH(DataHelper):
         original_txt = [line.split() for line in original_txt]
         return original_txt
 
-    def __load_data(self):
+    def load_origin_dir(self):
         file_id_list = []
         label_matrix = []
 
@@ -89,15 +89,6 @@ class DataHelperML_2CH(DataHelper):
         doc_size = np.array(doc_size)
 
         return [file_id_list, label_matrix, doc_size, origin_list]
-
-    @staticmethod
-    def build_input_data(docs, vocabulary, doc_level):
-        unk = vocabulary["<UNK>"]
-        if doc_level == "doc" or doc_level == "comb":
-            x = np.array([[[vocabulary.get(word, unk) for word in sent] for sent in doc] for doc in docs])
-        else:
-            x = np.array([[vocabulary.get(word, unk) for word in doc] for doc in docs])
-        return x
 
     def pad_sentences(self, docs, padding_word="<PAD>", target_length=-1):
         """
@@ -222,7 +213,7 @@ class DataHelperML_2CH(DataHelper):
 
     def load_data(self):
         # o = DataHelper(file_to_load)
-        file_name_ordered, label_matrix_ordered, doc_size, origin_list = self.__load_data()
+        file_name_ordered, label_matrix_ordered, doc_size, origin_list = self.load_origin_dir()
 
         [self.file_id_train, self.file_id_test, self.labels_train, self.labels_test,
          self.doc_size_train, self.doc_size_test, self.x_train, self.x_test] = \

@@ -27,53 +27,6 @@ class DataHelperML(DataHelper):
         self.truth_file_path = self.training_data_dir + truth_file
         self.vocabulary_size = 20000
 
-    def load_original_file(self, author_code, file_name):
-        if not os.path.exists(os.path.dirname(self.training_data_dir + author_code + "/")):
-            logging.error("error: " + author_code + " does not exit")
-            return
-        original_txt = open(self.training_data_dir + author_code + "/" + file_name, "r").readlines()
-        original_txt = [line.split() for line in original_txt]
-        return original_txt
-
-    def __load_data(self):
-        authors, file_ids, label_matrix = DataHelper.load_csv(csv_file_path=)
-        self.num_of_classes = len(authors)
-
-        data = AAData(size=len(file_ids))
-        data.file_id = file_ids
-
-        origin_list = [None] * data.size
-        doc_size = [None] * data.size
-
-        folder_list = os.listdir(self.training_data_dir)
-        for author in folder_list:
-            f = self.training_data_dir + author
-            if os.path.isdir(f):
-                sub_file_list = os.listdir(f)
-                for file_name in sub_file_list:
-                    if file_name in data.file_id:
-                        index = data.file_id.index(file_name)
-                        original_txt = self.load_original_file(author, file_name)
-                        origin_list[index] = original_txt
-                        doc_size[index] = len(original_txt)
-
-        doc_size = np.array(doc_size)
-
-        data.raw = origin_list
-        data.label = label_matrix
-        data.doc_size = doc_size
-
-        return [file_id_list, label_matrix, doc_size, origin_list]
-
-    @staticmethod
-    def build_input_data(docs, vocabulary, doc_level):
-        unk = vocabulary["<UNK>"]
-        if doc_level == "doc" or doc_level == "comb":
-            x = np.array([[[vocabulary.get(word, unk) for word in sent] for sent in doc] for doc in docs])
-        else:
-            x = np.array([[vocabulary.get(word, unk) for word in doc] for doc in docs])
-        return x
-
     def pad_sentences(self, docs, padding_word="<PAD>", target_length=-1):
         """
         Pads all sentences to the same length. The length is defined by the longest sentence.
@@ -139,25 +92,6 @@ class DataHelperML(DataHelper):
             padded_doc.append(new_doc)
         return np.array(padded_doc)
 
-    def train_test_shuf_split(self, file_id, labels, doc_size, origin):
-        rs = np.random.RandomState(10)
-        shuffle_i = rs.permutation(np.arange(len(labels)))
-
-        file_id_shuffled = [file_id[i] for i in shuffle_i]
-        labels_shuffled = labels[shuffle_i]
-        doc_size_shuffled = doc_size[shuffle_i]
-        origin_shuffled = [origin[i] for i in shuffle_i]
-
-        data_size = len(file_id)
-        file_id_train, file_id_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, file_id_shuffled)
-        labels_train, labels_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, labels_shuffled)
-        doc_size_train, doc_size_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, doc_size_shuffled)
-
-        origin_train, origin_test = self.split_by_fold(self.num_fold, self.fold_index, data_size, origin_shuffled)
-
-        return [file_id_train, file_id_test, labels_train, labels_test, doc_size_train, doc_size_test,
-                origin_train, origin_test]
-
     def expand_origin_and_label_to_sentence(self, x, y):
         expand_x = []
         for x_doc in x:
@@ -197,7 +131,7 @@ class DataHelperML(DataHelper):
 
     def load_data(self):
         # o = DataHelper(file_to_load)
-        file_name_ordered, label_matrix_ordered, doc_size, origin_list = self.__load_data()
+        file_name_ordered, label_matrix_ordered, doc_size, origin_list = self.load_origin_dir()
 
         [self.file_id_train, self.file_id_test, self.labels_train, self.labels_test,
          self.doc_size_train, self.doc_size_test, self.x_train, self.x_test] = \
