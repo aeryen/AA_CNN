@@ -81,7 +81,6 @@ class DataHelperML(DataHelper):
 
         return data
 
-
     def pad_sentences(self, docs, padding_word="<PAD>", target_length=-1):
         """
         Pads all sentences to the same length. The length is defined by the longest sentence.

@@ -102,13 +102,12 @@ class DataHelperMulMol6(DataHelperML):
         self.vocab, self.vocab_inv = self.build_vocab(x_concat_exp, self.vocabulary_size)
 
         if not self.doc_level_data:
-            self.x_train = x_training_exp
-            self.labels_train = labels_training_exp
-            self.x_test = x_test_exp
-            self.labels_test = labels_test_exp
+            self.train = train_data
+            self.val = val_data
+            self.test = test_data
 
-        [glove_words, glove_vectors] = self.load_glove_vector(self.glove)
-        self.embed_matrix = self.build_embedding(self.vocab_inv, glove_words, glove_vectors)
+        [glove_words, glove_vectors] = self.load_glove_vector(self.glove_path)
+        self.embed_matrix = self.build_glove_embedding(self.vocab_inv, glove_words, glove_vectors)
 
         self.x_train = DataHelperMulMol6.build_input_data(self.x_train, self.vocab, self.doc_level_data)
         self.x_train = self.pad_sentences(self.x_train, target_length=self.target_sent_len)
