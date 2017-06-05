@@ -5,6 +5,7 @@ import logging
 
 from datahelpers.DataHelper import DataHelper
 from datahelpers.Data import AAData
+from datahelpers.Data import LoadMethod
 
 
 class DataHelperML(DataHelper):
@@ -160,11 +161,11 @@ class DataHelperML(DataHelper):
         data.label = expand_y
         return data
 
-    @staticmethod
-    def build_input_data(docs, vocabulary, doc_level):
-        unk = vocabulary["<UNK>"]
-        if doc_level:
+    def build_content_vector(self, docs):
+        unk = self.vocab["<UNK>"]
+        if self.doc_level_data == LoadMethod.DOC or self.doc_level_data == LoadMethod.COMB:
             x = np.array([[[vocabulary.get(word, unk) for word in sent] for sent in doc] for doc in docs])
         else:
             x = np.array([[vocabulary.get(word, unk) for word in doc] for doc in docs])
         return x
+

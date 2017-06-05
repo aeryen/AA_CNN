@@ -10,7 +10,6 @@ import math
 
 
 class DataHelper(object):
-
     def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len):
         logging.info("setting: %s is %s", "doc_level", doc_level)
         logging.info("setting: %s is %s", "embed_type", embed_type)
@@ -32,9 +31,22 @@ class DataHelper(object):
         self.target_doc_len = target_doc_len
         self.target_sent_len = target_sent_len
 
+        self.vocab = None
+        self.vocab_inv = None
+        self.embed_matrix = None
+        self.vocabulary_size = 20000
+
         self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
         self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
-        self.word2vec_model = None
+        self.w2v_path = "./datahelpers/w2v/GoogleNews-vectors-negative300.bin"
+
+        if self.embed_type == "glove":
+            [self.glove_words, self.glove_vectors] = self.load_glove_vector()
+        elif self.embed_type == "w2v":
+            self.w2v_model = self.load_w2v_vector()
+        elif self.embed_type == "both":
+            [self.glove_words, self.glove_vectors] = self.load_glove_vector()
+            self.w2v_model = self.load_w2v_vector()
 
     @staticmethod
     def clean_str(string):
@@ -70,52 +82,44 @@ class DataHelper(object):
             paragraph = [DataHelper.clean_str(e) for e in paragraph]
         return paragraph
 
-
-    @staticmethod
-    def load_glove_vector(glove_path):
-        glove_lines = list(open(glove_path, "r", encoding="utf-8").readlines())
+    def load_glove_vector(self):
+        glove_lines = list(open(self.glove_path, "r", encoding="utf-8").readlines())
         glove_lines = [s.split(" ", 1) for s in glove_lines if (len(s) > 0 and s != "\n")]
         glove_words = [s[0] for s in glove_lines]
         vector_list = [s[1] for s in glove_lines]
         glove_vectors = np.array([np.fromstring(line, dtype=float, sep=' ') for line in vector_list])
         return [glove_words, glove_vectors]
 
-    @staticmethod
-    def load_w2v_vector():
-        if os.path.exists('./datahelpers/w2v/GoogleNews-vectors-negative300.bin'):
-            word2vec_model = gensim.models.KeyedVectors.load_word2vec_format(
-                './datahelpers/w2v/GoogleNews-vectors-negative300.bin',
-                binary=True)
+    def load_w2v_vector(self):
+        if os.path.exists(self.w2v_path):
+            word2vec_model = gensim.models.KeyedVectors.load_word2vec_format(self.w2v_path, binary=True)
         else:
-            word2vec_model = gensim.models.KeyedVectors.load_word2vec_format(
-                '../datahelpers/w2v/GoogleNews-vectors-negative300.bin',
-                binary=True)
+            word2vec_model = gensim.models.KeyedVectors.load_word2vec_format('.' + self.w2v_path,  # one level up
+                                                                             binary=True)
         return word2vec_model
 
-    @staticmethod
-    def build_glove_embedding(vocabulary_inv, glove_words, glove_vectors, embedding_dim):
+    def build_glove_embedding(self, vocabulary_inv):
         np.random.seed(10)
         embed_matrix = []
-        std = np.std(glove_vectors[0, :])
+        std = np.std(self.glove_vectors[0, :])
         for word in vocabulary_inv:
-            if word in glove_words:
-                word_index = glove_words.index(word)
-                embed_matrix.append(glove_vectors[word_index, :])
+            if word in self.glove_words:
+                word_index = self.glove_words.index(word)
+                embed_matrix.append(self.glove_vectors[word_index, :])
             else:
-                embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=embedding_dim))
+                embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=self.embedding_dim))
         embed_matrix = np.array(embed_matrix)
         return embed_matrix
 
-    @staticmethod
-    def build_w2v_embedding(vocabulary_inv, model, embedding_dim):
+    def build_w2v_embedding(self, vocabulary_inv):
         np.random.seed(10)
         embed_matrix = []
-        std = np.std(model["the"])
+        std = np.std(self.w2v_model["the"])
         for word in vocabulary_inv:
-            if word in model:
-                embed_matrix.append(model[word])
+            if word in self.w2v_model:
+                embed_matrix.append(self.w2v_model[word])
             else:
-                embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=embedding_dim))
+                embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=self.embedding_dim))
         embed_matrix = np.array(embed_matrix)
         return embed_matrix
 
@@ -231,12 +235,12 @@ class DataHelper(object):
                 if i == num_of_fold - 1:
                     testing_data = data_to_split[-last_fold_size:]
                 else:
-                    testing_data = data_to_split[i*fold_size:(i+1)*fold_size]
+                    testing_data = data_to_split[i * fold_size:(i + 1) * fold_size]
             else:
                 if i == num_of_fold - 1:
                     training_data.extend(data_to_split[-last_fold_size:])
                 else:
-                    training_data.extend(data_to_split[i*fold_size:(i+1)*fold_size])
+                    training_data.extend(data_to_split[i * fold_size:(i + 1) * fold_size])
 
         return training_data, testing_data
 

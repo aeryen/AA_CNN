@@ -13,19 +13,14 @@ class DataHelperML(DataHelper):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
     problem_name = "ML"
 
-    vocab = None
-    vocab_inv = None
-    embed_matrix = None
-
-    def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, truth_file="labels.csv"):
+    def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, train_csv_file="labels.csv"):
         logging.info("Data Helper: " + __file__ + " initiated.")
 
         super(DataHelperML, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
                                            target_doc_len=target_doc_len, target_sent_len=target_sent_len)
 
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
-        self.truth_file_path = self.training_data_dir + truth_file
-        self.vocabulary_size = 20000
+        self.truth_file_path = self.training_data_dir + train_csv_file
 
     def pad_sentences(self, docs, padding_word="<PAD>", target_length=-1):
         """

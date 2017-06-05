@@ -3,7 +3,7 @@ import errno
 import math
 import os
 import logging
-
+import pkg_resources
 import numpy as np
 
 from utils import featuremaker
@@ -15,35 +15,15 @@ class DataHelperMulMol6(DataHelperML):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
     problem_name = "ML"
 
-    vocabulary_size = 20000
-    embedding_dim = 100
-
-    train_size = None
-    test_size = None
-
-    file_id_train = None
-    file_id_test = None
-    labels_train = None
-    labels_test = None
-    x_train = None
-    x_test = None
-    doc_size_train = None
-    doc_size_test = None
-
-    vocab = None
-    vocab_inv = None
-    embed_matrix = None
-
-    doc_level_data = False  # doc, comb, sent
-    target_sent_len = None
-    target_doc_len = None
-
     def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, train_csv_file="train.csv"):
         logging.info("Data Helper: " + __file__ + " initiated.")
 
         super(DataHelperMulMol6, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
                                                 target_doc_len=target_doc_len, target_sent_len=target_sent_len,
                                                 train_csv_file=train_csv_file, data_dir="ml_dataset")
+
+        self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_dataset/')
+        self.truth_file_path = self.training_data_dir + train_csv_file
 
     def temp_write_channel_file(self, author_code, file_name, file_text_content):
         fm = featuremaker.FeatureMaker(file_text_content)
@@ -106,13 +86,15 @@ class DataHelperMulMol6(DataHelperML):
             self.val = val_data
             self.test = test_data
 
-        [glove_words, glove_vectors] = self.load_glove_vector(self.glove_path)
-        self.embed_matrix = self.build_glove_embedding(self.vocab_inv, glove_words, glove_vectors)
+        if self.embed_type == "glove":
+            self.embed_matrix = self.build_glove_embedding(self.vocab_inv)
+        else:
+            self.embed_matrix = self.build_w2v_embedding(self.vocab_inv)
 
-        self.x_train = DataHelperMulMol6.build_input_data(self.x_train, self.vocab, self.doc_level_data)
+        self.x_train = DataHelperMulMol6.build_input_data(self.x_train)
         self.x_train = self.pad_sentences(self.x_train, target_length=self.target_sent_len)
 
-        self.x_test = DataHelperMulMol6.build_input_data(self.x_test, self.vocab, self.doc_level_data)
+        self.x_test = DataHelperMulMol6.build_input_data(self.x_test)
         self.x_test = self.pad_sentences(self.x_test, target_length=self.target_sent_len)
 
         if self.doc_level_data:
