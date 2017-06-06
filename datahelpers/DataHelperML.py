@@ -164,8 +164,8 @@ class DataHelperML(DataHelper):
     def build_content_vector(self, docs):
         unk = self.vocab["<UNK>"]
         if self.doc_level_data == LoadMethod.DOC or self.doc_level_data == LoadMethod.COMB:
-            x = np.array([[[vocabulary.get(word, unk) for word in sent] for sent in doc] for doc in docs])
+            x = np.array([[[self.vocab.get(word, unk) for word in sent] for sent in doc] for doc in docs])
         else:
-            x = np.array([[vocabulary.get(word, unk) for word in doc] for doc in docs])
+            x = np.array([[self.vocab.get(word, unk) for word in doc] for doc in docs])
         return x
 
