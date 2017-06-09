@@ -168,13 +168,23 @@ class DataHelper(object):
         return x, y
 
     @staticmethod
+    def chain(data_splits):
+        for data in data_splits:
+            for doc in data.raw:
+                if doc is None:
+                    print("here")
+                for sent in doc:
+                    for word in sent:
+                        yield word
+
+    @staticmethod
     def build_vocab(data, vocabulary_size):
         """
         Builds a vocabulary mapping from word to index based on the sentences.
         Returns vocabulary mapping and inverse vocabulary mapping.
         """
         # Build vocabulary
-        word_counts = Counter(itertools.chain(*data))
+        word_counts = Counter(DataHelper.chain(data))
         # Mapping from index to word
         # vocabulary_inv = [x[0] for x in word_counts.most_common()]
         word_counts = sorted(word_counts.items(), key=lambda t: t[::-1], reverse=True)

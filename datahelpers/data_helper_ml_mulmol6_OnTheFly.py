@@ -8,6 +8,7 @@ import numpy as np
 
 from utils import featuremaker
 from datahelpers.DataHelperML import DataHelperML
+from datahelpers.Data import LoadMethod
 from datahelpers.Data import AAData
 
 
@@ -68,20 +69,21 @@ class DataHelperMulMol6(DataHelperML):
 
         return poss, word_len, prefix_2, prefix_3, suffix_2, suffix_3
 
+
+
     def load_data(self):
         # o = DataHelper(file_to_load)
-        train_data = self.load_origin_dir(csv_file=self.train_label_file_path, load_raw=True)
-        val_data = self.load_origin_dir(csv_file=self.val_label_file_path, load_raw=True)
-        test_data = self.load_origin_dir(csv_file=self.test_label_file_path, load_raw=True)
+        train_data = self.load_raw_dir(csv_file=self.train_label_file_path)
+        val_data = self.load_raw_dir(csv_file=self.val_label_file_path)
+        test_data = self.load_raw_dir(csv_file=self.test_label_file_path)
 
-        train_data = self.flatten_doc_to_sent(train_data)
-        val_data = self.flatten_doc_to_sent(val_data)
-        test_data = self.flatten_doc_to_sent(test_data)
-
-        x_concat_exp = np.concatenate([train_data.raw, val_data.raw, test_data.raw], axis=0)
-        self.vocab, self.vocab_inv = self.build_vocab(x_concat_exp, self.vocabulary_size)
+        # x_concat_exp = np.concatenate([train_data.raw, val_data.raw, test_data.raw], axis=0)
+        self.vocab, self.vocab_inv = self.build_vocab([train_data, val_data, test_data], self.vocabulary_size)
 
         if not self.doc_level_data:
+            train_data = self.flatten_doc_to_sent(train_data)
+            val_data = self.flatten_doc_to_sent(val_data)
+            test_data = self.flatten_doc_to_sent(test_data)
             self.train = train_data
             self.val = val_data
             self.test = test_data
@@ -121,7 +123,7 @@ class DataHelperMulMol6(DataHelperML):
 
 
 if __name__ == "__main__":
-    o = DataHelperMulMol6(doc_level="sent", embed_type="glove", embed_dim=100, target_doc_len=400, target_sent_len=100)
+    o = DataHelperMulMol6(doc_level=LoadMethod.SENT, embed_type="glove", embed_dim=100, target_doc_len=400, target_sent_len=100)
     o.load_data()
     # o.load_test_data()
     print("o")

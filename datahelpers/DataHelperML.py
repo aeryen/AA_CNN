@@ -9,23 +9,22 @@ from datahelpers.Data import LoadMethod
 
 
 class DataHelperML(DataHelper):
-
     def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, train_csv_file,
                  data_dir="ml_mulmol"):
         super(DataHelperML, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
                                            target_doc_len=target_doc_len, target_sent_len=target_sent_len)
 
-        self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/'+data_dir+'/')
+        self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/' + data_dir + '/')
         self.train_label_file_path = self.training_data_dir + "_new_label/" + train_csv_file
         self.val_label_file_path = self.training_data_dir + "_new_label/val.csv"
         self.test_label_file_path = self.training_data_dir + "_new_label/test.csv"
 
     @staticmethod
-    def load_raw_file(data_dir, author_code, file_name):
-        if not os.path.exists(os.path.dirname(data_dir + author_code + "/")):
-            logging.error("error: " + author_code + " does not exit")
+    def load_raw_file(data_dir, author_name, file_name):
+        if not os.path.exists(os.path.dirname(data_dir + author_name + "/")):
+            logging.error("error: " + author_name + " does not exit")
             return
-        file_content = open(data_dir + author_code + "/" + file_name, "r").readlines()
+        file_content = open(data_dir + author_name + "/txt/txt-preprocessed/" + file_name, "r").readlines()
         content = []
         paragraph = []
         for line in file_content:
@@ -40,6 +39,37 @@ class DataHelperML(DataHelper):
                 paragraph.append(line)
         return content
 
+    def load_raw_dir(self, csv_file):
+        authors, file_ids, label_matrix = DataHelperML.load_csv(csv_file_path=csv_file)
+        self.num_of_classes = len(authors)
+
+        data = AAData(size=len(file_ids))
+        data.file_id = file_ids
+
+        origin_list = [None] * data.size
+        doc_size = [None] * data.size
+
+        folder_list = os.listdir(self.training_data_dir)
+        for author in folder_list:
+            f = self.training_data_dir + author + "/txt/txt-preprocessed/"
+            if os.path.isdir(f):
+                sub_file_list = os.listdir(f)
+                for file_name in sub_file_list:
+                    if file_name in data.file_id:
+                        index = data.file_id.index(file_name)
+                        file_content = DataHelperML.load_raw_file(data_dir=self.training_data_dir,
+                                                                  author_name=author, file_name=file_name)
+                        origin_list[index] = file_content
+                        doc_size[index] = len(file_content)
+
+        doc_size = np.array(doc_size)
+
+        data.raw = origin_list
+        data.label = label_matrix
+        data.doc_size = doc_size
+
+        return data
+
     @staticmethod
     def load_proced_file(data_dir, author_code, file_name):
         if not os.path.exists(os.path.dirname(data_dir + author_code + "/")):
@@ -49,7 +79,7 @@ class DataHelperML(DataHelper):
         file_content = [line.split() for line in file_content]
         return file_content
 
-    def load_origin_dir(self, csv_file, load_raw=False):
+    def load_proced_dir(self, csv_file):
         authors, file_ids, label_matrix = DataHelper.load_csv(csv_file_path=csv_file)
         self.num_of_classes = len(authors)
 
@@ -67,10 +97,8 @@ class DataHelperML(DataHelper):
                 for file_name in sub_file_list:
                     if file_name in data.file_id:
                         index = data.file_id.index(file_name)
-                        if load_raw:
-                            file_content = DataHelperML.load_raw_file(author_code=author, file_name=file_name)
-                        else:
-                            file_content = DataHelperML.load_proced_file(author_code=author, file_name=file_name)
+                        file_content = DataHelperML.load_proced_file(data_dir=self.training_data_dir,
+                                                                     author_code=author, file_name=file_name)
                         origin_list[index] = file_content
                         doc_size[index] = len(file_content)
 
@@ -168,4 +196,3 @@ class DataHelperML(DataHelper):
         else:
             x = np.array([[vocabulary.get(word, unk) for word in doc] for doc in docs])
         return x
-
