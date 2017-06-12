@@ -8,6 +8,7 @@ import pkg_resources
 import os
 import math
 
+from datahelpers.Data import AAData
 
 class DataHelper(object):
     def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len):
@@ -122,6 +123,12 @@ class DataHelper(object):
                 embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=self.embedding_dim))
         embed_matrix = np.array(embed_matrix)
         return embed_matrix
+
+    def build_embedding(self, vocabulary_inv):
+        if self.embed_type == "glove":
+            self.embed_matrix = self.build_glove_embedding(self.vocab_inv)
+        else:
+            self.embed_matrix = self.build_w2v_embedding(self.vocab_inv)
 
     @staticmethod
     def longest_sentence(input_list, print_content):
@@ -253,6 +260,31 @@ class DataHelper(object):
                     training_data.extend(data_to_split[i * fold_size:(i + 1) * fold_size])
 
         return training_data, testing_data
+
+    @staticmethod
+    def split_by_fold_2(num_of_fold, test_fold_index, data):
+        fold_size = int(math.ceil(data.size / num_of_fold))
+        test_items = np.arange(fold_size) * num_of_fold + test_fold_index
+        if test_items[-1] > data.size:
+            test_items.pop(-1)
+
+        train_data = AAData(size=data.size - len(test_items))
+        train_data.init_empty_list()
+        test_data = AAData(size=len(test_items))
+        test_data.init_empty_list()
+        for i in range(data.size):
+            if i in test_items:
+                test_data.file_id.append(data.file_id[i])
+                test_data.raw.append(data.raw[i])
+                test_data.label.append(data.label[i])
+                test_data.doc_size.append(data.doc_size[i])
+            else:
+                train_data.file_id.append(data.file_id[i])
+                train_data.raw.append(data.raw[i])
+                train_data.label.append(data.label[i])
+                train_data.doc_size.append(data.doc_size[i])
+
+        return [train_data, test_data]
 
     @staticmethod
     def load_csv(csv_file_path):

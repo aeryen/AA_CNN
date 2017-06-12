@@ -58,7 +58,7 @@ class TrainTask:
             self.suff2_vocab_size = None
             self.suff3_vocab_size = None
             self.pos_vocab_size = None
-            self.x_train, self.y_train, _, _, self.embed_matrix = self.data_hlp.load_data()
+            self.train_data, _, _, self.embed_matrix = self.data_hlp.load_data()
         else:
             raise NotImplementedError
 
@@ -91,7 +91,7 @@ class TrainTask:
             session_conf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
             sess = tf.Session(config=session_conf)
             cnn = TextCNN(
-                sequence_length=self.x_train.shape[1],
+                sequence_length=self.train_data.value.shape[1],
                 num_classes=self.data_hlp.num_of_classes,
                 word_vocab_size=len(self.data_hlp.vocab),
                 embedding_size=self.data_hlp.embedding_dim,
@@ -194,7 +194,7 @@ class TrainTask:
                     writer.add_summary(summaries, step)
 
             # Generate batches
-            batches = dh.DataHelperML.batch_iter(list(zip(self.x_train, self.y_train)), self.batch_size,
+            batches = dh.DataHelperML.batch_iter(list(zip(self.train_data.value, self.train_data.label)), self.batch_size,
                                                  num_epochs=300)
 
             # Training loop. For each batch...

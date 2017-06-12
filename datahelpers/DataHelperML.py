@@ -110,49 +110,30 @@ class DataHelperML(DataHelper):
 
         return data
 
-    def pad_sentences(self, docs, padding_word="<PAD>", target_length=-1):
-        """
-        Pads all sentences to the same length. The length is defined by the longest sentence.
-        Returns padded sentences.
-        """
-        if target_length > 0:
-            max_length = target_length
+    def pad_sentences(self, data):
+        if self.target_sent_len > 0:
+            max_length = self.target_sent_len
         else:
-            sent_lengths = [len(x) for x in docs]
+            sent_lengths = [[len(sent) for sent in doc] for doc in data.value]
             max_length = max(sent_lengths)
             print("longest doc: " + str(max_length))
 
-        if not self.doc_level_data:
+        padded_docs = []
+        for doc in data.value:
             padded_doc = []
-            for i in range(len(docs)):
-                sent = docs[i]
+            for sent_i in range(len(doc)):
+                sent = doc[sent_i]
                 if len(sent) <= max_length:
                     num_padding = max_length - len(sent)
                     new_sentence = np.concatenate([sent, np.zeros(num_padding, dtype=np.int)])
                 else:
                     new_sentence = sent[:max_length]
                 padded_doc.append(new_sentence)
-            return np.array(padded_doc)
-        else:
-            padded_docs = []
-            for doc in docs:
-                padded_doc = []
-                for i in range(len(doc)):
-                    sent = doc[i]
-                    if len(sent) <= max_length:
-                        num_padding = max_length - len(sent)
-                        new_sentence = np.concatenate([sent, np.zeros(num_padding, dtype=np.int)])
-                    else:
-                        new_sentence = sent[:max_length]
-                    padded_doc.append(new_sentence)
-                padded_docs.append(np.array(padded_doc))
-            return padded_docs
+            padded_docs.append(np.array(padded_doc))
+            data.value = np.array(padded_docs)
+        return data
 
     def pad_document(self, docs, padding_word="<PAD>", target_length=-1):
-        """
-        Pads all sentences to the same length. The length is defined by the longest sentence.
-        Returns padded sentences.
-        """
         if target_length > 0:
             tar_length = target_length
         else:
@@ -177,22 +158,27 @@ class DataHelperML(DataHelper):
 
     @staticmethod
     def flatten_doc_to_sent(data):
-        expand_x = []
+        expand_raw = []
+        expand_vector = []
         expand_y = []
 
         for x_doc in data.raw:
-            expand_x.extend(x_doc)
+            expand_raw.extend(x_doc)
+        for x_doc in data.vector:
+            expand_vector.extend(x_doc)
         for i in range(len(data.label)):
             expand_y.extend(np.tile(data.label[i], [len(data.raw[i]), 1]))
 
-        data.raw = expand_x
+        data.raw = expand_raw
+        data.vector = expand_vector
         data.label = expand_y
         return data
 
-    def build_content_vector(self, docs):
+    def build_content_vector(self, data):
         unk = self.vocab["<UNK>"]
-        if self.doc_level_data == LoadMethod.DOC or self.doc_level_data == LoadMethod.COMB:
-            x = np.array([[[self.vocab.get(word, unk) for word in sent] for sent in doc] for doc in docs])
-        else:
-            x = np.array([[self.vocab.get(word, unk) for word in doc] for doc in docs])
-        return x
+        # if self.doc_level_data == LoadMethod.DOC or self.doc_level_data == LoadMethod.COMB:
+        content_vector = np.array([[[self.vocab.get(word, unk) for word in sent] for sent in doc] for doc in data.raw])
+        data.value = content_vector
+        # else:
+        #     x = np.array([[self.vocab.get(word, unk) for word in doc] for doc in data])
+        return data

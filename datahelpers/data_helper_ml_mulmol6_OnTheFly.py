@@ -23,8 +23,14 @@ class DataHelperMulMol6(DataHelperML):
                                                 target_doc_len=target_doc_len, target_sent_len=target_sent_len,
                                                 train_csv_file=train_csv_file, data_dir="ml_dataset")
 
+        # overrides the csv path, even though the content is the same
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_dataset/')
-        self.truth_file_path = self.training_data_dir + train_csv_file
+        self.train_label_file_path = self.training_data_dir + "_new_label/" + train_csv_file
+        self.val_label_file_path = self.training_data_dir + "_new_label/val.csv"
+        self.test_label_file_path = self.training_data_dir + "_new_label/test.csv"
+
+        self.train_data = None
+        self.test_data = None
 
     def temp_write_channel_file(self, author_code, file_name, file_text_content):
         fm = featuremaker.FeatureMaker(file_text_content)
@@ -69,49 +75,41 @@ class DataHelperMulMol6(DataHelperML):
 
         return poss, word_len, prefix_2, prefix_3, suffix_2, suffix_3
 
-
-
     def load_data(self):
-        # o = DataHelper(file_to_load)
-        train_data = self.load_raw_dir(csv_file=self.train_label_file_path)
-        val_data = self.load_raw_dir(csv_file=self.val_label_file_path)
-        test_data = self.load_raw_dir(csv_file=self.test_label_file_path)
+        # train_data = self.load_raw_dir(csv_file=self.train_label_file_path)
+        # val_data = self.load_raw_dir(csv_file=self.val_label_file_path)
+        # test_data = self.load_raw_dir(csv_file=self.test_label_file_path)
+
+        all_file_csv_path = self.training_data_dir + "_old_label/labels.csv"
+        all_data = self.load_raw_dir(csv_file=all_file_csv_path)
+
 
         # x_concat_exp = np.concatenate([train_data.raw, val_data.raw, test_data.raw], axis=0)
-        self.vocab, self.vocab_inv = self.build_vocab([train_data, val_data, test_data], self.vocabulary_size)
+        # self.vocab, self.vocab_inv = self.build_vocab([train_data, val_data, test_data], self.vocabulary_size)
+        self.vocab, self.vocab_inv = self.build_vocab([all_data], self.vocabulary_size)
+
+        self.embed_matrix = self.build_embedding(self.vocab_inv)
+
+        all_data = self.build_content_vector(all_data)
+        all_data = self.pad_sentences(all_data)
+
+        if self.doc_level_data == LoadMethod.DOC or self.doc_level_data == LoadMethod.COMB:
+            all_data = self.pad_document(all_data, target_length=self.target_doc_len)
+
+        [train_data, test_data] = DataHelperML.split_by_fold_2(5, 0, all_data)
 
         if not self.doc_level_data:
             train_data = self.flatten_doc_to_sent(train_data)
-            val_data = self.flatten_doc_to_sent(val_data)
             test_data = self.flatten_doc_to_sent(test_data)
-            self.train = train_data
-            self.val = val_data
-            self.test = test_data
 
-        if self.embed_type == "glove":
-            self.embed_matrix = self.build_glove_embedding(self.vocab_inv)
-        else:
-            self.embed_matrix = self.build_w2v_embedding(self.vocab_inv)
+        self.train_data = train_data
+        self.test_data = test_data
 
-        self.x_train = DataHelperMulMol6.build_input_data(self.x_train)
-        self.x_train = self.pad_sentences(self.x_train, target_length=self.target_sent_len)
-
-        self.x_test = DataHelperMulMol6.build_input_data(self.x_test)
-        self.x_test = self.pad_sentences(self.x_test, target_length=self.target_sent_len)
-
-        if self.doc_level_data:
-            self.longest_sentence(self.x_train, False)
-            self.x_train = self.pad_document(self.x_train, target_length=self.target_doc_len)
-            self.x_test = self.pad_document(self.x_test, target_length=self.target_doc_len)
-
-        return [self.x_train, self.labels_train, self.vocab, self.vocab_inv, self.embed_matrix]
+        return [self.train_data, self.vocab, self.vocab_inv, self.embed_matrix]
 
     def load_test_data(self):
-        if self.x_test is not None:
-            if self.doc_level_data:
-                return [self.x_test, self.labels_test, self.vocab, self.vocab_inv, self.doc_size_test]
-            else:
-                return [self.x_test, self.labels_test, self.vocab, self.vocab_inv, self.doc_size_test]
+        if self.test_data is not None:
+            return [self.test_data, self.vocab, self.vocab_inv]
         else:
             print("nope")
 
