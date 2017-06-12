@@ -276,11 +276,13 @@ class DataHelper(object):
             if i in test_items:
                 test_data.file_id.append(data.file_id[i])
                 test_data.raw.append(data.raw[i])
+                test_data.value.append(data.value[i])
                 test_data.label.append(data.label[i])
                 test_data.doc_size.append(data.doc_size[i])
             else:
                 train_data.file_id.append(data.file_id[i])
                 train_data.raw.append(data.raw[i])
+                train_data.value.append(data.value[i])
                 train_data.label.append(data.label[i])
                 train_data.doc_size.append(data.doc_size[i])
 
