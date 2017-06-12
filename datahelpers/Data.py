@@ -13,6 +13,7 @@ class AAData:
     def init_empty_list(self):
         self.file_id = []
         self.raw = []
+        self.value = []
         self.label = []
         self.doc_size = []
 
