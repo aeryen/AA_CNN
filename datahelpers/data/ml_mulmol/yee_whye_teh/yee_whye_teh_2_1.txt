@@ -1,953 +1,363 @@
-Abstract
-
-of the input space, a simple model predicts labels.
-
-Decision tree learning is a popular ap-
-proach for classiÔ¨Åcation and regression in ma-
-chine learning and statistics, and Bayesian
-formulations‚Äîwhich introduce a prior dis-
-tribution over decision trees, and formulate
-learning as posterior inference given data‚Äî
-have been shown to produce competitive per-
-formance. Unlike classic decision tree learn-
-ing algorithms like ID3, C4.5 and CART,
-which work in a top-down manner, existing
-Bayesian algorithms produce an approxima-
-tion to the posterior distribution by evolving
-a complete tree (or collection thereof) itera-
-tively via local Monte Carlo modiÔ¨Åcations to
-the structure of the tree, e.g., using Markov
-chain Monte Carlo (MCMC). We present
-a sequential Monte Carlo (SMC) algorithm
-that instead works in a top-down manner,
-mimicking the behavior and speed of clas-
-sic algorithms. We demonstrate empirically
-that our approach delivers accuracy compa-
-rable to the most popular MCMC method,
-but operates more than an order of mag-
-nitude faster, and thus represents a better
-computation-accuracy tradeoÔ¨Ä.
-
-1. Introduction
-
-Decision tree learning algorithms are widely used
-across statistics and machine learning, and often de-
-liver near state-of-the-art performance despite their
-simplicity. Decision trees represent predictive models
-from an input space, typically RD, to an output space
-of labels, and work by specifying a hierarchical parti-
-tion of the input space into blocks. Within each block
-
-Proceedings of the 30 th International Conference on Ma-
-chine Learning, Atlanta, Georgia, USA, 2013.
-JMLR:
-W&CP volume 28. Copyright 2013 by the author(s).
-
-In classical decision tree learning, a decision tree (or
-collection thereof) is learned in a greedy, top-down
-manner from the examples. Examples of classical ap-
-proaches that learn single trees include ID3 (Quin-
-lan, 1986), C4.5 (Quinlan, 1993) and CART (Breiman
-et al., 1984), while methods that learn combinations of
-decisions trees include boosted decision trees (Fried-
-man, 2001), Random Forests (Breiman, 2001), and
-many others.
-
-Bayesian decision tree methods, like those Ô¨Årst pro-
-posed by Buntine (1992), Chipman et al. (1998), Deni-
-son et al. (1998), and Chipman & McCulloch (2000),
-and more recently revisited by Wu et al. (2007),
-Taddy et al. (2011) and Anagnostopoulos & Gramacy
-(2012), cast the problem of decision tree learning into
-the framework of Bayesian inference.
-In particular,
-Bayesian approaches start by placing a prior distri-
-bution on the decision tree itself. To complete the
-speciÔ¨Åcation of the model, it is common to associate
-each leaf node with a parameter indexing a family of
-likelihoods, e.g., the means of Gaussians or Bernoullis.
-The labels are then assumed to be conditionally inde-
-pendent draws from their respective likelihoods. The
-Bayesian approach has a number of useful properties:
-e.g., the posterior distribution on the decision tree can
-be interpreted as reÔ¨Çecting residual uncertainty and
-can be used to produce point and interval estimates.
-
-On the other hand, exact posterior computation is
-typically infeasible and so existing approaches use ap-
-proximate methods such as Markov chain Monte Carlo
-(MCMC) in the batch setting. Roughly speaking,
-these algorithms iteratively improve a complete deci-
-sion tree by making a long sequence of random, local
-modiÔ¨Åcations, each biased towards tree structures with
-higher posterior probability. These algorithms stand
-in marked contrast with classical decision tree learning
-algorithms like ID3 and C4.5, which rapidly build a de-
-
-Top-down particle Ô¨Åltering for Bayesian decision trees
-
-cision tree for a data set in a top-down greedy fashion
-guided by heuristics. Given the success of these meth-
-ods, one might ask whether they could be adapted to
-work in the Bayesian framework.
-
-In this article, we present such an adaptation, propos-
-ing a sequential Monte Carlo (SMC) method for ap-
-proximate inference in Bayesian decision trees that
-works by sampling a collection of trees in a top-down
-manner like ID3 and C4.5. Unlike classical methods,
-there is no pruning stage after the top-down learn-
-ing stage to prevent over-Ô¨Åtting, as the prior com-
-bines with the likelihood to automatically cut short the
-growth of the trees, and resampling focuses attention
-on those trees that better Ô¨Åt the data. In the end, the
-algorithm produces a collection of sampled trees that
-approximate the posterior distribution. While both
-existing MCMC algorithms and our novel SMC algo-
-rithm produce approximations to the posterior that
-are exact in the limit, we show empirically that our al-
-gorithms run more than an order of magnitude faster
-than existing methods while delivering the same pre-
-dictive performance.
-
-The article is organized as follows: we begin by de-
-scribing the Bayesian decision tree model precisely in
-Section 2, and then describe the SMC algorithm in de-
-tail in Section 3. Through a series of empirical tests,
-we demonstrate in Section 4 that this approach is fast
-and produces good approximations. We conclude in
-Section 5 with a discussion comparing this approach
-with existing ones in the Bayesian setting, and point
-towards future avenues.
-
-2. Model and notation
-
-n=1, xn ‚àà RD. The as-
-
-In this section, we present the decision tree model for
-the distribution of the labels Y = {yn}N
-n=1 correspond-
-ing to input vectors X = {xn}N
-sumption is that the probabilistic mapping from input
-vectors to their labels is mediated by a latent deci-
-sion tree T that serves to partition the input space
-into axis-aligned blocks. Each block is then associated
-with a parameter that determines the distribution of
-the labels of the input vectors falling in that block.
-
-A rooted, strictly binary tree T is a Ô¨Ånite tree with
-a single root, denoted by the empty string , where
-each internal node p except the root has exactly two
-children, called the left child p0 and the right child p1.
-Denote the leaves of T (those nodes without children)
-by ‚àÇT. Each node of the tree p ‚àà T is associated
-with a block B(p) ‚äÇ RD of the input space as follows:
-At the root we have B() = RD, while each internal
-node p ‚àà T \ ‚àÇT ‚Äúcuts‚Äù its block into two halves, with
-
-Œ∫(p) ‚àà {1, . . . , D} denoting the dimension of the cut,
-and œÑ (p) denoting the location of the cut, so that
-
-B(p0) = B(p) ‚à© {z ‚àà RD : zŒ∫(p) ‚â§ œÑ (p)} and
-B(p1) = B(p) ‚à© {z ‚àà RD : zŒ∫(p) > œÑ (p)}.
-
-(1)
-We call the tuple T = (T, Œ∫, œÑ ) the decision tree. (See
-Figure 1 for more intuition on the representation and
-notation of decision trees.) Note that the blocks asso-
-ciated with the leaves of the tree partition RD. It will
-be convenient to write N (p) for the set of data point
-indices n ‚àà {1, . . . , N} such that xn ‚àà B(p). For every
-subset A ‚äÜ {1, . . . , N}, let YA := {yn : n ‚àà A} and
-similarly for XA, so that XN (p) are the input vectors in
-block B(p) and YN (p) are their labels. Note that both
-B(p) and N (p) depend on T , although we have chosen
-to elide this dependence for notational simplicity.
-
-Conditioned on the examples X, we assume that the
-joint density f (Y,T | X) of the labels Y and the latent
-decision tree T factorizes as follows:
-f (Y,T | X) = h(T | X) g(Y |T , X)
-
-= h(T | X)(cid:81)
-
-p‚àà‚àÇT (cid:96)(YN (p)|XN (p))
-
-(2)
-
-where (cid:96) denotes a likelihood, deÔ¨Åned below.
-
-In this paper, we focus on the case of categorical la-
-bels taking values in the set {1, . . . , K}. It is natural to
-take (cid:96) to be the Dirichlet-Multinomial likelihood, cor-
-responding to the data being conditionally i.i.d. draws
-from a multinomial distribution on {1, . . . , K} with a
-Dirichlet prior. In particular,
-
-(cid:81)K
-Œì((cid:80)K
-
-(cid:96)(YN (p)|XN (p)) =
-
-Œì(Œ±)
-Œì( Œ±
-K )K
-
-k=1 Œì(mpk + Œ±
-K )
-k=1 mpk + Œ±)
-
-,
-
-(3)
-
-where mpk denotes the number of labels yn = k among
-those n ‚àà N (p) and Œ± is the concentration parameter
-of the symmetric Dirichlet prior. Generalisations to
-other likelihood functions based on conjugate pairs of
-exponential families are straightforward.
-The Ô¨Ånal piece of the model is the prior density h(T |X)
-over decision trees. In order to make straightforward
-comparisons with existing algorithms, we adopt the
-model proposed by Chipman et al. (1998).
-In this
-model, the prior distribution of the latent tree is de-
-Ô¨Åned conditionally on the given input vectors X (see
-Section 5 for a discussion of this dependence on X and
-its eÔ¨Äect on the exchangeability of the labels). Infor-
-mally, the tree is grown starting at the root, and each
-new node either splits and grows two children (turning
-the node into an internal node) or stops (leaving it a
-leaf) stochastically.
-
-We now describe the generative process more precisely
-in terms of a Markov chain capturing the construction
-
-Top-down particle Ô¨Åltering for Bayesian decision trees
-
-Figure 1. A decision tree T = (T, Œ∫, œÑ ) represents a hierarchical partitioning of a space. Here, the space is the unit square
-and the tree T contains the nodes {, 0, 1, 10, 11}. The root node  represents the whole space B() = RD, while its two
-children 0 and 1, represent the two halves of the cut (Œ∫(), œÑ ()) = (1, 0.5), where Œ∫() = 1 represents the dimension of
-the cut, and œÑ () = 0.5 represents the location of the cut along that dimension. (The origin is at the bottom left of each
-Ô¨Ågure, and the x-axis is dimension 1. The red stars and blue circles represent observed data points.) The second cut,
-(Œ∫(1), œÑ (1)) = (2, 0.35), splits the block B(1) into the two halves B(11) and B(10). When deÔ¨Åning the prior over decision
-trees given by Chipman et al. (1998), it will be necessary to refer to the ‚Äúextent‚Äù of the data in a block. E.g., I 0
-1 and I 0
-2
-are the extent of the data in dimensions 1 and 2, respectively, in block B(0). For each node p, the set Dp contains those
-dimensions with non-trivial extent. Here, D0 = {1, 2}, but D10 = {2}, because there is no variation in dimension 1.
-
-of a decision tree in stages, beginning with the triv-
-ial tree T0 = {} containing only the root node. At
-each stage i, Ti is produced from Ti‚àí1 by choosing one
-leaf in Ti‚àí1 and either growing two children nodes or
-stopping the leaf. Once stopped, a leaf is ineligible for
-future growth. The identity of the chosen leaf is deter-
-ministic, while the choice to grow or stop is stochastic.
-The process proceeds until all leaves are stopped, and
-so each node is considered for expansion exactly once
-throughout the process. This will be seen to give rise
-to a Ô¨Ånite sequence of decision trees Ti = (Ti, Œ∫i, œÑi)
-once we deÔ¨Åne the associated cut functions Œ∫i and œÑi.
-We will use this Markov chain in Section 3 as scaÔ¨Äold-
-ing for a sequential Monte Carlo algorithm. A similar
-approach was employed by Taddy et al. (2011) in the
-setting of online Bayesian decision trees. There are
-similarities also with the bottom-up SMC algorithms
-by Teh et al. (2008) and Bouchard-CÀÜot¬¥e et al. (2012).
-
-If the input vectors XN (p) are all
-
-We next describe the rule for stopping or growing
-nodes, and the distribution of cuts. Let p be the
-node chosen at some stage of the generative pro-
-cess.
-identical,
-then the node stops and becomes a leaf. (Chipman
-et al. chose this rule because no choice of cut to the
-block B(p) would result in both children containing
-at least one input vector.) Otherwise, let Dp be the
-set of dimensions along which XN (p) varies, and let
-I p
-d = [minn‚ààN (p) xnd, maxn‚ààN (p) xnd] be the range of
-the input vectors along dimension d ‚àà Dp. (See last
-subÔ¨Ågure of Figure 1.) Under the Chipman et al.
-model, the probability that node p is split is
-
-Œ±s
-
-(1 + |p|)Œ≤s
-
-,
-
-Œ±s ‚àà (0, 1), Œ≤s ‚àà [0,‚àû),
-
-(4)
-
-where |p| is the depth of the node, and Œ±s and Œ≤s
-are parameters governing the shape of the resulting
-
-tree. For larger Œ±s and smaller Œ≤s the typical trees are
-larger, while the deeper p is in the tree the less likely it
-will be cut. If p is cut, the dimension Œ∫(p) and then lo-
-cation œÑ (p) of the cut are sampled uniformly from Dp
-and I p
-Œ∫(p), respectively. Note that the choice for the
-support of the distribution over cut dimensions and
-locations are such that both children of p will, with
-probability one, contain at least one input vector. Fi-
-nally, the choices of whether to grow or stop, as well
-the cut dimensions and locations, are conditionally in-
-dependent across diÔ¨Äerent subtrees.
-
-To complete the generative model, we deÔ¨Åne T = TŒ∑,
-Œ∫ = Œ∫Œ∑ and œÑ = œÑŒ∑, where Œ∑ is the Ô¨Årst stage such
-that all nodes are stopped. We note that Œ∑ < 2N with
-probability one because each cut of a node p produces
-a non-trivial partition of the data in the block, and
-a node with one data point will be stopped instead
-of cut. The conditional density of the decision tree
-T = (T, Œ∫, œÑ ) can now be expressed as
-h(T, Œ∫, œÑ|X) =
-
-(cid:17)1(|Dp|>0)
-
-1 ‚àí
-
-Œ±s
-
-(cid:89)
-
-p‚àà‚àÇT
-
-(cid:16)
-(cid:89)
-
-√ó
-
-(1 + |p|)Œ≤s
-
-Œ±s
-
-p‚ààT\‚àÇT
-
-(1 + |p|)Œ≤s
-
-1
-|Dp|
-
-1
-|I p
-Œ∫(p)|
-
-.
-
-(5)
-
-Note that the prior distribution of T does not depend
-on the deterministic rule for choosing a leaf at each
-stage. However this choice will have an eÔ¨Äect on the
-bias/variance of the corresponding SMC algorithm.
-
-3. Sequential Monte Carlo (SMC) for
-
-Bayesian decision trees
-
-In this section we describe an SMC algorithm for ap-
-proximating the posterior distribution over the de-
-cision tree (T, Œ∫, œÑ ) given the labeled training data
-
-:{x1>0.5}01:{x2>0.35}1011B()B(0)B(1)B(0)B(10)B(11)????I02I01??‚ó¶‚ó¶‚ó¶Top-down particle Ô¨Åltering for Bayesian decision trees
-
-(X, Y ). (We refer the reader to (Capp¬¥e et al., 2007)
-for an excellent overview of SMC techniques.) The
-approach we will take is to perform particle Ô¨Åltering
-following the sequential description of the prior.
-In
-particular, at stage i, the particles approximate a mod-
-iÔ¨Åed posterior distribution where the prior on (T, Œ∫, œÑ )
-is replaced by the distribution of (Ti, Œ∫i, œÑi), i.e., the
-process truncated at stage i.
-
-Let Ei denote the set of unstopped leaves at stage i,
-all of which are eligible for expansion. An important
-freedom we have in our SMC algorithm is the choice
-of which candidate leaf (or set Ci ‚äÜ Ei of candidate
-leaves) to consider expanding. In order to avoid ‚Äúmul-
-tipath‚Äù issues (Del Moral et al., 2006, ¬ß3.5) which lead
-to high variance, we Ô¨Åx a deterministic rule for choos-
-ing Ci ‚äÜ Ei. (Multiple candidates are expanded or
-stopped in turn, independently.) This rule can be a
-function of (X, Y ) and the state of the current par-
-ticle, as the correctness of resulting approximation is
-unaÔ¨Äected. We evaluate two choices in experiments:
-Ô¨Årst, the rule Ci = Ei where we consider expanding
-all eligible nodes; and second, the rule where Ci con-
-tains a single node chosen in a breadth-Ô¨Årst (i.e., oldest
-Ô¨Årst) manner from Ei.
-We may now deÔ¨Åne the sequence (PY
-i ) of target dis-
-tributions. Recall the sequential process deÔ¨Åned in
-Section 2.
-If the generative process for the decision
-tree has not completed by stage i, the process has
-generated (Ti, Œ∫i, œÑi) along with Ei, capturing which
-leaves in Ti have been considered for expansion in
-previous stages already and which have not. Let
-Ti = (Ti, Œ∫i, œÑi, Ei) be the variables generated on stage
-i, and write P for the prior distribution on the sequence
-(Ti). We construct the target distribution PY
-i as fol-
-lows: Given Ti, we generate labels Y (cid:48) with likelihood
-g(Y (cid:48)
-|Ti, X), i.e., as if (Ti, Œ∫i, œÑi) were the complete de-
-cision tree. We then deÔ¨Åne PY
-to be the conditional
-distribution of Ti given Y (cid:48) = Y . That is, PY
-is the
-
-posterior with a truncated prior.
-
-i
-
-i
-
-In order to complete the description of our SMC
-method, we must deÔ¨Åne proposal kernels (Qi) that
-sample approximations for the ith stage given values
-for the (i ‚àí 1)th stage. As with our choice of Ci, we
-have quite a bit of freedom.
-In particular, the pro-
-posals can depend on the training data (X, Y ). An
-obvious choice is to take Qi to be the conditional dis-
-tribution of Ti given Ti‚àí1 under the prior, i.e., set-
-ting Qi(Ti |Ti‚àí1) = P(Ti |Ti‚àí1). Informally, this choice
-would lead us to propose extensions to trees at each
-stage of the algorithm by sampling from the prior, so
-we will refer to this as the prior proposal kernel (aka
-the Bayesian bootstrap Ô¨Ålter (Gordon et al., 1993)).
-
-We consider two additional proposal kernels: The Ô¨Årst,
-
-Qi(Ti |Ti‚àí1) = PY
-
-i (Ti |Ti‚àí1),
-
-(6)
-
-is called the (one-step) optimal proposal kernel be-
-cause it would be the optimal kernel assuming that the
-ith stage were the Ô¨Ånal stage. We return to discuss this
-kernel in Section 3.1. The second alternative, which
-we will refer to as the empirical proposal kernel, is
-a small modiÔ¨Åcation to the prior proposal, diÔ¨Äering
-only in the choice of the split point œÑ . Recall that, in
-the prior, œÑi(p) is chosen uniformly from the interval
-I p
-Œ∫i(p). This ignores the empirical distribution given
-by the input data XN (p) in the partition. We can ac-
-count for this by Ô¨Årst choosing, uniformly at random,
-a pair of adjacent data points along feature dimension
-Œ∫i(p), and then sampling a cut œÑi(p) uniformly from
-the interval between these two data points.
-
-The pseudocode for our proposed SMC algorithm is
-given in Algorithm 1 in Appendix A. Note that the
-SMC framework only requires us to compute the den-
-sity of Ti under the target distribution up to a normal-
-ization constant. In fact, the SMC algorithm produces
-an estimate of the normalization constant, which, at
-the end of the algorithm, is equal to the marginal prob-
-ability of the labels Y given X, with the latent decision
-tree T marginalized out. In general, the joint density
-of a Markov chain can be hard to compute, but be-
-cause the set of nodes Ci considered at each stage is a
-deterministic function of Ti, the path (T0,T1, . . . ,Ti‚àí1)
-taken is a deterministic function of Ti. As a result, the
-joint density is simply a product of probabilities for
-each stage. The same property holds for the proposal
-kernels deÔ¨Åned above because they use the same can-
-didate set Ci, and have the same support as P. These
-properties justify the equations in Algorithm 1.
-
-3.1. The one-step optimal proposal kernel
-
-In this section we revisit the deÔ¨Ånition of the one-step
-optimal proposal kernel. While the prior and empiri-
-cal proposal kernels are relatively straightforward, the
-one-step optimal proposal kernel is deÔ¨Åned in terms of
-an additional conditioning on the labels Y , which we
-now study in greater detail.
-Recall that the one-step optimal proposal kernel Qi is
-given by Qi(Ti |Ti‚àí1) = PY
-i (Ti |Ti‚àí1). To begin, we
-note that, conditionally on Ti‚àí1 and Y , the subtrees
-rooted at each node p ‚àà Ci‚àí1 are independent. This
-follows from the fact that the likelihood of Y given Ti
-factorizes over the leaves. Thus, the proposal‚Äôs proba-
-bility density is
-
-(cid:89)
-
-p‚ààCi‚àí1
-
-Qi(Ti|Ti‚àí1) =
-
-Qi(œÅi,p, Œ∫i(p), œÑi(p)),
-
-(7)
-
-Top-down particle Ô¨Åltering for Bayesian decision trees
-
-where Qi is the probability density of the cuts at node
-p under Qi, and œÅi,p denotes whether the node was
-split or not. On the event we split a node p ‚àà Ci‚àí1,
-if we condition further on Œ∫i(p) and œÅi,p, we note that
-the conditional likelihood of YN (p), when viewed as a
-function of the split œÑi(p), is piecewise constant, and
-in particular, only changes when the split crosses an
-example. It follows that we can sample from this pro-
-posal by Ô¨Årst considering the discrete choice of an in-
-terval, and then sampling uniformly at random from
-within the interval, as with the empirical proposal.
-Some algebra shows that
-
-Qi(œÅi,p = stop) ‚àù
-
-1 ‚àí
-
-Qi(œÅi,p = split, Œ∫i(p), œÑi(p)) ‚àù
-
-(cid:16)
-
-(cid:17)
-
-Œ±s
-
-(1 + |p|)Œ≤s
-Œ±s
-
-(cid:89)
-
-(1 + |p|)Œ≤s
-
-(cid:96)(YN (p)|XN (p)) ,
-
-1
-|Dp|
-
-1
-|I p
-Œ∫i(p)|
-(cid:96)(YN (pj)|XN (pj)).
-
-√ó
-
-j=0,1
-
-3.2. Computational complexity
-
-rithms, the space complexity is O(M N )+O((cid:80)
-O((cid:80)
-M(cid:80)
-posals and M(cid:80)
-
-Let Ud denote the number of unique values in di-
-mension d, Np denote the number of training data
-points at node p and Œ∑(m) denote the number
-For all the SMC algo-
-of nodes in particle m.
-d Ud)+
-m Œ∑(m)). The time complexity is O(DN log N ) +
-p O(2DNp + Np) for prior and empirical pro-
-mal proposal. The optimal proposal typically requires
-higher computational cost per particle, but fewer num-
-ber of particles than the prior and empirical proposals.
-
-(cid:0)DO(Np log Np) + Np
-
-(cid:1) for the opti-
-
-p
-
-4. Experiments
-
-In this section, we experimentally evaluate the design
-choices of the SMC algorithm (proposal, expansion
-strategy, number of particles and ‚Äúislands‚Äù) on real
-world datasets. In addition, we compare the perfor-
-mance of SMC to the most popular MCMC method
-for Bayesian decision tree learning (Chipman et al.,
-1998), as well as CART, a popular (non-Bayesian) tree
-induction algorithm. We evaluate all the algorithms
-on the following datasets from the UCI ML repository
-(Asuncion & Newman, 2007):
-
-N = 19020, D = 10, K = 2.
-
-‚Ä¢ MAGIC gamma telescope data 2004 (magic-04 ):
-‚Ä¢ Pen-based recognition of handwritten digits (pen-
-
-digits): N = 10992, D = 16, K = 10.
-
-Previous work has focused mainly on small datasets
-(e.g., the Wisconsin breast cancer database used by
-Chipman et al. (1998) has 683 data points). We
-
-chose the above datasets to illustrate the scalability
-of our approach. For the pen-digits dataset, we used
-the predeÔ¨Åned training/test splits, while for the other
-datasets, we split the datasets randomly into a train-
-ing set and a test set containing approximately 70%
-and 30% of the data points respectively.
-
-We implemented our scripts in Python and applied
-similar software optimization techniques to SMC and
-MCMC scripts.1 Our experiments were run on a clus-
-ter with machines of similar processing power.
-
-4.1. Design choices in the SMC algorithm
-
-In these set of experiments, we Ô¨Åx the hyperparam-
-eters to Œ± = 5.0, Œ±s = 0.95, Œ≤s = 0.5 and compare
-the predictive performance of diÔ¨Äerent conÔ¨Ågurations
-of the SMC algorithm for this Ô¨Åxed model. Under the
-prior, these values of Œ±s, Œ≤s produce trees whose mean
-depth and number of nodes are 5.1 and 18.5, respec-
-tively. Given M particles, we use an eÔ¨Äective sample
-size (ESS) threshold of M/10 and set the maximum
-number of stages to 5000 (although the algorithms
-never reached this number).
-
-4.1.1. Proposal choice and node expansion
-
-We consider the SMC algorithm proposed in Section
-3 under two proposals: optimal and prior. (The em-
-pirical proposal performed similar to the prior pro-
-posal and hence we do not report those results here.)
-We consider two strategies for choosing Ci, i.e., the
-list of nodes considered for expansion at stage i: (i)
-node-wise expansion, where a single node is consid-
-ered for expansion per stage (i.e., Ci is a singleton
-chosen deterministically from eligible nodes Ei), and
-(ii) layer-wise expansion, where all nodes at a particu-
-lar depth are considered for expansion simultaneously
-(i.e., Ci = Ei). For node-wise expansion, we evaluate
-two strategies for selecting the node deterministically
-from Ci: (i) breadth-Ô¨Årst priority, where the oldest
-node is picked Ô¨Årst, and (ii) marginal-likelihood based
-priority, where we expand the node with the lowest
-marginal likelihood. Both of these priority schemes
-performed similarly; hence we report only the results
-for breadth-Ô¨Årst priority. We use multinomial resam-
-pling in our experiments. We also evaluated system-
-atic resampling (Douc et al., 2005) but found that the
-performance was not signiÔ¨Åcantly diÔ¨Äerent.
-
-We report the log predictive probability on test data
-as a function of runtime and of the number of par-
-ticles (similar trends are observed for test accuracy;
-
-1The scripts can be downloaded from the authors‚Äô web-
-
-pages.
-
-Top-down particle Ô¨Åltering for Bayesian decision trees
-
-see Appendix B). The times reported do not account
-for prediction time. We average the numbers over 10
-random initializations and report standard deviations.
-The results are shown in Figure 2.
-In summary, we
-observe the following:
-
-Node-wise expansion outperforms layer-wise expan-
-sion for prior proposal. The prior proposal does not
-account for likelihood; one could think of the resam-
-pling steps as ‚Äòcorrection steps‚Äô for the sub-optimal
-decisions sampled from the prior proposal. Because
-node-wise expansion can potentially resample at ev-
-ery stage, it can correct individual bad decisions im-
-mediately, whereas layer-wise expansion cannot.
-In
-particular, we have observed that layer-wise expan-
-sion tends to produce shallower trees compared to
-node-wise expansion, leading to poorer performance.
-This phenomenon can be explained as follows: as the
-depth of the node increases, the prior probability of
-stopping increases whereas the posterior probability of
-stopping might be quite low. In node-wise expansion,
-the resampling step can potentially retain the parti-
-cles where the node has not been stopped. However,
-in layer-wise expansion, too many nodes might have
-stopped prematurely and the resampling step cannot
-‚Äòcorrect‚Äô all these bad decisions easily (i.e., it would
-require many more particles to sample trees where all
-the nodes in a layer have not been stopped). Another
-interesting observation is that layer-wise expansion ex-
-hibits higher variance: this can be explained by the
-fact that layer-wise expansion samples a greater num-
-ber of random variables (on average) than node-wise
-before resampling, and so suÔ¨Äers for the same reason
-that importance sampling can suÔ¨Äer from high vari-
-ance. Note that both expansion strategies perform
-similarly for the optimal proposal due to the fact that
-the proposal accounts for the likelihood and resam-
-pling does not aÔ¨Äect the results signiÔ¨Åcantly. Due to
-its superior performance, we consider only node-wise
-expansion in the rest of the paper.
-
-The plots on the right side of Figure 2 suggest that
-the optimal proposal requires fewer particles than the
-prior proposal (as expected). However, the per-stage
-cost of optimal proposal is much higher than the prior,
-leading to signiÔ¨Åcant increase in the overall runtime
-(see Section 3.2 for a related discussion). Hence, the
-prior proposal oÔ¨Äers a better predictive performance
-vs computation time tradeoÔ¨Ä than the optimal pro-
-posal.
-
-The performance of optimal proposal saturates very
-quickly and is near-optimal even when the number of
-particles is small (M = 10).
-
-Figure 2. Results on pen-digits (top), and magic-04 (bot-
-tom). Left column plots test log p(y|x) vs runtime, while
-right column plots test log p(y|x) vs number of particles.
-The blue circles and red squares represent optimal and
-prior proposals respectively. The solid and dashed lines
-represent node-wise and layer-wise proposals respectively.
-
-4.1.2. Effect of irrelevant features
-
-In the next experiment, we test the eÔ¨Äect of irrelevant
-features on the performance of the various proposals.
-We use the madelon dataset2 for this experiment, in
-which the data points belong to one of 2 classes and
-lie in a 500-dimensional space, out of which only 20
-dimensions are deemed relevant. The training dataset
-contains 2000 data points and the test dataset contains
-600 data points. We use the validation dataset in the
-UCI ML repository as our test set because labels are
-not available for the test dataset.
-
-The setup is identical to the previous section. The
-results are shown in Figure 3. Here, the optimal
-proposal outperforms the prior proposal in both the
-columns, requiring fewer particles as well as outper-
-forming the prior proposal for a given computational
-budget. While this dataset is atypical (only 4% of the
-features are relevant), it illustrates a potential vulner-
-ability of the prior proposal to irrelevant features.
-
-4.1.3. Effect of the number of islands
-
-Averaging the results of several independent particle
-Ô¨Ålters (aka islands) is a way to reduce variance at the
-cost of bias, compared with running a single, larger
-Ô¨Ålter. In the asymptotic regime, this would not make
-sense, but as we will see, performance is improved
-with multiple islands, suggesting we are not yet in the
-asymptotic regime.
-In this experiment, we evaluate
-the eÔ¨Äect of the number of islands on the test perfor-
-
-2http://archive.ics.uci.edu/ml/datasets/Madelon
-
-101102103104MeanTime(s)‚àí1.4‚àí1.2‚àí1.0‚àí0.8‚àí0.6‚àí0.4logp(Y|X)(test)SMCoptimal[node]SMCprior[node]SMCoptimal[layer]SMCprior[layer]101102103Numberofparticles‚àí1.4‚àí1.2‚àí1.0‚àí0.8‚àí0.6‚àí0.4logp(Y|X)(test)SMCoptimal[node]SMCprior[node]SMCoptimal[layer]SMCprior[layer]101102103104105MeanTime(s)‚àí0.55‚àí0.50‚àí0.45‚àí0.40‚àí0.35logp(Y|X)(test)SMCoptimal[node]SMCprior[node]SMCoptimal[layer]SMCprior[layer]101102103Numberofparticles‚àí0.55‚àí0.50‚àí0.45‚àí0.40‚àí0.35logp(Y|X)(test)SMCoptimal[node]SMCprior[node]SMCoptimal[layer]SMCprior[layer]Top-down particle Ô¨Åltering for Bayesian decision trees
-
-we average the MCMC predictions over the trees from
-all previous iterations.
-
-The experimental setup is identical to Section 4.1, ex-
-cept that we Ô¨Åx the number of islands, I = 5. We vary
-the number of particles for SMC3 and the number of
-iterations for MCMC and plot the log predictive prob-
-ability and accuracy on the test data as a function of
-In Figure 5, we observe that SMC (prior,
-runtime.
-node-wise) is roughly two orders of magnitude faster
-than MCMC while achieving similar predictive perfor-
-mance on pen-digits and magic-04 datasets. Although
-the exact speedup factor depends on the dataset in
-general, we have observed that SMC (prior, node-
-wise) is at least an order of magnitude faster
-than MCMC. The SMC runtimes in Figure 5 are
-recorded by running the I islands in a serial fashion.
-As discussed in Section 4.1.3, one could parallelize the
-computation leading to an additional speedup by a fac-
-tor of I. In the pen-digits dataset, the performance of
-prior proposal seems to drop as we increase M beyond
-2000. However, the marginal likelihood on the training
-data increases with M (see Appendix D). We believe
-that the deteriorating performance is due to model
-misspeciÔ¨Åcation (axis-aligned decision trees are hardly
-the ‚Äòright‚Äô model for handwritten digits) rather than
-the inference algorithm itself: ‚Äòbetter‚Äô Bayesian infer-
-ence in a misspeciÔ¨Åed model might lead to a poorer
-solution (see (Minka, 2000) for a related discussion).
-
-To evaluate the sensitivity of the trends above to the
-hyper parameters Œ±, Œ±s, Œ≤s, we systematically varied
-the values of these hyper parameters and repeated the
-experiment. The results are qualitatively similar. See
-Appendix E for additional information.
-
-4.3. SMC vs other existing approaches
-
-The goal of these experiments was to verify that our
-SMC approximation performed as well as the ‚Äúgold
-standard‚Äù MCMC algorithms most commonly used in
-the Bayesian decision tree learning setting.
-Indeed,
-our results suggest that, for a fraction of the compu-
-tational budget, we can achieve a comparable level of
-accuracy. In this Ô¨Ånal experiment, we re-aÔ¨Érm that
-the Bayesian algorithms are competitive in accuracy
-with the classic CART algorithm. (There are many
-other comparisons that one could pursue and other au-
-thors have already performed such comparisons. E.g.,
-Taddy et al. (2011) demonstrated that their tree struc-
-tured models yield similar performance as Gaussian
-
-3We Ô¨Åx I = 5 so that the minimum value of M (= 100)
-corresponds to M/I = 20 particles per island. Further
-improvements could be obtained by ‚Äòadapting‚Äô I to M as
-discussed in Section 4.1.3.
-
-Figure 3. Results on madelon dataset: The top and bot-
-tom rows display log p(y|x) and accuracy on the test data
-against runtime (left) and the number of particles (right)
-respectively. The blue circles and red squares represent
-optimal and prior proposals respectively.
-
-Figure 4. Results on pen-digits: Test log p(y|x) (left) and
-accuracy (right) vs I and M/I for Ô¨Åxed M = 2000.
-
-mance of the prior proposal. We Ô¨Åx the total number
-of particles to 2000 and vary I, the number of islands
-(and hence, the number of particles per island). Note
-that all the islands operate on the entire dataset unlike
-bagging. Here, we present results only on the pen-digits
-dataset (see Appendix C for results on the magic-04
-dataset). The results are shown in Figure 4. We ob-
-serve that (i) the test performance drops sharply if we
-use fewer than 100 particles per island and (ii) when
-M/I ‚â• 100, the choices of I ‚àà [5, 100] outperform
-I = 1. Since the islands are independent, the compu-
-tation across islands is ‚Äòembarrassingly parallelizable‚Äô.
-
-4.2. SMC vs MCMC
-
-In this experiment, we compare the SMC algorithms
-to the MCMC algorithm proposed by Chipman et al.
-(1998), which employs four types of Metropolis-
-Hastings proposals: grow (split a leaf node into child
-nodes), prune (prune a pair of leaf nodes belonging to
-the same parent), change (change the decision rule at
-a node) and swap (swap the decision rule of a parent
-with the decision rule of the child). In our experiments,
-
-102103104MeanTime(s)‚àí0.70‚àí0.65‚àí0.60‚àí0.55‚àí0.50‚àí0.45logp(Y|X)(test)SMCoptimal[node]SMCprior[node]101102103104Numberofparticles‚àí0.70‚àí0.65‚àí0.60‚àí0.55‚àí0.50‚àí0.45logp(Y|X)(test)SMCoptimal[node]SMCprior[node]102103104MeanTime(s)0.500.550.600.650.700.750.80Accuracy(test)SMCoptimal[node]SMCprior[node]101102103104Numberofparticles0.500.550.600.650.700.750.80Accuracy(test)SMCoptimal[node]SMCprior[node]100101102103104Numberofparticlesperisland‚àí1.8‚àí1.6‚àí1.4‚àí1.2‚àí1.0‚àí0.8‚àí0.6‚àí0.4‚àí0.2logp(Y|X)(test)151020502002000Numberofislands100101102103104Numberofparticlesperisland0.780.800.820.840.860.880.900.920.940.96Accuracy(test)151020502002000NumberofislandsTop-down particle Ô¨Åltering for Bayesian decision trees
-
-rithm. Our algorithms are easier to implement than
-their MCMC counterparts, whose eÔ¨Écient implemen-
-tations require sophisticated book-keeping.
-
-We have also explored various design choices leading
-to diÔ¨Äerent SMC algorithms. We have found that
-expanding too many nodes simultaneously degraded
-performance, and more sophisticated ways of choos-
-ing nodes surprisingly did not improve performance.
-Finally, while the one-step optimal proposal often re-
-quired fewer particles to achieve a given accuracy, it
-was signiÔ¨Åcantly more computationally intensive than
-the prior proposal, leading to a less eÔ¨Écient algorithm
-overall on datasets with few irrelevant input dimen-
-sions. As the number of irrelevant dimensions in-
-creased the balance tipped in favour of the optimal
-proposal. An interesting direction of exploration is to
-devise some way to interpolate between the prior and
-optimal proposals, getting the best of both worlds.
-
-The model underlying this work assumes that the data
-is explained by a single tree. In contrast, many uses
-of decision trees, e.g., random forests, bagging, etc.,
-can be interpreted as working within a model class
-where the data is explained by a collection of trees.
-Bayesian additive regression trees (BART) (Chipman
-et al., 2010) are such a model class. Prior work has
-considered MCMC techniques for posterior inference
-(Chipman et al., 2010). A signiÔ¨Åcant but important
-extension of this work would be to tackle additive com-
-binations of trees, potentially in a way that continues
-to mimic classic algorithms.
-
-Finally, in order to more closely match existing work
-in Bayesian decision trees, we have used a prior over
-decision trees that depends on the input data X. This
-has the undesirable side-eÔ¨Äect of breaking exchange-
-ability in the model, making it incoherent with respect
-to changing dataset sizes and to working with online
-data streams. One solution is to use an alternative
-prior for decision trees, e.g., based on the Mondrian
-process (Roy & Teh, 2009), whose projectivity would
-re-establish exchangeability while allowing for eÔ¨Écient
-posterior computations that depend on data.
-
-Acknowledgments
-
-We would like to thank Charles Blundell, Arnaud
-Doucet, David Duvenaud, Jan Gasthaus, Hong Ge,
-Zoubin Ghahramani, and James Robert Lloyd for
-helpful discussions and feedback on drafts. DMR is
-supported by a Newton International Fellowship and
-Emmanuel College. BL and YWT gratefully acknowl-
-edge generous funding from the Gatsby Charitable
-Foundation.
-
-Figure 5. Results on pen-digits (top row), and magic-04
-(bottom row). Left column plots test log p(y|x) vs run-
-time, while right column plots test accuracy vs runtime.
-The blue cirlces, red squares and black diamonds represent
-optimal, prior proposals and MCMC respectively.
-
-processes and random forests.) We used the CART
-implementation provided by scikit-learn (Pedregosa
-et al., 2011) with two criteria: gini purity and infor-
-mation gain and set min samples leaf = 10 (min-
-imum number of data points at a leaf node).4
-In
-addition, we performed Laplacian smoothing on the
-probability estimates from CART using the same Œ±
-as for the Bayesian methods. Our Python implemen-
-tation of SMC takes about 50-100x longer to achieve
-the same test accuracy as the highly-optimized imple-
-mentation of CART. For this reason, we plot CART
-accuracy as a horizontal bar. The accuracy and log
-predictive probability on test data are shown in Fig-
-ure 5. The Bayesian decision tree frameworks achieve
-similar (or better) test accuracy to CART, and out-
-perform CART signiÔ¨Åcantly in terms of the predictive
-likelihood. SMC delivers the beneÔ¨Åts of having an ap-
-proximation to the posterior, but in a fraction of the
-time required by existing MCMC methods.
-
-5. Discussion and Future work
-
-We have proposed a novel class of Bayesian inference
-algorithms for decision trees, based on the sequential
-Monte Carlo framework. The algorithms mimic classic
-top-down algorithms for learning decision trees, but
-use ‚Äúlocal‚Äù likelihoods along with resampling steps
-to guide tree growth. We have shown good compu-
-tational and statistical performances, especially com-
-pared with a state-of-the-art MCMC inference algo-
-
-4Lower values (min samples leaf = 1, 5) tend to yield
-slightly higher test accuracies (comparable to SMC and
-MCMC) but much lower predictive probabilities.
-
-102103104MeanTime(s)‚àí0.60‚àí0.55‚àí0.50‚àí0.45‚àí0.40‚àí0.35‚àí0.30‚àí0.25logp(Y|X)(test)SMCoptimal[node]SMCprior[node]Chipman-MCMCCART(gini)CART(entropy)102103104MeanTime(s)0.820.840.860.880.900.920.94Accuracy(test)SMCoptimal[node]SMCprior[node]Chipman-MCMCCART(gini)CART(entropy)102103104MeanTime(s)‚àí0.42‚àí0.40‚àí0.38‚àí0.36‚àí0.34logp(Y|X)(test)SMCoptimal[node]SMCprior[node]Chipman-MCMCCART(gini)CART(entropy)102103104MeanTime(s)0.820.830.840.850.86Accuracy(test)SMCoptimal[node]SMCprior[node]Chipman-MCMCCART(gini)CART(entropy)Top-down particle Ô¨Åltering for Bayesian decision trees
-
-
+bayesian nonparametric models
+peter orbanz , cambridge university
+yee whye teh , university college london
+related keywords : bayesian methods , prior probabilities , dirichlet process ,
+a bayesian nonparametric model is a bayesian model on an in ? nite - dimensional parameter space .
+the parameter space is typically chosen as the set of all possi - ble solutions for a given learning problem .
+for example , in a regression problem the parameter space can be the set of continuous functions , and in a density esti - mation problem the space can consist of all densities .
+a bayesian nonparametric model uses only a ? nite subset of the available parameter dimensions to explain a ? nite sample of observations , with the set of dimensions chosen depending on the sample , such that the e ? ective complexity of the model ( as measured by the number of dimensions used ) adapts to the data .
+classical adaptive problems , such as nonparametric estimation and model selection , can thus be formulated as bayesian inference problems .
+popular examples of bayesian nonparametric models include gaussian process regression , in which the correlation structure is re ? ned with growing sample size , and dirichlet process mixture models for clustering , which adapt the number of clusters to the complexity of the data .
+bayesian nonparametric models have recently been applied to a variety of ma - chine learning problems , including regression , classi ? cation , clustering , latent variable modeling , sequential modeling , image segmentation , source separation and grammar induction .
+motivation and background
+most of machine learning is concerned with learning an appropriate set of pa - rameters within a model class from training data .
+the meta level problems of determining appropriate model classes are referred to as model selection or model adaptation .
+these constitute important concerns for machine learning practitioners , chie ? y for avoidance of over - ? tting and under - ? tting , but also for discovery of the causes and structures underlying data .
+examples of model se - lection and adaptation include : selecting the number of clusters in a clustering problem , the number of hidden states in a hidden markov model , the number
+of latent variables in a latent variable model , or the complexity of features used in nonlinear regression .
+nonparametric models constitute an approach to model selection and adap - tation , where the sizes of models are allowed to grow with data size .
+this is as opposed to parametric models which uses a ? xed number of parameters .
+for example , a parametric approach to density estimation would be to ? t a gaus - sian or a mixture of a ? xed number of gaussians by maximum likelihood .
+a nonparametric approach would be a parzen window estimator , which centers a gaussian at each observation ( and hence uses one mean parameter per observa - tion ) .
+another example is the support vector machine with a gaussian kernel .
+the representer theorem shows that the decision function is a linear combina - tion of gaussian radial basis functions centered at every input vector , and thus has a complexity that grows with more observations .
+nonparametric methods have long been popular in classical ( non - bayesian ) statistics ( 123 ) .
+they often per - form impressively in applications and , though theoretical results for such models are typically harder to prove than for parametric models , appealing theoretical properties have been established for a wide range of models .
+bayesian nonparametric methods provide a bayesian framework for model selection and adaptation using nonparametric models .
+a bayesian formulation of nonparametric problems is nontrivial , since a bayesian model de ? nes prior and posterior distributions on a single ? xed parameter space , but the dimen - sion of the parameter space in a nonparametric approach should change with sample size .
+the bayesian nonparametric solution to this problem is to use an in ? nite - dimensional parameter space , and to invoke only a ? nite subset of the available parameters on any given ? nite data set .
+this subset generally grows with the data set .
+in the context of bayesian nonparametric models , °∞in ? nite - dimensional°± can therefore be interpreted as °∞of ? nite but unbounded dimension°± .
+more precisely , a bayesian nonparametric model is a model that ( 123 ) constitutes a bayesian model on an in ? nite - dimensional parameter space and ( 123 ) can be evaluated on a ? nite sample in a manner that uses only a ? nite subset of the available parameters to explain the sample .
+we make the above description more concrete in the next section when we describe a number of standard machine learning problems and the correspond - ing bayesian nonparametric solutions .
+as we will see , the parameter space in ( 123 ) typically consists of functions or of measures , while ( 123 ) is usually achieved by marginalizing out surplus dimensions over the prior .
+random functions and measures , and more generally probability distributions on in ? nite - dimensional random objects , are called stochastic processes; examples we will encounter include gaussian processes , dirichlet processes and beta processes .
+bayesian nonparametric models are often named after the stochastic processes they con - tain .
+the examples are then followed by theoretical considerations , including formal constructions and representations of the stochastic processes used in bayesian nonparametric models , exchangeability , and issues of consistency and convergence rate .
+we conclude this article with future directions and a reading
+density function over data items x of the form p ( x ) = ( cid : 123 ) k p ( x ) = ( cid : 123 ) p ( x|¶Ë ) g ( ¶Ë ) d¶Ë , where g = ( cid : 123 ) k
+clustering with mixture models .
+bayesian nonparametric generalizations of ? nite mixture models provide an approach for estimating both the number of components in a mixture model and the parameters of the individual mix - ture components simultaneously from data .
+finite mixture models de ? ne a k=123 ¶kp ( x|¶Ëk ) , where ¶k is the mixing proportion and ¶Ëk are parameters associated with compo - nent k .
+the density can be written in a non - standard manner as an integral : k=123 ¶k¶‰¶Ëk is a discrete mixing distribution encapsulating all the parameters of the mixture model and ¶‰¶Ë is a dirac dis - tribution ( atom ) centered at ¶Ë .
+bayesian nonparametric mixtures use mixing distributions consisting of a countably in ? nite number of atoms instead :
+this gives rise to mixture models with an in ? nite number of components .
+when applied to a ? nite training set , only a ? nite ( but varying ) number of components will be used to model the data , since each data item is associated with exactly one component but each component can be associated with multiple data items .
+inference in the model then automatically recovers both the number of compo - nents to use and the parameters of the components .
+being bayesian , we need a prior over the mixing distribution g , and the most common prior to use is a dirichlet process ( dp ) .
+the resulting mixture model is called a dp mixture .
+formally , a dirichlet process dp ( ¶· , h ) parametrized by a concentration paramter ¶· > 123 and a base distribution h is a prior over distributions ( probabil - ity measures ) g such that , for any ? nite partition a123 , .
+, am of the parameter space , the induced random vector ( g ( a123 ) , .
+, g ( am ) ) is dirichlet distributed with parameters ( ¶·h ( a123 ) , .
+, ¶·h ( am ) ) ( see the theory section for a discussion of subtleties involved in this de ? nition ) .
+it can be shown that draws from a dp will be discrete distributions as given in ( 123 ) .
+the dp also induces a distribution over partitions of integers called the chinese restaurant process ( crp ) , which directly describes the prior over how data items are clustered under the dp mixture .
+for more details on the dp and the crp , see dp entry ( ? ) .
+nonlinear regression .
+the aim of regression is to infer a continuous function from a training set consisting of input - output pairs ( ( ti , xi ) ) n approaches parametrize the function using a ? nite number of parameters and attempt to infer these parameters from data .
+the prototypical bayesian non - parametric approach to this problem is to de ? ne a prior distribution over con - tinuous functions directly by means of a gaussian process ( gp ) .
+as explained in gp entry ( ? ) , a gp is a distribution on an in ? nite collection of random variables xt , such that the joint distribution of each ? nite subset xt123 , .
+, xtm is a mul - tivariate gaussian .
+a value xt taken by the variable xt can be regarded as the value of a continuous function f at t , that is , f ( t ) = xt .
+given the training set , the gaussian process posterior is again a distribution on functions , conditional
+on these functions taking values f ( t123 ) = x123 , .
+, f ( tn ) = xn .
+latent feature models .
+latent feature models represent a set of objects in terms of a set of latent features , each of which represents an independent degree of variation exhibited by the data .
+such a representation of data is sometimes referred to as a distributed representation .
+in analogy to nonparametric mix - ture models with an unknown number of clusters , a bayesian nonparametric approach to latent feature modeling allows for an unknown number of latent features .
+the stochastic processes involved here are known as the indian bu ? et process ( ibp ) and the beta process ( bp ) .
+draws from bps are random discrete measures , where each of an in ? nite number of atoms has a mass in ( 123 , 123 ) but the masses of atoms need not sum to 123
+each atom corresponds to a feature , with the mass corresponding to the probability that the feature is present for an object .
+we can visualize the occurrences of features among objects using a binary matrix , where the ( i , k ) entry is 123 if object i has feature k and 123 oth - erwise .
+the distribution over binary matrices induced by the bp is called the hidden markov models .
+hidden markov models ( hmms ) are popular mod - els for sequential or temporal data , where each time step is associate with a state , with state transitions dependent on the previous state .
+an in ? nite hmm is a bayesian nonparametric approach to hmms , where the number of states is unbounded and allowed to grow with the sequence length .
+it is de ? ned using one dp prior for the transition probabilities going out from each state .
+to en - sure that the set of states reachable from each outgoing state is the same , the base distributions of the dps are shared and given a dp prior recursively .
+the construction is called a hierarchical dirichlet process ( hdp ) ; see below .
+density estimation .
+a nonparametric bayesian approach to density estima - tion requires a prior on densities or distributions .
+however , the dp is not useful in this context , since it generates discrete distributions .
+a useful density estima - tor should smooth the empirical density ( such as a parzen window estimator ) , which requires a prior that can generate smooth distributions .
+priors applicable in density estimation problems include dp mixture models and p°‰olya trees .
+dp mixture models : since the mixing distribution in the dp mixture is random , the induced density p ( x ) is random thus the dp mixture can be used as a prior over densities .
+despite the fact that these are now primarily used in machine learning as clustering models , they were in fact originally proposed for
+p°‰olya trees are priors on probability distributions that can generate both discrete and piecewise continuous distributions , depending on the choice of pa - rameters .
+p°‰olya trees are de ? ned by a recursive in ? nitely deep binary subdi - vision of the domain of the generated random measure .
+each subdivision is associated with a beta random variable which describes the relative amount of mass on each side of the subdivision .
+the dp is a special case of a p°‰olya tree corresponding to a particular parametrization .
+for other parametrizations the resulting random distribution can be smooth so is suitable for density estima - power - law phenomena .
+many naturally occurring phenomena exhibit power -
+law behavior .
+examples include natural languages , images and social and ge - netic networks .
+an interesting generalization of the dp , called the pitman - yor process , pyp ( ¶· , d , h ) , has recently been successfully used as models of such power - law data .
+the pitman - yor process augments the dp by a third parame - ter d °Í ( 123 , 123 ) .
+when d = 123 the pyp is a dp ( ¶· , h ) , while when ¶· = 123 it is a so called normalized stable process .
+sequential modeling .
+hmms model sequential data using latent variables representing the underlying state of the system , and assuming that each state only depends on the previous state ( the so called markov property ) .
+in some applications , for example language modeling and text compression , we are inter - ested in directly modeling sequences without using latent variables , and without making any markov assumptions , i . e .
+modeling each observation conditional on all previous observations in the sequence .
+since the set of potential sequences of previous observations is unbounded , this calls for nonparametric models .
+a hierarchical pitman - yor process can be used to construct a bayesian nonpara - metric solution whereby the conditional probabilities are coupled hierarchically .
+dependent and hierarchical models .
+most of the bayesian nonparametric models described above are applied in settings where observations are homo - geneous or exchangeable .
+in many real world settings observations are often not homogeneous , in fact they are often structured in interesting ways .
+for example , the data generating process might change over time thus observations at di ? erent times are not exchangeable , or observations might come in distinct groups with those in the same group being more similar than across groups .
+signi ? cant recent e ? orts in bayesian nonparametrics research have been placed in developing extensions that can handle these non - homogeneous set - tings .
+dependent dirichlet processes are stochastic processes , typically over a spatial or temporal domain , which de ? ne a dirichlet process ( or a related ran - dom measure ) at each point with neighboring dps being more dependent .
+these are used for spatial modeling , nonparametric regression , as well as for modeling temporal changes .
+alternatively , hierarchical bayesian nonparametric models like the hierarchical dp aim to couple multiple bayesian nonparametric mod - els within a hierarchical bayesian framework .
+the idea is to allow sharing of statistical strength across multiple groups of observations .
+among other appli - cations , these have been used in the in ? nite hmm , topic modeling , language modeling , word segmentation , image segmentation and grammar induction .
+for an overview of various dependent bayesian nonparametric models and their ap - plications in biostatistics please consult ( 123 ) .
+( 123 ) is an overview of hierarchical bayesian nonparametric models as well as a variety of applications in machine
+as we saw in the preceding examples , bayesian nonparametric models often make use of priors over functions and measures .
+because these spaces typically have an uncountable number of dimensions , extra care has to be taken to de ? ne
+the priors properly and to study the asymptotic properties of estimation in the in this section we give an overview of the basic concepts involved in the theory of bayesian nonparametric models .
+we start with a discussion of the importance of exchangeability in bayesian parametric and nonparametric statistics .
+this is followed by representations of the priors and issues of convergence .
+the underlying assumption of all bayesian methods is that the parameter spec - ifying the observation model is a random variable .
+this assumption is subject to much criticism , and at the heart of the bayesian versus non - bayesian debate that has long divided the statistics community .
+however , there is a very general type of observations for which the existence of such a random variable can be derived mathematically : for so - called exchangeable observations , the bayesian assumption that a randomly distributed parameter exists is not a modeling assumption , but a mathematical consequence of the data°Øs properties .
+formally , a sequence of variables x123 , x123 , .
+, xn over the same probability space ( x , ? ) is exchangeable if their joint distribution is invariant to permuting the variables .
+that is , if p is the joint distribution and ¶Ú any permutation of ( 123 , .
+, n ) , then p ( x123 = x123 , x123 = x123 .
+xn = xn ) = p ( x123 = x¶Ú ( 123 ) , x123 = x¶Ú ( 123 ) .
+xn = x¶Ú ( n ) ) ( 123 )
+an in ? nite sequence x123 , x123 , .
+is in ? nitely exchangeable if x123 , .
+, xn is ex - changeable for every n °˝ 123
+in this paper we will mean in ? nite exchangeability whenever we write exchangeability .
+exchangeability re ? ects the assumption that the variables do not depend on their indices although they may be depen - dent among themselves .
+this is typically a reasonable assumption in machine learning and statistical applications , even if the variables are not themselves iid ( independently and identically distributed ) .
+exchangeability is a much weaker assumption than iid; iid variables are automatically exchangeable .
+if ¶Ë parametrizes the underlying distribution , and one assumes a prior dis - tribution over ¶Ë , then the resulting marginal distribution over x123 , x123 , .
+with ¶Ë marginalized out will still be exchangeable .
+a fundamental result credited to de finetti ( 123 ) states that the converse is also true .
+that is , if x123 , x123 , .
+is ( in ? nitely ) exchangeable , then there is a random ¶Ë such that :
+p ( x123 , .
+, xn ) =
+for every n °˝ 123
+in other words , the seemingly innocuous assumption of ex - changeability automatically implies the existence of a hierarchical bayesian model with ¶Ë being the random latent parameter .
+this the crux of the fun - damental importance of exchangeability to bayesian statistics .
+in de finetti°Øs theorem it is important to stress that ¶Ë can be in ? nite dimen - sional ( it is typically a random measure ) , thus the hierarchical bayesian model
+( 123 ) is typically a nonparametric one .
+for example , the blackwell - macqueen urn scheme ( related to the crp ) is exchangeable thus implicitly de ? nes a ran - dom measure , namely the dp ( see the dp entry ( ? ) for more details ) .
+in this sense , we will see below that de finetti°Øs theorem is an alternative route to kol - mogorov°Øs extension theorem , which implicitly de ? nes the stochastic processes underlying bayesian nonparametric models .
+in ? nite dimensions , a probability model is usually de ? ned by a density function or probability mass function .
+in in ? nite - dimensional spaces , this approach is not generally feasible , for reasons explained below .
+to de ? ne or work with a bayesian nonparametric model , we have to choose alternative mathematical weak distributions .
+a weak distribution is a representation for the dis - tribution of a stochastic process , that is , for a probability distribution on an in ? nite - dimensional sample space .
+if we assume that the dimensions of the space are indexed by t °Í t , the stochastic process can be regarded as the joint distribution p of an in ? nite set of random variables ( xt ) t°Ít .
+for any ? nite subset s ? t of dimensions , the joint distribution ps of the corresponding subset ( xt ) t°Ís of random variables is a ? nite - dimensional marginal of p .
+the weak distribution of a stochastic process is the set of all its ? nite - dimensional marginals , that is , the set ( ps : s ? t , |s| < °˛ ) .
+for example , the customary de ? nition of the gaussian process as an in ? nite collection of random variables , each ? nite subset of which has a joint gaussian distribution , is an example of a weak distribution representation .
+in contrast to the explicit representations to be described below , this representation is generally not generative , because it represents the distribution rather than a random draw , but is more widely
+apparently , just de ? ning a weak distribution in this manner need not im - ply that it is a valid representation of a stochastic process .
+a given collection of ? nite - dimensional distributions represents a stochastic process only ( 123 ) if a process with these distributions as its marginals actually exists , and ( 123 ) if it is uniquely de ? ned by the marginals .
+the mathematical result which guarantees that weak distribution representations are valid is the kolmogorov extension theorem ( also known as the daniell - kolmogorov theorem or the kolmogorov consistency theorem ) .
+suppose that a collection ( ps : s ? t , |s| < °˛ ) of distributions is given .
+if all distributions in the collection are marginals of each other , that is , if ps123 is a marginal of ps123 whenever s123 ? s123 , the set of distribu - tions is called a projective family .
+the kolmogorov extension theorem states that , if the set t is countable , and if the distributions ps form a projective family , then there exists a uniquely de ? ned stochastic process with the collec - tion ( ps ) as its marginal distributions .
+in other words , any projective family for a countable set t of dimensions is the weak distribution of a stochastic pro - cess .
+conversely , any stochastic process can be represented in this manner , by computing its set of ? nite - dimensional marginals .
+the weak distribution representation assumes that all individual random variable xt of the stochastic process take values in the same sample space ? .
+the stochastic process p de ? ned by the weak distribution is then a probability distribution on the sample space ? t , which can be interpreted as the set of all function f : t °˙ ? .
+for example , to construct a gp we might choose t = q and ? = r to obtain real - valued functions on the countable space of rational numbers .
+since q is dense in r , the function f can then be extended to all of r by continuity .
+to de ? ne the dp as a distribution over probability measures on r , we note that a probability measure is a set function that maps °∞random events°± , i . e .
+elements of the borel ¶Ú - algebra b ( r ) of r , into probabilities in ( 123 , 123 ) .
+we could therefore choose a weak distribution consisting of dirichlet distributions , and set t = b ( r ) and ? = ( 123 , 123 ) .
+however , this approach raises a new problem because the set b ( r ) is not countable .
+as in the gp , we can ? rst de ? ne the dp on a countable °∞base°± for b ( r ) then extend to all random events by continuity of measures .
+more precise descriptions are unfortunately beyond the scope of this entry .
+explicit representations .
+explicit representations directly describe a ran - dom draw from a stochastic process , rather than describing its distribution .
+a prominent example of an explicit representation is the so - called stick - breaking representation of the dirichlet process . the discrete random measure g in ( 123 ) is completely determined by the two in ? nite sequences ( ¶k ) k°Ín and ( ¶Ëk ) k°Ín .
+the stick - breaking representation of the dp generates these two sequences by drawing ¶Ëk °´ h iid and vk °´ beta ( 123 , ¶· ) for k = 123 , 123 , .
+the coe ? cients ¶k are j=123 ( 123 ? vk ) .
+the measure g so obtained can be then computed as ¶k = vk shown to be distributed according to a dp ( ¶· , g123 ) .
+similar representations can be derived for the pitman - yor process and the beta process as well .
+explicit representations , if they exist for a given model , are typically of great practical importance for the derivation of algorithms .
+implicit representations .
+a third representation of in ? nite dimensional models is based on de finetti°Øs theorem .
+any exchangeable sequence x123 , .
+, xn uniquely de ? nes a stochastic process ¶Ë , called the de finetti measure , making the xi°Øs iid .
+if the xi°Øs are su ? cient to de ? ne the rest of the model and their conditional distributions are easily speci ? ed , then it is su ? cient to work directly with the xi°Øs and have the underlying stochastic process implicitly de ? ned .
+ex - amples include the chinese restaurant process ( an exchangeable distribution over partitions ) with the dp as the de finetti measure , and the indian bu ? et process ( an exchangeable distribution over binary matrices ) with the bp being the corresponding de finetti measure .
+these implicit representations are useful in practice as they can lead to simple and e ? cient inference algorithms .
+finite representations .
+a fourth representation of bayesian nonparametric models is as the in ? nite limit of ? nite ( parametric ) bayesian models .
+for exam - ple , dp mixtures can be derived as the in ? nite limit of ? nite mixture models with particular dirichlet priors on mixing proportions , gps can be derived as the in ? nite limit of particular bayesian regression models with gaussian priors , while bps can be derived as from the limit of an in ? nite number of indepen -
+dent beta variables .
+these representations are sometimes more intuitive for practitioners familiar with parametric models .
+however not all bayesian non - parametric models can be expressed in this fashion , and they do not necessarily make clear the mathematical subtleties involved .
+consistency and convergence rates
+recent work in mathematical statistics examines the convergence properties of bayesian nonparametric models , and in particular the questions of consistency and convergence rates .
+intuitively , a consistent estimation procedure is a method that will result in a correct estimate if it has access to an in ? nite amount of data , that is , a procedure that will be accurate unless it is hampered by insu ? cient sample size .
+in bayesian statistics , an estimate is a distribution over possible parameter values ( the posterior ) , and hence consistency in bayesian models is de ? ned by demanding that the posterior converges to a delta peak at the true parameter .
+a classic theorem by j .
+doob shows that for any bayesian model , the set of all possible true parameter values for which the model will be consistent has probability one under the prior .
+in other words , if the true parameter ( and hence the data distribution ) is chosen at random from the prior , we will always end up with a consistent model , and a bayesian who is certain about the prior need not worry about inconsistency .
+this result does not hold anymore if the true parameter value is not in the domain of the prior .
+in nonparametric mod - els , which have to spread out their probability mass over an in ? nite - dimensional space , this can result in seemingly unreasonable behavior of the model .
+for ex - ample , the dirichlet process may be used as a prior in density estimation .
+its support consists of the discrete distributions , which means that if the data is drawn from any smooth distribution , the true model is not in the support of the prior ( so doob°Øs theorem does not apply ) .
+as shown by diaconis and freedman ( 123 ) , the posterior will not necessarily concentrate in a region close to the true model .
+intuitively , the implication is that we cannot generally assume in non - parametric models that the e ? ect of the prior will eventually become negligible if only we see enough data .
+however , this does not mean that nonparametric bayesian models are generally inconsistent : a large and growing literature in mathematical statistics shows that consistency can be guaranteed by proper choice of an adequate nonparametric model ( 123 ) .
+recent results , notably by van der vaart and ghosal , apply modern meth - ods of mathematical statistics to study the convergence properties of bayesian nonparametric models ( see ( 123 ) for further references ) .
+consistency has been es - tablished for a number of models , including gaussian processes and dirichlet process mixtures .
+a particularly interesting aspect of this line of work are re - sults on convergence rates , which specify how rapidly the posterior concentrates with growing sample size , depending on the complexity of the model and on how much probability mass the prior places around the true solution .
+to make such results quantitative requires a measure for the complexity of a bayesian non - parametric model .
+this is done by means of complexity measures developed in
+empirical process theory and statistical learning theory , such as metric entropies , covering numbers and bracketing , some of which are well - known in theoretical machine learning .
+examples of such results include the consistency of dirichlet process mixture models for density estimation if both the target density and the parametric mixture components are smooth , and a range of consistency results for regression and density estimation with gaussian processes .
+for all of these results , convergence rates can be speci ? ed as well ( references are given in ( 123 ) ) .
+a large class of in ? nite - dimensional models which do behave well even if the true parameter is not in the domain of the prior is identi ? ed in ( 123 ) .
+in this case , the posterior will concentrate in the region of the prior support which is closest to the true parameter in a kullback - leibler sense .
+there are two aspects to inference in bayesian nonparametric models : the ana - lytic tractability of posteriors for the stochastic processes embedded in bayesian nonparametric models , and practical inference algorithms for the overall mod - els .
+bayesian nonparametric models typically include stochastic processes such as the gaussian process and the dirichlet process .
+these processes have an in ? nite number of dimensions thus na°ß ? ve algorithmic approaches to computing posteriors is generally infeasible .
+fortunately , these processes typically have analytically tractable posteriors , so all but ? nitely many of the dimensions can be analytically integrated out e ? ciently .
+the remaining dimensions , along with the parametric parts of the models , can then be handled by the usual infer - ence techniques employed in parametric bayesian modeling , including markov chain monte carlo , sequential monte carlo , variational inference , and message - passing algorithms like expectation propagation .
+the precise choice of approx - imations to use will depend on the speci ? c models under consideration , with speed / accuracy trade - o ? s between di ? erent techniques generally following those for parametric models .
+in the following , we will given two examples to illus - trate the above points , and discuss a few theoretical issues associated with the analytic tractability of stochastic processes .
+in gaussian process regression , we model the relationship between an input x and an output y using a function f , so that y °´ f ( x ) +  where  is iid gaussian noise .
+given a gp prior over f and a ? nite training data set ( ( xi , yi ) ) n wish to compute the posterior over f .
+here we can use the weak representation of f and note that ( f ( xi ) ) n i=123 is simply a ? nite - dimensional gaussian with mean and covariance given by the mean and covariance functions of the gp .
+inference for ( f ( xi ) ) n i=123 is then straightforward .
+the approach can be thought of equivalently as marginalizing out the whole function except its values on the training inputs .
+note that although we only have the posterior over ( f ( xi ) ) n this is su ? cient to reconstruct the function evaluated at any other point x123 ( say
+i=123 given ( f ( xi ) ) n
+the test input ) , since f ( x123 ) is gaussian and independent of the training data i=123
+in gp regression the posterior over ( f ( xi ) ) n can be computed exactly .
+in gp classi ? cation or other regression settings with nonlinear likelihood functions , the typical approach is to use sparse methods based on variational approximations or expectation propagation; see gp entry ( ? ) for details .
+our second example involves dirichlet process mixture models .
+recall that the dp induces a clustering structure on the data items .
+if our training set consists of n data items , since each item can only belong to one cluster , there are at most n clusters represented in the training set .
+even though the dp mixture itself has an in ? nite number of potential clusters , all but ? nitely many of these are not associated with data , thus the associated variables need not be explicitly represented at all .
+this can be understood either as marginalizing out these variables , or as an implicit representation which can be made explicit whenever required by sampling from the prior .
+this idea is applicable for dp mixtures using both the chinese restaurant process and the stick - breaking rep - resentations .
+in the crp representation , each data item xi is associated with a cluster index zi , and each cluster k with a parameter ¶Ë ? k ( these parameters can be marginalized out if h is conjugate to f ) , and these are the only latent vari - ables that need be represented in memory .
+in the stick - breaking representation , clusters are ordered by decreasing prior expected size , with cluster k associated with a parameter ¶Ë ? k and a size ¶k .
+each data item is again associated with a cluster index zi , and only the clusters up to k = max ( z123 , .
+, zn ) need be represented .
+all clusters with index > k need not be represented since their posterior conditioning on ( ( xi , zi ) ) n
+i=123 is just the prior .
+on bayes equations and conjugacy
+it is worth noting that the posterior of a bayesian model is , in abstract terms , de ? ned as the conditional distribution of the parameter given the data and the hyperparameters , and this de ? nition does not require the existence of a if a bayes equation exists for the model , the posterior can equivalently be de ? ned as the left - hand side of the bayes equation .
+however for some stochastic processes , notably the dp on an uncountable space such as r , it is not possible to de ? ne a bayes equation even though the posterior is still a well - de ? ned mathematical object .
+technically speaking , existence of a bayes equation requires the family of all possible posteriors to be dominated by the prior , but this is not the case for the dp .
+that posteriors of these stochastic processes can be evaluated at all is solely due to the fact that they admit an
+the particular form of tractability exhibited by many stochastic processes in the literature is that of a conjugate posterior , that is , the posterior belongs to the same model family as the prior , and the posterior parameters can be computed as a function of the prior hyperparameters and the observed data .
+for example , the posterior of a dp ( ¶· , g123 ) under observations ¶Ë123 , .
+, ¶Ën is again a dirichlet process , dp ( ¶· + n ,
+¶·+n ( ¶·g123 + ( cid : 123 ) ¶‰¶Ëi ) ) .
+similarly the posterior of a gp under
+observations of f ( x123 ) , .
+, f ( xn ) is still a gp .
+it is this conjugacy that allows practical inference in the examples above .
+a bayesian nonparametric model is conjugate if and only if the elements of its weak distribution , i . e .
+its ? nite - dimensional marginals , have a conjugate structure as well ( 123 ) .
+in particular , this characterizes a class of conjugate bayesian nonparametric models whose weak distributions consist of exponential family models .
+note however that lack of conjugacy do not imply intractable posteriors .
+an example is given by the pitman - yor process , where the posterior is given by a sum of a ? nite number of atoms and a pitman - yor process independent from the atoms .
+since mcmc sampling algorithms for dirichlet process mixtures became avail - able in the 123s and made latent variable models with nonparametric bayesian components applicable to practical problems , the development of bayesian non - parametrics has experienced explosive growth ( 123 , 123 ) .
+arguably , though , the results available so far have only scratched the surface .
+the repertoire of avail - able models is still mostly limited to using the gaussian process , the dirichlet process , the beta process , and generalizations derived from those .
+ple , bayesian nonparametric models may be de ? ned on any in ? nite - dimensional mathematical object of possible interest to machine learning and statistics .
+pos - sible examples are kernels , in ? nite graphs , special classes of functions ( e . g .
+piece - wise continuous or sobolev functions ) , and permutations .
+aside from the obvious modeling questions , two major future directions are to make bayesian nonparametric methods available to a larger audience of re - searchers and practitioners through the development of software packages , and to understand and quantify the theoretical properties of available methods .
+general - purpose software package
+there is currently signi ? cant growth in the application of bayesian nonparamet - ric models across a variety of application domains both in machine learning and in statistics .
+however signi ? cant hurdles still exist , especially the expense and expertise needed to develop computer programs for inference in these complex models .
+one future direction is thus the development of software packages that can compile e ? cient inference algorithms automatically given model speci ? ca - tions , thus allowing a much wider range of modeler to make use of these models .
+current developments include the r dppackage123 , the hierarchical bayesian com - piler123 , adaptor grammars123 , the mit - church project123 , as well as e ? orts to add bayesian nonparametric models to the repertoire of current bayesian modeling
+environments like openbugs123 and infer . net123
+statistical properties of models
+recent work in mathematical statistics provides some insight into the quan - titative behavior of bayesian nonparametric models ( cf theory section ) .
+the elegant , methodical approach underlying these results , which quanti ? es model complexity by means of empirical process theory and then derives convergence rates as a function of the complexity , should be applicable to a wide range of models .
+so far , however , only results for gaussian processes and dirichlet pro - cess mixtures have been proven , and it will be of great interest to establish properties for other priors .
+some models developed in machine learning , such as the in ? nite hmm , may pose new challenges to theoretical methodology , since their study will probably have to draw on both the theory of algorithms and mathematical statistics .
+once a wider range of results is available , they may in turn serve to guide the development of new models , if it is possible to establish how di ? erent methods of model construction a ? ect the statistical properties of the constructed model .
+dirichlet processes , gaussian processes , bayesian methods , prior probabilities .
+in addition to the references embedded in the text above , we recommend the books ( 123 , 123 ) and the review articles ( 123 , 123 ) on bayesian nonparametrics .
+references for dps and dp mixture models can be found in the dp entry ( ? ) , for gps in the gp entry ( ? ) , while for most of the other examples can be found in the chapter ( 123 ) of the book ( 123 ) .
+wasserman .
+all of nonparametric statistics .
+springer , 123
+dunson .
+nonparametric bayes applications to biostatistics .
+hjort , c .
+holmes , p .
+m°ßuller , and s .
+walker , editors , bayesian non - parametrics .
+cambridge university press , 123
+teh and m .
+jordan .
+hierarchical bayesian nonparametric models with applications .
+hjort , c .
+holmes , p .
+m°ßuller , and s .
+walker , editors , bayesian nonparametrics .
+cambridge university press , 123
+de finetti .
+funzione caratteristica di un fenomeno aleatorio .
+atti della r .
+academia nazionale dei lincei , serie 123
+memorie , classe di scienze fisiche , mathematice e naturale , 123 , 123
+diaconis and d .
+freedman .
+on the consistency of bayes estimates ( with
+discussion ) .
+annals of statistics , 123 ( 123 ) : 123®c123 , 123
+ghosal .
+the dirichlet process , related priors and posterior asymptotics .
+hjort , c .
+holmes , p .
+m°ßuller , and s .
+walker , editors , bayesian non - parametrics .
+cambridge university press , 123
+kleijn and a .
+van der vaart .
+misspeci ? cation in in ? nite -
+dimensional bayesian statistics .
+annals of statistics , 123 : 123®c123 , 123
+orbanz .
+construction of nonparametric bayesian models from para - in advances in neural information processing
+metric bayes equations .
+escobar and m .
+bayesian density estimation and inference using mixtures .
+journal of the american statistical association , 123 : 123®c
+( 123 ) r .
+markov chain sampling methods for dirichlet process mixture models .
+journal of computational and graphical statistics , 123 : 123®c123 ,
+( 123 ) n .
+hjort , c .
+holmes , p .
+m°ßuller , and s .
+walker , editors .
+bayesian nonpara - metrics .
+number 123 in cambridge series in statistical and probabilistic mathematics .
+cambridge university press , 123
+( 123 ) j .
+ghosh and r .
+ramamoorthi .
+bayesian nonparametrics .
+springer ,
+( 123 ) s .
+walker , p .
+damien , p .
+laud , and a .
+bayesian nonparametric inference for random distributions and related functions .
+journal of the royal statistical society , 123 ( 123 ) : 123®c123 , 123
+( 123 ) p .
+m°ßuller and f .
+quintana .
+nonparametric bayesian data analysis .
+statistical science , 123 ( 123 ) : 123®c123 , 123
