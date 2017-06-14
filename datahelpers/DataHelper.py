@@ -126,9 +126,10 @@ class DataHelper(object):
 
     def build_embedding(self, vocabulary_inv):
         if self.embed_type == "glove":
-            self.embed_matrix = self.build_glove_embedding(self.vocab_inv)
+            embed_matrix = self.build_glove_embedding(self.vocab_inv)
         else:
-            self.embed_matrix = self.build_w2v_embedding(self.vocab_inv)
+            embed_matrix = self.build_w2v_embedding(self.vocab_inv)
+        return embed_matrix
 
     @staticmethod
     def longest_sentence(input_list, print_content):

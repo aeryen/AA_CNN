@@ -164,14 +164,14 @@ class DataHelperML(DataHelper):
 
         for x_doc in data.raw:
             expand_raw.extend(x_doc)
-        for x_doc in data.vector:
+        for x_doc in data.value:
             expand_vector.extend(x_doc)
         for i in range(len(data.label)):
             expand_y.extend(np.tile(data.label[i], [len(data.raw[i]), 1]))
 
         data.raw = expand_raw
-        data.vector = expand_vector
-        data.label = expand_y
+        data.value = np.array(expand_vector)
+        data.label = np.array(expand_y)
         return data
 
     def build_content_vector(self, data):

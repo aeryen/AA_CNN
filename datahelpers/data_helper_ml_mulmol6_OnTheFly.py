@@ -98,7 +98,7 @@ class DataHelperMulMol6(DataHelperML):
 
         [train_data, test_data] = DataHelperML.split_by_fold_2(5, 0, all_data)
 
-        if not self.doc_level_data:
+        if self.doc_level_data == LoadMethod.SENT:
             train_data = self.flatten_doc_to_sent(train_data)
             test_data = self.flatten_doc_to_sent(test_data)
 

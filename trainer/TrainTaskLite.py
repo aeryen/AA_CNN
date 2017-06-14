@@ -68,11 +68,11 @@ class TrainTask:
             self.x_dev, self.pos_test, _, self.p2_test, self.p3_test, \
                 self.s2_test, self.s3_test, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
         elif "One" in input_component:
-            self.x_dev, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
+            self.test_data, _, _ = self.data_hlp.load_test_data()
         else:
             raise NotImplementedError
 
-        logging.info("Train/Dev split: {:d}/{:d}".format(len(self.y_train), len(self.y_dev)))
+        logging.info("Train/Dev split: {:d}/{:d}".format(len(self.train_data.label), len(self.test_data.label)))
 
     def training(self, filter_sizes=[3, 4, 5], num_filters=100, dropout_keep_prob=1.0, n_steps=None, l2_lambda=0.0,
                  dropout=False, batch_normalize=False, elu=False, n_conv=1, fc=[]):
@@ -205,7 +205,7 @@ class TrainTask:
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")
-                    dev_batches = dh.DataHelperML.batch_iter(list(zip(self.x_dev, self.y_dev)), self.batch_size, 1)
+                    dev_batches = dh.DataHelperML.batch_iter(list(zip(self.test_data.value, self.test_data.label)), self.batch_size, 1)
                     for dev_batch in dev_batches:
                         if len(dev_batch) > 0:
                             small_dev_x, small_dev_y = list(zip(*dev_batch))

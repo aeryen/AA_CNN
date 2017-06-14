@@ -6,7 +6,7 @@ from trainer import TrainTaskLite as tr
 from evaluators import eval_ml_mulmol_d as evaler
 from evaluators import eval_ml_origin as evaler_one
 from utils.ArchiveManager import ArchiveManager
-from datahelpers.Data import AAData
+from datahelpers.Data import LoadMethod
 import logging
 
 
@@ -53,7 +53,7 @@ if __name__ == "__main__":
     logging.warning('===================================================')
 
     if input_component == "ML_One":
-        dater = DataHelperMulMol6(doc_level=AAData, embed_type="glove",
+        dater = DataHelperMulMol6(doc_level=LoadMethod.SENT, embed_type="glove",
                                   embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file=truth_file)
         ev = evaler_one.evaler()
     elif input_component == "ML_2CH":
