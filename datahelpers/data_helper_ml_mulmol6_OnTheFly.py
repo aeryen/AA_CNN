@@ -50,6 +50,7 @@ class DataHelperMulMol6(DataHelperML):
         all_data = self.pad_sentences(all_data)
 
         if self.doc_level_data == LoadMethod.DOC or self.doc_level_data == LoadMethod.COMB:
+            raise NotImplemented
             all_data = self.pad_document(all_data, target_length=self.target_doc_len)
 
         [train_data, test_data] = DataHelperML.split_by_fold_2(5, 0, all_data)

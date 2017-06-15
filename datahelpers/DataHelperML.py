@@ -179,7 +179,7 @@ class DataHelperML(DataHelper):
             data.value = np.array(padded_docs)
         return data
 
-    def pad_document(self, docs, padding_word="<PAD>", target_length=-1):
+    def pad_document(self, docs, target_length=-1):
         if target_length > 0:
             tar_length = target_length
         else:

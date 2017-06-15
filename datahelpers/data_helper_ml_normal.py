@@ -40,17 +40,21 @@ class DataHelperMLNormal(DataHelperML):
             comb_list.append(x[i*50:(i+1)*50])
         return comb_list
 
-    def comb_all_doc(self, x, label):
+    def comb_all_doc(self, data):
         x_comb = []
         label_comb = []
         comb_size = []
 
-        [comb_size.append(self.get_comb_count(doc)) for doc in x]
-        [x_comb.extend(self.multi_sent_combine(doc)) for doc in x]
+        [comb_size.append(self.get_comb_count(doc)) for doc in data.raw]
+        [x_comb.extend(self.multi_sent_combine(doc)) for doc in data.raw]
 
-        for comb_index in range(len(x)):
-            label_comb.extend(np.tile(label[comb_index], [comb_size[comb_index], 1]))
+        for comb_index in range(len(data.raw)):
+            label_comb.extend(np.tile(data.label_doc[comb_index], [comb_size[comb_index], 1]))
             print("number of comb in document: " + str(comb_size[comb_index]))
+
+        data.raw = x_comb
+        data.label_instance = label_comb
+        data.comb_size = comb_size
     
         return x_comb, label_comb, comb_size
 
@@ -59,51 +63,33 @@ class DataHelperMLNormal(DataHelperML):
         all_data = self.load_proced_dir(csv_file=all_file_csv_path)
 
         self.vocab, self.vocab_inv = self.build_vocab([all_data], self.vocabulary_size)
+        self.embed_matrix = self.build_embedding(self.vocab_inv)
 
-        x_training_exp, labels_training_exp = self.expand_origin_and_label_to_sentence(self.x_train, self.labels_train)
-        x_test_exp, labels_test_exp = self.expand_origin_and_label_to_sentence(self.x_test, self.labels_test)
+        if self.doc_level_data == LoadMethod.COMB:
+            all_data = self.comb_all_doc(all_data)
 
-        vocab_file = DataHelper.get_vocab_path(file_name=__file__, embed_type=self.embed_type, embed_dim=self.embedding_dim)
-        x_concat_exp = np.concatenate([x_training_exp, x_test_exp], axis=0)
-        # self.longest_sentence(x_concat_exp, True)
-        self.vocab, self.vocab_inv = self.build_vocab(x_concat_exp, self.vocabulary_size)
-        # pickle.dump([self.vocab, self.vocab_inv], open(vocab_file, "wb"))
+        all_data = self.build_content_vector(all_data)
+        all_data = self.pad_sentences(all_data)
 
-        if self.doc_level_data == "sent":
-            self.x_train = x_training_exp
-            self.x_test = x_test_exp
-            self.labels_train = labels_training_exp
-            self.labels_test = labels_test_exp
+        if self.doc_level_data == LoadMethod.COMB:
+            all_data = self.pad_document(all_data, 50)  # 50
+        elif self.doc_level_data == LoadMethod.DOC:
+            all_data = self.pad_document(all_data, target_length=self.target_doc_len)
 
-        if self.embed_type == "glove":
-            [glove_words, glove_vectors] = self.load_glove_vector(self.glove_path)
-            self.embed_matrix = self.build_glove_embedding(self.vocab_inv, glove_words, glove_vectors, self.embedding_dim)
-        else:
-            self.word2vec_model = self.load_w2v_vector()
-            self.embed_matrix = self.build_w2v_embedding(self.vocab_inv, self.word2vec_model, self.embedding_dim)
+        [train_data, test_data] = DataHelperML.split_by_fold_2(5, 0, all_data)
 
-        if self.doc_level_data == "comb":
-            [self.x_train, self.labels_train, self.doc_size_train] = \
-                self.comb_all_doc(self.x_train, self.labels_train)
+        if self.doc_level_data == LoadMethod.SENT:
+            train_data = self.flatten_doc_to_sent(train_data)
+            test_data = self.flatten_doc_to_sent(test_data)
 
-            [self.x_test, self.labels_test, self.doc_size_test] = \
-                self.comb_all_doc(self.x_test, self.labels_test)
+        self.train_data = train_data
+        self.test_data = test_data
 
-        self.x_train = DataHelperML.build_input_data(self.x_train, self.vocab, self.doc_level_data)
-        self.x_train = self.pad_sentences(self.x_train, target_length=self.target_sent_len)
-        self.x_test = DataHelperML.build_input_data(self.x_test, self.vocab, self.doc_level_data)
-        self.x_test = self.pad_sentences(self.x_test, target_length=self.target_sent_len)
-
-        if self.doc_level_data == "doc" or self.doc_level_data == "comb":
-            self.longest_sentence(self.x_train, False)  # find document with most sentences
-            self.x_train = self.pad_document(self.x_train, target_length=self.target_doc_len)
-            self.x_test = self.pad_document(self.x_test, target_length=self.target_doc_len)
-
-        return [self.x_train, self.labels_train, self.vocab, self.vocab_inv, self.embed_matrix]
+        return [self.train_data, self.vocab, self.vocab_inv, self.embed_matrix]
 
     def load_test_data(self):
-        if self.x_test is not None:
-            return [self.x_test, self.labels_test, self.vocab, self.vocab_inv, self.doc_size_test]
+        if self.test_data is not None:
+            return [self.test_data, self.vocab, self.vocab_inv]
         else:
             print("nope")
 
