@@ -7,14 +7,16 @@ class AAData:
         self.file_id = None
         self.raw = None
         self.value = None
-        self.label = None
+        self.label_doc = None
+        self.label_instance = None  # this is for sentences or comb or paragraph
         self.doc_size = None
 
     def init_empty_list(self):
         self.file_id = []
         self.raw = []
         self.value = []
-        self.label = []
+        self.label_doc = []
+        self.label_instance = []
         self.doc_size = []
 
 

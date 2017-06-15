@@ -6,6 +6,8 @@ import logging
 from datahelpers.DataHelper import DataHelper
 from datahelpers.Data import AAData
 from datahelpers.Data import LoadMethod
+from utils import featuremaker
+import errno
 
 
 class DataHelperML(DataHelper):
@@ -18,6 +20,49 @@ class DataHelperML(DataHelper):
         self.train_label_file_path = self.training_data_dir + "_new_label/" + train_csv_file
         self.val_label_file_path = self.training_data_dir + "_new_label/val.csv"
         self.test_label_file_path = self.training_data_dir + "_new_label/test.csv"
+
+    def temp_write_channel_file(self, author_code, file_name, file_text_content):
+        fm = featuremaker.FeatureMaker(file_text_content)
+        poss = fm.fast_pos_tag()
+        word_len = fm.per_word_length()
+        [prefix_2, prefix_3, suffix_2, suffix_3] = fm.prefix_suffix()
+
+        if not os.path.exists(os.path.dirname("./data/ml_mulmol/" + author_code + "/")):
+            try:
+                os.makedirs(os.path.dirname("./data/ml_mulmol/" + author_code + "/"))
+            except OSError as exc:  # Guard against race condition
+                if exc.errno != errno.EEXIST:
+                    raise
+
+        original_txt = open("./data/ml_mulmol/" + author_code + "/" + file_name, "w")
+        for line in file_text_content:
+            original_txt.write(" ".join(line) + "\n")
+
+        pos_file = open("./data/ml_mulmol/" + author_code + "/" + "pos_" + file_name, "w")
+        for line in poss:
+            pos_file.write(" ".join(line) + "\n")
+
+        wl_file = open("./data/ml_mulmol/" + author_code + "/" + "wl_" + file_name, "w")
+        for line in word_len:
+            wl_file.write(" ".join(map(str, line)) + "\n")
+
+        p2_file = open("./data/ml_mulmol/" + author_code + "/" + "pre2_" + file_name, "w")
+        for line in prefix_2:
+            p2_file.write(" ".join(line) + "\n")
+
+        p3_file = open("./data/ml_mulmol/" + author_code + "/" + "pre3_" + file_name, "w")
+        for line in prefix_3:
+            p3_file.write(" ".join(line) + "\n")
+
+        s2_file = open("./data/ml_mulmol/" + author_code + "/" + "suf2_" + file_name, "w")
+        for line in suffix_2:
+            s2_file.write(" ".join(line) + "\n")
+
+        s3_file = open("./data/ml_mulmol/" + author_code + "/" + "suf3_" + file_name, "w")
+        for line in suffix_3:
+            s3_file.write(" ".join(line) + "\n")
+
+        return poss, word_len, prefix_2, prefix_3, suffix_2, suffix_3
 
     @staticmethod
     def load_raw_file(data_dir, author_name, file_name):
@@ -59,13 +104,14 @@ class DataHelperML(DataHelper):
                         index = data.file_id.index(file_name)
                         file_content = DataHelperML.load_raw_file(data_dir=self.training_data_dir,
                                                                   author_name=author, file_name=file_name)
+                        self.temp_write_channel_file(author, file_name, file_content)
                         origin_list[index] = file_content
                         doc_size[index] = len(file_content)
 
         doc_size = np.array(doc_size)
 
         data.raw = origin_list
-        data.label = label_matrix
+        data.label_doc = label_matrix
         data.doc_size = doc_size
 
         return data
@@ -105,7 +151,7 @@ class DataHelperML(DataHelper):
         doc_size = np.array(doc_size)
 
         data.raw = origin_list
-        data.label = label_matrix
+        data.label_doc = label_matrix
         data.doc_size = doc_size
 
         return data
@@ -166,12 +212,12 @@ class DataHelperML(DataHelper):
             expand_raw.extend(x_doc)
         for x_doc in data.value:
             expand_vector.extend(x_doc)
-        for i in range(len(data.label)):
-            expand_y.extend(np.tile(data.label[i], [len(data.raw[i]), 1]))
+        for i in range(len(data.label_doc)):
+            expand_y.extend(np.tile(data.label_doc[i], [len(data.raw[i]), 1]))
 
         data.raw = expand_raw
         data.value = np.array(expand_vector)
-        data.label = np.array(expand_y)
+        data.label_instance = np.array(expand_y)
         return data
 
     def build_content_vector(self, data):
