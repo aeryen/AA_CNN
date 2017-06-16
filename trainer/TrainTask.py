@@ -51,18 +51,18 @@ class TrainTask:
         logging.debug("Loading data...")
         if "Six" in input_component:
             self.x_train, self.pos_train, _, self.p2_train, self.p3_train, self.s2_train, self.s3_train, self.y_train, \
-            _, _, self.embed_matrix_glv = self.data_hlp.load_data()
+            _, _, self.embed_matrix_glv = self.data_hlp.get_train_data()
             self.pref2_vocab_size = len(self.data_hlp.p2_vocab)
             self.pref3_vocab_size = len(self.data_hlp.p3_vocab)
             self.suff2_vocab_size = len(self.data_hlp.s2_vocab)
             self.suff3_vocab_size = len(self.data_hlp.s3_vocab)
             self.pos_vocab_size = len(self.data_hlp.pos_vocab)
         elif "One" in input_component:
-            self.x_train, self.y_train, _, _, self.embed_matrix_glv, self.embed_matrix_w2v = self.data_hlp.load_data()
+            self.x_train, self.y_train, _, _, self.embed_matrix_glv, self.embed_matrix_w2v = self.data_hlp.get_train_data()
         elif "2CH" in input_component:
-            self.x_train, self.y_train, _, _, self.embed_matrix_glv, self.embed_matrix_w2v = self.data_hlp.load_data()
+            self.x_train, self.y_train, _, _, self.embed_matrix_glv, self.embed_matrix_w2v = self.data_hlp.get_train_data()
         elif "PAN11" in input_component:
-            self.x_train, self.y_train, _, _, self.embed_matrix_glv, self.embed_matrix_w2v = self.data_hlp.load_data()
+            self.x_train, self.y_train, _, _, self.embed_matrix_glv, self.embed_matrix_w2v = self.data_hlp.get_train_data()
         else:
             raise NotImplementedError
 

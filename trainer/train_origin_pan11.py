@@ -44,7 +44,7 @@ def init_data(prob_code, embed_dimension, do_dev_split=False):
 
     # Load data
     print("Loading data...")
-    x, y, vocabulary, vocabulary_inv, embed_matrix = dater.load_data()
+    x, y, vocabulary, vocabulary_inv, embed_matrix = dater.get_train_data()
     print(("Vocabulary Size: {:d}".format(len(vocabulary))))
 
     # Randomly shuffle data

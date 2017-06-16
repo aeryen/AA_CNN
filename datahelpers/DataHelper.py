@@ -10,6 +10,7 @@ import math
 
 from datahelpers.Data import AAData
 
+
 class DataHelper(object):
     def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len):
         logging.info("setting: %s is %s", "doc_level", doc_level)
@@ -32,6 +33,8 @@ class DataHelper(object):
         self.target_doc_len = target_doc_len
         self.target_sent_len = target_sent_len
 
+        self.train_data = None
+        self.test_data = None
         self.vocab = None
         self.vocab_inv = None
         self.embed_matrix = None
@@ -107,6 +110,8 @@ class DataHelper(object):
             if word in self.glove_words:
                 word_index = self.glove_words.index(word)
                 embed_matrix.append(self.glove_vectors[word_index, :])
+            elif word == "<PAD>":
+                embed_matrix.append(np.zeros(self.embedding_dim))
             else:
                 embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=self.embedding_dim))
         embed_matrix = np.array(embed_matrix)
@@ -278,13 +283,13 @@ class DataHelper(object):
                 test_data.file_id.append(data.file_id[i])
                 test_data.raw.append(data.raw[i])
                 test_data.value.append(data.value[i])
-                test_data.label.append(data.label[i])
+                test_data.label_doc.append(data.label_doc[i])
                 test_data.doc_size.append(data.doc_size[i])
             else:
                 train_data.file_id.append(data.file_id[i])
                 train_data.raw.append(data.raw[i])
                 train_data.value.append(data.value[i])
-                train_data.label.append(data.label[i])
+                train_data.label_doc.append(data.label_doc[i])
                 train_data.doc_size.append(data.doc_size[i])
 
         return [train_data, test_data]
@@ -304,3 +309,76 @@ class DataHelper(object):
         label_matrix = np.array(label_matrix)
 
         return author_list, file_id_list, label_matrix
+
+    def pad_sentences(self, data):
+        if self.target_sent_len > 0:
+            max_length = self.target_sent_len
+        else:
+            sent_lengths = [[len(sent) for sent in doc] for doc in data.value]
+            max_length = max(sent_lengths)
+            print("longest doc: " + str(max_length))
+
+        padded_docs = []
+        for doc in data.value:
+            padded_doc = []
+            for sent_i in range(len(doc)):
+                sent = doc[sent_i]
+                if len(sent) <= max_length:
+                    num_padding = max_length - len(sent)
+                    new_sentence = np.concatenate([sent, np.zeros(num_padding, dtype=np.int)])
+                else:
+                    new_sentence = sent[:max_length]
+                padded_doc.append(new_sentence)
+            padded_docs.append(np.array(padded_doc))
+            data.value = np.array(padded_docs)
+        return data
+
+    def pad_document(self, docs, target_length=-1):
+        if target_length > 0:
+            tar_length = target_length
+        else:
+            doc_lengths = [len(d) for d in docs]
+            tar_length = max(doc_lengths)
+            print("longest doc: " + str(tar_length))
+
+        padded_doc = []
+        sent_length = len(docs[0][0])
+        for i in range(len(docs)):
+            d = docs[i]
+            if len(d) <= tar_length:
+                num_padding = tar_length - len(d)
+                if len(d) > 0:
+                    new_doc = np.concatenate([d, np.zeros([num_padding, sent_length], dtype=np.int)])
+                else:
+                    new_doc = np.zeros([num_padding, sent_length], dtype=np.int)
+            else:
+                new_doc = d[:tar_length]
+            padded_doc.append(new_doc)
+        return np.array(padded_doc)
+
+    @staticmethod
+    def flatten_doc_to_sent(data):
+        expand_raw = []
+        expand_vector = []
+        expand_y = []
+
+        for x_doc in data.raw:
+            expand_raw.extend(x_doc)
+        for x_doc in data.value:
+            expand_vector.extend(x_doc)
+        for i in range(len(data.label_doc)):
+            expand_y.extend(np.tile(data.label_doc[i], [len(data.raw[i]), 1]))
+
+        data.raw = expand_raw
+        data.value = np.array(expand_vector)
+        data.label_instance = np.array(expand_y)
+        return data
+
+    def build_content_vector(self, data):
+        unk = self.vocab["<UNK>"]
+        # if self.doc_level_data == LoadMethod.DOC or self.doc_level_data == LoadMethod.COMB:
+        content_vector = np.array([[[self.vocab.get(word, unk) for word in sent] for sent in doc] for doc in data.raw])
+        data.value = content_vector
+        # else:
+        #     x = np.array([[self.vocab.get(word, unk) for word in doc] for doc in data])
+        return data

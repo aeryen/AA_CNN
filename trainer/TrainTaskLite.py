@@ -46,7 +46,7 @@ class TrainTask:
         logging.debug("Loading data...")
         if "Six" in input_component:
             self.x_train, self.pos_train, _, self.p2_train, self.p3_train, self.s2_train, self.s3_train, self.y_train, \
-            _, _, self.embed_matrix = self.data_hlp.load_data()
+            _, _, self.embed_matrix = self.data_hlp.get_train_data()
             self.pref2_vocab_size = len(self.data_hlp.p2_vocab)
             self.pref3_vocab_size = len(self.data_hlp.p3_vocab)
             self.suff2_vocab_size = len(self.data_hlp.s2_vocab)
@@ -58,7 +58,7 @@ class TrainTask:
             self.suff2_vocab_size = None
             self.suff3_vocab_size = None
             self.pos_vocab_size = None
-            self.train_data, _, _, self.embed_matrix = self.data_hlp.load_data()
+            self.train_data, _, _, self.embed_matrix = self.data_hlp.get_train_data()
         else:
             raise NotImplementedError
 
@@ -72,7 +72,7 @@ class TrainTask:
         else:
             raise NotImplementedError
 
-        logging.info("Train/Dev split: {:d}/{:d}".format(len(self.train_data.label), len(self.test_data.label)))
+        logging.info("Train/Dev split: {:d}/{:d}".format(len(self.train_data.label_doc), len(self.test_data.label_doc)))
 
     def training(self, filter_sizes=[3, 4, 5], num_filters=100, dropout_keep_prob=1.0, n_steps=None, l2_lambda=0.0,
                  dropout=False, batch_normalize=False, elu=False, n_conv=1, fc=[]):
@@ -194,7 +194,7 @@ class TrainTask:
                     writer.add_summary(summaries, step)
 
             # Generate batches
-            batches = dh.DataHelperML.batch_iter(list(zip(self.train_data.value, self.train_data.label)), self.batch_size,
+            batches = dh.DataHelperML.batch_iter(list(zip(self.train_data.value, self.train_data.label_instance)), self.batch_size,
                                                  num_epochs=300)
 
             # Training loop. For each batch...
@@ -205,7 +205,7 @@ class TrainTask:
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")
-                    dev_batches = dh.DataHelperML.batch_iter(list(zip(self.test_data.value, self.test_data.label)), self.batch_size, 1)
+                    dev_batches = dh.DataHelperML.batch_iter(list(zip(self.test_data.value, self.test_data.label_instance)), self.batch_size, 1)
                     for dev_batch in dev_batches:
                         if len(dev_batch) > 0:
                             small_dev_x, small_dev_y = list(zip(*dev_batch))

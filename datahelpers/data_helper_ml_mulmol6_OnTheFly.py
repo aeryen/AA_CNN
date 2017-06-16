@@ -70,12 +70,6 @@ class DataHelperMulMol6(DataHelperML):
         else:
             print("nope")
 
-    def get_file_id_test(self):
-        return self.file_id_test
-
-    def get_doc_label(self):
-        return self.labels_test
-
 
 if __name__ == "__main__":
     o = DataHelperMulMol6(doc_level=LoadMethod.SENT, embed_type="glove", embed_dim=100, target_doc_len=400, target_sent_len=100)

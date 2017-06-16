@@ -26,6 +26,35 @@ class DataHelperMLNormal(DataHelperML):
         self.val_label_file_path = self.training_data_dir + "_new_label/val.csv"
         self.test_label_file_path = self.training_data_dir + "_new_label/test.csv"
 
+        self.load_data()
+
+    def load_data(self):
+        all_file_csv_path = self.training_data_dir + "_old_label/labels.csv"
+        all_data = self.load_proced_dir(csv_file=all_file_csv_path)
+
+        self.vocab, self.vocab_inv = self.build_vocab([all_data], self.vocabulary_size)
+        self.embed_matrix = self.build_embedding(self.vocab_inv)
+
+        if self.doc_level_data == LoadMethod.COMB:
+            all_data = self.comb_all_doc(all_data)
+
+        all_data = self.build_content_vector(all_data)
+        all_data = self.pad_sentences(all_data)
+
+        if self.doc_level_data == LoadMethod.COMB:
+            all_data = self.pad_document(all_data, 50)  # TODO 50
+        elif self.doc_level_data == LoadMethod.DOC:
+            all_data = self.pad_document(all_data, target_length=self.target_doc_len)
+
+        [train_data, test_data] = DataHelperML.split_by_fold_2(5, 0, all_data)
+
+        if self.doc_level_data == LoadMethod.SENT:
+            train_data = self.flatten_doc_to_sent(train_data)
+            test_data = self.flatten_doc_to_sent(test_data)
+
+        self.train_data = train_data
+        self.test_data = test_data
+
     def get_comb_count(self, x):
         n = int(len(x) / 50)
         print("n = " + str(n))
@@ -58,44 +87,8 @@ class DataHelperMLNormal(DataHelperML):
     
         return x_comb, label_comb, comb_size
 
-    def load_data(self):
-        all_file_csv_path = self.training_data_dir + "_old_label/labels.csv"
-        all_data = self.load_proced_dir(csv_file=all_file_csv_path)
-
-        self.vocab, self.vocab_inv = self.build_vocab([all_data], self.vocabulary_size)
-        self.embed_matrix = self.build_embedding(self.vocab_inv)
-
-        if self.doc_level_data == LoadMethod.COMB:
-            all_data = self.comb_all_doc(all_data)
-
-        all_data = self.build_content_vector(all_data)
-        all_data = self.pad_sentences(all_data)
-
-        if self.doc_level_data == LoadMethod.COMB:
-            all_data = self.pad_document(all_data, 50)  # 50
-        elif self.doc_level_data == LoadMethod.DOC:
-            all_data = self.pad_document(all_data, target_length=self.target_doc_len)
-
-        [train_data, test_data] = DataHelperML.split_by_fold_2(5, 0, all_data)
-
-        if self.doc_level_data == LoadMethod.SENT:
-            train_data = self.flatten_doc_to_sent(train_data)
-            test_data = self.flatten_doc_to_sent(test_data)
-
-        self.train_data = train_data
-        self.test_data = test_data
-
+    def get_train_data(self):
         return [self.train_data, self.vocab, self.vocab_inv, self.embed_matrix]
 
     def load_test_data(self):
-        if self.test_data is not None:
-            return [self.test_data, self.vocab, self.vocab_inv]
-        else:
-            print("nope")
-
-    def get_file_id_test(self):
-        return self.file_id_test
-
-    def get_doc_label(self):
-        return self.labels_test
-
+        return [self.test_data, self.vocab, self.vocab_inv]

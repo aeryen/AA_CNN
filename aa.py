@@ -1,6 +1,6 @@
 from timeit import default_timer as timer
 from datahelpers.data_helper_ml_mulmol6_OnTheFly import DataHelperMulMol6
-from datahelpers.data_helper_ml_normal import DataHelperML
+from datahelpers.data_helper_ml_normal import DataHelperMLNormal
 from datahelpers.data_helper_ml_2chan import DataHelperML_2CH
 from trainer import TrainTaskLite as tr
 from evaluators import eval_ml_mulmol_d as evaler
@@ -21,6 +21,7 @@ def get_exp_logger(am):
     console_logger = logging.StreamHandler()
     logging.getLogger('').addHandler(console_logger)
     logging.info("log created: " + log_path)
+
 
 if __name__ == "__main__":
 
@@ -53,9 +54,9 @@ if __name__ == "__main__":
     logging.warning('===================================================')
 
     if input_component == "ML_One":
-        dater = DataHelperMulMol6(doc_level=LoadMethod.SENT, embed_type="glove",
-                                  embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file=truth_file)
-        ev = evaler_one.evaler()
+        dater = DataHelperMLNormal(doc_level=LoadMethod.SENT, embed_type="glove",
+                                   embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file=truth_file)
+        ev = evaler_one.Evaluator()
     elif input_component == "ML_2CH":
         dater = DataHelperML_2CH(doc_level="sent", num_fold=5, fold_index=0,
                                  embed_dim=300, target_sent_len=50, target_doc_len=400, truth_file=truth_file)
@@ -65,7 +66,7 @@ if __name__ == "__main__":
                                   embed_dim=300, target_sent_len=50, target_doc_len=400)
         ev = evaler.evaler()
     elif input_component == "ML_One_DocLevel":
-        dater = DataHelperML(doc_level="doc", train_holdout=0.80, embed_type="glove",
+        dater = DataHelperMLNormal(doc_level="doc", train_holdout=0.80, embed_type="glove",
                              embed_dim=300, target_sent_len=128, target_doc_len=128)
         ev = evaler_one.evaler()
     else:
@@ -77,7 +78,7 @@ if __name__ == "__main__":
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
     tt.training(filter_sizes=[3, 4, 5], num_filters=100, dropout_keep_prob=0.8, n_steps=30000, l2_lambda=0.1,
-                     dropout=True, batch_normalize=False, elu=False, n_conv=1, fc=[])
+                dropout=True, batch_normalize=False, elu=False, n_conv=1, fc=[])
     end = timer()
     print((end - start))
 

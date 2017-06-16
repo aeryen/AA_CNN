@@ -91,8 +91,8 @@ class TextCNN(object):
 
         # CalculateMean cross-entropy loss
         with tf.name_scope("loss-lbd" + str(l2_reg_lambda)):
-            # losses = tf.nn.softmax_cross_entropy_with_logits(self.scores, self.input_y)  # TODO
-            losses = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_y, logits=self.scores)
+            losses = tf.nn.softmax_cross_entropy_with_logits(labels=self.input_y, logits=self.scores)  # TODO
+            # losses = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_y, logits=self.scores)
             self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
 
         # Accuracy
