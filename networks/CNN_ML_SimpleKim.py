@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 
 
-class TextCNN(object):
+class SimpleKimCNN(object):
     """
     This CNN works with ML data.
     The network takes in only the raw text, does not accept extra channels.
@@ -78,9 +78,9 @@ class TextCNN(object):
             l2_loss += tf.nn.l2_loss(W)
             # l2_loss += tf.nn.l2_loss(b)
             self.scores = tf.nn.xw_plus_b(self.h_drop, W, b, name="scores")
-            self.predictions = tf.sigmoid(self.scores, name="predictions")
-            print("Prediction shape: " + str(self.predictions.get_shape()))
-            # self.predictions = tf.argmax(self.scores, 1, name="predictions")  #3333333333333333333333333
+            self.predictions_sigmoid = tf.sigmoid(self.scores, name="predictions_sigmoid")
+            self.predictions_max = tf.argmax(self.scores, 1, name="predictions_max")  #3333333333333333333333333
+            print("Prediction shape: " + str(self.predictions_sigmoid.get_shape()))
 
         # self.rate_percentage = [0.0] * num_classes
         # with tf.name_scope("prediction-ratio"):
@@ -98,9 +98,9 @@ class TextCNN(object):
         # Accuracy
         with tf.name_scope("accuracy"):
             # all correct
-            correct_predictions = tf.equal(tf.greater_equal(self.predictions, 0.5), tf.equal(self.input_y, 1))
+            correct_predictions = tf.equal(tf.greater_equal(self.predictions_sigmoid, 0.5), tf.equal(self.input_y, 1))
             correct_predictions = tf.reduce_all(correct_predictions, axis=1)
             self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy")
 
-            # maxright = self.input_y[np.arange(len(self.input_y)), self.predictions]
-            # self.accuracy_max = tf.reduce_mean(maxright, name="maxright_accuracy")
+            max_right = self.input_y[np.arange(len(self.input_y)), self.predictions_max]
+            self.accuracy_max = tf.reduce_mean(max_right, name="max_right_accuracy")

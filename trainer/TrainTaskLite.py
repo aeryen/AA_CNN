@@ -3,7 +3,7 @@ import os
 import datetime
 import time
 import tensorflow as tf
-from networks.cnn_ml_origin import TextCNN
+from networks.CNN_ML_SimpleKim import SimpleKimCNN
 from datahelpers import data_helper_ml_mulmol6_Read as dh6
 from datahelpers import data_helper_ml_normal as dh
 import utils.ArchiveManager as AM
@@ -90,7 +90,7 @@ class TrainTask:
         with tf.Graph().as_default():
             session_conf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
             sess = tf.Session(config=session_conf)
-            cnn = TextCNN(
+            cnn = SimpleKimCNN(
                 sequence_length=self.train_data.value.shape[1],
                 num_classes=self.data_hlp.num_of_classes,
                 word_vocab_size=len(self.data_hlp.vocab),
