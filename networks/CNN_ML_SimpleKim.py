@@ -91,8 +91,8 @@ class SimpleKimCNN(object):
 
         # CalculateMean cross-entropy loss
         with tf.name_scope("loss-lbd" + str(l2_reg_lambda)):
-            losses = tf.nn.softmax_cross_entropy_with_logits(labels=self.input_y, logits=self.scores)  # TODO
-            # losses = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_y, logits=self.scores)
+            # losses = tf.nn.softmax_cross_entropy_with_logits(labels=self.input_y, logits=self.scores)  # TODO
+            losses = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_y, logits=self.scores)
             self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
 
         # Accuracy
@@ -100,7 +100,8 @@ class SimpleKimCNN(object):
             # all correct
             correct_predictions = tf.equal(tf.greater_equal(self.predictions_sigmoid, 0.5), tf.equal(self.input_y, 1))
             correct_predictions = tf.reduce_all(correct_predictions, axis=1)
-            self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy")
+            self.accuracy_sigmoid = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy_sigmoid")
 
-            max_right = self.input_y[np.arange(len(self.input_y)), self.predictions_max]
-            self.accuracy_max = tf.reduce_mean(max_right, name="max_right_accuracy")
+            correct_max = tf.equal(self.predictions_max, tf.equal(self.input_y, 1))
+            correct_max = tf.cast(correct_max, "float")
+            self.accuracy_max = tf.reduce_mean(correct_max, name="accuracy_max")

@@ -99,7 +99,8 @@ class Evaluator:
 
                 # Tensors we want to evaluate
                 scores = graph.get_operation_by_name("output/scores").outputs[0]
-                predictions = graph.get_operation_by_name("output/predictions").outputs[0]
+                predictions_sigmoid = graph.get_operation_by_name("output/predictions_sigmoid").outputs[0]
+                predictions = graph.get_operation_by_name("output/predictions_max").outputs[0]
 
                 # Generate batches for one epoch
                 x_batches = DataHelper.batch_iter(self.test_data.value, 64, 1, shuffle=False)

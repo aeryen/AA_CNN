@@ -46,7 +46,7 @@ if __name__ == "__main__":
     ################################################
 
     input_component = "ML_One"
-    middle_component = "ORIGIN_NEW"
+    middle_component = "ORIGIN_MAX"
     truth_file = "labels.csv"
 
     am = ArchiveManager(input_component, middle_component, truth_file=truth_file)
