@@ -102,6 +102,7 @@ class SimpleKimCNN(object):
             correct_predictions = tf.reduce_all(correct_predictions, axis=1)
             self.accuracy_sigmoid = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy_sigmoid")
 
-            correct_max = tf.equal(self.predictions_max, tf.equal(self.input_y, 1))
-            correct_max = tf.cast(correct_max, "float")
+            correct_max = tf.equal(tf.one_hot(indices=self.predictions_max, depth=num_classes),
+                                   self.input_y)
+            correct_max = tf.cast(tf.reduce_all(correct_max, axis=1), "float")
             self.accuracy_max = tf.reduce_mean(correct_max, name="accuracy_max")
