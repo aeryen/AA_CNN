@@ -226,6 +226,6 @@ for f_size in [100]:
 
             for train_step in [10000]:
                 checkpoint_dir = "./runs/" + dir_name + "/" + str(ts) + "/checkpoints/"
-                ev.test(checkpoint_dir, train_step, output_file, doc_acc=True)
+                ev.write_file(checkpoint_dir, train_step, output_file, doc_acc=True)
 
 output_file.close()

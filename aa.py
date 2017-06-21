@@ -46,7 +46,7 @@ if __name__ == "__main__":
     ################################################
 
     input_component = "ML_One"
-    middle_component = "ORIGIN_MAX"
+    middle_component = "ORIGIN_MAX_WITH_PROB_DIV"
     truth_file = "labels.csv"
 
     am = ArchiveManager(input_component, middle_component, truth_file=truth_file)
@@ -73,7 +73,7 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                      batch_size=64, evaluate_every=1000, checkpoint_every=1000)
+                      batch_size=64, evaluate_every=1000, checkpoint_every=5000)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
@@ -83,4 +83,4 @@ if __name__ == "__main__":
     print((end - start))
 
     ev.load(dater)
-    ev.test(am.get_exp_dir(), None, documentAcc=True, do_is_training=False)
+    ev.test(am.get_exp_dir(), None, doc_acc=True, do_is_training=False)

@@ -129,10 +129,10 @@ class FeatureMaker:
 
 if __name__ == "__main__":
     sent_data = ["I am looking for the person who paid for my wine last Friday evening .",
-            "I have not heard anything from American Airlines .",
-            "Could you please forward to Bev ?",
-            "That place is so very beautiful .",
-            "I hate the coffee there ."]
+                 "I have not heard anything from American Airlines .",
+                 "Could you please forward to Bev ?",
+                 "That place is so very beautiful .",
+                 "I hate the coffee there ."]
 
     sent_data = [line.split() for line in sent_data]
 

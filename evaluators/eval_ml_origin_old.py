@@ -27,6 +27,9 @@ import math
 def sigmoid(x):
     return 1 / (1 + math.exp(-x))
 
+# THIS CLASS IS THE EVALUATOR FOR NORMAL CNN
+
+
 class Evaluator:
     def __init__(self):
         self.dater = None
@@ -90,8 +93,7 @@ class Evaluator:
 
                 # Tensors we want to evaluate
                 scores = graph.get_operation_by_name("output/scores").outputs[0]
-                predictions_sigmoid = graph.get_operation_by_name("output/predictions_sigmoid").outputs[0]
-                predictions_max = graph.get_operation_by_name("output/predictions_max").outputs[0]
+                predictions = graph.get_operation_by_name("output/predictions").outputs[0]
 
                 # Generate batches for one epoch
                 x_batches = DataHelper.batch_iter(self.test_data.value, 64, 1, shuffle=False)
@@ -99,45 +101,38 @@ class Evaluator:
 
                 # Collect the predictions here
                 all_score = None
-                pred_max = None
                 pred_sigmoid = None
                 for [x_test_batch, y_test_batch] in zip(x_batches, y_batches):
                     if do_is_training:
-                        batch_scores, batch_pred_sigmoid, batch_pred_max = sess.run(
-                            [scores, predictions_sigmoid, predictions_max],
+                        batch_scores, batch_pred_sigmoid = sess.run(
+                            [scores, predictions],
                             {input_x: x_test_batch, dropout_keep_prob: 1.0,
                              is_training: 0})
                     else:
-                        batch_scores, batch_pred_sigmoid, batch_pred_max = sess.run(
-                            [scores, predictions_sigmoid, predictions_max],
+                        batch_scores, batch_pred_sigmoid = sess.run(
+                            [scores, predictions],
                             {input_x: x_test_batch, dropout_keep_prob: 1.0})
-
-                    batch_pred_max = tf.one_hot(indices=batch_pred_max,
-                                                depth=self.dater.num_of_classes).eval() == 1  # TODO temp
-                    batch_pred_sigmoid = batch_pred_sigmoid > 0.5
 
                     if all_score is None:
                         all_score = batch_scores
-                        pred_max = batch_pred_max
                         pred_sigmoid = batch_pred_sigmoid
                     else:
                         all_score = np.concatenate([all_score, batch_scores], axis=0)
-                        pred_max = np.concatenate([pred_max, batch_pred_max], axis=0)
                         pred_sigmoid = np.concatenate([pred_sigmoid, batch_pred_sigmoid], axis=0)
 
-            self.sent_accuracy(pred_max)
+            self.sent_accuracy_sigmoid(pred_sigmoid)
             if doc_acc:
-                # print("========== WITH MAX ==========")
-                # self.doc_accuracy(pred_max)
-                # print("========== WITH SIGMOID ==========")
-                # self.doc_accuracy(pred_sigmoid)
-
+                print("========== WITH CUMU-SIGMOID ==========")
+                self.doc_accuracy_sigmoid_cumulation(pred_sigmoid)
+                print("========== WITH CUMU-SCORE ==========")
                 self.doc_accuracy_score_cumulation(all_score)
+                print("========== WITH SIGMOID ==========")
+                self.doc_accuracy(pred_sigmoid > 0.5)
 
             self.eval_log.write("\n")
             self.eval_log.write("\n")
 
-    def sent_accuracy(self, all_predictions_bool):
+    def sent_accuracy_sigmoid(self, all_predictions_bool):
         # Print prediction into file
         np.savetxt('temp.out', all_predictions_bool.astype(int), fmt='%1.0f')
 
@@ -149,6 +144,46 @@ class Evaluator:
 
         logging.info("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
         self.eval_log.write("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")\n")
+
+    def doc_accuracy_sigmoid_cumulation(self, all_sigmoids):
+        np.set_printoptions(precision=2, linewidth=160)
+
+        logging.info("EVALUATING USING doc_accuracy_sigmoid_cumulation")
+        self.eval_log.write("EVALUATING USING doc_accuracy_sigmoid_cumulation")
+        doc_prediction = []
+        sum_to = 0
+
+        for i in range(len(self.test_data.doc_size)):
+            f_size = self.test_data.doc_size[i]
+            p = all_sigmoids[sum_to:sum_to + f_size]
+            sum_to = sum_to + f_size  # increment to next file
+            p = np.sum(p, axis=0).astype(float)
+            p = p / f_size
+            pred_class = p >= 0.5
+            pred_class = pred_class.astype(int)
+            if 1 not in pred_class:
+                print(p)
+                pred_class = np.zeros([self.dater.num_of_classes], dtype=np.int)
+                pred_class[np.argmax(p)] = 1
+            doc_prediction.append(pred_class)
+            print("pred: " + str(pred_class) + "\n" + "true: " + str(self.test_data.label_doc[i]))
+            self.eval_log.write("File:" + self.test_data.file_id[i] + "\n")
+            self.eval_log.write("pred: " + str(pred_class) + "\n" +
+                                "true: " + str(self.test_data.label_doc[i]) + "\n\n")
+
+        logging.info("")
+        self.eval_log.write("\n")
+
+        logging.info("Document ACC")
+        self.eval_log.write("Document ACC\n")
+        total_doc = len(self.test_data.file_id)
+        correct = 0.0
+        for i in range(len(doc_prediction)):
+            if np.array_equal(doc_prediction[i], self.test_data.label_doc[i]):
+                correct += 1
+        doc_acc = correct / total_doc
+        print("Doc ACC: " + str(doc_acc))
+        self.eval_log.write("Doc ACC: " + str(doc_acc) + "\n\n")
 
     def doc_accuracy_score_cumulation(self, all_scores):
         logging.info("EVALUATING USING doc_accuracy_score_cumulation")
@@ -169,10 +204,10 @@ class Evaluator:
                 pred_class = np.zeros([self.dater.num_of_classes], dtype=np.int)
                 pred_class[np.argmax(p)] = 1
             doc_prediction.append(pred_class)
-            print("pred: " + str(pred_class) + "   " + "true: " + str(self.test_data.label_doc[i]))
+            print("pred: " + str(pred_class) + "\n" + "true: " + str(self.test_data.label_doc[i]))
             self.eval_log.write("File:" + self.test_data.file_id[i] + "\n")
-            self.eval_log.write("pred: " + str(pred_class) + "   " +
-                                "true: " + str(self.test_data.label_doc[i]) + "\n")
+            self.eval_log.write("pred: " + str(pred_class) + "\n" +
+                                "true: " + str(self.test_data.label_doc[i]) + "\n\n")
 
         logging.info("")
         self.eval_log.write("\n")

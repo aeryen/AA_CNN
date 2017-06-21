@@ -38,7 +38,7 @@ class evaler:
         self.x_test, self.y_test, self.vocabulary, self.vocabulary_inv, self.file_sizes, \
         self.pref2, self.pref3, self.suff2, self.suff3, self.pos, \
         self.pref_2_vocab, self.pref_3_vocab, self.suff_2_vocab, self.suff_3_vocab, self.pos_vocab = \
-            self.dater.load_test_data()
+            self.dater.get_test_data()
         self.y_test_scalar = np.argmax(self.y_test, axis=1)
         print(("Vocabulary size: {:d}".format(len(self.vocabulary))))
         print(("Test set size {:d}".format(len(self.y_test))))

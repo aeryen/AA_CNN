@@ -30,7 +30,7 @@ class evaler:
         self.dater = dater
 
         print("Loading data...")
-        self.x_test, self.y_test, self.vocabulary, self.vocabulary_inv, self.file_sizes = self.dater.load_test_data()
+        self.x_test, self.y_test, self.vocabulary, self.vocabulary_inv, self.file_sizes = self.dater.get_test_data()
         # self.y_test_scalar = np.argmax(self.y_test, axis=1)
         print(("Vocabulary size: {:d}".format(len(self.vocabulary))))
         print(("Test set size {:d}".format(len(self.y_test))))

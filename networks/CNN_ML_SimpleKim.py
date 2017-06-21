@@ -91,8 +91,9 @@ class SimpleKimCNN(object):
 
         # CalculateMean cross-entropy loss
         with tf.name_scope("loss-lbd" + str(l2_reg_lambda)):
-            # losses = tf.nn.softmax_cross_entropy_with_logits(labels=self.input_y, logits=self.scores)  # TODO
-            losses = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_y, logits=self.scores)
+            input_y_prob = self.input_y / tf.reduce_sum(self.input_y, axis=1, keep_dims=True)
+            losses = tf.nn.softmax_cross_entropy_with_logits(labels=input_y_prob, logits=self.scores)  # TODO
+            # losses = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_y, logits=self.scores)
             self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
 
         # Accuracy

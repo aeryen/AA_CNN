@@ -90,5 +90,5 @@ class DataHelperMLNormal(DataHelperML):
     def get_train_data(self):
         return [self.train_data, self.vocab, self.vocab_inv, self.embed_matrix]
 
-    def load_test_data(self):
+    def get_test_data(self):
         return [self.test_data, self.vocab, self.vocab_inv]

@@ -45,7 +45,7 @@ class evaler:
         self.dater = dater
 
         print("Loading data...")
-        self.x_test, self.y_test, self.vocab, self.vocab_inv, self.doc_size_test = self.dater.load_test_data()
+        self.x_test, self.y_test, self.vocab, self.vocab_inv, self.doc_size_test = self.dater.get_test_data()
         self.y_test_scalar = np.argmax(self.y_test, axis=1)
         print(("Vocabulary size: {:d}".format(len(self.vocab))))
         print(("Test set size {:d}".format(len(self.y_test))))

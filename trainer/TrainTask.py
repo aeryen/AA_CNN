@@ -70,11 +70,11 @@ class TrainTask:
 
         if "Six" in input_component:
             self.x_dev, self.pos_test, _, self.p2_test, self.p3_test, \
-                self.s2_test, self.s3_test, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
+                self.s2_test, self.s3_test, self.y_dev, _, _, _ = self.data_hlp.get_test_data()
         elif "One" or "2CH" in input_component:
-            self.x_dev, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
+            self.x_dev, self.y_dev, _, _, _ = self.data_hlp.get_test_data()
         elif "PAN11" in input_component:
-            self.x_dev, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
+            self.x_dev, self.y_dev, _, _, _ = self.data_hlp.get_test_data()
         else:
             raise NotImplementedError
 

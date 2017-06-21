@@ -46,7 +46,7 @@ class evaler:
         print("Loading test data...")
         self.x_test, self.pos_test, self.wl_test, self.p2_test, self.p3_test, self.s2_test, self.s3_test, \
             self.y_test, self.vocabulary, self.vocabulary_inv, self.doc_size_test = \
-            self.dater.load_test_data()
+            self.dater.get_test_data()
         print(("Vocabulary size: {:d}".format(len(self.vocabulary))))
         print(("Test set size {:d}".format(len(self.y_test))))
 
@@ -146,7 +146,7 @@ class evaler:
             sum_to = 0
             for i in range(len(self.doc_size_test)):
                 f_size = self.doc_size_test[i]
-                p = all_predictions[sum_to:sum_to + f_size - 1].astype(int)
+                p = all_predictions[sum_to:sum_to + f_size].astype(int)
                 sum_to = sum_to + f_size  # increment to next file
                 p = np.sum(p, axis=0).astype(float)
                 p = p / f_size

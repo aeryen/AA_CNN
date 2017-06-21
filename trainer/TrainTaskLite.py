@@ -66,13 +66,15 @@ class TrainTask:
 
         if "Six" in input_component:
             self.x_dev, self.pos_test, _, self.p2_test, self.p3_test, \
-                self.s2_test, self.s3_test, self.y_dev, _, _, _ = self.data_hlp.load_test_data()
+                self.s2_test, self.s3_test, self.y_dev, _, _, _ = self.data_hlp.get_test_data()
         elif "One" in input_component:
-            self.test_data, _, _ = self.data_hlp.load_test_data()
+            self.test_data, _, _ = self.data_hlp.get_test_data()
         else:
             raise NotImplementedError
 
         logging.info("Train/Dev split: {:d}/{:d}".format(len(self.train_data.label_doc), len(self.test_data.label_doc)))
+
+
 
     def training(self, filter_sizes=[3, 4, 5], num_filters=100, dropout_keep_prob=1.0, n_steps=None, l2_lambda=0.0,
                  dropout=False, batch_normalize=False, elu=False, n_conv=1, fc=[]):
@@ -135,18 +137,19 @@ class TrainTask:
 
                 # Summaries for loss and accuracy
                 loss_summary = tf.summary.scalar("loss", cnn.loss)
-                acc_summary = tf.summary.scalar("accuracy", cnn.accuracy)
+                acc_sig_summary = tf.summary.scalar("accuracy_sigmoid", cnn.accuracy_sigmoid)
+                acc_max_summary = tf.summary.scalar("accuracy_max", cnn.accuracy_max)
 
                 # Train Summaries
                 with tf.name_scope('train_summary'):
                     train_summary_op = tf.summary.merge(
-                        [loss_summary, acc_summary, grad_summaries_merged])
+                        [loss_summary, acc_sig_summary, acc_max_summary, grad_summaries_merged])
                     train_summary_dir = os.path.join(out_dir, "summaries", "train")
                     train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
                 # Dev summaries
                 with tf.name_scope('dev_summary'):
-                    dev_summary_op = tf.summary.merge([loss_summary, acc_summary])
+                    dev_summary_op = tf.summary.merge([loss_summary, acc_sig_summary, acc_max_summary])
                     dev_summary_dir = os.path.join(out_dir, "summaries", "dev")
                     dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
 
@@ -169,11 +172,11 @@ class TrainTask:
                     cnn.input_y: y_batch,
                     cnn.dropout_keep_prob: dropout_keep_prob,
                 }
-                _, step, summaries, loss, accuracy = sess.run(
-                    [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
+                _, step, summaries, loss, accuracy, acc_max = sess.run(
+                    [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy_sigmoid, cnn.accuracy_max],
                     feed_dict)
                 time_str = datetime.datetime.now().isoformat()
-                print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
+                print(("{}: step {}, loss {:g}, acc {:g}, acc_max {:g}".format(time_str, step, loss, accuracy, acc_max)))
                 train_summary_writer.add_summary(summaries, step)
 
             def dev_step(x_batch, y_batch, writer=None):
@@ -185,11 +188,11 @@ class TrainTask:
                     cnn.input_y: y_batch,
                     cnn.dropout_keep_prob: 1,
                 }
-                step, summaries, loss, accuracy = sess.run(
-                    [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
+                step, summaries, loss, accuracy, acc_max = sess.run(
+                    [global_step, dev_summary_op, cnn.loss, cnn.accuracy_sigmoid, cnn.accuracy_max],
                     feed_dict)
                 time_str = datetime.datetime.now().isoformat()
-                print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
+                print(("{}: step {}, loss {:g}, acc {:g}, acc_max {:g}".format(time_str, step, loss, accuracy, acc_max)))
                 if writer:
                     writer.add_summary(summaries, step)
 
