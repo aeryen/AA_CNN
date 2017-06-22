@@ -42,15 +42,18 @@ class DataHelperMLNormal(DataHelperML):
         all_data = self.pad_sentences(all_data)
 
         if self.doc_level_data == LoadMethod.COMB:
-            all_data = self.pad_document(all_data, 50)  # TODO 50
+            all_data.value = self.pad_document(all_data.value, 50)  # TODO 50
         elif self.doc_level_data == LoadMethod.DOC:
-            all_data = self.pad_document(all_data, target_length=self.target_doc_len)
+            all_data.value = self.pad_document(all_data.value, target_length=self.target_doc_len)
 
         [train_data, test_data] = DataHelperML.split_by_fold_2(5, 0, all_data)
 
         if self.doc_level_data == LoadMethod.SENT:
             train_data = self.flatten_doc_to_sent(train_data)
             test_data = self.flatten_doc_to_sent(test_data)
+        elif self.doc_level_data == LoadMethod.DOC:
+            train_data.label_instance = train_data.label_doc  # TODO
+            test_data.label_instance = test_data.label_doc
 
         self.train_data = train_data
         self.test_data = test_data

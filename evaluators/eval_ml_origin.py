@@ -70,9 +70,7 @@ class Evaluator:
 
         graph = tf.Graph()
         with graph.as_default():
-            session_conf = tf.ConfigProto(
-                allow_soft_placement=True,
-                log_device_placement=False)
+            session_conf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
             sess = tf.Session(config=session_conf)
             with sess.as_default():
                 # Load the saved meta graph and restore variables

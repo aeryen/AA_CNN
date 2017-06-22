@@ -42,9 +42,9 @@ class PureRNN(object):
             # backward direction cell
             rnn_bw_cell = rnn.MultiRNNCell([bw_cell] * num_layers,
                                                    state_is_tuple=False)
-            outputs, output_state_fw, output_state_bw = rnn.stack_bidirectional_dynamic_rnn(rnn_fw_cell,
-                                            rnn_bw_cell,
-                                            x,
+            outputs, output_state_fw, output_state_bw = rnn.stack_bidirectional_dynamic_rnn(cells_fw=rnn_fw_cell,
+                                            cells_bw=rnn_bw_cell,
+                                            inputs=x,
                                             dtype=tf.dtypes.float32,
                                             sequence_length=sequence_length)
             self.last_layer = outputs

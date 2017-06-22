@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+
 class NConvDocConvNFC(object):
     """
     CNN for text classification.
@@ -9,7 +10,7 @@ class NConvDocConvNFC(object):
 
     def __init__(
             self, document_length, sequence_length, embedding_size, filter_size_lists, num_filters, previous_component,
-            batch_normalize=False, dropout = False, elu = False, n_conv=1, fc=[], l2_reg_lambda=0.0):
+            batch_normalize=False, dropout=False, elu=False, n_conv=1, fc=[], l2_reg_lambda=0.0):
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
         self.batch_normalize = batch_normalize
@@ -22,7 +23,7 @@ class NConvDocConvNFC(object):
             all_filter_size_output = []
             self.num_filters_total = num_filters * len(filter_size_lists[n])
             for filter_size in filter_size_lists[n]:
-                with tf.variable_scope("conv-%s-%s" % (str(n+1), filter_size)):
+                with tf.variable_scope("conv-%s-%s" % (str(n + 1), filter_size)):
                     if n == 0:
                         self.last_layer = previous_component.last_layer
                         # last layer: [?, document size 128, sentence size 128, embedding size 100]
@@ -140,7 +141,7 @@ class NConvDocConvNFC(object):
             elif self.batch_normalize == True and self.dropout == True:
                 relu = tf.nn.relu(x, name='relu')
                 self.last_layer = tf.contrib.layers.batch_norm(relu, center=True, scale=True, fused=False,
-                                             is_training=self.is_training)
+                                                               is_training=self.is_training)
             else:
                 if self.elu == False:
                     h = tf.nn.relu(x, name='relu')
