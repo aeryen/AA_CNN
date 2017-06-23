@@ -1,4 +1,5 @@
 import tensorflow as tf
+import tensorflow.contrib.rnn as rnn
 
 
 class DocCNN(object):
@@ -10,6 +11,7 @@ class DocCNN(object):
         self.input_x = tf.placeholder(tf.int32, [None, doc_length, sent_length], name="input_x")
         self.input_y = tf.placeholder(tf.float32, [None, num_classes], name="input_y")
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
+        self.doc_len = tf.placeholder(tf.float32, [None], name="doc_len")
 
         # Keeping track of l2 regularization loss (optional)
         l2_loss = tf.constant(0.0)
@@ -29,13 +31,13 @@ class DocCNN(object):
                 # Convolution Layer
                 filter_shape = [filter_size, embedding_size, 1, num_filters]
                 init_filter_w[i] = tf.transpose(init_filter_w[i], [2, 0, 1, 3])
-                word_cnn_w = tf.Variable(initial_value=init_filter_w[i], name="W")  # to be init
-                word_cnn_w_list.append(word_cnn_w)
+                doc_fc_w = tf.Variable(initial_value=init_filter_w[i], name="W")  # to be init
+                word_cnn_w_list.append(doc_fc_w)
                 word_cnn_b = tf.Variable(initial_value=init_filter_b[i], name="b")  # to be init
                 word_cnn_b_list.append(word_cnn_b)
                 conv = tf.nn.conv2d(
                     self.embedded_words,
-                    word_cnn_w,
+                    doc_fc_w,
                     strides=[1, 1, 1, 1],
                     padding="VALID",
                     name="conv")
@@ -55,25 +57,28 @@ class DocCNN(object):
 
         num_filters_total = num_filters * len(filter_sizes)
         first_pooled_outputs = tf.concat(values=first_pooled_outputs, axis=3)  # [64, 400, 1, 300]
-        self.h_pool_flat = tf.reshape(first_pooled_outputs, [-1, doc_length, 1, num_filters_total])
-
-
+        self.h_pool_flat = tf.reshape(first_pooled_outputs, [-1, doc_length, num_filters_total])
 
         # Add dropout
         with tf.name_scope("dropout-keep"):
-            self.h_drop = tf.nn.dropout(self.doc_vector, self.dropout_keep_prob)
+            self.h_drop = tf.nn.dropout(self.h_pool_flat, self.dropout_keep_prob)
+
+        rnn_cell = rnn.GRUCell(256)
+        outputs, _ = tf.nn.dynamic_rnn(rnn_cell, self.h_drop, dtype=tf.float32, sequence_length=self.doc_len)
+        outputs = tf.transpose(outputs, [1, 0, 2])
+        last = tf.gather(outputs, int(outputs.get_shape()[0]) - 1)
 
         # Final (unnormalized) scores and predictions
         with tf.name_scope("output"):
             # W = tf.Variable(tf.truncated_normal([num_filters_total, num_classes], stddev=0.1), name="W")
-            word_cnn_w = tf.get_variable(
+            doc_fc_w = tf.get_variable(
                 "W",
-                shape=[2 * 300, num_classes],
+                shape=[256, num_classes],
                 initializer=tf.contrib.layers.xavier_initializer())
-            b = tf.Variable(tf.constant(0.1, shape=[num_classes]), name="b")
-            l2_loss += tf.nn.l2_loss(word_cnn_w)
-            l2_loss += tf.nn.l2_loss(b)
-            self.scores = tf.nn.xw_plus_b(self.h_drop, word_cnn_w, b, name="scores")
+            doc_fc_b = tf.Variable(tf.constant(0.1, shape=[num_classes]), name="b")
+            l2_loss += tf.nn.l2_loss(doc_fc_w)
+            # l2_loss += tf.nn.l2_loss(doc_fc_b)
+            self.scores = tf.nn.xw_plus_b(last, doc_fc_w, doc_fc_b, name="scores")
             self.predictions_sigmoid = tf.sigmoid(self.scores, name="predictions_sigmoid")
             self.predictions_max = tf.argmax(self.scores, 1, name="predictions_max")  # 3333333333333333333333333
             print("Prediction shape: " + str(self.predictions_sigmoid.get_shape()))
