@@ -142,7 +142,8 @@ class Evaluator:
 if __name__ == "__main__":
     step = None
     dater = DataHelperMLNormal(doc_level=LoadMethod.DOC, embed_type="glove",
-                               embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv")
+                               embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv",
+                               total_fold=5, t_fold_index=0)
 
     e = Evaluator(dater)
     path = sys.argv[1]

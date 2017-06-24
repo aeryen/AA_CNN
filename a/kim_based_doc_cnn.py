@@ -19,7 +19,8 @@ class DocCNN(object):
 
         # Embedding layer
         with tf.name_scope("embedding"):
-            self.embedding_matrix = tf.Variable(initial_value=init_embedding, name="W", dtype="float32")
+            self.embedding_matrix = tf.Variable(initial_value=init_embedding, name="W", dtype="float32",
+                                                trainable=False)
             self.embedded_words = tf.nn.embedding_lookup(self.embedding_matrix,
                                                          self.input_x)  # [batch, doc, sent, embed]
 
@@ -32,9 +33,9 @@ class DocCNN(object):
                 # Convolution Layer
                 filter_shape = [filter_size, embedding_size, 1, num_filters]
                 init_filter_w[i] = tf.transpose(init_filter_w[i], [2, 0, 1, 3])
-                word_cnn_w = tf.Variable(initial_value=init_filter_w[i], name="W")  # to be init
+                word_cnn_w = tf.Variable(initial_value=init_filter_w[i], name="W", trainable=False)  # to be init
                 word_cnn_w_list.append(word_cnn_w)
-                word_cnn_b = tf.Variable(initial_value=init_filter_b[i], name="b")  # to be init
+                word_cnn_b = tf.Variable(initial_value=init_filter_b[i], name="b", trainable=False)  # to be init
                 word_cnn_b_list.append(word_cnn_b)
                 conv = tf.nn.conv2d(
                     self.embedded_words,
@@ -65,8 +66,8 @@ class DocCNN(object):
             self.h_drop = tf.nn.dropout(self.h_pool_flat, self.dropout_keep_prob)
 
         with tf.name_scope("fc"):
-            doc_fc_w = tf.Variable(initial_value=fc_w, name="fc_W")  # to be init
-            doc_fc_b = tf.Variable(initial_value=fc_b, name="fc_b")  # to be init
+            doc_fc_w = tf.Variable(initial_value=fc_w, name="fc_W", trainable=False)  # to be init
+            doc_fc_b = tf.Variable(initial_value=fc_b, name="fc_b", trainable=False)  # to be init
             flat_sent_features = tf.reshape(self.h_drop, [-1, num_filters_total])
             flat_sent_features = tf.matmul(flat_sent_features, doc_fc_w)
             flat_sent_features = tf.add(flat_sent_features, doc_fc_b)

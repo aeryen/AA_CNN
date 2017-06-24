@@ -14,14 +14,15 @@ sent_len = 50
 num_class = 20
 batch_size = 10
 dropout_keep_prob = 0.8
-evaluate_every = 100
-checkpoint_every = 100
-n_steps = 1500
+evaluate_every = 10
+checkpoint_every = 15
+n_steps = 150
 out_dir = am.get_exp_dir()
 experiment_dir = "E:\\Research\\Paper 03\\AA_CNN_github\\runs\\ML_One_ORIGIN_NEW\\170613_1497377078_labels.csv"
 
 data_hlp = DataHelperMLNormal(doc_level=LoadMethod.DOC, embed_type="glove",
-                              embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv")
+                              embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv",
+                              total_fold=5, t_fold_index=0)
 train_data, vocab, vocab_inv, embed_matrix = data_hlp.get_train_data()
 test_data, _, _ = data_hlp.get_test_data()
 
