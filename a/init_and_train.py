@@ -14,9 +14,9 @@ sent_len = 50
 num_class = 20
 batch_size = 10
 dropout_keep_prob = 0.8
-evaluate_every = 500
-checkpoint_every = 1000
-n_steps = 30000
+evaluate_every = 100
+checkpoint_every = 100
+n_steps = 1500
 out_dir = am.get_exp_dir()
 experiment_dir = "E:\\Research\\Paper 03\\AA_CNN_github\\runs\\ML_One_ORIGIN_NEW\\170613_1497377078_labels.csv"
 
@@ -48,6 +48,9 @@ with g1.as_default() as g:
         filter_b.append(g1.get_operation_by_name("conv-1-4/b").outputs[0].eval())
         filter_b.append(g1.get_operation_by_name("conv-1-5/b").outputs[0].eval())
 
+        fc_w = g1.get_operation_by_name("W").outputs[0].eval()
+        fc_b = g1.get_operation_by_name("output/b").outputs[0].eval()
+
 tf.reset_default_graph()
 
 graph = tf.Graph()
@@ -65,7 +68,9 @@ with graph.as_default():
         l2_reg_lambda=0.1,
         init_embedding=emb_matrix,
         init_filter_w=filter_w,
-        init_filter_b=filter_b)
+        init_filter_b=filter_b,
+        fc_w=fc_w,
+        fc_b=fc_b)
     with sess.as_default():
 
         global_step = tf.Variable(0, name="global_step", trainable=False)
