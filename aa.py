@@ -1,5 +1,5 @@
 from timeit import default_timer as timer
-from datahelpers.data_helper_ml_mulmol6_OnTheFly import DataHelperMulMol6
+# from datahelpers.data_helper_ml_mulmol6_OnTheFly import DataHelperMulMol6
 from datahelpers.data_helper_ml_normal import DataHelperMLNormal
 from datahelpers.data_helper_ml_2chan import DataHelperML_2CH
 from trainer import TrainTaskLite as tr
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     ################################################
 
     input_component = "ML_One"
-    middle_component = "ORIGIN_MAX_WITH_PROB_DIV"
+    middle_component = "ORIGIN_KIM"
     truth_file = "labels.csv"
 
     am = ArchiveManager(input_component, middle_component, truth_file=truth_file)
@@ -55,7 +55,8 @@ if __name__ == "__main__":
 
     if input_component == "ML_One":
         dater = DataHelperMLNormal(doc_level=LoadMethod.SENT, embed_type="glove",
-                                   embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file=truth_file)
+                                   embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file=truth_file,
+                                   total_fold=5, t_fold_index=0)
         ev = evaler_one.Evaluator()
     elif input_component == "ML_2CH":
         dater = DataHelperML_2CH(doc_level="sent", num_fold=5, fold_index=0,
