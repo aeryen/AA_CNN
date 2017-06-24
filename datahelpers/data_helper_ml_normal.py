@@ -15,11 +15,13 @@ class DataHelperMLNormal(DataHelperML):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
     problem_name = "ML"
 
-    def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, train_csv_file="labels.csv"):
+    def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, train_csv_file="labels.csv",
+                 total_fold=None, t_fold_index=None):
         logging.info("Data Helper: " + __file__ + " initiated.")
 
         super(DataHelperML, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
-                                           target_doc_len=target_doc_len, target_sent_len=target_sent_len)
+                                           target_doc_len=target_doc_len, target_sent_len=target_sent_len,
+                                           total_fold=total_fold, t_fold_index=t_fold_index)
 
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
         self.train_label_file_path = self.training_data_dir + "_new_label/" + train_csv_file
@@ -46,7 +48,7 @@ class DataHelperMLNormal(DataHelperML):
         elif self.doc_level_data == LoadMethod.DOC:
             all_data.value = self.pad_document(all_data.value, target_length=self.target_doc_len)
 
-        [train_data, test_data] = DataHelperML.split_by_fold_2(5, 0, all_data)
+        [train_data, test_data] = DataHelperML.split_by_fold_2(self.total_fold, self.t_fold_index, all_data)
 
         if self.doc_level_data == LoadMethod.SENT:
             train_data = self.flatten_doc_to_sent(train_data)

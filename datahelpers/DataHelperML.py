@@ -5,8 +5,7 @@ import logging
 
 from datahelpers.DataHelper import DataHelper
 from datahelpers.Data import AAData
-from datahelpers.Data import LoadMethod
-from utils import featuremaker
+# from utils import featuremaker
 import errno
 
 

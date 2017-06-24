@@ -12,12 +12,13 @@ from datahelpers.Data import AAData
 
 
 class DataHelper(object):
-    def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len):
+    def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, total_fold, t_fold_index):
         logging.info("setting: %s is %s", "doc_level", doc_level)
         logging.info("setting: %s is %s", "embed_type", embed_type)
         logging.info("setting: %s is %s", "embed_dim", embed_dim)
         logging.info("setting: %s is %s", "target_doc_len", target_doc_len)
-        logging.info("setting: %s is %s", "target_sent_len", target_sent_len)
+        logging.info("setting: %s is %s", "TOTAL_FOLD", total_fold)
+        logging.info("setting: %s is %s", "T_FOLD_INDEX", t_fold_index)
 
         assert doc_level is not None
         assert embed_type is not None
@@ -32,6 +33,8 @@ class DataHelper(object):
         self.embedding_dim = embed_dim
         self.target_doc_len = target_doc_len
         self.target_sent_len = target_sent_len
+        self.total_fold = total_fold
+        self.t_fold_index = t_fold_index
 
         self.train_data = None
         self.test_data = None
