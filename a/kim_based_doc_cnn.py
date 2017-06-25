@@ -65,26 +65,19 @@ class DocCNN(object):
         with tf.name_scope("dropout-keep"):
             self.h_drop = tf.nn.dropout(self.h_pool_flat, self.dropout_keep_prob)
 
-        with tf.name_scope("fc"):
-            doc_fc_w = tf.Variable(initial_value=fc_w, name="fc_W", trainable=False)  # to be init
-            doc_fc_b = tf.Variable(initial_value=fc_b, name="fc_b", trainable=False)  # to be init
+        # Final (unnormalized) scores and predictions
+        with tf.name_scope("output"):
+            doc_fc_w = tf.Variable(initial_value=fc_w, name="fc_W")  # to be init
+            doc_fc_b = tf.Variable(initial_value=fc_b, name="fc_b")  # to be init
             flat_sent_features = tf.reshape(self.h_drop, [-1, num_filters_total])
             flat_sent_features = tf.matmul(flat_sent_features, doc_fc_w)
             flat_sent_features = tf.add(flat_sent_features, doc_fc_b)
             h = tf.reshape(flat_sent_features, [-1, doc_length, num_classes])  # [64, 400, 20]
-            flat_h = tf.reshape(h, [-1, doc_length * num_classes])
 
-        # Final (unnormalized) scores and predictions
-        with tf.name_scope("output"):
-            # W = tf.Variable(tf.truncated_normal([num_filters_total, num_classes], stddev=0.1), name="W")
-            word_cnn_w = tf.get_variable(
-                "W",
-                shape=[doc_length * num_classes, num_classes],
-                initializer=tf.contrib.layers.xavier_initializer())
-            doc_fc_b = tf.Variable(tf.constant(0.1, shape=[num_classes]), name="b")
-            l2_loss += tf.nn.l2_loss(word_cnn_w)
+            self.scores = tf.reduce_max(h, axis=1, keep_dims=False, name="scores")
+
+            l2_loss += tf.nn.l2_loss(doc_fc_w)
             l2_loss += tf.nn.l2_loss(doc_fc_b)
-            self.scores = tf.nn.xw_plus_b(flat_h, word_cnn_w, doc_fc_b, name="scores")
             self.predictions_sigmoid = tf.sigmoid(self.scores, name="predictions_sigmoid")
             self.predictions_max = tf.argmax(self.scores, 1, name="predictions_max")  # 3333333333333333333333333
             print("Prediction shape: " + str(self.predictions_sigmoid.get_shape()))
