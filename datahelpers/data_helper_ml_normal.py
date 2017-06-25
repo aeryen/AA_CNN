@@ -15,13 +15,14 @@ class DataHelperMLNormal(DataHelperML):
     Record = collections.namedtuple('Record', ['file', 'author', 'content'])
     problem_name = "ML"
 
-    def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, train_csv_file="labels.csv",
-                 total_fold=None, t_fold_index=None):
+    def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, total_fold, t_fold_index,
+                 train_csv_file="labels.csv"):
         logging.info("Data Helper: " + __file__ + " initiated.")
 
-        super(DataHelperML, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
-                                           target_doc_len=target_doc_len, target_sent_len=target_sent_len,
-                                           total_fold=total_fold, t_fold_index=t_fold_index)
+        super(DataHelperMLNormal, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
+                                                 target_doc_len=target_doc_len, target_sent_len=target_sent_len,
+                                                 total_fold=total_fold, t_fold_index=t_fold_index,
+                                                 train_csv_file=train_csv_file)
 
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/ml_mulmol/')
         self.train_label_file_path = self.training_data_dir + "_new_label/" + train_csv_file
@@ -38,7 +39,7 @@ class DataHelperMLNormal(DataHelperML):
         self.embed_matrix = self.build_embedding(self.vocab_inv)
 
         if self.doc_level_data == LoadMethod.COMB:
-            all_data = self.comb_all_doc(all_data)
+            all_data = self.comb_all_doc(all_data)  # TODO
 
         all_data = self.build_content_vector(all_data)
         all_data = self.pad_sentences(all_data)
@@ -54,43 +55,11 @@ class DataHelperMLNormal(DataHelperML):
             train_data = self.flatten_doc_to_sent(train_data)
             test_data = self.flatten_doc_to_sent(test_data)
         elif self.doc_level_data == LoadMethod.DOC:
-            train_data.label_instance = train_data.label_doc  # TODO
+            train_data.label_instance = train_data.label_doc
             test_data.label_instance = test_data.label_doc
 
         self.train_data = train_data
         self.test_data = test_data
-
-    def get_comb_count(self, x):
-        n = int(len(x) / 50)
-        print("n = " + str(n))
-        if len(x) - (n * 50) > 0:
-            n += 1
-        return n
-
-    def multi_sent_combine(self, x):
-        n = self.get_comb_count(x)
-        comb_list = []
-        for i in range(n):
-            comb_list.append(x[i*50:(i+1)*50])
-        return comb_list
-
-    def comb_all_doc(self, data):
-        x_comb = []
-        label_comb = []
-        comb_size = []
-
-        [comb_size.append(self.get_comb_count(doc)) for doc in data.raw]
-        [x_comb.extend(self.multi_sent_combine(doc)) for doc in data.raw]
-
-        for comb_index in range(len(data.raw)):
-            label_comb.extend(np.tile(data.label_doc[comb_index], [comb_size[comb_index], 1]))
-            print("number of comb in document: " + str(comb_size[comb_index]))
-
-        data.raw = x_comb
-        data.label_instance = label_comb
-        data.comb_size = comb_size
-    
-        return x_comb, label_comb, comb_size
 
     def get_train_data(self):
         return [self.train_data, self.vocab, self.vocab_inv, self.embed_matrix]

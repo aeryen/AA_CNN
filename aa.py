@@ -2,6 +2,7 @@ from timeit import default_timer as timer
 # from datahelpers.data_helper_ml_mulmol6_OnTheFly import DataHelperMulMol6
 from datahelpers.data_helper_ml_normal import DataHelperMLNormal
 from datahelpers.data_helper_ml_2chan import DataHelperML_2CH
+from datahelpers.data_helper_ml_mulmol6_OnTheFly import DataHelperMLFly
 from trainer import TrainTaskLite as tr
 from evaluators import eval_ml_mulmol_d as evaler
 from evaluators import eval_ml_origin as evaler_one
@@ -45,7 +46,7 @@ if __name__ == "__main__":
     # * PureRNN
     ################################################
 
-    input_component = "ML_One"
+    input_component = "ML_FLY"
     middle_component = "ORIGIN_KIM"
     truth_file = "labels.csv"
 
@@ -57,6 +58,11 @@ if __name__ == "__main__":
         dater = DataHelperMLNormal(doc_level=LoadMethod.SENT, embed_type="glove",
                                    embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file=truth_file,
                                    total_fold=5, t_fold_index=0)
+        ev = evaler_one.Evaluator()
+    if input_component == "ML_FLY":
+        dater = DataHelperMLFly(doc_level=LoadMethod.SENT, embed_type="glove",
+                                embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file=truth_file,
+                                total_fold=5, t_fold_index=0)
         ev = evaler_one.Evaluator()
     elif input_component == "ML_2CH":
         dater = DataHelperML_2CH(doc_level="sent", num_fold=5, fold_index=0,

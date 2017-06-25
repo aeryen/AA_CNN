@@ -128,9 +128,10 @@ class Evaluator:
                 # print("========== WITH MAX ==========")
                 # self.doc_accuracy(pred_max)
                 # print("========== WITH SIGMOID ==========")
-                # self.doc_accuracy(pred_sigmoid)
+                self.eval_log.write("========== WITH SIGMOID ==========\n\n")
+                self.doc_accuracy(pred_sigmoid)
 
-                self.doc_accuracy_score_cumulation(all_score)
+                # self.doc_accuracy_score_cumulation(all_score)
 
             self.eval_log.write("\n")
             self.eval_log.write("\n")
@@ -187,6 +188,8 @@ class Evaluator:
         self.eval_log.write("Doc ACC: " + str(doc_acc) + "\n\n")
 
     def doc_accuracy(self, all_predictions):
+        self.eval_log.write(" ### Document Accuracy ### \n")
+
         np.set_printoptions(precision=2, linewidth=160)
         doc_prediction = []
         sum_to = 0
@@ -198,7 +201,7 @@ class Evaluator:
             p = p / f_size
             print("file " + str(i) + " : " + str(p))
             pred_class = p >= 0.30
-            pred_class = pred_class.astype(float)
+            pred_class = pred_class.astype(int)
             if 1 not in pred_class:
                 pred_class = np.zeros([self.dater.num_of_classes], dtype=np.int)
                 pred_class[np.argmax(p)] = 1
@@ -268,7 +271,8 @@ if __name__ == "__main__":
     mode = "ML_One"  # ML_One / ML_2CH / PAN11
     if mode == "ML_One":
         dater = DataHelperMLNormal(doc_level=LoadMethod.SENT, embed_type="glove",
-                                   embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv")
+                                   embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv",
+                                   total_fold=5, t_fold_index=0)
     elif mode == "ML_2CH":
         dater = DataHelperML_2CH(doc_level="sent", embed_dim=300,
                                  target_doc_len=400, target_sent_len=50,
