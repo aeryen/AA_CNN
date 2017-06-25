@@ -10,15 +10,19 @@ import errno
 
 
 class DataHelperML(DataHelper):
-    def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len, train_csv_file,
-                 data_dir="ml_mulmol"):
+    def __init__(self, doc_level, embed_type, embed_dim, target_doc_len, target_sent_len,
+                 total_fold, t_fold_index, train_csv_file, data_dir="ml_mulmol"):
         super(DataHelperML, self).__init__(doc_level=doc_level, embed_type=embed_type, embed_dim=embed_dim,
-                                           target_doc_len=target_doc_len, target_sent_len=target_sent_len)
+                                           target_doc_len=target_doc_len, target_sent_len=target_sent_len,
+                                           total_fold=total_fold, t_fold_index=t_fold_index)
 
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/' + data_dir + '/')
         self.train_label_file_path = self.training_data_dir + "_new_label/" + train_csv_file
         self.val_label_file_path = self.training_data_dir + "_new_label/val.csv"
         self.test_label_file_path = self.training_data_dir + "_new_label/test.csv"
+
+        self.train_data = None
+        self.test_data = None
 
     def temp_write_channel_file(self, author_code, file_name, file_text_content):
         fm = featuremaker.FeatureMaker(file_text_content)
@@ -155,4 +159,34 @@ class DataHelperML(DataHelper):
 
         return data
 
+    def get_comb_count(self, x):
+        n = int(len(x) / 50)
+        print("n = " + str(n))
+        if len(x) - (n * 50) > 0:
+            n += 1
+        return n
 
+    def multi_sent_combine(self, x):
+        n = self.get_comb_count(x)
+        comb_list = []
+        for i in range(n):
+            comb_list.append(x[i * 50:(i + 1) * 50])
+        return comb_list
+
+    def comb_all_doc(self, data):
+        x_comb = []
+        label_comb = []
+        comb_size = []
+
+        [comb_size.append(self.get_comb_count(doc)) for doc in data.raw]
+        [x_comb.extend(self.multi_sent_combine(doc)) for doc in data.raw]
+
+        for comb_index in range(len(data.raw)):
+            label_comb.extend(np.tile(data.label_doc[comb_index], [comb_size[comb_index], 1]))
+            print("number of comb in document: " + str(comb_size[comb_index]))
+
+        data.raw = x_comb
+        data.label_instance = label_comb
+        data.comb_size = comb_size
+
+        return x_comb, label_comb, comb_size
