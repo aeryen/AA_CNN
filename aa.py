@@ -46,7 +46,7 @@ if __name__ == "__main__":
     # * PureRNN
     ################################################
 
-    input_component = "ML_FLY"
+    input_component = "ML_One"
     middle_component = "ORIGIN_KIM"
     truth_file = "labels.csv"
 
@@ -59,7 +59,7 @@ if __name__ == "__main__":
                                    embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file=truth_file,
                                    total_fold=5, t_fold_index=0)
         ev = evaler_one.Evaluator()
-    if input_component == "ML_FLY":
+    elif input_component == "ML_FLY":
         dater = DataHelperMLFly(doc_level=LoadMethod.SENT, embed_type="glove",
                                 embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file=truth_file,
                                 total_fold=5, t_fold_index=0)

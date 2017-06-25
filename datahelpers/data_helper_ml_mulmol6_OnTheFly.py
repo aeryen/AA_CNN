@@ -6,7 +6,7 @@ import logging
 import pkg_resources
 import numpy as np
 
-from utils import featuremaker
+# from utils import featuremaker
 from datahelpers.DataHelperML import DataHelperML
 from datahelpers.Data import LoadMethod
 from datahelpers.Data import AAData
