@@ -67,6 +67,7 @@ class Evaluator:
                 # Get the placeholders from the graph by name
                 input_x = graph.get_operation_by_name("input_x").outputs[0]
                 input_y = graph.get_operation_by_name("input_y").outputs[0]
+                input_doc_len = graph.get_operation_by_name("doc_len").outputs[0]
                 dropout_keep_prob = graph.get_operation_by_name("dropout_keep_prob").outputs[0]
                 if do_is_training:
                     is_training = graph.get_operation_by_name("is_training").outputs[0]
@@ -81,21 +82,22 @@ class Evaluator:
                 # Generate batches for one epoch
                 x_batches = DataHelper.batch_iter(self.test_data.value, 10, 1, shuffle=False)
                 y_batches = DataHelper.batch_iter(self.test_data.label_instance, 10, 1, shuffle=False)
+                doclen_batches = DataHelper.batch_iter(self.test_data.doc_size, 10, 1, shuffle=False)
 
                 # Collect the predictions here
                 all_score = None
                 pred_max = None
                 pred_sigmoid = None
-                for [x_test_batch, y_test_batch] in zip(x_batches, y_batches):
+                for [x_test_batch, y_test_batch, len_test_batch] in zip(x_batches, y_batches, doclen_batches):
                     if do_is_training:
                         batch_scores, batch_pred_sigmoid, batch_pred_max = sess.run(
                             [scores, predictions_sigmoid, predictions_max],
-                            {input_x: x_test_batch, dropout_keep_prob: 1.0,
+                            {input_x: x_test_batch, input_doc_len: len_test_batch, dropout_keep_prob: 1.0,
                              is_training: 0})
                     else:
                         batch_scores, batch_pred_sigmoid, batch_pred_max = sess.run(
                             [scores, predictions_sigmoid, predictions_max],
-                            {input_x: x_test_batch, dropout_keep_prob: 1.0})
+                            {input_x: x_test_batch, input_doc_len: len_test_batch, dropout_keep_prob: 1.0})
 
                     batch_pred_max = tf.one_hot(indices=batch_pred_max,
                                                 depth=self.dater.num_of_classes).eval() == 1  # TODO temp
@@ -117,7 +119,7 @@ class Evaluator:
     def sent_accuracy(self, all_predictions_sigmoid):
         np.set_printoptions(precision=2, linewidth=160, suppress=True)
 
-        all_predictions_bool = all_predictions_sigmoid > 0.5
+        all_predictions_bool = all_predictions_sigmoid >= 0.25
         pred_num = all_predictions_bool.astype(int)
 
         test_label_bool = np.array(self.test_data.label_instance) == 1

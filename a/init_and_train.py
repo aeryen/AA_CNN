@@ -13,15 +13,15 @@ doc_len = 400
 sent_len = 50
 num_class = 20
 batch_size = 10
-dropout_keep_prob = 0.8
+dropout_keep_prob = 0.5
 evaluate_every = 10
 checkpoint_every = 15
-n_steps = 150
+n_steps = 200
 out_dir = am.get_exp_dir()
-experiment_dir = "E:\\Research\\Paper 03\\AA_CNN_github\\runs\\ML_One_ORIGIN_NEW\\170613_1497377078_labels.csv"
+experiment_dir = "E:\\Research\\Paper 03\\AA_CNN_github\\runs\\ML_One_ORIGIN_KIM\\170625_1498377575_labels.csv"
 
 data_hlp = DataHelperMLNormal(doc_level=LoadMethod.DOC, embed_type="glove",
-                              embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv",
+                              embed_dim=300, target_sent_len=50, target_doc_len=1000, train_csv_file="labels.csv",
                               total_fold=5, t_fold_index=0)
 train_data, vocab, vocab_inv, embed_matrix = data_hlp.get_train_data()
 test_data, _, _ = data_hlp.get_test_data()
@@ -65,7 +65,7 @@ with graph.as_default():
         word_vocab_size=len(data_hlp.vocab),
         embedding_size=data_hlp.embedding_dim,
         filter_sizes=[3, 4, 5],
-        num_filters=100,
+        num_filters=80,
         l2_reg_lambda=0.1,
         init_embedding=emb_matrix,
         init_filter_w=filter_w,
@@ -120,7 +120,6 @@ with graph.as_default():
         # Initialize all variables
         sess.run(tf.global_variables_initializer())
 
-
     def train_step(x_batch, y_batch, len_batch):
         """
         A single training step
@@ -137,7 +136,6 @@ with graph.as_default():
         time_str = datetime.datetime.now().isoformat()
         print(("{}: step {}, loss {:g}, acc {:g}, acc_max {:g}".format(time_str, step, loss, accuracy, acc_max)))
         train_summary_writer.add_summary(summaries, step)
-
 
     def dev_step(x_batch, y_batch, len_batch, writer=None):
         """
@@ -157,10 +155,10 @@ with graph.as_default():
         if writer:
             writer.add_summary(summaries, step)
 
-
     # Generate batches
-    batches = DataHelperMLNormal.batch_iter(list(zip(train_data.value, train_data.label_instance, train_data.doc_size)),
-                                            batch_size, num_epochs=300)
+    batches = DataHelperMLNormal.batch_iter(
+        list(zip(train_data.value, train_data.label_instance, train_data.doc_size_trim)),
+        batch_size, num_epochs=300)
 
     # Training loop. For each batch...
     for batch in batches:
@@ -170,8 +168,9 @@ with graph.as_default():
         current_step = tf.train.global_step(sess, global_step)
         if current_step % evaluate_every == 0:
             print("\nEvaluation:")
-            dev_batches = DataHelperMLNormal.batch_iter(list(zip(test_data.value, test_data.label_instance, train_data.doc_size)),
-                                                        batch_size, 1)
+            dev_batches = DataHelperMLNormal.batch_iter(
+                list(zip(test_data.value, test_data.label_instance, train_data.doc_size_trim)),
+                batch_size, 1)
             for dev_batch in dev_batches:
                 if len(dev_batch) > 0:
                     small_dev_x, small_dev_y, len_batch = list(zip(*dev_batch))

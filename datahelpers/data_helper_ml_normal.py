@@ -45,9 +45,9 @@ class DataHelperMLNormal(DataHelperML):
         all_data = self.pad_sentences(all_data)
 
         if self.doc_level_data == LoadMethod.COMB:
-            all_data.value = self.pad_document(all_data.value, 50)  # TODO 50
+            all_data = self.pad_document(all_data, 50)  # TODO 50
         elif self.doc_level_data == LoadMethod.DOC:
-            all_data.value = self.pad_document(all_data.value, target_length=self.target_doc_len)
+            all_data = self.pad_document(all_data, target_length=self.target_doc_len)
 
         [train_data, test_data] = DataHelperML.split_by_fold_2(self.total_fold, self.t_fold_index, all_data)
 

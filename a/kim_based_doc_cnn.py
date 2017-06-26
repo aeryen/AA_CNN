@@ -74,7 +74,8 @@ class DocCNN(object):
             flat_sent_features = tf.add(flat_sent_features, doc_fc_b)
             h = tf.reshape(flat_sent_features, [-1, doc_length, num_classes])  # [64, 400, 20]
 
-            self.scores = tf.reduce_max(h, axis=1, keep_dims=False, name="scores")
+            self.scores = tf.reduce_sum(h, axis=1, keep_dims=False, name="scores")
+            self.scores = self.scores / tf.tile(tf.expand_dims(self.doc_len, axis=-1), [1, num_classes])
 
             l2_loss += tf.nn.l2_loss(doc_fc_w)
             l2_loss += tf.nn.l2_loss(doc_fc_b)

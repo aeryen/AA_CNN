@@ -107,7 +107,7 @@ class DataHelperML(DataHelper):
                         index = data.file_id.index(file_name)
                         file_content = DataHelperML.load_raw_file(data_dir=self.training_data_dir,
                                                                   author_name=author, file_name=file_name)
-                        self.temp_write_channel_file(author, file_name, file_content)
+                        # self.temp_write_channel_file(author, file_name, file_content)
                         origin_list[index] = file_content
                         doc_size[index] = len(file_content)
 

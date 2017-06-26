@@ -336,15 +336,17 @@ class DataHelper(object):
             data.value = np.array(padded_docs)
         return data
 
-    def pad_document(self, docs, target_length=-1):
+    def pad_document(self, data, target_length=-1):
+        docs = data.value
+        lens = data.doc_size
         if target_length > 0:
             tar_length = target_length
         else:
-            doc_lengths = [len(d) for d in docs]
-            tar_length = max(doc_lengths)
+            tar_length = max(lens)
             print("longest doc: " + str(tar_length))
 
         padded_doc = []
+        trim_len = []
         sent_length = len(docs[0][0])
         for i in range(len(docs)):
             d = docs[i]
@@ -352,12 +354,18 @@ class DataHelper(object):
                 num_padding = tar_length - len(d)
                 if len(d) > 0:
                     new_doc = np.concatenate([d, np.zeros([num_padding, sent_length], dtype=np.int)])
+                    trim_len.append(lens[i])
                 else:
+                    print("Warning, 0 line file!")
                     new_doc = np.zeros([num_padding, sent_length], dtype=np.int)
+                    trim_len.append(lens[i])
             else:
                 new_doc = d[:tar_length]
+                trim_len.append(tar_length)
             padded_doc.append(new_doc)
-        return np.array(padded_doc)
+        data.value = np.array(padded_doc)
+        data.doc_size_trim = np.array(trim_len)
+        return data
 
     @staticmethod
     def flatten_doc_to_sent(data):
