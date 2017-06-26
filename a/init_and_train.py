@@ -9,7 +9,7 @@ from utils.ArchiveManager import ArchiveManager
 
 am = ArchiveManager("ML", "doc_test", truth_file=None)
 
-doc_len = 400
+doc_len = 1000
 sent_len = 50
 num_class = 20
 batch_size = 10
@@ -21,7 +21,7 @@ out_dir = am.get_exp_dir()
 experiment_dir = "E:\\Research\\Paper 03\\AA_CNN_github\\runs\\ML_One_ORIGIN_KIM\\170625_1498377575_labels.csv"
 
 data_hlp = DataHelperMLNormal(doc_level=LoadMethod.DOC, embed_type="glove",
-                              embed_dim=300, target_sent_len=50, target_doc_len=1000, train_csv_file="labels.csv",
+                              embed_dim=300, target_sent_len=50, target_doc_len=doc_len, train_csv_file="labels.csv",
                               total_fold=5, t_fold_index=0)
 train_data, vocab, vocab_inv, embed_matrix = data_hlp.get_train_data()
 test_data, _, _ = data_hlp.get_test_data()
@@ -169,7 +169,7 @@ with graph.as_default():
         if current_step % evaluate_every == 0:
             print("\nEvaluation:")
             dev_batches = DataHelperMLNormal.batch_iter(
-                list(zip(test_data.value, test_data.label_instance, train_data.doc_size_trim)),
+                list(zip(test_data.value, test_data.label_instance, test_data.doc_size_trim)),
                 batch_size, 1)
             for dev_batch in dev_batches:
                 if len(dev_batch) > 0:

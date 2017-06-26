@@ -288,12 +288,14 @@ class DataHelper(object):
                 test_data.value.append(data.value[i])
                 test_data.label_doc.append(data.label_doc[i])
                 test_data.doc_size.append(data.doc_size[i])
+                test_data.doc_size_trim.append(data.doc_size_trim[i])
             else:
                 train_data.file_id.append(data.file_id[i])
                 train_data.raw.append(data.raw[i])
                 train_data.value.append(data.value[i])
                 train_data.label_doc.append(data.label_doc[i])
                 train_data.doc_size.append(data.doc_size[i])
+                train_data.doc_size_trim.append(data.doc_size_trim[i])
 
         return [train_data, test_data]
 
