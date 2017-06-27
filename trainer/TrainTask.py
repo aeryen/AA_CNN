@@ -18,8 +18,8 @@ class TrainTask:
     Currently it only- works with ML data, i'll expand this to be more flexible in the near future.
     """
 
-    def __init__(self, data_helper, am, input_component, exp_name, batch_size=64,
-                 evaluate_every=1000, checkpoint_every=5000, max_to_keep=7):
+    def __init__(self, data_helper, am, input_component, exp_name, batch_size,
+                 evaluate_every, checkpoint_every, max_to_keep):
         self.data_hlp = data_helper
         self.exp_name = exp_name
         self.input_component = input_component
@@ -41,47 +41,17 @@ class TrainTask:
         logging.info("setting: %s is %s", "evaluate_every", self.evaluate_every)
         logging.info("setting: %s is %s", "checkpoint_every", self.checkpoint_every)
 
-        self.pref2_vocab_size = None
-        self.pref3_vocab_size = None
-        self.suff2_vocab_size = None
-        self.suff3_vocab_size = None
-        self.pos_vocab_size = None
+        self.train_data = self.data_hlp.get_train_data()
+        self.test_data = self.data_hlp.get_test_data()
 
-        # Load data
-        logging.debug("Loading data...")
-        if "Six" in input_component:
-            self.x_train, self.pos_train, _, self.p2_train, self.p3_train, self.s2_train, self.s3_train, self.y_train, \
-            _, _, self.embed_matrix_glv = self.data_hlp.get_train_data()
-            self.pref2_vocab_size = len(self.data_hlp.p2_vocab)
-            self.pref3_vocab_size = len(self.data_hlp.p3_vocab)
-            self.suff2_vocab_size = len(self.data_hlp.s2_vocab)
-            self.suff3_vocab_size = len(self.data_hlp.s3_vocab)
-            self.pos_vocab_size = len(self.data_hlp.pos_vocab)
-        elif "One" in input_component:
-            self.x_train, self.y_train, _, _, self.embed_matrix_glv, self.embed_matrix_w2v = self.data_hlp.get_train_data()
-        elif "2CH" in input_component:
-            self.x_train, self.y_train, _, _, self.embed_matrix_glv, self.embed_matrix_w2v = self.data_hlp.get_train_data()
-        elif "PAN11" in input_component:
-            self.x_train, self.y_train, _, _, self.embed_matrix_glv, self.embed_matrix_w2v = self.data_hlp.get_train_data()
-        else:
-            raise NotImplementedError
+        logging.info("Vocabulary Size: {:d}".format(len(self.train_data.vocab)))
+        logging.info("Train/Dev split (DOC): {:d}/{:d}".
+                     format(len(self.train_data.file_id), len(self.train_data.file_id)))
+        logging.info("Train/Dev split (IST): {:d}/{:d}".
+                     format(len(self.train_data.label_instance), len(self.train_data.label_instance)))
 
-        logging.debug("Vocabulary Size: {:d}".format(len(self.data_hlp.vocab)))
-
-        if "Six" in input_component:
-            self.x_dev, self.pos_test, _, self.p2_test, self.p3_test, \
-                self.s2_test, self.s3_test, self.y_dev, _, _, _ = self.data_hlp.get_test_data()
-        elif "One" or "2CH" in input_component:
-            self.x_dev, self.y_dev, _, _, _ = self.data_hlp.get_test_data()
-        elif "PAN11" in input_component:
-            self.x_dev, self.y_dev, _, _, _ = self.data_hlp.get_test_data()
-        else:
-            raise NotImplementedError
-
-        logging.info("Train/Dev split: {:d}/{:d}".format(len(self.y_train), len(self.y_dev)))
-
-    def training(self, filter_sizes=[[3, 4, 5]], num_filters=100, dropout_keep_prob=1.0, n_steps=None, l2_lambda=0.0,
-                 dropout=False, batch_normalize=False, elu=False, n_conv=1, fc=[]):
+    def training(self, filter_sizes, num_filters, dropout_keep_prob, n_steps, l2_lambda,
+                 dropout, batch_normalize, elu, n_conv, fc):
         logging.info("setting: %s is %s", "filter_sizes", filter_sizes)
         logging.info("setting: %s is %s", "num_filters", num_filters)
         logging.info("setting: %s is %s", "dropout_keep_prob", dropout_keep_prob)
@@ -93,33 +63,20 @@ class TrainTask:
         logging.info("setting: %s is %s", "n_conv", n_conv)
         logging.info("setting: %s is %s", "fc", fc)
 
-        if "DocLevel" in self.input_component:
-            doc_length = self.x_train.shape[2]
-        else:
-            doc_length = None
-            
         with tf.Graph().as_default():
             session_conf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
             sess = tf.Session(config=session_conf)
             cnn = TextCNN(
-                document_length=doc_length,
-                sequence_length=self.x_train.shape[1],
+                data=self.train_data,
+                document_length=self.data_hlp.target_doc_len,
+                sequence_length=self.data_hlp.target_sent_len,
                 num_classes=self.data_hlp.num_of_classes,  # Number of classification classes
-                word_vocab_size=len(self.data_hlp.vocab),
                 embedding_size=self.data_hlp.embedding_dim,
                 input_component=self.input_component,
                 middle_component=self.exp_name,
                 filter_sizes=filter_sizes,
                 num_filters=num_filters,
-                pref2_vocab_size=self.pref2_vocab_size,
-                pref3_vocab_size=self.pref3_vocab_size,
-                suff2_vocab_size=self.suff2_vocab_size,
-                suff3_vocab_size=self.suff3_vocab_size,
-                pos_vocab_size=self.pos_vocab_size,
-                dataset=self.data_hlp.problem_name,
                 l2_reg_lambda=l2_lambda,
-                init_embedding_glv=self.embed_matrix_glv,
-                init_embedding_w2v=self.embed_matrix_w2v,
                 dropout=dropout,
                 batch_normalize=batch_normalize,
                 elu=elu,
@@ -131,7 +88,7 @@ class TrainTask:
 
                 global_step = tf.Variable(0, name="global_step", trainable=False)
 
-                if batch_normalize == True:
+                if batch_normalize:
                     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
                     with tf.control_dependencies(update_ops):
                         optimizer = tf.train.AdamOptimizer(1e-3)
@@ -274,10 +231,10 @@ class TrainTask:
 
             # Generate batches
             if "One" in self.input_component or "2CH" in self.input_component or "PAN11" in self.input_component:
-                batches = dh.DataHelperML.batch_iter(list(zip(self.x_train, self.y_train)), self.batch_size,
+                batches = dh.DataHelperML.batch_iter(list(zip(self.train_data.value, self.train_data.label_instance)), self.batch_size,
                                                      num_epochs=300)
             elif "Six" in self.input_component:
-                batches = dh.DataHelperML.batch_iter(list(zip(self.x_train, self.y_train, self.p2_train, self.p3_train,
+                batches = dh.DataHelperML.batch_iter(list(zip(self.train_data, self.y_train, self.p2_train, self.p3_train,
                                                               self.s2_train, self.s3_train, self.pos_train)),
                                                      self.batch_size, num_epochs=300)
             else:
@@ -297,14 +254,14 @@ class TrainTask:
                 if current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")
                     if "One" in self.input_component or "2CH" in self.input_component or "2CH" in self.input_component:
-                        dev_batches = dh.DataHelperML.batch_iter(list(zip(self.x_dev, self.y_dev)), self.batch_size, 1)
+                        dev_batches = dh.DataHelperML.batch_iter(list(zip(self.test_data.value, self.test_data.label_instance)), self.batch_size, 1)
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:
                                 small_dev_x, small_dev_y = list(zip(*dev_batch))
                                 dev_step(small_dev_x, small_dev_y, writer=dev_summary_writer)
                                 print("")
                     elif "Six" in self.input_component:
-                        dev_batches = dh6.DataHelperMulMol6.batch_iter(list(zip(self.x_dev, self.y_dev, self.p2_test,
+                        dev_batches = dh6.DataHelperMulMol6.batch_iter(list(zip(self.test_data, self.y_dev, self.p2_test,
                                                                                 self.p3_test, self.s2_test,
                                                                                 self.s3_test, self.pos_test)),
                                                                        self.batch_size, 1)

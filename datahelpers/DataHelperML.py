@@ -91,7 +91,7 @@ class DataHelperML(DataHelper):
         authors, file_ids, label_matrix = DataHelperML.load_csv(csv_file_path=csv_file)
         self.num_of_classes = len(authors)
 
-        data = AAData(size=len(file_ids))
+        data = AAData(name="ML", size=len(file_ids))
         data.file_id = file_ids
 
         origin_list = [None] * data.size
@@ -132,7 +132,7 @@ class DataHelperML(DataHelper):
         authors, file_ids, label_matrix = DataHelper.load_csv(csv_file_path=csv_file)
         self.num_of_classes = len(authors)
 
-        data = AAData(size=len(file_ids))
+        data = AAData(name="ML", size=len(file_ids))
         data.file_id = file_ids
 
         origin_list = [None] * data.size

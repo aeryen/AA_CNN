@@ -3,7 +3,7 @@ from timeit import default_timer as timer
 from datahelpers.data_helper_ml_normal import DataHelperMLNormal
 from datahelpers.data_helper_ml_2chan import DataHelperML2CH
 from datahelpers.data_helper_ml_mulmol6_OnTheFly import DataHelperMLFly
-from trainer import TrainTaskLite as tr
+from trainer import TrainTask as tr
 from evaluators import eval_ml_mulmol_d as evaler
 from evaluators import eval_ml_origin as evaler_one
 from utils.ArchiveManager import ArchiveManager
@@ -46,13 +46,14 @@ if __name__ == "__main__":
     # * PureRNN
     ################################################
 
-    input_component = "ML_One"
-    middle_component = "ORIGIN_KIM"
+    input_component = "ML_2CH"
+    middle_component = "NCrossSizeParallelConvNFC"
     truth_file = "labels.csv"
 
     am = ArchiveManager(input_component, middle_component, truth_file=truth_file)
     get_exp_logger(am)
     logging.warning('===================================================')
+    logging.debug("Loading data...")
 
     if input_component == "ML_One":
         dater = DataHelperMLNormal(doc_level=LoadMethod.SENT, embed_type="glove",
@@ -65,7 +66,7 @@ if __name__ == "__main__":
                                 total_fold=5, t_fold_index=0)
         ev = evaler_one.Evaluator()
     elif input_component == "ML_2CH":
-        dater = DataHelperML2CH(doc_level=LoadMethod.SENT, embed_type="glove",
+        dater = DataHelperML2CH(doc_level=LoadMethod.SENT, embed_type="both",
                                 embed_dim=300, target_sent_len=50, target_doc_len=None, train_csv_file=truth_file,
                                 total_fold=5, t_fold_index=0)
         ev = evaler_one.Evaluator()
@@ -81,11 +82,11 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                      batch_size=64, evaluate_every=1000, checkpoint_every=5000)
+                      batch_size=64, evaluate_every=1000, checkpoint_every=5000, max_to_keep=7)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    tt.training(filter_sizes=[3, 4, 5], num_filters=100, dropout_keep_prob=0.8, n_steps=80000, l2_lambda=0.1,
+    tt.training(filter_sizes=[[3, 4, 5]], num_filters=100, dropout_keep_prob=0.8, n_steps=80000, l2_lambda=0.1,
                 dropout=True, batch_normalize=False, elu=False, n_conv=1, fc=[])
     end = timer()
     print((end - start))

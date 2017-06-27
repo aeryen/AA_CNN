@@ -23,7 +23,6 @@ class DataHelper(object):
         assert doc_level is not None
         assert embed_type is not None
         assert embed_dim is not None
-        assert target_doc_len is not None
         assert target_sent_len is not None
 
         self.num_of_classes = None
@@ -54,6 +53,18 @@ class DataHelper(object):
         elif self.embed_type == "both":
             [self.glove_words, self.glove_vectors] = self.load_glove_vector()
             self.w2v_model = self.load_w2v_vector()
+
+    def get_train_data(self):
+        return self.train_data
+
+    def get_test_data(self):
+        return self.test_data
+
+    def get_vocab(self):
+        return self.vocab
+
+    def get_vocab_inv(self):
+        return self.vocab_inv
 
     @staticmethod
     def clean_str(string):
@@ -277,9 +288,9 @@ class DataHelper(object):
         if test_items[-1] > data.size:
             test_items.pop(-1)
 
-        train_data = AAData(size=data.size - len(test_items))
+        train_data = AAData(name=data.name, size=data.size - len(test_items))
         train_data.init_empty_list()
-        test_data = AAData(size=len(test_items))
+        test_data = AAData(name=data.name, size=len(test_items))
         test_data.init_empty_list()
         for i in range(data.size):
             if i in test_items:
@@ -288,14 +299,16 @@ class DataHelper(object):
                 test_data.value.append(data.value[i])
                 test_data.label_doc.append(data.label_doc[i])
                 test_data.doc_size.append(data.doc_size[i])
-                test_data.doc_size_trim.append(data.doc_size_trim[i])
+                if data.doc_size_trim is not None:
+                    test_data.doc_size_trim.append(data.doc_size_trim[i])
             else:
                 train_data.file_id.append(data.file_id[i])
                 train_data.raw.append(data.raw[i])
                 train_data.value.append(data.value[i])
                 train_data.label_doc.append(data.label_doc[i])
                 train_data.doc_size.append(data.doc_size[i])
-                train_data.doc_size_trim.append(data.doc_size_trim[i])
+                if data.doc_size_trim is not None:
+                    train_data.doc_size_trim.append(data.doc_size_trim[i])
 
         return [train_data, test_data]
 

@@ -55,10 +55,11 @@ class DataHelperMLNormal(DataHelperML):
             test_data.label_instance = test_data.label_doc
 
         self.train_data = train_data
+        self.train_data.embed_matrix = self.embed_matrix
+        self.train_data.vocab = self.vocab
+        self.train_data.vocab_inv = self.vocab_inv
         self.test_data = test_data
+        self.test_data.embed_matrix = self.embed_matrix
+        self.test_data.vocab = self.vocab
+        self.test_data.vocab_inv = self.vocab_inv
 
-    def get_train_data(self):
-        return [self.train_data, self.vocab, self.vocab_inv, self.embed_matrix]
-
-    def get_test_data(self):
-        return [self.test_data, self.vocab, self.vocab_inv]

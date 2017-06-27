@@ -32,6 +32,8 @@ class DataHelperML2CH(DataHelperML):
         self.val_label_file_path = self.training_data_dir + "_new_label/val.csv"
         self.test_label_file_path = self.training_data_dir + "_new_label/test.csv"
 
+        self.load_data()
+
     def load_data(self):
         # o = DataHelper(file_to_load)
         all_file_csv_path = self.training_data_dir + "_old_label/labels.csv"
@@ -62,12 +64,12 @@ class DataHelperML2CH(DataHelperML):
             test_data.label_instance = test_data.label_doc
 
         self.train_data = train_data
+        self.train_data.embed_matrix = self.embed_matrix_glv
+        self.train_data.embed_matrix_w2v = self.embed_matrix_glv
+        self.train_data.vocab = self.vocab
+        self.train_data.vocab_inv = self.vocab_inv
         self.test_data = test_data
-
-    def get_train_data(self):
-        return [self.train_data, self.vocab, self.vocab_inv, self.embed_matrix_glv, self.embed_matrix_w2v]
-
-    def get_test_data(self):
-        return [self.test_data, self.vocab, self.vocab_inv]
-
-
+        self.test_data.embed_matrix = self.embed_matrix_glv
+        self.test_data.embed_matrix_w2v = self.embed_matrix_glv
+        self.test_data.vocab = self.vocab
+        self.test_data.vocab_inv = self.vocab_inv

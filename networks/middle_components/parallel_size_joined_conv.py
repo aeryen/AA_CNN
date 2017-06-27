@@ -98,11 +98,11 @@ class NCrossSizeParallelConvNFC(object):
             with tf.variable_scope("dropout-keep"):
                 self.last_layer = tf.nn.dropout(self.last_layer, previous_component.dropout_keep_prob)
 
-        self._gru(self.n_nodes_last_layer, num_layers=1, bidirectional=True, sequence_length=400, attn_length=400,
-                  attn_size=self.n_nodes_last_layer, attn_vec_size=self.n_nodes_last_layer)
+        # self._gru(self.n_nodes_last_layer, num_layers=1, bidirectional=True, sequence_length=400, attn_length=400,
+        #           attn_size=self.n_nodes_last_layer, attn_vec_size=self.n_nodes_last_layer)
 
         for i, n_nodes in enumerate(fc):
-            self.last_layer = self._fc_layer(i + 1, n_nodes)
+            self._fc_layer(i + 1, n_nodes)
 
     def _gru(self, n_nodes, num_layers=1, bidirectional=True, sequence_length=10, attn_length=10, attn_size=10,
              attn_vec_size=10):
