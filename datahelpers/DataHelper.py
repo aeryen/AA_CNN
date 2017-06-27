@@ -138,6 +138,8 @@ class DataHelper(object):
         for word in vocabulary_inv:
             if word in self.w2v_model:
                 embed_matrix.append(self.w2v_model[word])
+            elif word == "<PAD>":
+                embed_matrix.append(np.zeros(self.embedding_dim))
             else:
                 embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=self.embedding_dim))
         embed_matrix = np.array(embed_matrix)

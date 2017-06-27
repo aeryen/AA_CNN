@@ -65,11 +65,11 @@ class DataHelperML2CH(DataHelperML):
 
         self.train_data = train_data
         self.train_data.embed_matrix = self.embed_matrix_glv
-        self.train_data.embed_matrix_w2v = self.embed_matrix_glv
+        self.train_data.embed_matrix_w2v = self.embed_matrix_w2v
         self.train_data.vocab = self.vocab
         self.train_data.vocab_inv = self.vocab_inv
         self.test_data = test_data
         self.test_data.embed_matrix = self.embed_matrix_glv
-        self.test_data.embed_matrix_w2v = self.embed_matrix_glv
+        self.test_data.embed_matrix_w2v = self.embed_matrix_w2v
         self.test_data.vocab = self.vocab
         self.test_data.vocab_inv = self.vocab_inv

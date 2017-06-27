@@ -2,9 +2,8 @@ import tensorflow as tf
 
 
 class TwoEmbChannel:
-
     def __init__(self, sequence_length, num_classes, word_vocab_size, embedding_size,
-                  init_embedding_glv=None, init_embedding_w2v=None):
+                 init_embedding_glv=None, init_embedding_w2v=None):
         # Placeholders for input, output and dropout, First None is batch size.
         self.input_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_x")
         self.input_y = tf.placeholder(tf.float32, [None, num_classes], name="input_y")

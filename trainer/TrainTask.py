@@ -48,7 +48,7 @@ class TrainTask:
         logging.info("Train/Dev split (DOC): {:d}/{:d}".
                      format(len(self.train_data.file_id), len(self.train_data.file_id)))
         logging.info("Train/Dev split (IST): {:d}/{:d}".
-                     format(len(self.train_data.label_instance), len(self.train_data.label_instance)))
+                     format(len(self.train_data.label_instance), len(self.test_data.label_instance)))
 
     def training(self, filter_sizes, num_filters, dropout_keep_prob, n_steps, l2_lambda,
                  dropout, batch_normalize, elu, n_conv, fc):
