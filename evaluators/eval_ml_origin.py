@@ -17,7 +17,7 @@ import os.path
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from datahelpers.DataHelper import DataHelper
 from datahelpers.data_helper_ml_normal import DataHelperMLNormal
-from datahelpers.data_helper_ml_2chan import DataHelperML_2CH
+from datahelpers.data_helper_ml_2chan import DataHelperML2CH
 from datahelpers.data_helper_pan11 import DataHelperPan11
 import utils.ArchiveManager as AM
 from datahelpers.Data import LoadMethod
@@ -274,9 +274,9 @@ if __name__ == "__main__":
                                    embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv",
                                    total_fold=5, t_fold_index=0)
     elif mode == "ML_2CH":
-        dater = DataHelperML_2CH(doc_level="sent", embed_dim=300,
-                                 target_doc_len=400, target_sent_len=50,
-                                 num_fold=5, fold_index=1, truth_file="2_authors.csv")
+        dater = DataHelperML2CH(doc_level="sent", embed_dim=300,
+                                target_doc_len=400, target_sent_len=50,
+                                num_fold=5, fold_index=1, truth_file="2_authors.csv")
     elif mode == "PAN11":
         dater = DataHelperPan11(1)
 

@@ -11,8 +11,8 @@ class NCrossSizeParallelConvNFC(object):
     """
 
     def __init__(
-            self, sequence_length, embedding_size, filter_size_lists, num_filters, previous_component, batch_normalize=False,
-            dropout = False, elu = False, n_conv=1, fc=[], l2_reg_lambda=0.0):
+            self, sequence_length, embedding_size, filter_size_lists, num_filters, previous_component,
+            batch_normalize=False, dropout=False, elu=False, n_conv=1, fc=[], l2_reg_lambda=0.0):
 
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
@@ -31,7 +31,7 @@ class NCrossSizeParallelConvNFC(object):
             all_filter_size_output = []
             self.num_filters_total = num_filters * len(filter_size_lists[n])
             for filter_size in filter_size_lists[n]:
-                with tf.variable_scope("conv-%s-%s" % (str(n+1), filter_size)):
+                with tf.variable_scope("conv-%s-%s" % (str(n + 1), filter_size)):
                     if n == 0:
                         self.last_layer = previous_component.embedded_expanded
                         n_input_channels = previous_component.embedded_expanded.get_shape()[3].value
@@ -104,8 +104,7 @@ class NCrossSizeParallelConvNFC(object):
         for i, n_nodes in enumerate(fc):
             self.last_layer = self._fc_layer(i + 1, n_nodes)
 
-
-    def _gru(self, n_nodes, num_layers=1, bidirectional=True,sequence_length=10,attn_length=10, attn_size=10,
+    def _gru(self, n_nodes, num_layers=1, bidirectional=True, sequence_length=10, attn_length=10, attn_size=10,
              attn_vec_size=10):
         """
         Args:
@@ -138,15 +137,15 @@ class NCrossSizeParallelConvNFC(object):
                     bw_cell, attn_length=attn_length, attn_size=attn_size,
                     attn_vec_size=attn_vec_size, state_is_tuple=False)
             rnn_fw_cell = rnn.MultiRNNCell([fw_cell] * num_layers,
-                                                   state_is_tuple=False)
+                                           state_is_tuple=False)
             # backward direction cell
             rnn_bw_cell = rnn.MultiRNNCell([bw_cell] * num_layers,
-                                                   state_is_tuple=False)
+                                           state_is_tuple=False)
             outputs, output_state_fw, output_state_bw = rnn.stack_bidirectional_dynamic_rnn(rnn_fw_cell,
-                                            rnn_bw_cell,
-                                            x,
-                                            dtype=tf.dtypes.float32,
-                                            sequence_length=sequence_length)
+                                                                                            rnn_bw_cell,
+                                                                                            x,
+                                                                                            dtype=tf.dtypes.float32,
+                                                                                            sequence_length=sequence_length)
             self.last_layer = outputs
 
             return outputs, output_state_fw, output_state_bw
@@ -157,16 +156,13 @@ class NCrossSizeParallelConvNFC(object):
                     rnn_cell, attn_length=attn_length, attn_size=attn_size,
                     attn_vec_size=attn_vec_size, state_is_tuple=False)
             cell = rnn.MultiRNNCell([rnn_cell] * num_layers,
-                                            state_is_tuple=False)
+                                    state_is_tuple=False)
             outputs, state = rnn.static_rnn(cell,
-                                 x,
-                                 dtype=tf.dtypes.float32,
-                                 sequence_length=sequence_length)
+                                            x,
+                                            dtype=tf.dtypes.float32,
+                                            sequence_length=sequence_length)
             self.last_layer = outputs
             return outputs, state
-
-
-
 
     def _fc_layer(self, tag, n_nodes):
         with tf.variable_scope('fc-%s' % str(tag)):
@@ -188,7 +184,7 @@ class NCrossSizeParallelConvNFC(object):
             elif self.batch_normalize == True and self.dropout == True:
                 relu = tf.nn.relu(x, name='relu')
                 self.last_layer = tf.contrib.layers.batch_norm(relu, center=True, scale=True, fused=False,
-                                             is_training=self.is_training)
+                                                               is_training=self.is_training)
             else:
                 if self.elu == False:
                     h = tf.nn.relu(x, name='relu')

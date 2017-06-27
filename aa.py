@@ -1,7 +1,7 @@
 from timeit import default_timer as timer
 # from datahelpers.data_helper_ml_mulmol6_OnTheFly import DataHelperMulMol6
 from datahelpers.data_helper_ml_normal import DataHelperMLNormal
-from datahelpers.data_helper_ml_2chan import DataHelperML_2CH
+from datahelpers.data_helper_ml_2chan import DataHelperML2CH
 from datahelpers.data_helper_ml_mulmol6_OnTheFly import DataHelperMLFly
 from trainer import TrainTaskLite as tr
 from evaluators import eval_ml_mulmol_d as evaler
@@ -56,18 +56,19 @@ if __name__ == "__main__":
 
     if input_component == "ML_One":
         dater = DataHelperMLNormal(doc_level=LoadMethod.SENT, embed_type="glove",
-                                   embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file=truth_file,
+                                   embed_dim=300, target_sent_len=50, target_doc_len=None, train_csv_file=truth_file,
                                    total_fold=5, t_fold_index=0)
         ev = evaler_one.Evaluator()
     elif input_component == "ML_FLY":
         dater = DataHelperMLFly(doc_level=LoadMethod.SENT, embed_type="glove",
-                                embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file=truth_file,
+                                embed_dim=300, target_sent_len=50, target_doc_len=None, train_csv_file=truth_file,
                                 total_fold=5, t_fold_index=0)
         ev = evaler_one.Evaluator()
     elif input_component == "ML_2CH":
-        dater = DataHelperML_2CH(doc_level="sent", num_fold=5, fold_index=0,
-                                 embed_dim=300, target_sent_len=50, target_doc_len=400, truth_file=truth_file)
-        ev = evaler_one.evaler()
+        dater = DataHelperML2CH(doc_level=LoadMethod.SENT, embed_type="glove",
+                                embed_dim=300, target_sent_len=50, target_doc_len=None, train_csv_file=truth_file,
+                                total_fold=5, t_fold_index=0)
+        ev = evaler_one.Evaluator()
     elif input_component == "ML_Six":
         dater = DataHelperMulMol6(doc_level="sent", num_fold=5, fold_index=4, embed_type="glove",
                                   embed_dim=300, target_sent_len=50, target_doc_len=400)
@@ -75,7 +76,7 @@ if __name__ == "__main__":
     elif input_component == "ML_One_DocLevel":
         dater = DataHelperMLNormal(doc_level="doc", train_holdout=0.80, embed_type="glove",
                              embed_dim=300, target_sent_len=128, target_doc_len=128)
-        ev = evaler_one.evaler()
+        ev = evaler_one.Evaluator()
     else:
         raise NotImplementedError
 
@@ -84,7 +85,7 @@ if __name__ == "__main__":
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    tt.training(filter_sizes=[3, 4, 5], num_filters=100, dropout_keep_prob=0.8, n_steps=30000, l2_lambda=0.1,
+    tt.training(filter_sizes=[3, 4, 5], num_filters=100, dropout_keep_prob=0.8, n_steps=80000, l2_lambda=0.1,
                 dropout=True, batch_normalize=False, elu=False, n_conv=1, fc=[])
     end = timer()
     print((end - start))

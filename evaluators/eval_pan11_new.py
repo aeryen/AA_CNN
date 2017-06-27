@@ -15,7 +15,7 @@ import logging
 import os.path
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from datahelpers import data_helper_ml_normal as data_helpers
-from datahelpers.data_helper_ml_2chan import DataHelperML_2CH
+from datahelpers.data_helper_ml_2chan import DataHelperML2CH
 from datahelpers.data_helper_pan11 import DataHelperPan11
 import utils.ArchiveManager as AM
 
@@ -162,9 +162,9 @@ if __name__ == "__main__":
                                           target_doc_len=400, target_sent_len=50,
                                           num_fold=5, fold_index=4)
     elif mode == "ML_2CH":
-        dater = DataHelperML_2CH(doc_level="sent", embed_dim=300,
-                                 target_doc_len=400, target_sent_len=50,
-                                 num_fold=5, fold_index=1, truth_file="2_authors.csv")
+        dater = DataHelperML2CH(doc_level="sent", embed_dim=300,
+                                target_doc_len=400, target_sent_len=50,
+                                num_fold=5, fold_index=1, truth_file="2_authors.csv")
     elif mode == "PAN11":
         dater = DataHelperPan11(0)
 
