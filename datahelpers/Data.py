@@ -3,7 +3,7 @@ from enum import Enum
 
 class AAData:
     def __init__(self, name, size):
-        self.name = None
+        self.name = name
         self.size = size
         self.file_id = None
         self.raw = None

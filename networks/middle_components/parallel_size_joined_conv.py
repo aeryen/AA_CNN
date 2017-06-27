@@ -29,7 +29,6 @@ class NCrossSizeParallelConvNFC(object):
             if not isinstance(filter_size_lists[n], list):
                 raise ValueError("filter_sizes must be list of lists, for ex.[[3,4,5]] or [[3,4,5],[3,4,5],[5]]")
             all_filter_size_output = []
-            self.num_filters_total = num_filters * len(filter_size_lists[n])
             for filter_size in filter_size_lists[n]:
                 with tf.variable_scope("conv-%s-%s" % (str(n + 1), filter_size)):
                     if n == 0:
@@ -39,7 +38,7 @@ class NCrossSizeParallelConvNFC(object):
                     else:
                         if self.dropout == True:
                             self.last_layer = tf.nn.dropout(self.last_layer, 0.8, name="dropout-inter-conv")
-                        cols = total_output
+                        cols = self.num_filters_total
                         n_input_channels = 1
 
                     filter_shape = [filter_size, cols, n_input_channels, num_filters]
@@ -76,9 +75,10 @@ class NCrossSizeParallelConvNFC(object):
                         self.l2_sum += tf.nn.l2_loss(W)
                     all_filter_size_output.append(h)
 
+                    self.num_filters_total = num_filters * len(filter_size_lists[n]) * n_input_channels
+
             self.last_layer = tf.concat(all_filter_size_output, 3)
-            total_output = num_filters * len(filter_size_lists[n]) * n_input_channels
-            self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, total_output, 1])
+            self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, self.num_filters_total, 1])
 
         with tf.variable_scope("maxpool-all"):
             # Maxpooling over the outputs
