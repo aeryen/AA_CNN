@@ -27,12 +27,11 @@ import math
 def sigmoid(x):
     return 1 / (1 + math.exp(-x))
 
+
 class Evaluator:
     def __init__(self):
         self.dater = None
         self.test_data = None
-        self.vocab = None
-        self.vocab_inv = None
         self.eval_log = None
 
     def plot_confusion_matrix(self, cm, dater, title='Confusion matrix', cmap=plt.cm.Blues):
@@ -47,7 +46,7 @@ class Evaluator:
     def load(self, dater):
         self.dater = dater
         print("Loading data...")
-        self.test_data, self.vocab, self.vocab_inv = self.dater.get_test_data()
+        self.test_data = self.dater.get_test_data()
 
     def test(self, experiment_dir, checkpoint_step, doc_acc=True, do_is_training=True):
         if checkpoint_step is not None:
@@ -123,7 +122,11 @@ class Evaluator:
                         pred_max = np.concatenate([pred_max, batch_pred_max], axis=0)
                         pred_sigmoid = np.concatenate([pred_sigmoid, batch_pred_sigmoid], axis=0)
 
+            logging.info("== PRED MAX ==")
+            self.eval_log.write("== PRED MAX ==")
             self.sent_accuracy(pred_max)
+            logging.info("== PRED SIGMOID ==")
+            self.eval_log.write("== PRED SIGMOID ==")
             if doc_acc:
                 # print("========== WITH MAX ==========")
                 # self.doc_accuracy(pred_max)

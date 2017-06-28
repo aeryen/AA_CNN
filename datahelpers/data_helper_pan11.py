@@ -1,10 +1,16 @@
 import collections
-import re
-import numpy as np
-import pickle
-from datahelpers.DataHelper import DataHelper
-import pkg_resources
 import logging
+import pickle
+import re
+import itertools
+import numpy as np
+
+from collections import Counter
+
+from datahelpers.DataHelper import DataHelper
+from datahelpers.Data import AAData
+from datahelpers.Data import LoadMethod
+
 
 # THIS FILE LOADS PAN11 DATA
 # CODE 0 IS SMALL TRAINING AND TESTING, CODE 1 IS LARGE TRAINING AND TESTING
@@ -37,80 +43,67 @@ class DataHelperPan11(DataHelper):
 
     author_order = None
 
-    # training_options = ["./datahelpers/data/pan11-training/SmallTrain.xml", "./datahelpers/data/pan11-training/LargeTrain.xml"]
-    # testing_options = ["./datahelpers/data/pan11-test/SmallTest.xml", "./datahelpers/data/pan11-test/LargeTest.xml"]
-    # truth_options = ["./datahelpers/data/pan11-test/GroundTruthSmallTest.xml", "./datahelpers/data/pan11-test/GroundTruthLargeTest.xml"]
-    # #
-    training_options = ["../datahelpers/data/pan11-training/SmallTrain.xml", "../datahelpers/data/pan11-training/LargeTrain.xml"]
-    testing_options = ["../datahelpers/data/pan11-test/SmallTest.xml", "../datahelpers/data/pan11-test/LargeTest.xml"]
-    truth_options = ["../datahelpers/data/pan11-test/GroundTruthSmallTest.xml", "../datahelpers/data/pan11-test/GroundTruthLargeTest.xml"]
-
-    vocabulary_size = 20000
-    embedding_dim = 300
+    training_options = ["./datahelpers/data/pan11-training/SmallTrain.xml",
+                        "./datahelpers/data/pan11-training/LargeTrain.xml"]
+    testing_options = ["./datahelpers/data/pan11-test/SmallTest.xml",
+                       "./datahelpers/data/pan11-test/LargeTest.xml"]
+    truth_options = ["./datahelpers/data/pan11-test/GroundTruthSmallTest.xml",
+                     "./datahelpers/data/pan11-test/GroundTruthLargeTest.xml"]
 
     problem_name_options = ["PAN11small", "PAN11large"]
     problem_name = None
 
     prob_code = None
     record_list = []
-    num_of_classes = None
-    train_f = None
-    test_f = None
-    truth_f = None
 
-    vocab = None
-    vocab_inv = None
-    embed_matrix_glv = None
-    embed_matrix_w2v = None
+    def __init__(self, embed_type, embed_dim, target_sent_len, prob_code=1):
 
-    def __init__(self, code):
         logging.info("Data Helper: " + __file__ + " initiated.")
+        super(DataHelperPan11, self).__init__(doc_level=LoadMethod.SENT, embed_type=embed_type, embed_dim=embed_dim,
+                                              target_doc_len=None, target_sent_len=target_sent_len,
+                                              total_fold=None, t_fold_index=None)
 
-        super(DataHelperPan11, self).__init__()
-
-        self.prob_code = code
-        if code == 0:
+        self.prob_code = prob_code
+        if prob_code == 0:
             self.author_order = self.Small_Author_Order
-        elif code == 1:
+        elif prob_code == 1:
             self.author_order = self.Large_Author_Order
         else:
             print("code ERROR")
-        self.train_f = self.training_options[self.prob_code]
-        self.test_f = self.testing_options[self.prob_code]
-        self.truth_f = self.truth_options[self.prob_code]
+
         self.problem_name = self.problem_name_options[self.prob_code]
-        self.glove_dir = pkg_resources.resource_filename('datahelpers', 'glove/')
-        self.glove_path = self.glove_dir + "glove.6B." + str(self.embedding_dim) + "d.txt"
+        self.train_file = self.training_options[self.prob_code]
+        self.test_file = self.testing_options[self.prob_code]
+        self.test_truth_file = self.truth_options[self.prob_code]
+
+        self.embed_matrix_glv = None
+        self.embed_matrix_w2v = None
+
+        self.load_train_data()
+        self.load_test_data()
 
     @staticmethod
-    def clean_str(string):
-        # TODO: need more thought
-        string = re.sub("\"([\w])", "\" \\1", string)
-        string = re.sub("([\w])\"", "\\1 \"", string)
-        string = re.sub("([\w])-", "\\1 -", string)
-        string = re.sub("([\w])/([\w])", "\\1 / \\2", string)
+    def build_vocab(data, vocabulary_size):
+        """
+        Builds a vocabulary mapping from word to index based on the sentences.
+        Returns vocabulary mapping and inverse vocabulary mapping.
+        """
+        # Build vocabulary
+        word_counts = Counter(itertools.chain(*data.raw))
+        # Mapping from index to word
+        # vocabulary_inv = [x[0] for x in word_counts.most_common()]
+        word_counts = sorted(word_counts.items(), key=lambda t: t[::-1], reverse=True)
+        vocabulary_inv = [item[0] for item in word_counts]
+        vocabulary_inv.insert(0, "<PAD>")
+        vocabulary_inv.insert(1, "<UNK>")
 
-        string = re.sub("\$[\d.]+", "<<MONEY>>", string)
-        string = re.sub("[\d]+/[\d]+/[\d]{4}", "<<DATE>>", string)
+        logging.info("size of vocabulary: " + str(len(vocabulary_inv)))
+        # vocabulary_inv = list(sorted(vocabulary_inv))
+        vocabulary_inv = list(vocabulary_inv[:vocabulary_size])  # limit vocab size
 
-        string = re.sub("[-]{4,}", " <<DLINE>> ", string)
-        string = re.sub("-", " - ", string)
-        string = re.sub(r"[~]+", " ~ ", string)
-
-        string = re.sub(r"\'", " \'", string)
-        string = re.sub(r"</", " </", string)
-        string = re.sub(r">", "> ", string)
-
-        string = re.sub(r",", " , ", string)
-        string = re.sub(r"!", " ! ", string)
-        string = re.sub(r":", " : ", string)
-        string = re.sub(r"\.", " . ", string)
-        string = re.sub(r"\(", " ( ", string)
-        string = re.sub(r"\)", " ) ", string)
-        string = re.sub(r"\?", " ? ", string)
-        string = re.sub(r"\s{2,}", " ", string)
-
-        return string.strip().lower()
+        # Mapping from word to index
+        vocabulary = {x: i for i, x in enumerate(vocabulary_inv)}
+        return [vocabulary, vocabulary_inv]
 
     def __load_train_data(self):
         data_list = []
@@ -128,7 +121,7 @@ class DataHelperPan11(DataHelper):
         author_name = None
         content = []
 
-        file_content = open(self.train_f, "r").readlines()
+        file_content = open(self.train_file, "r").readlines()
         line_count = 0
         for l in file_content:
             line_count += 1
@@ -199,8 +192,8 @@ class DataHelperPan11(DataHelper):
         author_name = None
         content = []
 
-        file_content = open(self.test_f, "r").readlines()
-        file_truth = open(self.truth_f, "r").readlines()
+        file_content = open(self.test_file, "r").readlines()
+        file_truth = open(self.test_truth_file, "r").readlines()
 
         content_line_index = 0
         truth_line_index = 0
@@ -290,6 +283,7 @@ class DataHelperPan11(DataHelper):
                 print("WTF")
                 author_list.append(author_str)  # ???
                 author_count[author_str] = 1
+                raise ValueError("AUTHOR NOT FOUND")
             else:
                 if author_str in author_count:
                     author_count[author_str] += 1
@@ -300,83 +294,82 @@ class DataHelperPan11(DataHelper):
 
         return author_list, author_count
 
-    def build_embedding(self, vocabulary_inv, glove_words, glove_vectors):
-        np.random.seed(10)
-        embed_matrix = []
-        std = np.std(glove_vectors[0, :])
-        for word in vocabulary_inv:
-            if word in glove_words:
-                word_index = glove_words.index(word)
-                embed_matrix.append(glove_vectors[word_index, :])
-            else:
-                embed_matrix.append(np.random.normal(loc=0.0, scale=std, size=self.embedding_dim))
-        embed_matrix = np.array(embed_matrix)
-        return embed_matrix
+    def build_content_vector(self, data):
+        """this method override global method because data is only sentence level"""
+        unk = self.vocab["<UNK>"]
+        data.value = np.array([[self.vocab.get(word, unk) for word in doc] for doc in data.raw])
+        return data
 
-    def build_input_data(self, reviews, vocabulary):
-        unk = vocabulary["<UNK>"]
-        x = np.array([[vocabulary.get(word, unk) for word in rev] for rev in reviews])
-        return x
-
-    def pad_sentences(self, sentences, padding_word="<PAD>", target_length=-1):
-        """
-        Pads all sentences to the same length. The length is defined by the longest sentence.
-        Returns padded sentences.
-        """
-        if target_length > 0:
-            max_length = target_length
+    def pad_sentences(self, data):
+        if self.target_sent_len > 0:
+            max_length = self.target_sent_len
         else:
-            sent_lengths = [len(x) for x in sentences]
+            sent_lengths = [len(sent) for sent in data.value]
             max_length = max(sent_lengths)
             print("longest doc: " + str(max_length))
 
-        padded_sentences = []
-        for i in range(len(sentences)):
-            rev = sentences[i]
-            if len(rev) <= max_length:
-                num_padding = max_length - len(rev)
-                new_sentence = np.concatenate([rev, np.zeros(num_padding, dtype=np.int)])
+        padded_docs = []
+        for sent_i in range(len(data.value)):
+            sent = data.value[sent_i]
+            if len(sent) <= max_length:
+                num_padding = max_length - len(sent)
+                new_sentence = np.concatenate([sent, np.zeros(num_padding, dtype=np.int)])
             else:
-                new_sentence = rev[:max_length]
-            padded_sentences.append(new_sentence)
-        return np.array(padded_sentences)
+                new_sentence = sent[:max_length]
+            padded_docs.append(new_sentence)
+        data.value = np.array(padded_docs)
+        return data
 
-    def load_data(self):
-        # o = DataHelper(file_to_load)
+    def load_train_data(self):
         data_list = self.__load_train_data()
         author_list, author_count = self.author_label(data_list)
-        print(author_count)
         x, y = self.xy_formatter(data_list, author_list)
-        # self.longest_sentence(x)
 
-        self.vocab, self.vocab_inv = self.build_vocab(x, self.vocabulary_size)
-        pickle.dump([self.vocab, self.vocab_inv], open("pan11_vocabulary_"+str(self.prob_code)+".pickle", "wb"))
+        self.train_data = AAData("PAN11", len(data_list))
+        self.train_data.raw = x
+        self.train_data.label_doc = y
+        self.train_data.label_instance = y
 
-        [glove_words, glove_vectors] = self.load_glove_vector(self.glove_path)
-        self.embed_matrix_glv = self.build_glove_embedding(self.vocab_inv, glove_words, glove_vectors, self.embedding_dim)
-        self.word2vec_model = self.load_w2v_vector()
-        self.embed_matrix_w2v = self.build_w2v_embedding(self.vocab_inv, self.word2vec_model, self.embedding_dim)
+        self.vocab, self.vocab_inv = self.build_vocab(self.train_data, self.vocabulary_size)
+        pickle.dump([self.vocab, self.vocab_inv], open("pan11_vocabulary_" + str(self.prob_code) + ".pickle", "wb"))
 
-        x = self.build_input_data(x, self.vocab)
-        x = self.pad_sentences(x, target_length=200)
-        return [x, y, self.vocab, self.vocab_inv, self.embed_matrix_glv, self.embed_matrix_w2v]
+        if self.embed_type == "glove" or self.embed_type == "both":
+            self.embed_matrix_glv = self.build_glove_embedding(self.vocab_inv)
+        if self.embed_type == "w2v" or self.embed_type == "both":
+            self.embed_matrix_w2v = self.build_w2v_embedding(self.vocab_inv)
+
+        self.train_data = self.build_content_vector(self.train_data)
+        self.train_data = self.pad_sentences(self.train_data)
+
+        self.train_data.embed_matrix = self.embed_matrix_glv
+        self.train_data.embed_matrix_w2v = self.embed_matrix_w2v
+        self.train_data.vocab = self.vocab
+        self.train_data.vocab_inv = self.vocab_inv
 
     def load_test_data(self):
-        # o = DataHelper(file_to_load)
         data_list = self.__load_test_data()
         author_list, author_count = self.author_label(data_list)
-        print(author_list)
         x, y = self.xy_formatter(data_list, author_list)
 
-        vocab, vocab_inv = pickle.load(open("pan11_vocabulary_"+str(self.prob_code)+".pickle", "rb"))
+        if self.vocab is None and self.vocab_inv is None:
+            self.vocab, self.vocab_inv = pickle.load(open("pan11_vocabulary_" + str(self.prob_code) + ".pickle", "rb"))
 
-        x = self.build_input_data(x, vocab)
-        x = self.pad_sentences(x, target_length=200)
-        return [x, y, vocab, vocab_inv, None]
+        self.test_data = AAData("PAN11", len(data_list))
+        self.test_data.raw = x
+        self.test_data.label_doc = y
+        self.test_data.label_instance = y
+
+        self.test_data = self.build_content_vector(self.test_data)
+        self.test_data = self.pad_sentences(self.test_data)
+
+        self.test_data.embed_matrix = self.embed_matrix_glv
+        self.test_data.embed_matrix_w2v = self.embed_matrix_w2v
+        self.test_data.vocab = self.vocab
+        self.test_data.vocab_inv = self.vocab_inv
 
 
 if __name__ == "__main__":
-    o = DataHelperPan11(1)
-    o.load_data()
+    o = DataHelperPan11(embed_type="glove", embed_dim=300, target_sent_len=100, prob_code=1)
+    o.load_train_data()
     # o.load_test_data()
     print("o")

@@ -52,13 +52,8 @@ class TrainTask:
             self.suff2_vocab_size = len(self.data_hlp.s2_vocab)
             self.suff3_vocab_size = len(self.data_hlp.s3_vocab)
             self.pos_vocab_size = len(self.data_hlp.pos_vocab)
-        elif "One" in input_component:
-            self.pref2_vocab_size = None
-            self.pref3_vocab_size = None
-            self.suff2_vocab_size = None
-            self.suff3_vocab_size = None
-            self.pos_vocab_size = None
-            self.train_data, _, _, self.embed_matrix = self.data_hlp.get_train_data()
+        elif "One" in input_component or "PAN11" in input_component:
+            self.train_data = self.data_hlp.get_train_data()
         else:
             raise NotImplementedError
 
@@ -67,8 +62,8 @@ class TrainTask:
         if "Six" in input_component:
             self.x_dev, self.pos_test, _, self.p2_test, self.p3_test, \
             self.s2_test, self.s3_test, self.y_dev, _, _, _ = self.data_hlp.get_test_data()
-        elif "One" in input_component:
-            self.test_data, _, _ = self.data_hlp.get_test_data()
+        elif "One" in input_component or "PAN11" in input_component:
+            self.test_data = self.data_hlp.get_test_data()
         else:
             raise NotImplementedError
 
@@ -98,7 +93,7 @@ class TrainTask:
                 filter_sizes=filter_sizes,
                 num_filters=num_filters,
                 l2_reg_lambda=l2_lambda,
-                init_embedding=self.embed_matrix,
+                init_embedding=self.train_data.embed_matrix,
             )
             with sess.as_default():
 
