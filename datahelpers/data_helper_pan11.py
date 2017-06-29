@@ -3,6 +3,7 @@ import logging
 import pickle
 import re
 import itertools
+import pkg_resources
 import numpy as np
 
 from collections import Counter
@@ -42,13 +43,14 @@ class DataHelperPan11(DataHelper):
                           '559588', '648564', '769031', '658916', '935669', 'x10114697001411515', '580177']
 
     author_order = None
-
-    training_options = ["./datahelpers/data/pan11-training/SmallTrain.xml",
-                        "./datahelpers/data/pan11-training/LargeTrain.xml"]
-    testing_options = ["./datahelpers/data/pan11-test/SmallTest.xml",
-                       "./datahelpers/data/pan11-test/LargeTest.xml"]
-    truth_options = ["./datahelpers/data/pan11-test/GroundTruthSmallTest.xml",
-                     "./datahelpers/data/pan11-test/GroundTruthLargeTest.xml"]
+    training_dir = pkg_resources.resource_filename('datahelpers', 'data/pan11-training/')
+    testing_dir = pkg_resources.resource_filename('datahelpers', 'data/pan11-test/')
+    training_options = [training_dir + "SmallTrain.xml",
+                        training_dir + "LargeTrain.xml"]
+    testing_options = [testing_dir + "SmallTest.xml",
+                       testing_dir + "LargeTest.xml"]
+    truth_options = [testing_dir + "GroundTruthSmallTest.xml",
+                     testing_dir + "GroundTruthLargeTest.xml"]
 
     problem_name_options = ["PAN11small", "PAN11large"]
     problem_name = None

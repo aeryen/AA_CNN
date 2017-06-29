@@ -18,7 +18,6 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.par
 from datahelpers.DataHelper import DataHelper
 from datahelpers.data_helper_ml_normal import DataHelperMLNormal
 from datahelpers.data_helper_ml_2chan import DataHelperML2CH
-from datahelpers.data_helper_pan11 import DataHelperPan11
 import utils.ArchiveManager as AM
 from datahelpers.Data import LoadMethod
 import math
@@ -127,6 +126,8 @@ class Evaluator:
             self.sent_accuracy(pred_max)
             logging.info("== PRED SIGMOID ==")
             self.eval_log.write("== PRED SIGMOID ==")
+            self.sent_accuracy(pred_sigmoid)
+
             if doc_acc:
                 # print("========== WITH MAX ==========")
                 # self.doc_accuracy(pred_max)
@@ -280,8 +281,6 @@ if __name__ == "__main__":
         dater = DataHelperML2CH(doc_level="sent", embed_dim=300,
                                 target_doc_len=400, target_sent_len=50,
                                 num_fold=5, fold_index=1, truth_file="2_authors.csv")
-    elif mode == "PAN11":
-        dater = DataHelperPan11(1)
 
     e = Evaluator()
     e.load(dater)

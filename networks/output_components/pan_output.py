@@ -1,6 +1,7 @@
 import tensorflow as tf
 import logging
 
+
 class PANOutput(object):
     def __init__(self, input_y, prev_layer, num_nodes_prev_layer, num_classes, l2_sum, l2_reg_lambda):
         if l2_sum is not None:
