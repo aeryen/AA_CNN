@@ -3,7 +3,9 @@ from timeit import default_timer as timer
 from datahelpers.data_helper_ml_normal import DataHelperMLNormal
 from datahelpers.data_helper_ml_2chan import DataHelperML2CH
 from datahelpers.data_helper_ml_mulmol6_OnTheFly import DataHelperMLFly
+from datahelpers.data_helper_pan11 import DataHelperPan11
 from trainer import TrainTask as tr
+from trainer import TrainTaskLite as ttl
 from evaluators import eval_ml_mulmol_d as evaler
 from evaluators import eval_ml_origin as evaler_one
 from utils.ArchiveManager import ArchiveManager
@@ -35,6 +37,7 @@ if __name__ == "__main__":
     # * ML_2CH
     # * ML_Six
     # * ML_One_DocLevel
+    # * PAN11
     #
     # Middle Components:
     #
@@ -46,8 +49,8 @@ if __name__ == "__main__":
     # * PureRNN
     ################################################
 
-    input_component = "ML_2CH"
-    middle_component = "NCrossSizeParallelConvNFC"
+    input_component = "PAN11"
+    middle_component = "ORIGIN_KIM"
     truth_file = "labels.csv"
 
     am = ArchiveManager(input_component, middle_component, truth_file=truth_file)
@@ -76,20 +79,27 @@ if __name__ == "__main__":
         ev = evaler.evaler()
     elif input_component == "ML_One_DocLevel":
         dater = DataHelperMLNormal(doc_level="doc", train_holdout=0.80, embed_type="glove",
-                             embed_dim=300, target_sent_len=128, target_doc_len=128)
+                                   embed_dim=300, target_sent_len=128, target_doc_len=128)
+        ev = evaler_one.Evaluator()
+    elif input_component == "PAN11":
+        dater = DataHelperPan11(embed_type="glove", embed_dim=300, target_sent_len=100, prob_code=1)
         ev = evaler_one.Evaluator()
     else:
         raise NotImplementedError
 
-    tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                      batch_size=128, evaluate_every=1000, checkpoint_every=5000, max_to_keep=7)
+    if middle_component == "ORIGIN_KIM":
+        tt = ttl.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
+                           batch_size=64, evaluate_every=500, checkpoint_every=1000, max_to_keep=7)
+    else:
+        tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
+                          batch_size=64, evaluate_every=500, checkpoint_every=1000, max_to_keep=7)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    tt.training(filter_sizes=[[3, 4, 5]], num_filters=100, dropout_keep_prob=0.8, n_steps=40000, l2_lambda=0.1,
+    tt.training(filter_sizes=[3, 4, 5, 6], num_filters=80, dropout_keep_prob=0.5, n_steps=8000, l2_lambda=0.0,
                 dropout=True, batch_normalize=False, elu=False, n_conv=1, fc=[])
     end = timer()
     print((end - start))
 
     ev.load(dater)
-    ev.test(am.get_exp_dir(), None, doc_acc=True, do_is_training=False)
+    ev.test(am.get_exp_dir(), None, doc_acc=False, do_is_training=False)

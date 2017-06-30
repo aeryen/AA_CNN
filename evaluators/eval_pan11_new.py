@@ -168,7 +168,7 @@ if __name__ == "__main__":
     elif mode == "PAN11":
         dater = DataHelperPan11(0)
 
-    dater.load_data()
+    dater.load_train_data()
     e = evaler()
     e.load(dater)
     path = sys.argv[1]
