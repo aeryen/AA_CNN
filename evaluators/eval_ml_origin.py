@@ -47,7 +47,7 @@ class Evaluator:
     def load(self, dater):
         self.dater = dater
         print("Loading data...")
-        self.test_data, self.vocab, self.vocab_inv = self.dater.get_test_data()
+        self.test_data = self.dater.get_test_data()
 
     def test(self, experiment_dir, checkpoint_step, doc_acc=True, do_is_training=True):
         if checkpoint_step is not None:
@@ -168,10 +168,10 @@ class Evaluator:
                 pred_class = np.zeros([self.dater.num_of_classes], dtype=np.int)
                 pred_class[np.argmax(p)] = 1
             doc_prediction.append(pred_class)
-            print("pred: " + str(pred_class) + "   " + "true: " + str(self.test_data.label_doc[i]))
+            print("pred: " + str(pred_class) + "\n" + "true: " + str(self.test_data.label_doc[i]))
             self.eval_log.write("File:" + self.test_data.file_id[i] + "\n")
-            self.eval_log.write("pred: " + str(pred_class) + "   " +
-                                "true: " + str(self.test_data.label_doc[i]) + "\n")
+            self.eval_log.write("pred: " + str(pred_class) + "\n" +
+                                "true: " + str(self.test_data.label_doc[i]) + "\n\n")
 
         logging.info("")
         self.eval_log.write("\n")
