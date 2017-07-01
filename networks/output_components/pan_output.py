@@ -24,12 +24,12 @@ class PANOutput(object):
             self.scores = tf.nn.xw_plus_b(prev_layer, W, b, name="scores")
             self.predictions = tf.argmax(self.scores, 1, name="predictions")
 
-        self.rate_percentage = [0.0] * num_classes
-        with tf.variable_scope("prediction-ratio"):
-            for i in range(num_classes):
-                rate1_logistic = tf.equal(self.predictions, i)
-                self.rate_percentage[i] = tf.reduce_mean(tf.cast(rate1_logistic, "float"),
-                                                         name="rate-" + str(i) + "/percentage")
+        # self.rate_percentage = [0.0] * num_classes
+        # with tf.variable_scope("prediction-ratio"):
+        #     for i in range(num_classes):
+        #         rate1_logistic = tf.equal(self.predictions, i)
+        #         self.rate_percentage[i] = tf.reduce_mean(tf.cast(rate1_logistic, "float"),
+        #                                                  name="rate-" + str(i) + "/percentage")
 
         # CalculateMean cross-entropy loss
         with tf.variable_scope("loss-lbd" + str(l2_reg_lambda)):

@@ -46,6 +46,9 @@ class TextCNN:
             self.input_suff2 = self.input_comp.input_suff2
             self.input_suff3 = self.input_comp.input_suff3
             self.input_pos = self.input_comp.input_pos
+        elif input_component.endswith("PAN11"):
+            self.input_comp = TwoEmbChannel(sequence_length, num_classes, word_vocab_size, embedding_size,
+                                            data.embed_matrix, data.embed_matrix_w2v)
         else:
             raise NotImplementedError
 
@@ -95,7 +98,7 @@ class TextCNN:
             output = MLOutput(self.input_comp.input_y, prev_layer, num_nodes, num_classes, l2_sum, l2_reg_lambda)
         elif "PAN" in data.name:
             output = PANOutput(self.input_comp.input_y, prev_layer, num_nodes, num_classes, l2_sum, l2_reg_lambda)
-            self.rate_percentage = output.rate_percentage
+            # self.rate_percentage = output.rate_percentage
         else:
             raise NotImplementedError
 

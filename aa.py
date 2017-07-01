@@ -38,6 +38,7 @@ if __name__ == "__main__":
     # * ML_Six
     # * ML_One_DocLevel
     # * PAN11
+    # * PAN11_2CH
     #
     # Middle Components:
     #
@@ -49,8 +50,8 @@ if __name__ == "__main__":
     # * PureRNN
     ################################################
 
-    input_component = "PAN11"
-    middle_component = "ORIGIN_KIM"
+    input_component = "PAN11_2CH"
+    middle_component = "NCrossSizeParallelConvNFC"
     truth_file = "labels.csv"
 
     am = ArchiveManager(input_component, middle_component, truth_file=truth_file)
@@ -81,22 +82,25 @@ if __name__ == "__main__":
         dater = DataHelperMLNormal(doc_level="doc", train_holdout=0.80, embed_type="glove",
                                    embed_dim=300, target_sent_len=128, target_doc_len=128)
         ev = evaler_one.Evaluator()
-    elif input_component == "PAN11":
+    elif input_component == "PAN11_ONE":
         dater = DataHelperPan11(embed_type="glove", embed_dim=300, target_sent_len=100, prob_code=1)
+        ev = evaler_one.Evaluator()
+    elif input_component == "PAN11_2CH":
+        dater = DataHelperPan11(embed_type="both", embed_dim=300, target_sent_len=100, prob_code=1)
         ev = evaler_one.Evaluator()
     else:
         raise NotImplementedError
 
     if middle_component == "ORIGIN_KIM":
         tt = ttl.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                           batch_size=64, evaluate_every=500, checkpoint_every=1000, max_to_keep=7)
+                           batch_size=64, evaluate_every=100, checkpoint_every=500, max_to_keep=7)
     else:
         tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
                           batch_size=64, evaluate_every=500, checkpoint_every=1000, max_to_keep=7)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    tt.training(filter_sizes=[3, 4, 5, 6], num_filters=80, dropout_keep_prob=0.5, n_steps=8000, l2_lambda=0.0,
+    tt.training(filter_sizes=[[2, 3, 4, 5]], num_filters=80, dropout_keep_prob=0.5, n_steps=8000, l2_lambda=0.0,
                 dropout=True, batch_normalize=False, elu=False, n_conv=1, fc=[])
     end = timer()
     print((end - start))

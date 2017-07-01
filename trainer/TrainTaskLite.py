@@ -171,7 +171,8 @@ class TrainTask:
                 time_str = datetime.datetime.now().isoformat()
                 print(
                     ("{}: step {}, loss {:g}, acc {:g}, acc_max {:g}".format(time_str, step, loss, accuracy, acc_max)))
-                train_summary_writer.add_summary(summaries, step)
+                if step % 5 == 0:
+                    train_summary_writer.add_summary(summaries, step)
 
             def dev_step(x_batch, y_batch, writer=None):
                 """
@@ -200,7 +201,6 @@ class TrainTask:
             for batch in batches:
                 x_batch, y_batch = list(zip(*batch))
                 train_step(x_batch, y_batch)
-
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")

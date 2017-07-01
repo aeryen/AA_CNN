@@ -46,7 +46,7 @@ class TrainTask:
 
         logging.info("Vocabulary Size: {:d}".format(len(self.train_data.vocab)))
         logging.info("Train/Dev split (DOC): {:d}/{:d}".
-                     format(len(self.train_data.file_id), len(self.train_data.file_id)))
+                     format(len(self.train_data.label_doc), len(self.train_data.label_doc)))
         logging.info("Train/Dev split (IST): {:d}/{:d}".
                      format(len(self.train_data.label_instance), len(self.test_data.label_instance)))
 
@@ -142,7 +142,7 @@ class TrainTask:
                 # Initialize all variables
                 sess.run(tf.global_variables_initializer())
 
-            if "One" in self.input_component or "2CH" in self.input_component or "PAN11" in self.input_component:
+            if "One" in self.input_component or "2CH" in self.input_component:
                 def train_step(x_batch, y_batch):
                     """
                     A single training step
@@ -158,7 +158,8 @@ class TrainTask:
                         feed_dict)
                     time_str = datetime.datetime.now().isoformat()
                     print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
-                    train_summary_writer.add_summary(summaries, step)
+                    if step % 5 == 0:
+                        train_summary_writer.add_summary(summaries, step)
 
                 def dev_step(x_batch, y_batch, writer=None):
                     """
@@ -201,7 +202,8 @@ class TrainTask:
                         feed_dict)
                     time_str = datetime.datetime.now().isoformat()
                     print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
-                    train_summary_writer.add_summary(summaries, step)
+                    if step % 5 == 0:
+                        train_summary_writer.add_summary(summaries, step)
 
                 def dev_step(x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch,
                              writer=None):
@@ -230,8 +232,9 @@ class TrainTask:
                 raise NotImplementedError
 
             # Generate batches
-            if "One" in self.input_component or "2CH" in self.input_component or "PAN11" in self.input_component:
-                batches = dh.DataHelperML.batch_iter(list(zip(self.train_data.value, self.train_data.label_instance)), self.batch_size,
+            if "One" in self.input_component or "2CH" in self.input_component:
+                batches = dh.DataHelperML.batch_iter(list(zip(self.train_data.value, self.train_data.label_instance)),
+                                                     self.batch_size,
                                                      num_epochs=300)
             elif "Six" in self.input_component:
                 batches = dh.DataHelperML.batch_iter(list(zip(self.train_data, self.y_train, self.p2_train, self.p3_train,
@@ -241,7 +244,7 @@ class TrainTask:
                 raise NotImplementedError
             # Training loop. For each batch...
             for batch in batches:
-                if "One" in self.input_component or "2CH" in self.input_component or "PAN11" in self.input_component:
+                if "One" in self.input_component or "2CH" in self.input_component:
                     x_batch, y_batch = list(zip(*batch))
                     train_step(x_batch, y_batch)
                 elif "Six" in self.input_component:
@@ -253,7 +256,7 @@ class TrainTask:
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")
-                    if "One" in self.input_component or "2CH" in self.input_component or "2CH" in self.input_component:
+                    if "One" in self.input_component or "2CH" in self.input_component:
                         dev_batches = dh.DataHelperML.batch_iter(list(zip(self.test_data.value, self.test_data.label_instance)), self.batch_size, 1)
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:

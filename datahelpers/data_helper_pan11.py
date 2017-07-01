@@ -107,6 +107,20 @@ class DataHelperPan11(DataHelper):
         vocabulary = {x: i for i, x in enumerate(vocabulary_inv)}
         return [vocabulary, vocabulary_inv]
 
+    @staticmethod
+    def longest_sentence(data, print_content=True):
+        sent_lengths = [len(x) for x in data.raw]
+        result_index = sorted(list(range(len(sent_lengths))), key=lambda i: sent_lengths[i])[-30:]
+        print("max: " + str(np.max(sent_lengths)))
+        print("mean: " + str(np.mean(sent_lengths)))
+        print("median: " + str(np.median(sent_lengths)))
+        print("80 percentile: " + str(np.percentile(sent_lengths, q=80)))
+        for i in result_index:
+            s = data.raw[i]
+            print(len(s))
+            if print_content:
+                print(s)
+
     def __load_train_data(self):
         data_list = []
 
@@ -372,6 +386,7 @@ class DataHelperPan11(DataHelper):
 
 if __name__ == "__main__":
     o = DataHelperPan11(embed_type="glove", embed_dim=300, target_sent_len=100, prob_code=1)
-    o.load_train_data()
+    data = o.get_train_data()
+    DataHelperPan11.longest_sentence(data, True)
     # o.load_test_data()
     print("o")

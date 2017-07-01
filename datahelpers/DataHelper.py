@@ -72,7 +72,7 @@ class DataHelper(object):
         string = re.sub("\"", " \" ", string)
         string = re.sub("-", " - ", string)
 
-        string = re.sub("[\d]+\.?[\d]*", "123", string)
+        string = re.sub("[\d]+\.[\d]+", "123", string)
         string = re.sub("[\d]+/[\d]+/[\d]{4}", "123", string)
 
         string = re.sub("[-]{4,}", " <<DLINE>> ", string)
