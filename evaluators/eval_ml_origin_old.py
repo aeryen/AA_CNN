@@ -22,12 +22,11 @@ from datahelpers.data_helper_pan11 import DataHelperPan11
 import utils.ArchiveManager as AM
 from datahelpers.Data import LoadMethod
 import math
+import re
 
 
 def sigmoid(x):
     return 1 / (1 + math.exp(-x))
-
-# THIS CLASS IS THE EVALUATOR FOR NORMAL CNN
 
 
 class Evaluator:
@@ -38,19 +37,18 @@ class Evaluator:
         self.vocab_inv = None
         self.eval_log = None
 
-    def plot_confusion_matrix(self, cm, dater, title='Confusion matrix', cmap=plt.cm.Blues):
-        plt.imshow(cm, interpolation='nearest', cmap=cmap)
-        plt.title(title)
-        plt.colorbar()
-        tick_marks = np.arange(dater.num_of_classes)
-        plt.tight_layout()
-        plt.ylabel('True label')
-        plt.xlabel('Predicted label')
+    def print_a_csv(self, exp_dir, file_name, method_name, prob, pred, true):
+        csv_file = open(os.path.join(exp_dir, file_name + "_ " + method_name + "_out.csv"), mode="w+")
+        for i in range(len(pred)):
+            csv_file.write(self.test_data.file_id[i] + "\n")
+            csv_file.write("prob:," + re.sub(r'[\[\]\s]+', ',', str(prob[i])) + "\n")
+            csv_file.write("pred:," + re.sub(r'[\[\]\s]+', ',', str(pred[i])) + "\n")
+            csv_file.write("true:," + re.sub(r'[\[\]\s]+', ',', str(true[i])) + "\n")
 
     def load(self, dater):
         self.dater = dater
         print("Loading data...")
-        self.test_data, self.vocab, self.vocab_inv = self.dater.get_test_data()
+        self.test_data = self.dater.get_test_data()
 
     def test(self, experiment_dir, checkpoint_step, doc_acc=True, do_is_training=True):
         if checkpoint_step is not None:
@@ -73,9 +71,7 @@ class Evaluator:
 
         graph = tf.Graph()
         with graph.as_default():
-            session_conf = tf.ConfigProto(
-                allow_soft_placement=True,
-                log_device_placement=False)
+            session_conf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
             sess = tf.Session(config=session_conf)
             with sess.as_default():
                 # Load the saved meta graph and restore variables
@@ -120,21 +116,21 @@ class Evaluator:
                         all_score = np.concatenate([all_score, batch_scores], axis=0)
                         pred_sigmoid = np.concatenate([pred_sigmoid, batch_pred_sigmoid], axis=0)
 
-            self.sent_accuracy_sigmoid(pred_sigmoid)
+            self.sent_accuracy_sigmoid(pred_sigmoid > 0.5)
             if doc_acc:
                 print("========== WITH CUMU-SIGMOID ==========")
                 self.doc_accuracy_sigmoid_cumulation(pred_sigmoid)
-                print("========== WITH CUMU-SCORE ==========")
-                self.doc_accuracy_score_cumulation(all_score)
+                # print("========== WITH CUMU-SCORE ==========")
+                # self.doc_accuracy_score_cumulation(all_score)
                 print("========== WITH SIGMOID ==========")
-                self.doc_accuracy(pred_sigmoid > 0.5)
+                self.doc_accuracy(pred_sigmoid > 0.5, exp_dir=experiment_dir, file_name=file_name)
 
             self.eval_log.write("\n")
             self.eval_log.write("\n")
 
     def sent_accuracy_sigmoid(self, all_predictions_bool):
         # Print prediction into file
-        np.savetxt('temp.out', all_predictions_bool.astype(int), fmt='%1.0f')
+        # np.savetxt('temp.out', all_predictions_bool.astype(int), fmt='%1.0f')
 
         test_label_bool = np.array(self.test_data.label_instance) == 1
         sentence_result_label_matrix = all_predictions_bool == test_label_bool
@@ -149,7 +145,7 @@ class Evaluator:
         np.set_printoptions(precision=2, linewidth=160)
 
         logging.info("EVALUATING USING doc_accuracy_sigmoid_cumulation")
-        self.eval_log.write("EVALUATING USING doc_accuracy_sigmoid_cumulation")
+        self.eval_log.write("EVALUATING USING doc_accuracy_sigmoid_cumulation\n")
         doc_prediction = []
         sum_to = 0
 
@@ -169,7 +165,7 @@ class Evaluator:
             print("pred: " + str(pred_class) + "\n" + "true: " + str(self.test_data.label_doc[i]))
             self.eval_log.write("File:" + self.test_data.file_id[i] + "\n")
             self.eval_log.write("pred: " + str(pred_class) + "\n" +
-                                "true: " + str(self.test_data.label_doc[i]) + "\n\n")
+                                "true: " + str(self.test_data.label_doc[i]) + "\n")
 
         logging.info("")
         self.eval_log.write("\n")
@@ -185,11 +181,12 @@ class Evaluator:
         print("Doc ACC: " + str(doc_acc))
         self.eval_log.write("Doc ACC: " + str(doc_acc) + "\n\n")
 
-    def doc_accuracy_score_cumulation(self, all_scores):
+    def doc_accuracy_score_cumulation(self, all_scores, exp_dir, file_name):
         logging.info("EVALUATING USING doc_accuracy_score_cumulation")
         self.eval_log.write("EVALUATING USING doc_accuracy_score_cumulation")
         doc_prediction = []
         sum_to = 0
+        prob_list = []
 
         for i in range(len(self.test_data.doc_size)):
             f_size = self.test_data.doc_size[i]
@@ -198,6 +195,7 @@ class Evaluator:
             p = np.sum(p, axis=0).astype(float)
             p = p / f_size
             p = np.array([sigmoid(i) for i in p])
+            prob_list.append(p)
             pred_class = p >= 0.5
             pred_class = pred_class.astype(float)
             if 1 not in pred_class:
@@ -223,8 +221,14 @@ class Evaluator:
         print("Doc ACC: " + str(doc_acc))
         self.eval_log.write("Doc ACC: " + str(doc_acc) + "\n\n")
 
-    def doc_accuracy(self, all_predictions):
+        self.print_a_csv(exp_dir=exp_dir, file_name=file_name, method_name="SCR_CUMU",
+                         prob=prob_list, pred=doc_prediction, true=self.test_data.label_doc)
+
+    def doc_accuracy(self, all_predictions, exp_dir, file_name):
+        self.eval_log.write(" ### Document Accuracy ### \n")
+
         np.set_printoptions(precision=2, linewidth=160)
+        prob_list = []
         doc_prediction = []
         sum_to = 0
         for i in range(len(self.test_data.doc_size)):
@@ -234,15 +238,16 @@ class Evaluator:
             p = np.sum(p, axis=0).astype(float)
             p = p / f_size
             print("file " + str(i) + " : " + str(p))
+            prob_list.append((p))
             pred_class = p >= 0.30
-            pred_class = pred_class.astype(float)
+            pred_class = pred_class.astype(int)
             if 1 not in pred_class:
                 pred_class = np.zeros([self.dater.num_of_classes], dtype=np.int)
                 pred_class[np.argmax(p)] = 1
             doc_prediction.append(pred_class)
             print("pred: " + str(pred_class) + "   " + "true: " + str(self.test_data.label_doc[i]))
             self.eval_log.write("File:" + self.test_data.file_id[i] + "\n")
-            self.eval_log.write("pred: " + str(pred_class) + "   " +
+            self.eval_log.write("pred: " + str(pred_class) + "\n" +
                                 "true: " + str(self.test_data.label_doc[i]) + "\n")
 
         logging.info("")
@@ -298,6 +303,9 @@ class Evaluator:
         logging.info("acc:\t" + str(acc))
         self.eval_log.write("acc:\t" + str(acc) + "\n")
 
+        self.print_a_csv(exp_dir=exp_dir, file_name=file_name, method_name="THR",
+                         prob=prob_list, pred=doc_prediction, true=self.test_data.label_doc)
+
 
 if __name__ == "__main__":
     step = None
@@ -305,7 +313,8 @@ if __name__ == "__main__":
     mode = "ML_One"  # ML_One / ML_2CH / PAN11
     if mode == "ML_One":
         dater = DataHelperMLNormal(doc_level=LoadMethod.SENT, embed_type="glove",
-                                   embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv")
+                                   embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv",
+                                   total_fold=5, t_fold_index=0)
     elif mode == "ML_2CH":
         dater = DataHelperML2CH(doc_level="sent", embed_dim=300,
                                 target_doc_len=400, target_sent_len=50,
@@ -317,8 +326,8 @@ if __name__ == "__main__":
     e.load(dater)
     path = sys.argv[1]
     if len(sys.argv) == 2:
-        e.test(path, step, doc_acc=True, do_is_training=False)
+        e.test(path, step, doc_acc=True, do_is_training=True)
     elif len(sys.argv) > 2:
         steps = list(map(int, sys.argv[2].split("/")))
         for step in steps:
-            e.test(path, step, doc_acc=True, do_is_training=False)
+            e.test(path, step, doc_acc=True, do_is_training=True)
