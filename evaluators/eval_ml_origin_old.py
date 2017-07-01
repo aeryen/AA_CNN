@@ -50,7 +50,7 @@ class Evaluator:
         print("Loading data...")
         self.test_data = self.dater.get_test_data()
 
-    def test(self, experiment_dir, checkpoint_step, doc_acc=True, do_is_training=True):
+    def evaluate(self, experiment_dir, checkpoint_step, doc_acc=True, do_is_training=True):
         if checkpoint_step is not None:
             checkpoint_file = experiment_dir + "/checkpoints/" + "model-" + str(checkpoint_step)
         else:

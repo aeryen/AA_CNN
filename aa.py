@@ -8,6 +8,7 @@ from trainer import TrainTask as tr
 from trainer import TrainTaskLite as ttl
 from evaluators import eval_ml_mulmol_d as evaler
 from evaluators import eval_ml_origin as evaler_one
+from evaluators import eval_pan11_new as evaler_pan
 from utils.ArchiveManager import ArchiveManager
 from datahelpers.Data import LoadMethod
 import logging
@@ -84,10 +85,10 @@ if __name__ == "__main__":
         ev = evaler_one.Evaluator()
     elif input_component == "PAN11_ONE":
         dater = DataHelperPan11(embed_type="glove", embed_dim=300, target_sent_len=100, prob_code=1)
-        ev = evaler_one.Evaluator()
+        ev = evaler_pan.Evaluator()
     elif input_component == "PAN11_2CH":
         dater = DataHelperPan11(embed_type="both", embed_dim=300, target_sent_len=100, prob_code=1)
-        ev = evaler_one.Evaluator()
+        ev = evaler_pan.Evaluator()
     else:
         raise NotImplementedError
 
@@ -100,10 +101,10 @@ if __name__ == "__main__":
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    tt.training(filter_sizes=[[2, 3, 4, 5]], num_filters=80, dropout_keep_prob=0.5, n_steps=8000, l2_lambda=0.0,
-                dropout=True, batch_normalize=False, elu=False, n_conv=1, fc=[])
+    tt.training(filter_sizes=[[2, 3, 5]], num_filters=80, dropout_keep_prob=0.5, n_steps=7000, l2_lambda=0.0,
+                dropout=True, batch_normalize=True, elu=True, n_conv=1, fc=[128])
     end = timer()
     print((end - start))
 
     ev.load(dater)
-    ev.test(am.get_exp_dir(), None, doc_acc=False, do_is_training=False)
+    ev.evaluate(am.get_exp_dir(), None, doc_acc=False, do_is_training=False)

@@ -1,6 +1,5 @@
 #! /usr/bin/env python
 
-import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from sklearn.metrics import precision_score
@@ -13,13 +12,14 @@ from sklearn.metrics import accuracy_score
 import sys
 import logging
 import os.path
+import re
 
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from datahelpers.DataHelper import DataHelper
 from datahelpers.data_helper_pan11 import DataHelperPan11
 import utils.ArchiveManager as AM
 from datahelpers.Data import LoadMethod
-import math
+
 
 
 class Evaluator:
@@ -29,14 +29,13 @@ class Evaluator:
         self.test_data = None
         self.y_test_scalar = None
 
-    def plot_confusion_matrix(self, cm, dater, title='Confusion matrix', cmap=plt.cm.Blues):
-        plt.imshow(cm, interpolation='nearest', cmap=cmap)
-        plt.title(title)
-        plt.colorbar()
-        tick_marks = np.arange(dater.num_of_classes)
-        plt.tight_layout()
-        plt.ylabel('True label')
-        plt.xlabel('Predicted label')
+    def print_a_csv(self, exp_dir, file_name, method_name, prob, pred, true):
+        csv_file = open(os.path.join(exp_dir, file_name + "_ " + method_name + "_out.csv"), mode="w+")
+        for i in range(len(pred)):
+            # csv_file.write(self.test_data.file_id[i] + "\n")
+            csv_file.write("prob:," + re.sub(r'[\[\]\s]+', ',', str(prob[i])) + "\n")
+            csv_file.write("pred:," + re.sub(r'[\[\]\s]+', ',', str(pred[i])) + "\n")
+            csv_file.write("true:," + re.sub(r'[\[\]\s]+', ',', str(true[i])) + "\n")
 
     def load(self, dater):
         self.dater = dater
@@ -44,7 +43,7 @@ class Evaluator:
         self.test_data = self.dater.get_test_data()
         self.y_test_scalar = np.argmax(self.test_data.label_instance, axis=1)
 
-    def evaluate(self, experiment_dir, checkpoint_step, do_is_training=True):
+    def evaluate(self, experiment_dir, checkpoint_step, doc_acc=False, do_is_training=True):
         if checkpoint_step is not None:
             checkpoint_file = experiment_dir + "/checkpoints/" + "model-" + str(checkpoint_step)
         else:
@@ -80,7 +79,7 @@ class Evaluator:
 
                 # Tensors we want to evaluate
                 scores = graph.get_operation_by_name("output/scores").outputs[0]
-                predictions = graph.get_operation_by_name("output/predictions_max").outputs[0]
+                predictions = graph.get_operation_by_name("output/predictions").outputs[0]
 
                 # Generate batches for one epoch
                 x_batches = DataHelper.batch_iter(self.test_data.value, 64, 1, shuffle=False)
@@ -99,6 +98,8 @@ class Evaluator:
                         batch_scores, batch_pred_max = sess.run(
                             [scores, predictions],
                             {input_x: x_test_batch, dropout_keep_prob: 1.0})
+
+                    batch_scores = tf.nn.softmax(batch_scores).eval()
 
                     if all_score is None:
                         all_score = batch_scores
@@ -136,6 +137,9 @@ class Evaluator:
 
         self.eval_log.write("\n")
         self.eval_log.write("\n")
+
+        self.print_a_csv(exp_dir=experiment_dir, file_name=file_name, method_name="NORM",
+                         prob=all_score, pred=pred, true=self.y_test_scalar)
 
 if __name__ == "__main__":
     step = None
