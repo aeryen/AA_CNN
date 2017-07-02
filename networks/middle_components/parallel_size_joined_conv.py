@@ -159,7 +159,7 @@ class NCrossSizeParallelConvNFC(object):
                                     state_is_tuple=False)
             outputs, state = rnn.static_rnn(cell,
                                             x,
-                                            dtype=tf.dtypes.float32,
+                                            dtype=tf.float32,
                                             sequence_length=sequence_length)
             self.last_layer = outputs
             return outputs, state
