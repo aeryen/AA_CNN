@@ -8,7 +8,7 @@ from trainer import TrainTask as tr
 from trainer import TrainTaskLite as ttl
 from evaluators import eval_ml_mulmol_d as evaler
 from evaluators import eval_ml_origin as evaler_one
-from evaluators import eval_pan11_new as evaler_pan
+from evaluators import eval_pan11 as evaler_pan
 from utils.ArchiveManager import ArchiveManager
 from datahelpers.Data import LoadMethod
 import logging
@@ -97,11 +97,11 @@ if __name__ == "__main__":
                            batch_size=64, evaluate_every=100, checkpoint_every=500, max_to_keep=7)
     else:
         tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                          batch_size=64, evaluate_every=500, checkpoint_every=1000, max_to_keep=7)
+                          batch_size=32, evaluate_every=500, checkpoint_every=1000, max_to_keep=7)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
-    tt.training(filter_sizes=[[2, 3, 5]], num_filters=80, dropout_keep_prob=0.5, n_steps=7000, l2_lambda=0.0,
+    tt.training(filter_sizes=[[2, 3, 5]], num_filters=80, dropout_keep_prob=0.5, n_steps=15000, l2_lambda=0.0,
                 dropout=True, batch_normalize=True, elu=True, n_conv=1, fc=[128])
     end = timer()
     print((end - start))

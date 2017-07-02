@@ -372,9 +372,7 @@ class DataHelper(object):
                     new_doc = np.concatenate([d, np.zeros([num_padding, sent_length], dtype=np.int)])
                     trim_len.append(lens[i])
                 else:
-                    print("Warning, 0 line file!")
-                    new_doc = np.zeros([num_padding, sent_length], dtype=np.int)
-                    trim_len.append(lens[i])
+                    raise ValueError("Warning, 0 line file!")
             else:
                 new_doc = d[:tar_length]
                 trim_len.append(tar_length)

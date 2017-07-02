@@ -17,7 +17,7 @@ class NConvDocConvNFC(object):
         self.elu = elu
         self.n_conv = n_conv
         self.last_layer = None
-        self.num_filters_total = None
+        self.num_filters_total = tf.placeholder(tf.float32, [None], name="doc_len")
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
         for n in range(n_conv):
             all_filter_size_output = []

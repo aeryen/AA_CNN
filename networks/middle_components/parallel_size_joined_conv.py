@@ -23,6 +23,7 @@ class NCrossSizeParallelConvNFC(object):
         self.num_filters_total = None
         self.l2_reg_lambda = l2_reg_lambda
         self.l2_sum = tf.constant(0.0)
+        self.real_doc_len = tf.placeholder(tf.float32, [None], name="doc_len")
 
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
         for n in range(n_conv):
@@ -78,28 +79,30 @@ class NCrossSizeParallelConvNFC(object):
                     self.num_filters_total = num_filters * len(filter_size_lists[n]) * n_input_channels
 
             self.last_layer = tf.concat(all_filter_size_output, 3)
-            self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, self.num_filters_total, 1])
+            # self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, self.num_filters_total, 1])
+            self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, self.num_filters_total])
 
-        with tf.variable_scope("maxpool-all"):
-            # Maxpooling over the outputs
-            pooled_all = tf.nn.max_pool(
-                self.last_layer,
-                ksize=[1, sequence_length, 1, 1],
-                strides=[1, 1, 1, 1],
-                padding='VALID',
-                name="pool")
+        # with tf.variable_scope("maxpool-all"):
+        #     # Maxpooling over the outputs
+        #     pooled_all = tf.nn.max_pool(
+        #         self.last_layer,
+        #         ksize=[1, sequence_length, 1, 1],
+        #         strides=[1, 1, 1, 1],
+        #         padding='VALID',
+        #         name="pool")
 
         # Combine all the pooled features
-        self.h_pool_flat = tf.reshape(pooled_all, [-1, self.num_filters_total])
-        self.last_layer = self.h_pool_flat
+        # self.h_pool_flat = tf.reshape(pooled_all, [-1, self.num_filters_total])
+        # self.last_layer = self.h_pool_flat
         self.n_nodes_last_layer = self.num_filters_total
         # Add dropout
         if self.dropout == True:
             with tf.variable_scope("dropout-keep"):
                 self.last_layer = tf.nn.dropout(self.last_layer, previous_component.dropout_keep_prob)
 
-        self._gru(100, num_layers=1, bidirectional=False, sequence_length=100, attn_length=None,
-                  attn_size=self.n_nodes_last_layer, attn_vec_size=self.n_nodes_last_layer)
+        with tf.variable_scope("GRU"):
+            self._gru(128, num_layers=1, bidirectional=False, sequence_length=100, attn_length=None,
+                      attn_size=self.n_nodes_last_layer, attn_vec_size=self.n_nodes_last_layer)
 
         for i, n_nodes in enumerate(fc):
             self._fc_layer(i + 1, n_nodes)
@@ -154,7 +157,7 @@ class NCrossSizeParallelConvNFC(object):
                                                                                             rnn_bw_cell,
                                                                                             x,
                                                                                             dtype=tf.dtypes.float32,
-                                                                                            sequence_length=sequence_length)
+                                                                                            sequence_length=self.real_doc_len)
             self.last_layer = outputs
 
             return outputs, output_state_fw, output_state_bw
@@ -166,11 +169,12 @@ class NCrossSizeParallelConvNFC(object):
                     attn_vec_size=attn_vec_size, state_is_tuple=False)
             cell = rnn.MultiRNNCell([rnn_cell] * num_layers,
                                     state_is_tuple=False)
-            outputs, state = tf.nn.dynamic_rnn(cell,
-                                            x,
-                                            dtype=tf.float32,
-                                            sequence_length=sequence_length)
-            self.last_layer = outputs
+            outputs, state = tf.nn.dynamic_rnn(cell, x, dtype=tf.float32, sequence_length=self.real_doc_len)
+            # outputs [?, 100, 128]
+            # outputs = tf.transpose(outputs, [1, 0, 2])
+            # self.last_layer = tf.gather(outputs, int(outputs.get_shape()[0]) - 1)
+            self.last_layer = outputs[:, -1, :]
+            self.n_nodes_last_layer = n_nodes
             return outputs, state
 
     def _fc_layer(self, tag, n_nodes):
