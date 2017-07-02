@@ -98,8 +98,8 @@ class NCrossSizeParallelConvNFC(object):
             with tf.variable_scope("dropout-keep"):
                 self.last_layer = tf.nn.dropout(self.last_layer, previous_component.dropout_keep_prob)
 
-        # self._gru(self.n_nodes_last_layer, num_layers=1, bidirectional=True, sequence_length=400, attn_length=400,
-        #           attn_size=self.n_nodes_last_layer, attn_vec_size=self.n_nodes_last_layer)
+        self._gru(100, num_layers=1, bidirectional=False, sequence_length=100, attn_length=None,
+                  attn_size=self.n_nodes_last_layer, attn_vec_size=self.n_nodes_last_layer)
 
         for i, n_nodes in enumerate(fc):
             self._fc_layer(i + 1, n_nodes)
@@ -122,6 +122,15 @@ class NCrossSizeParallelConvNFC(object):
             state.
 
         """
+        logging.warning("RNN LAYER AFTER CNN")
+        logging.info("n_nodes: " + str(n_nodes))
+        logging.info("num_layers: " + str(num_layers))
+        logging.info("bidirectional: " + str(bidirectional))
+        logging.info("sequence_length: " + str(sequence_length))
+        logging.info("attn_length: " + str(attn_length))
+        logging.info("attn_size: " + str(attn_size))
+        logging.info("attn_vec_size: " + str(attn_vec_size))
+
         x = self.last_layer
 
         if bidirectional:
@@ -157,9 +166,9 @@ class NCrossSizeParallelConvNFC(object):
                     attn_vec_size=attn_vec_size, state_is_tuple=False)
             cell = rnn.MultiRNNCell([rnn_cell] * num_layers,
                                     state_is_tuple=False)
-            outputs, state = rnn.static_rnn(cell,
+            outputs, state = tf.nn.dynamic_rnn(cell,
                                             x,
-                                            dtype=tf.dtypes.float32,
+                                            dtype=tf.float32,
                                             sequence_length=sequence_length)
             self.last_layer = outputs
             return outputs, state
