@@ -325,15 +325,20 @@ class DataHelperPan11(DataHelper):
             print("longest doc: " + str(max_length))
 
         padded_docs = []
+        trim_len = []
         for sent_i in range(len(data.value)):
             sent = data.value[sent_i]
             if len(sent) <= max_length:
                 num_padding = max_length - len(sent)
                 new_sentence = np.concatenate([sent, np.zeros(num_padding, dtype=np.int)])
+                trim_len.append(data.doc_size[sent_i])
+
             else:
                 new_sentence = sent[:max_length]
+                trim_len.append(max_length)
             padded_docs.append(new_sentence)
         data.value = np.array(padded_docs)
+        data.doc_size_trim = np.array(trim_len)
         return data
 
     def load_train_data(self):
@@ -345,6 +350,7 @@ class DataHelperPan11(DataHelper):
         self.train_data.raw = x
         self.train_data.label_doc = y
         self.train_data.label_instance = y
+        self.train_data.doc_size = [len(doc) for doc in x]
 
         self.vocab, self.vocab_inv = self.build_vocab(self.train_data, self.vocabulary_size)
         pickle.dump([self.vocab, self.vocab_inv], open("pan11_vocabulary_" + str(self.prob_code) + ".pickle", "wb"))
@@ -374,6 +380,7 @@ class DataHelperPan11(DataHelper):
         self.test_data.raw = x
         self.test_data.label_doc = y
         self.test_data.label_instance = y
+        self.test_data.doc_size = [len(doc) for doc in x]
 
         self.test_data = self.build_content_vector(self.test_data)
         self.test_data = self.pad_sentences(self.test_data)
