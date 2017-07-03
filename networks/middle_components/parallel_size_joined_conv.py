@@ -23,7 +23,7 @@ class NCrossSizeParallelConvNFC(object):
         self.num_filters_total = None
         self.l2_reg_lambda = l2_reg_lambda
         self.l2_sum = tf.constant(0.0)
-        self.real_doc_len = tf.placeholder(tf.int32, [None], name="doc_len")
+        # self.real_doc_len = tf.placeholder(tf.int32, [None], name="doc_len")
 
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
         for n in range(n_conv):
@@ -79,113 +79,29 @@ class NCrossSizeParallelConvNFC(object):
                     self.num_filters_total = num_filters * len(filter_size_lists[n]) * n_input_channels
 
             self.last_layer = tf.concat(all_filter_size_output, 3)
-            # self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, self.num_filters_total, 1])
-            self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, self.num_filters_total])
+            self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, self.num_filters_total, 1])
 
-        # with tf.variable_scope("maxpool-all"):
-        #     # Maxpooling over the outputs
-        #     pooled_all = tf.nn.max_pool(
-        #         self.last_layer,
-        #         ksize=[1, sequence_length, 1, 1],
-        #         strides=[1, 1, 1, 1],
-        #         padding='VALID',
-        #         name="pool")
+        with tf.variable_scope("maxpool-all"):
+            # Maxpooling over the outputs
+            pooled_all = tf.nn.max_pool(
+                self.last_layer,
+                ksize=[1, sequence_length, 1, 1],
+                strides=[1, 1, 1, 1],
+                padding='VALID',
+                name="pool")
 
         # Combine all the pooled features
-        # self.h_pool_flat = tf.reshape(pooled_all, [-1, self.num_filters_total])
-        # self.last_layer = self.h_pool_flat
+        self.h_pool_flat = tf.reshape(pooled_all, [-1, self.num_filters_total])
+        self.last_layer = self.h_pool_flat
         self.n_nodes_last_layer = self.num_filters_total
         # Add dropout
         if self.dropout == True:
             with tf.variable_scope("dropout-keep"):
                 self.last_layer = tf.nn.dropout(self.last_layer, previous_component.dropout_keep_prob)
 
-        with tf.variable_scope("GRU"):
-            self._gru(128, num_layers=1, bidirectional=False, sequence_length=100, attn_length=None,
-                      attn_size=self.n_nodes_last_layer, attn_vec_size=self.n_nodes_last_layer)
-
         for i, n_nodes in enumerate(fc):
             self._fc_layer(i + 1, n_nodes)
 
-    def _gru(self, n_nodes, num_layers=1, bidirectional=True, sequence_length=10, attn_length=10, attn_size=10,
-             attn_vec_size=10):
-        """
-        Args:
-          num_layers: The number of layers of the rnn model.
-          bidirectional: boolean, Whether this is a bidirectional rnn.
-          sequence_length: If sequence_length is provided, dynamic calculation is
-            performed. This saves computational time when unrolling past max sequence
-            length. Required for bidirectional RNNs.
-          initial_state: An initial state for the RNN. This must be a tensor of
-            appropriate type and shape [batch_size x cell.state_size].
-          attn_length: integer, the size of attention vector attached to rnn cells.
-          attn_size: integer, the size of an attention window attached to rnn cells.
-          attn_vec_size: integer, the number of convolutional features calculated on
-            attention state and the size of the hidden layer built from base cell
-            state.
-
-        """
-        logging.warning("RNN LAYER AFTER CNN")
-        logging.info("n_nodes: " + str(n_nodes))
-        logging.info("num_layers: " + str(num_layers))
-        logging.info("bidirectional: " + str(bidirectional))
-        logging.info("sequence_length: " + str(sequence_length))
-        logging.info("attn_length: " + str(attn_length))
-        logging.info("attn_size: " + str(attn_size))
-        logging.info("attn_vec_size: " + str(attn_vec_size))
-
-        x = self.last_layer
-
-        if bidirectional:
-            # forward direction cell
-            fw_cell = rnn.GRUCell(n_nodes)
-            bw_cell = rnn.GRUCell(n_nodes)
-            # attach attention cells if specified
-            if attn_length is not None:
-                fw_cell = rnn.AttentionCellWrapper(
-                    fw_cell, attn_length=attn_length, attn_size=attn_size,
-                    attn_vec_size=attn_vec_size, state_is_tuple=False)
-                bw_cell = rnn.AttentionCellWrapper(
-                    bw_cell, attn_length=attn_length, attn_size=attn_size,
-                    attn_vec_size=attn_vec_size, state_is_tuple=False)
-            rnn_fw_cell = rnn.MultiRNNCell([fw_cell] * num_layers,
-                                           state_is_tuple=False)
-            # backward direction cell
-            rnn_bw_cell = rnn.MultiRNNCell([bw_cell] * num_layers,
-                                           state_is_tuple=False)
-            outputs, output_state_fw, output_state_bw = rnn.stack_bidirectional_dynamic_rnn(rnn_fw_cell,
-                                                                                            rnn_bw_cell,
-                                                                                            x,
-                                                                                            dtype=tf.dtypes.float32,
-                                                                                            sequence_length=self.real_doc_len)
-            self.last_layer = outputs
-
-            return outputs, output_state_fw, output_state_bw
-        else:
-            rnn_cell = rnn.GRUCell(n_nodes)
-            if attn_length is not None:
-                rnn_cell = rnn.AttentionCellWrapper(
-                    rnn_cell, attn_length=attn_length, attn_size=attn_size,
-                    attn_vec_size=attn_vec_size, state_is_tuple=False)
-            cell = rnn.MultiRNNCell([rnn_cell] * num_layers,
-                                    state_is_tuple=False)
-            outputs, state = tf.nn.dynamic_rnn(cell, x, dtype=tf.float32, sequence_length=self.real_doc_len)
-            # outputs [?, 100, 128]
-            # outputs = tf.transpose(outputs, [1, 0, 2])
-            # self.last_layer = tf.gather(outputs, int(outputs.get_shape()[0]) - 1)
-            self.last_layer = NCrossSizeParallelConvNFC._last_relevant(outputs, self.real_doc_len)
-            self.n_nodes_last_layer = n_nodes
-            return outputs, state
-
-    @staticmethod
-    def _last_relevant(output, length):
-        batch_size = tf.shape(output)[0]
-        max_length = int(output.get_shape()[1])
-        output_size = int(output.get_shape()[2])
-        index = tf.range(0, batch_size) * max_length + (length - 1)
-        flat = tf.reshape(output, [-1, output_size])
-        relevant = tf.gather(flat, index)
-        return relevant
 
     def _fc_layer(self, tag, n_nodes):
         with tf.variable_scope('fc-%s' % str(tag)):
