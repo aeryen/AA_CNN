@@ -97,7 +97,7 @@ if __name__ == "__main__":
                            batch_size=64, evaluate_every=100, checkpoint_every=500, max_to_keep=7)
     else:
         tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                          batch_size=32, evaluate_every=500, checkpoint_every=1000, max_to_keep=7)
+                          batch_size=6, evaluate_every=500, checkpoint_every=1000, max_to_keep=7)
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 

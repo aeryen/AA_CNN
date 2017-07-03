@@ -122,6 +122,15 @@ class NCrossSizeParallelConvNFC(object):
             state.
 
         """
+        logging.warning("RNN LAYER AFTER CNN")
+        logging.info("n_nodes: " + str(n_nodes))
+        logging.info("num_layers: " + str(num_layers))
+        logging.info("bidirectional: " + str(bidirectional))
+        logging.info("sequence_length: " + str(sequence_length))
+        logging.info("attn_length: " + str(attn_length))
+        logging.info("attn_size: " + str(attn_size))
+        logging.info("attn_vec_size: " + str(attn_vec_size))
+
         x = self.last_layer
 
         if bidirectional:
@@ -145,7 +154,7 @@ class NCrossSizeParallelConvNFC(object):
                                                                                             rnn_bw_cell,
                                                                                             x,
                                                                                             dtype=tf.dtypes.float32,
-                                                                                            sequence_length=sequence_length)
+                                                                                            sequence_length=self.real_doc_len)
             self.last_layer = outputs
 
             return outputs, output_state_fw, output_state_bw
@@ -157,12 +166,23 @@ class NCrossSizeParallelConvNFC(object):
                     attn_vec_size=attn_vec_size, state_is_tuple=False)
             cell = rnn.MultiRNNCell([rnn_cell] * num_layers,
                                     state_is_tuple=False)
-            outputs, state = rnn.static_rnn(cell,
-                                            x,
-                                            dtype=tf.float32,
-                                            sequence_length=sequence_length)
-            self.last_layer = outputs
+            outputs, state = tf.nn.dynamic_rnn(cell, x, dtype=tf.float32, sequence_length=self.real_doc_len)
+            # outputs [?, 100, 128]
+            # outputs = tf.transpose(outputs, [1, 0, 2])
+            # self.last_layer = tf.gather(outputs, int(outputs.get_shape()[0]) - 1)
+            self.last_layer = NCrossSizeParallelConvNFC._last_relevant(outputs, self.real_doc_len)
+            self.n_nodes_last_layer = n_nodes
             return outputs, state
+
+    @staticmethod
+    def _last_relevant(output, length):
+        batch_size = tf.shape(output)[0]
+        max_length = int(output.get_shape()[1])
+        output_size = int(output.get_shape()[2])
+        index = tf.range(0, batch_size) * max_length + (length - 1)
+        flat = tf.reshape(output, [-1, output_size])
+        relevant = tf.gather(flat, index)
+        return relevant
 
     def _fc_layer(self, tag, n_nodes):
         with tf.variable_scope('fc-%s' % str(tag)):
