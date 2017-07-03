@@ -23,7 +23,7 @@ class NCrossSizeParallelConvNFC(object):
         self.num_filters_total = None
         self.l2_reg_lambda = l2_reg_lambda
         self.l2_sum = tf.constant(0.0)
-        self.real_doc_len = tf.placeholder(tf.float32, [None], name="doc_len")
+        self.real_doc_len = tf.placeholder(tf.int32, [None], name="doc_len")
 
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
         for n in range(n_conv):
@@ -173,9 +173,19 @@ class NCrossSizeParallelConvNFC(object):
             # outputs [?, 100, 128]
             # outputs = tf.transpose(outputs, [1, 0, 2])
             # self.last_layer = tf.gather(outputs, int(outputs.get_shape()[0]) - 1)
-            self.last_layer = outputs[:, -1, :]
+            self.last_layer = NCrossSizeParallelConvNFC._last_relevant(outputs, self.real_doc_len)
             self.n_nodes_last_layer = n_nodes
             return outputs, state
+
+    @staticmethod
+    def _last_relevant(output, length):
+        batch_size = tf.shape(output)[0]
+        max_length = int(output.get_shape()[1])
+        output_size = int(output.get_shape()[2])
+        index = tf.range(0, batch_size) * max_length + (length - 1)
+        flat = tf.reshape(output, [-1, output_size])
+        relevant = tf.gather(flat, index)
+        return relevant
 
     def _fc_layer(self, tag, n_nodes):
         with tf.variable_scope('fc-%s' % str(tag)):
