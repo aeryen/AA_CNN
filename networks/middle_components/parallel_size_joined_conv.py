@@ -71,12 +71,9 @@ class NCrossSizeParallelConvNFC(object):
                     else:
                         h = tf.nn.elu(tf.nn.bias_add(conv, b), name="elu")
 
-                    if self.l2_reg_lambda > 0:
-                        self.l2_sum += tf.nn.l2_loss(W)
                     all_filter_size_output.append(h)
 
                     self.num_filters_total = num_filters * len(filter_size_lists[n]) * n_input_channels
-
             self.last_layer = tf.concat(all_filter_size_output, 3)
             self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, self.num_filters_total, 1])
 
@@ -93,13 +90,11 @@ class NCrossSizeParallelConvNFC(object):
         self.h_pool_flat = tf.reshape(pooled_all, [-1, self.num_filters_total])
         self.last_layer = self.h_pool_flat
         self.n_nodes_last_layer = self.num_filters_total
+
         # Add dropout
         if self.dropout == True:
             with tf.variable_scope("dropout-keep"):
                 self.last_layer = tf.nn.dropout(self.last_layer, previous_component.dropout_keep_prob)
-
-        # self._gru(self.n_nodes_last_layer, num_layers=1, bidirectional=True, sequence_length=400, attn_length=400,
-        #           attn_size=self.n_nodes_last_layer, attn_vec_size=self.n_nodes_last_layer)
 
         for i, n_nodes in enumerate(fc):
             self._fc_layer(i + 1, n_nodes)
