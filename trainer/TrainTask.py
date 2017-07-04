@@ -143,7 +143,7 @@ class TrainTask:
                 sess.run(tf.global_variables_initializer())
 
             if "One" in self.input_component or "2CH" in self.input_component:
-                def train_step(x_batch, y_batch, doc_len):
+                def train_step(x_batch, y_batch):
                     """
                     A single training step
                     """
@@ -151,8 +151,7 @@ class TrainTask:
                         cnn.input_x: x_batch,
                         cnn.input_y: y_batch,
                         cnn.dropout_keep_prob: dropout_keep_prob,
-                        cnn.is_training: 1,
-                        cnn.real_doc_len: doc_len
+                        cnn.is_training: 1
                     }
                     _, step, summaries, loss, accuracy = sess.run(
                         [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
@@ -162,7 +161,7 @@ class TrainTask:
                     if step % 5 == 0:
                         train_summary_writer.add_summary(summaries, step)
 
-                def dev_step(x_batch, y_batch, doc_len, writer=None):
+                def dev_step(x_batch, y_batch, writer=None):
                     """
                     Evaluates model on a dev set
                     """
@@ -170,8 +169,7 @@ class TrainTask:
                         cnn.input_x: x_batch,
                         cnn.input_y: y_batch,
                         cnn.dropout_keep_prob: 1,
-                        cnn.is_training: 0,
-                        cnn.real_doc_len: doc_len
+                        cnn.is_training: 0
                     }
                     step, summaries, loss, accuracy = sess.run(
                         [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
@@ -235,7 +233,7 @@ class TrainTask:
 
             # Generate batches
             if "One" in self.input_component or "2CH" in self.input_component:
-                batches = dh.DataHelperML.batch_iter(list(zip(self.train_data.value, self.train_data.label_instance, self.train_data.doc_size_trim)),
+                batches = dh.DataHelperML.batch_iter(list(zip(self.train_data.value, self.train_data.label_instance)),
                                                      self.batch_size,
                                                      num_epochs=300)
             elif "Six" in self.input_component:
@@ -247,11 +245,11 @@ class TrainTask:
             # Training loop. For each batch...
             for batch in batches:
                 if "One" in self.input_component or "2CH" in self.input_component:
-                    train_x, train_y, train_doclen = list(zip(*batch))
-                    train_step(train_x, train_y, train_doclen)
+                    x_batch, y_batch = list(zip(*batch))
+                    train_step(x_batch, y_batch)
                 elif "Six" in self.input_component:
-                    train_x, train_y, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch = list(zip(*batch))
-                    train_step(train_x, train_y, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch)
+                    x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch = list(zip(*batch))
+                    train_step(x_batch, y_batch, pref2_batch, pref3_batch, suff2_batch, suff3_batch, pos_batch)
                 else:
                     raise NotImplementedError
 
@@ -259,11 +257,11 @@ class TrainTask:
                 if current_step % self.evaluate_every == 0:
                     print("\nEvaluation:")
                     if "One" in self.input_component or "2CH" in self.input_component:
-                        dev_batches = dh.DataHelperML.batch_iter(list(zip(self.test_data.value, self.test_data.label_instance, self.train_data.doc_size_trim)), self.batch_size, 1)
+                        dev_batches = dh.DataHelperML.batch_iter(list(zip(self.test_data.value, self.test_data.label_instance)), self.batch_size, 1)
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:
-                                dev_x, dev_y, dev_doclen = list(zip(*dev_batch))
-                                dev_step(dev_x, dev_y, dev_doclen, writer=dev_summary_writer)
+                                small_dev_x, small_dev_y = list(zip(*dev_batch))
+                                dev_step(small_dev_x, small_dev_y, writer=dev_summary_writer)
                                 print("")
                     elif "Six" in self.input_component:
                         dev_batches = dh6.DataHelperMulMol6.batch_iter(list(zip(self.test_data, self.y_dev, self.p2_test,
@@ -272,9 +270,9 @@ class TrainTask:
                                                                        self.batch_size, 1)
                         for dev_batch in dev_batches:
                             if len(dev_batch) > 0:
-                                dev_x, dev_y, small_p2_test, small_p3_test, small_s2_test, small_s3_test, \
+                                small_dev_x, small_dev_y, small_p2_test, small_p3_test, small_s2_test, small_s3_test, \
                                 small_post_test = list(zip(*dev_batch))
-                                dev_step(dev_x, dev_y, small_p2_test, small_p3_test, small_s2_test,
+                                dev_step(small_dev_x, small_dev_y, small_p2_test, small_p3_test, small_s2_test,
                                          small_s3_test, small_post_test, writer=dev_summary_writer)
                                 print("")
                     else:

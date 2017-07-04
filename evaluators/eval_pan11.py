@@ -148,9 +148,9 @@ if __name__ == "__main__":
     e.load(dater)
     path = sys.argv[1]
     if len(sys.argv) == 2:
-        e.evaluate(path, step, do_is_training=False)
+        e.evaluate(path, step, do_is_training=True)
     elif len(sys.argv) > 2:
         steps = list(map(int, sys.argv[2].split("/")))
         for step in steps:
-            e.evaluate(path, step, do_is_training=False)
+            e.evaluate(path, step, do_is_training=True)
 

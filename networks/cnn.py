@@ -71,7 +71,6 @@ class TextCNN:
                                                          previous_component=self.input_comp, dropout=dropout,
                                                          batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
                                                          fc=fc, l2_reg_lambda=l2_reg_lambda)
-            self.real_doc_len = self.middle_comp.real_doc_len
         elif middle_component == "NConvDocConvNFC":
             self.middle_comp = NConvDocConvNFC(document_length, sequence_length, embedding_size, filter_sizes,
                                                num_filters,
