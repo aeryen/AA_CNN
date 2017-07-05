@@ -72,8 +72,6 @@ class NCrossSizeParallelConvNFC(object):
                     else:
                         h = tf.nn.elu(tf.nn.bias_add(conv, b), name="elu")
 
-                    if self.l2_reg_lambda > 0:
-                        self.l2_sum += tf.nn.l2_loss(W)
                     all_filter_size_output.append(h)
 
                     self.num_filters_total = num_filters * len(filter_size_lists[n]) * n_input_channels
