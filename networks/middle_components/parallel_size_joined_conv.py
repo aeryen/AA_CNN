@@ -112,20 +112,16 @@ class NCrossSizeParallelConvNFC(object):
             if self.l2_reg_lambda > 0:
                 self.l2_sum += tf.nn.l2_loss(W)
 
-            if self.batch_normalize == True and self.dropout == False:
-                bn = tf.contrib.layers.batch_norm(x, center=True, scale=True, fused=False,
-                                                  is_training=self.is_training)
-                self.last_layer = tf.nn.relu(bn, name='relu')
-            elif self.batch_normalize == True and self.dropout == True:
+            if not self.elu:
                 relu = tf.nn.relu(x, name='relu')
+            else:
+                relu = tf.nn.elu(x, name='elu')
+
+            if self.batch_normalize:
                 self.last_layer = tf.contrib.layers.batch_norm(relu, center=True, scale=True, fused=False,
                                                                is_training=self.is_training)
             else:
-                if self.elu == False:
-                    h = tf.nn.relu(x, name='relu')
-                else:
-                    h = tf.nn.elu(x, name='elu')
-                self.last_layer = h
+                self.last_layer = relu
 
             self.n_nodes_last_layer = n_nodes
 
