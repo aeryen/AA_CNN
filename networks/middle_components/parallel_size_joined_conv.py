@@ -23,6 +23,7 @@ class NCrossSizeParallelConvNFC(object):
         self.num_filters_total = None
         self.l2_reg_lambda = l2_reg_lambda
         self.l2_sum = tf.constant(0.0)
+        # self.real_doc_len = tf.placeholder(tf.int32, [None], name="doc_len")
 
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
         for n in range(n_conv):
@@ -71,9 +72,12 @@ class NCrossSizeParallelConvNFC(object):
                     else:
                         h = tf.nn.elu(tf.nn.bias_add(conv, b), name="elu")
 
+                    if self.l2_reg_lambda > 0:
+                        self.l2_sum += tf.nn.l2_loss(W)
                     all_filter_size_output.append(h)
 
                     self.num_filters_total = num_filters * len(filter_size_lists[n]) * n_input_channels
+
             self.last_layer = tf.concat(all_filter_size_output, 3)
             self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, self.num_filters_total, 1])
 
@@ -90,7 +94,6 @@ class NCrossSizeParallelConvNFC(object):
         self.h_pool_flat = tf.reshape(pooled_all, [-1, self.num_filters_total])
         self.last_layer = self.h_pool_flat
         self.n_nodes_last_layer = self.num_filters_total
-
         # Add dropout
         if self.dropout == True:
             with tf.variable_scope("dropout-keep"):
@@ -98,6 +101,7 @@ class NCrossSizeParallelConvNFC(object):
 
         for i, n_nodes in enumerate(fc):
             self._fc_layer(i + 1, n_nodes)
+
 
     def _fc_layer(self, tag, n_nodes):
         with tf.variable_scope('fc-%s' % str(tag)):
