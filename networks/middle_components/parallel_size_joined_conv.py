@@ -23,7 +23,6 @@ class NCrossSizeParallelConvNFC(object):
         self.num_filters_total = None
         self.l2_reg_lambda = l2_reg_lambda
         self.l2_sum = tf.constant(0.0)
-        # self.real_doc_len = tf.placeholder(tf.int32, [None], name="doc_len")
 
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
         for n in range(n_conv):
