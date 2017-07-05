@@ -51,7 +51,7 @@ class TrainTask:
                      format(len(self.train_data.label_instance), len(self.test_data.label_instance)))
 
     def training(self, filter_sizes, num_filters, dropout_keep_prob, n_steps, l2_lambda,
-                 dropout, batch_normalize, elu, n_conv, fc):
+                 dropout, batch_normalize, elu, fc):
         logging.info("setting: %s is %s", "filter_sizes", filter_sizes)
         logging.info("setting: %s is %s", "num_filters", num_filters)
         logging.info("setting: %s is %s", "dropout_keep_prob", dropout_keep_prob)
@@ -60,7 +60,6 @@ class TrainTask:
         logging.info("setting: %s is %s", "dropout", dropout)
         logging.info("setting: %s is %s", "batch_normalize", batch_normalize)
         logging.info("setting: %s is %s", "elu", elu)
-        logging.info("setting: %s is %s", "n_conv", n_conv)
         logging.info("setting: %s is %s", "fc", fc)
 
         with tf.Graph().as_default():
@@ -80,7 +79,6 @@ class TrainTask:
                 dropout=dropout,
                 batch_normalize=batch_normalize,
                 elu=elu,
-                n_conv=n_conv,
                 fc=fc)
             with sess.as_default():
 
