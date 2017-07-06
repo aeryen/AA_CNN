@@ -12,35 +12,36 @@ class NCrossSizeParallelConvNFC(object):
 
     def __init__(
             self, sequence_length, embedding_size, filter_size_lists, num_filters, previous_component,
-            batch_normalize=False, dropout=False, elu=False, n_conv=1, fc=[], l2_reg_lambda=0.0):
+            batch_normalize=False, dropout=False, elu=False, fc=[], l2_reg_lambda=0.0):
 
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
         self.batch_normalize = batch_normalize
         self.elu = elu
-        self.n_conv = n_conv
         self.last_layer = None
         self.num_filters_total = None
         self.l2_reg_lambda = l2_reg_lambda
         self.l2_sum = tf.constant(0.0)
 
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
-        for n in range(n_conv):
+        for n in range(len(filter_size_lists)):
             if not isinstance(filter_size_lists[n], list):
                 raise ValueError("filter_sizes must be list of lists, for ex.[[3,4,5]] or [[3,4,5],[3,4,5],[5]]")
+
             all_filter_size_output = []
+            if n == 0:
+                self.last_layer = previous_component.embedded_expanded
+                n_input_channels = previous_component.embedded_expanded.get_shape()[3].value
+                cols = embedding_size
+            else:
+                self.last_layer = tf.transpose(self.last_layer, perm=[0, 1, 3, 2])
+                if self.dropout == True:
+                    self.last_layer = tf.nn.dropout(self.last_layer, 0.8, name="dropout-inter-conv")
+                cols = self.num_filters_total
+                n_input_channels = 1
+
             for filter_size in filter_size_lists[n]:
                 with tf.variable_scope("conv-%s-%s" % (str(n + 1), filter_size)):
-                    if n == 0:
-                        self.last_layer = previous_component.embedded_expanded
-                        n_input_channels = previous_component.embedded_expanded.get_shape()[3].value
-                        cols = embedding_size
-                    else:
-                        if self.dropout == True:
-                            self.last_layer = tf.nn.dropout(self.last_layer, 0.8, name="dropout-inter-conv")
-                        cols = self.num_filters_total
-                        n_input_channels = 1
-
                     filter_shape = [filter_size, cols, n_input_channels, num_filters]
 
                     # Convolution Layer
@@ -75,8 +76,8 @@ class NCrossSizeParallelConvNFC(object):
 
                     self.num_filters_total = num_filters * len(filter_size_lists[n]) * n_input_channels
 
-            self.last_layer = tf.concat(all_filter_size_output, 3)
-            self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, self.num_filters_total, 1])
+            self.last_layer = tf.concat(all_filter_size_output, 3)  # [?, 100, 1, 800]
+            # self.last_layer = tf.reshape(self.last_layer, [-1, sequence_length, self.num_filters_total, 1])
 
         with tf.variable_scope("maxpool-all"):
             # Maxpooling over the outputs

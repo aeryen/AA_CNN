@@ -22,7 +22,7 @@ class TextCNN:
     def __init__(
             self, data, document_length, sequence_length, num_classes, embedding_size, filter_sizes, num_filters,
             input_component, middle_component,
-            l2_reg_lambda, dropout, batch_normalize, elu, n_conv, fc):
+            l2_reg_lambda, dropout, batch_normalize, elu, fc):
 
         word_vocab_size = len(data.vocab)
 
@@ -69,18 +69,18 @@ class TextCNN:
         elif middle_component == 'NCrossSizeParallelConvNFC':
             self.middle_comp = NCrossSizeParallelConvNFC(sequence_length, embedding_size, filter_sizes, num_filters,
                                                          previous_component=self.input_comp, dropout=dropout,
-                                                         batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
+                                                         batch_normalize=batch_normalize, elu=elu,
                                                          fc=fc, l2_reg_lambda=l2_reg_lambda)
         elif middle_component == "NConvDocConvNFC":
             self.middle_comp = NConvDocConvNFC(document_length, sequence_length, embedding_size, filter_sizes,
                                                num_filters,
                                                previous_component=self.input_comp, dropout=dropout,
-                                               batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
+                                               batch_normalize=batch_normalize, elu=elu,
                                                fc=fc)
         elif middle_component == 'InceptionLike':
             self.middle_comp = InceptionLike(sequence_length, embedding_size, filter_sizes, num_filters,
                                              previous_component=self.input_comp, dropout=dropout,
-                                             batch_normalize=batch_normalize, elu=elu, n_conv=n_conv,
+                                             batch_normalize=batch_normalize, elu=elu,
                                              fc=fc)
         elif middle_component == 'PureRNN':
             self.middle_comp = PureRNN(sequence_length, embedding_size, previous_component=self.input_comp,

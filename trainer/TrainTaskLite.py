@@ -70,7 +70,7 @@ class TrainTask:
         logging.info("Train/Dev split: {:d}/{:d}".format(len(self.train_data.label_doc), len(self.test_data.label_doc)))
 
     def training(self, filter_sizes=[3, 4, 5], num_filters=100, dropout_keep_prob=1.0, n_steps=None, l2_lambda=0.0,
-                 dropout=False, batch_normalize=False, elu=False, n_conv=1, fc=[]):
+                 dropout=False, batch_normalize=False, elu=False, fc=[]):
         logging.info("setting: %s is %s", "filter_sizes", filter_sizes)
         logging.info("setting: %s is %s", "num_filters", num_filters)
         logging.info("setting: %s is %s", "dropout_keep_prob", dropout_keep_prob)
