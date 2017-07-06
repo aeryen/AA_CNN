@@ -102,7 +102,7 @@ if __name__ == "__main__":
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
     tt.training(filter_sizes=[[1, 2, 3, 4, 5]], num_filters=80, dropout_keep_prob=0.5, n_steps=30000, l2_lambda=0,
-                dropout=True, batch_normalize=True, elu=True, n_conv=1, fc=[128])
+                dropout=True, batch_normalize=True, elu=True, fc=[128])
     end = timer()
     print((end - start))
 
