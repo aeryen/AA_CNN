@@ -10,16 +10,15 @@ class NConvDocConvNFC(object):
 
     def __init__(
             self, document_length, sequence_length, embedding_size, filter_size_lists, num_filters, previous_component,
-            batch_normalize=False, dropout=False, elu=False, n_conv=1, fc=[], l2_reg_lambda=0.0):
+            batch_normalize=False, dropout=False, elu=False, fc=[], l2_reg_lambda=0.0):
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         self.dropout = dropout
         self.batch_normalize = batch_normalize
         self.elu = elu
-        self.n_conv = n_conv
         self.last_layer = None
         self.num_filters_total = tf.placeholder(tf.float32, [None], name="doc_len")
         # Create a convolution + + nonlinearity + maxpool layer for each filter size
-        for n in range(n_conv):
+        for n in range(len(filter_size_lists)):
             all_filter_size_output = []
             self.num_filters_total = num_filters * len(filter_size_lists[n])
             for filter_size in filter_size_lists[n]:
