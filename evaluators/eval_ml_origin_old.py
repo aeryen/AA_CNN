@@ -311,6 +311,7 @@ if __name__ == "__main__":
     step = None
     dater = None
     mode = "ML_2CH"  # ML_One / ML_2CH / PAN11
+
     if mode == "ML_One":
         dater = DataHelperMLNormal(doc_level=LoadMethod.SENT, embed_type="glove",
                                    embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv",
@@ -318,7 +319,7 @@ if __name__ == "__main__":
     elif mode == "ML_2CH":
         dater = DataHelperML2CH(doc_level=LoadMethod.SENT, embed_type="both",
                                 embed_dim=300, target_sent_len=50, target_doc_len=None, train_csv_file="labels.csv",
-                                total_fold=5, t_fold_index=2)
+                                total_fold=5, t_fold_index=3)
     elif mode == "PAN11":
         dater = DataHelperPan11(1)
 
