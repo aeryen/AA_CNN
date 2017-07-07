@@ -17,6 +17,7 @@ class DataHelperML(DataHelper):
                                            total_fold=total_fold, t_fold_index=t_fold_index)
 
         self.training_data_dir = pkg_resources.resource_filename('datahelpers', 'data/' + data_dir + '/')
+        self.train_csv_file = train_csv_file
         self.train_label_file_path = self.training_data_dir + "_new_label/" + train_csv_file
         self.val_label_file_path = self.training_data_dir + "_new_label/val.csv"
         self.test_label_file_path = self.training_data_dir + "_new_label/test.csv"
@@ -89,7 +90,9 @@ class DataHelperML(DataHelper):
 
     def load_raw_dir(self, csv_file):
         authors, file_ids, label_matrix = DataHelperML.load_csv(csv_file_path=csv_file)
-        self.num_of_classes = len(authors)
+        self.num_of_classes = label_matrix.shape[1]
+
+        logging.info("LABEL MATRIX HAS SHAPE: " + str(label_matrix.shape))
 
         data = AAData(name="ML", size=len(file_ids))
         data.file_id = file_ids
@@ -130,7 +133,9 @@ class DataHelperML(DataHelper):
 
     def load_proced_dir(self, csv_file):
         authors, file_ids, label_matrix = DataHelper.load_csv(csv_file_path=csv_file)
-        self.num_of_classes = len(authors)
+        self.num_of_classes = label_matrix.shape[1]
+
+        logging.info("LABEL MATRIX HAS SHAPE: " + str(label_matrix.shape))
 
         data = AAData(name="ML", size=len(file_ids))
         data.file_id = file_ids
