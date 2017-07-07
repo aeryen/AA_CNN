@@ -36,7 +36,7 @@ class DataHelperML2CH(DataHelperML):
 
     def load_data(self):
         # o = DataHelper(file_to_load)
-        all_file_csv_path = self.training_data_dir + "_old_label/labels.csv"
+        all_file_csv_path = self.training_data_dir + "_old_label/" + self.train_csv_file
         all_data = self.load_proced_dir(csv_file=all_file_csv_path)
 
         self.vocab, self.vocab_inv = self.build_vocab([all_data], self.vocabulary_size)
