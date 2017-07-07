@@ -19,7 +19,7 @@ class TrainTask:
     """
 
     def __init__(self, data_helper, am, input_component, exp_name, batch_size,
-                 evaluate_every, checkpoint_every, max_to_keep):
+                 evaluate_every, checkpoint_every, max_to_keep, restore_path=None):
         self.data_hlp = data_helper
         self.exp_name = exp_name
         self.input_component = input_component
@@ -30,6 +30,11 @@ class TrainTask:
 
         logging.info("current data is: " + self.data_hlp.problem_name)
         logging.info("current experiment is: " + self.exp_name)
+
+        self.restore_dir = restore_path
+        if restore_path is not None:
+            self.restore_latest = tf.train.latest_checkpoint(restore_path + "/checkpoints/")
+            logging.warning("RESTORE FROM PATH: " + self.restore_latest)
 
         # network parameters
         self.batch_size = batch_size
@@ -62,40 +67,60 @@ class TrainTask:
         logging.info("setting: %s is %s", "elu", elu)
         logging.info("setting: %s is %s", "fc", fc)
 
-        with tf.Graph().as_default():
+        graph = tf.Graph()
+        with graph.as_default():
             session_conf = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
             sess = tf.Session(config=session_conf)
-            cnn = TextCNN(
-                data=self.train_data,
-                document_length=self.data_hlp.target_doc_len,
-                sequence_length=self.data_hlp.target_sent_len,
-                num_classes=self.data_hlp.num_of_classes,  # Number of classification classes
-                embedding_size=self.data_hlp.embedding_dim,
-                input_component=self.input_component,
-                middle_component=self.exp_name,
-                filter_sizes=filter_sizes,
-                num_filters=num_filters,
-                l2_reg_lambda=l2_lambda,
-                dropout=dropout,
-                batch_normalize=batch_normalize,
-                elu=elu,
-                fc=fc)
+            if self.restore_dir is None:
+                cnn = TextCNN(
+                    data=self.train_data,
+                    document_length=self.data_hlp.target_doc_len,
+                    sequence_length=self.data_hlp.target_sent_len,
+                    num_classes=self.data_hlp.num_of_classes,  # Number of classification classes
+                    embedding_size=self.data_hlp.embedding_dim,
+                    input_component=self.input_component,
+                    middle_component=self.exp_name,
+                    filter_sizes=filter_sizes,
+                    num_filters=num_filters,
+                    l2_reg_lambda=l2_lambda,
+                    dropout=dropout,
+                    batch_normalize=batch_normalize,
+                    elu=elu,
+                    fc=fc)
+                graph_loss = cnn.loss
+                graph_accuracy = cnn.accuracy
+                graph_input_x = cnn.input_x
+                graph_input_y = cnn.input_y
+                graph_drop_keep = cnn.dropout_keep_prob
+                graph_is_train = cnn.is_training
+            else:
+                saver = tf.train.import_meta_graph("{}.meta".format(self.restore_latest))
+                saver.restore(sess, self.restore_latest)
+
+                graph_loss = graph.get_operation_by_name("loss-lbd0/add").outputs[0]
+                graph_accuracy = graph.get_operation_by_name("accuracy/accuracy").outputs[0]
+                graph_input_x = graph.get_operation_by_name("input_x").outputs[0]
+                graph_input_y = graph.get_operation_by_name("input_y").outputs[0]
+                graph_drop_keep = graph.get_operation_by_name("dropout_keep_prob").outputs[0]
+                graph_is_train = graph.get_operation_by_name("is_training").outputs[0]
+
             with sess.as_default():
 
                 # Define Training procedure
-
                 global_step = tf.Variable(0, name="global_step", trainable=False)
 
                 if batch_normalize:
                     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
                     with tf.control_dependencies(update_ops):
                         optimizer = tf.train.AdamOptimizer(1e-3)
-                        grads_and_vars = optimizer.compute_gradients(cnn.loss)
+                        grads_and_vars = optimizer.compute_gradients(graph_loss)
                         train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
                 else:
                     optimizer = tf.train.AdamOptimizer(1e-3)
-                    grads_and_vars = optimizer.compute_gradients(cnn.loss)
+                    grads_and_vars = optimizer.compute_gradients(graph_loss)
                     train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+
+                tf.add_to_collection("optimizer", optimizer)
 
                 # Keep track of gradient values and sparsity (optional)
                 with tf.name_scope('grad_summary'):
@@ -114,8 +139,8 @@ class TrainTask:
                 logging.info("Model in {}\n".format(self.am.get_exp_dir()))
 
                 # Summaries for loss and accuracy
-                loss_summary = tf.summary.scalar("loss", cnn.loss)
-                acc_summary = tf.summary.scalar("accuracy", cnn.accuracy)
+                loss_summary = tf.summary.scalar("loss", graph_loss)
+                acc_summary = tf.summary.scalar("accuracy", graph_accuracy)
 
                 # Train Summaries
                 with tf.name_scope('train_summary'):
@@ -138,7 +163,8 @@ class TrainTask:
                 saver = tf.train.Saver(var_list=tf.global_variables(), max_to_keep=self.max_to_keep)
 
                 # Initialize all variables
-                sess.run(tf.global_variables_initializer())
+                if self.restore_dir is None:
+                    sess.run(tf.global_variables_initializer())
 
             if "One" in self.input_component or "2CH" in self.input_component:
                 def train_step(x_batch, y_batch):
@@ -146,13 +172,13 @@ class TrainTask:
                     A single training step
                     """
                     feed_dict = {
-                        cnn.input_x: x_batch,
-                        cnn.input_y: y_batch,
-                        cnn.dropout_keep_prob: dropout_keep_prob,
-                        cnn.is_training: 1
+                        graph_input_x: x_batch,
+                        graph_input_y: y_batch,
+                        graph_drop_keep: dropout_keep_prob,
+                        graph_is_train: 1
                     }
                     _, step, summaries, loss, accuracy = sess.run(
-                        [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
+                        [train_op, global_step, train_summary_op, graph_loss, graph_accuracy],
                         feed_dict)
                     time_str = datetime.datetime.now().isoformat()
                     print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
@@ -164,13 +190,13 @@ class TrainTask:
                     Evaluates model on a dev set
                     """
                     feed_dict = {
-                        cnn.input_x: x_batch,
-                        cnn.input_y: y_batch,
-                        cnn.dropout_keep_prob: 1,
-                        cnn.is_training: 0
+                        graph_input_x: x_batch,
+                        graph_input_y: y_batch,
+                        graph_drop_keep: 1,
+                        graph_is_train: 0
                     }
                     step, summaries, loss, accuracy = sess.run(
-                        [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
+                        [global_step, dev_summary_op, graph_loss, graph_accuracy],
                         feed_dict)
                     time_str = datetime.datetime.now().isoformat()
                     print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
@@ -183,8 +209,8 @@ class TrainTask:
                     A single training step
                     """
                     feed_dict = {
-                        cnn.input_x: x_batch,
-                        cnn.input_y: y_batch,
+                        graph_input_x: x_batch,
+                        graph_input_y: y_batch,
 
                         cnn.input_pref2: pref2_batch,
                         cnn.input_pref3: pref3_batch,
@@ -192,11 +218,11 @@ class TrainTask:
                         cnn.input_suff3: suff3_batch,
                         cnn.input_pos: pos_batch,
 
-                        cnn.dropout_keep_prob: dropout_keep_prob,
-                        cnn.is_training: 1
+                        graph_drop_keep: dropout_keep_prob,
+                        graph_is_train: 1
                     }
                     _, step, summaries, loss, accuracy = sess.run(
-                        [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
+                        [train_op, global_step, train_summary_op, graph_loss, graph_accuracy],
                         feed_dict)
                     time_str = datetime.datetime.now().isoformat()
                     print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))
@@ -209,18 +235,18 @@ class TrainTask:
                     Evaluates model on a dev set
                     """
                     feed_dict = {
-                        cnn.input_x: x_batch,
-                        cnn.input_y: y_batch,
+                        graph_input_x: x_batch,
+                        graph_input_y: y_batch,
                         cnn.input_pref2: pref2_batch,
                         cnn.input_pref3: pref3_batch,
                         cnn.input_suff2: suff2_batch,
                         cnn.input_suff3: suff3_batch,
                         cnn.input_pos: pos_batch,
-                        cnn.dropout_keep_prob: 1,
-                        cnn.is_training: 0
+                        graph_drop_keep: 1,
+                        graph_is_train: 0
                     }
                     step, summaries, loss, accuracy = sess.run(
-                        [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
+                        [global_step, dev_summary_op, graph_loss, graph_accuracy],
                         feed_dict)
                     time_str = datetime.datetime.now().isoformat()
                     print(("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy)))

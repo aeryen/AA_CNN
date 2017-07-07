@@ -52,6 +52,11 @@ class DataHelperPan11(DataHelper):
     truth_options = [testing_dir + "GroundTruthSmallTest.xml",
                      testing_dir + "GroundTruthLargeTest.xml"]
 
+    valid_options = [training_dir + "Valid/SmallValid.xml",
+                     training_dir + "Valid/LargeValid.xml"]
+    valid_truth_options = [training_dir + "Valid/GroundTruthSmallValid.xml",
+                           training_dir + "Valid/GroundTruthLargeValid.xml"]
+
     problem_name_options = ["PAN11small", "PAN11large"]
     problem_name = None
 
@@ -77,6 +82,8 @@ class DataHelperPan11(DataHelper):
         self.train_file = self.training_options[self.prob_code]
         self.test_file = self.testing_options[self.prob_code]
         self.test_truth_file = self.truth_options[self.prob_code]
+        self.valid_file = self.valid_options[self.prob_code]
+        self.valid_truth_file = self.valid_truth_options[self.prob_code]
 
         self.embed_matrix_glv = None
         self.embed_matrix_w2v = None
@@ -190,7 +197,7 @@ class DataHelperPan11(DataHelper):
         #     print thing
         return data_list
 
-    def __load_test_data(self):
+    def __load_test_data(self, test_file=None, test_truth_file=None):
         data_list = []
 
         re_text_open = re.compile("\s*<text file=\"([\w/\.]*)\">\s*")
@@ -208,8 +215,12 @@ class DataHelperPan11(DataHelper):
         author_name = None
         content = []
 
-        file_content = open(self.test_file, "r").readlines()
-        file_truth = open(self.test_truth_file, "r").readlines()
+        if test_file is None and test_truth_file is None:
+            file_content = open(self.test_file, "r").readlines()
+            file_truth = open(self.test_truth_file, "r").readlines()
+        else:
+            file_content = open(test_file, "r").readlines()
+            file_truth = open(test_truth_file, "r").readlines()
 
         content_line_index = 0
         truth_line_index = 0
@@ -235,7 +246,7 @@ class DataHelperPan11(DataHelper):
                 for truth_l in file_truth[truth_line_index:]:
                     truth_l = truth_l.strip()
                     truth_line_index += 1
-                    if truth_l == "" or truth_l == "<testing>":
+                    if truth_l == "" or truth_l == "<testing>" or truth_l == "<results>":
                         pass
                     elif expect_stage_truth == "text":
                         m = re_text_open.match(truth_l)
@@ -286,8 +297,6 @@ class DataHelperPan11(DataHelper):
                 else:
                     print("ERROR")
 
-        # for thing in data_list:
-        #     print thing
         return data_list
 
     def author_label(self, data_list):
@@ -343,6 +352,9 @@ class DataHelperPan11(DataHelper):
 
     def load_train_data(self):
         data_list = self.__load_train_data()
+        valid_data_list = self.__load_test_data(test_file=self.valid_file, test_truth_file=self.valid_truth_file)
+        data_list.extend(valid_data_list)
+        logging.warning("WITH VALID IN TRAIN!!!")
         author_list, author_count = self.author_label(data_list)
         x, y = self.xy_formatter(data_list, author_list)
 

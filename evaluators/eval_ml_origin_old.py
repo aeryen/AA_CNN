@@ -181,6 +181,45 @@ class Evaluator:
         print("Doc ACC: " + str(doc_acc))
         self.eval_log.write("Doc ACC: " + str(doc_acc) + "\n\n")
 
+        y_true = np.array(self.test_data.label_doc).astype(bool)
+        y_pred = np.array(doc_prediction).astype(bool)
+
+        mi_prec = precision_score(y_true=y_true, y_pred=y_pred, average="micro")
+        logging.info("micro prec:\t" + str(mi_prec))
+        self.eval_log.write("micro prec:\t" + str(mi_prec) + "\n")
+
+        mi_recall = recall_score(y_true=y_true, y_pred=y_pred, average="micro")
+        logging.info("micro recall:\t" + str(mi_recall))
+        self.eval_log.write("micro recall:\t" + str(mi_recall) + "\n")
+
+        mi_f1 = f1_score(y_true=y_true, y_pred=y_pred, average="micro")
+        logging.info("micro f1:\t" + str(mi_f1))
+        self.eval_log.write("micro f1:\t" + str(mi_f1) + "\n")
+
+        ma_prec = precision_score(y_true=y_true, y_pred=y_pred, average='macro')
+        logging.info("macro prec:\t" + str(ma_prec))
+        self.eval_log.write("macro prec:\t" + str(ma_prec) + "\n")
+
+        ma_recall = recall_score(y_true=y_true, y_pred=y_pred, average='macro')
+        logging.info("macro recall:\t" + str(ma_recall))
+        self.eval_log.write("macro recall:\t" + str(ma_recall) + "\n")
+
+        ma_f1 = f1_score(y_true=y_true, y_pred=y_pred, average='macro')
+        logging.info("macro f1:\t" + str(ma_f1))
+        self.eval_log.write("macro f1:\t" + str(ma_f1) + "\n")
+
+        jaccard = jaccard_similarity_score(y_true=y_true, y_pred=y_pred)
+        logging.info("jaccard:\t" + str(jaccard))
+        self.eval_log.write("jaccard:\t" + str(jaccard) + "\n")
+
+        hamming = hamming_loss(y_true=y_true, y_pred=y_pred)
+        logging.info("hamming:\t" + str(hamming))
+        self.eval_log.write("hamming:\t" + str(hamming) + "\n")
+
+        acc = accuracy_score(y_true=y_true, y_pred=y_pred)
+        logging.info("acc:\t" + str(acc))
+        self.eval_log.write("acc:\t" + str(acc) + "\n\n\n\n")
+
     def doc_accuracy_score_cumulation(self, all_scores, exp_dir, file_name):
         logging.info("EVALUATING USING doc_accuracy_score_cumulation")
         self.eval_log.write("EVALUATING USING doc_accuracy_score_cumulation")
@@ -220,6 +259,45 @@ class Evaluator:
         doc_acc = correct / total_doc
         print("Doc ACC: " + str(doc_acc))
         self.eval_log.write("Doc ACC: " + str(doc_acc) + "\n\n")
+
+        y_true = np.array(self.test_data.label_doc).astype(bool)
+        y_pred = np.array(doc_prediction).astype(bool)
+
+        mi_prec = precision_score(y_true=y_true, y_pred=y_pred, average="micro")
+        logging.info("micro prec:\t" + str(mi_prec))
+        self.eval_log.write("micro prec:\t" + str(mi_prec) + "\n")
+
+        mi_recall = recall_score(y_true=y_true, y_pred=y_pred, average="micro")
+        logging.info("micro recall:\t" + str(mi_recall))
+        self.eval_log.write("micro recall:\t" + str(mi_recall) + "\n")
+
+        mi_f1 = f1_score(y_true=y_true, y_pred=y_pred, average="micro")
+        logging.info("micro f1:\t" + str(mi_f1))
+        self.eval_log.write("micro f1:\t" + str(mi_f1) + "\n")
+
+        ma_prec = precision_score(y_true=y_true, y_pred=y_pred, average='macro')
+        logging.info("macro prec:\t" + str(ma_prec))
+        self.eval_log.write("macro prec:\t" + str(ma_prec) + "\n")
+
+        ma_recall = recall_score(y_true=y_true, y_pred=y_pred, average='macro')
+        logging.info("macro recall:\t" + str(ma_recall))
+        self.eval_log.write("macro recall:\t" + str(ma_recall) + "\n")
+
+        ma_f1 = f1_score(y_true=y_true, y_pred=y_pred, average='macro')
+        logging.info("macro f1:\t" + str(ma_f1))
+        self.eval_log.write("macro f1:\t" + str(ma_f1) + "\n")
+
+        jaccard = jaccard_similarity_score(y_true=y_true, y_pred=y_pred)
+        logging.info("jaccard:\t" + str(jaccard))
+        self.eval_log.write("jaccard:\t" + str(jaccard) + "\n")
+
+        hamming = hamming_loss(y_true=y_true, y_pred=y_pred)
+        logging.info("hamming:\t" + str(hamming))
+        self.eval_log.write("hamming:\t" + str(hamming) + "\n")
+
+        acc = accuracy_score(y_true=y_true, y_pred=y_pred)
+        logging.info("acc:\t" + str(acc))
+        self.eval_log.write("acc:\t" + str(acc) + "\n")
 
         self.print_a_csv(exp_dir=exp_dir, file_name=file_name, method_name="SCR_CUMU",
                          prob=prob_list, pred=doc_prediction, true=self.test_data.label_doc)
