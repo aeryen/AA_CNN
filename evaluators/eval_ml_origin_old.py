@@ -218,7 +218,7 @@ class Evaluator:
 
         acc = accuracy_score(y_true=y_true, y_pred=y_pred)
         logging.info("acc:\t" + str(acc))
-        self.eval_log.write("acc:\t" + str(acc) + "\n")
+        self.eval_log.write("acc:\t" + str(acc) + "\n\n\n\n")
 
     def doc_accuracy_score_cumulation(self, all_scores, exp_dir, file_name):
         logging.info("EVALUATING USING doc_accuracy_score_cumulation")
@@ -396,7 +396,7 @@ if __name__ == "__main__":
     elif mode == "ML_2CH":
         dater = DataHelperML2CH(doc_level=LoadMethod.SENT, embed_type="both",
                                 embed_dim=300, target_sent_len=50, target_doc_len=None, train_csv_file="labels.csv",
-                                total_fold=5, t_fold_index=4)
+                                total_fold=5, t_fold_index=2)
 
     e = Evaluator()
     e.load(dater)

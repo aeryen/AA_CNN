@@ -95,47 +95,50 @@ class Evaluator:
 
                 # Collect the predictions here
                 all_score = None
-                pred_max = None
-                pred_sigmoid = None
+                pred_sigmoid_value = None
+                pred_max_bool = None
+                pred_sigmoid_bool = None
                 for [x_test_batch, y_test_batch] in zip(x_batches, y_batches):
                     if do_is_training:
-                        batch_scores, batch_pred_sigmoid, batch_pred_max = sess.run(
+                        batch_scores, batch_pred_sigmoid, batch_pred_max_index = sess.run(
                             [scores, predictions_sigmoid, predictions_max],
                             {input_x: x_test_batch, dropout_keep_prob: 1.0,
                              is_training: 0})
                     else:
-                        batch_scores, batch_pred_sigmoid, batch_pred_max = sess.run(
+                        batch_scores, batch_pred_sigmoid, batch_pred_max_index = sess.run(
                             [scores, predictions_sigmoid, predictions_max],
                             {input_x: x_test_batch, dropout_keep_prob: 1.0})
 
-                    batch_pred_max = tf.one_hot(indices=batch_pred_max,
+                    batch_pred_max_bool = tf.one_hot(indices=batch_pred_max_index,
                                                 depth=self.dater.num_of_classes).eval() == 1  # TODO temp
-                    batch_pred_sigmoid = batch_pred_sigmoid > 0.5
 
                     if all_score is None:
                         all_score = batch_scores
-                        pred_max = batch_pred_max
-                        pred_sigmoid = batch_pred_sigmoid
+                        pred_max_bool = batch_pred_max_bool
+                        pred_sigmoid_bool = batch_pred_sigmoid > 0.5
+                        pred_sigmoid_value = batch_pred_sigmoid
                     else:
                         all_score = np.concatenate([all_score, batch_scores], axis=0)
-                        pred_max = np.concatenate([pred_max, batch_pred_max], axis=0)
-                        pred_sigmoid = np.concatenate([pred_sigmoid, batch_pred_sigmoid], axis=0)
+                        pred_max_bool = np.concatenate([pred_max_bool, batch_pred_max_bool], axis=0)
+                        pred_sigmoid_bool = np.concatenate([pred_sigmoid_bool, batch_pred_sigmoid > 0.5], axis=0)
+                        pred_sigmoid_value = np.concatenate([pred_sigmoid_value, batch_pred_sigmoid], axis=0)
 
-            logging.info("== PRED MAX ==")
-            self.eval_log.write("== PRED MAX ==")
-            self.sent_accuracy(pred_max)
+            # logging.info("== PRED MAX ==")
+            # self.eval_log.write("== PRED MAX ==")
+            # self.sent_accuracy(pred_max_bool)
             logging.info("== PRED SIGMOID ==")
             self.eval_log.write("== PRED SIGMOID ==")
-            self.sent_accuracy(pred_sigmoid)
+            self.sent_accuracy(pred_sigmoid_bool)
 
             if doc_acc:
                 # print("========== WITH MAX ==========")
                 # self.doc_accuracy(pred_max)
                 # print("========== WITH SIGMOID ==========")
-                self.eval_log.write("========== WITH SIGMOID ==========\n\n")
-                self.doc_accuracy(pred_sigmoid)
+                self.eval_log.write("========== WITH VOTE ==========\n\n")
+                self.doc_accuracy(pred_sigmoid_bool)
 
-                # self.doc_accuracy_score_cumulation(all_score)
+                self.eval_log.write("========== WITH SIGMOID CUMU ==========\n\n")
+                self.doc_accuracy_sigmoid_cumulation(pred_sigmoid_value)
 
             self.eval_log.write("\n")
             self.eval_log.write("\n")
@@ -153,29 +156,31 @@ class Evaluator:
         logging.info("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")")
         self.eval_log.write("Sent ACC\t" + str(average_accuracy) + "\t\t(cor: " + str(correct_predictions) + ")\n")
 
-    def doc_accuracy_score_cumulation(self, all_scores):
-        logging.info("EVALUATING USING doc_accuracy_score_cumulation")
-        self.eval_log.write("EVALUATING USING doc_accuracy_score_cumulation")
+    def doc_accuracy_sigmoid_cumulation(self, all_sigmoids):
+        np.set_printoptions(precision=2, linewidth=160)
+
+        logging.info("EVALUATING USING doc_accuracy_sigmoid_cumulation")
+        self.eval_log.write("EVALUATING USING doc_accuracy_sigmoid_cumulation\n")
         doc_prediction = []
         sum_to = 0
 
         for i in range(len(self.test_data.doc_size)):
             f_size = self.test_data.doc_size[i]
-            p = all_scores[sum_to:sum_to + f_size].astype(int)
+            p = all_sigmoids[sum_to:sum_to + f_size]
             sum_to = sum_to + f_size  # increment to next file
             p = np.sum(p, axis=0).astype(float)
             p = p / f_size
-            p = np.array([sigmoid(i) for i in p])
             pred_class = p >= 0.5
-            pred_class = pred_class.astype(float)
+            pred_class = pred_class.astype(int)
             if 1 not in pred_class:
+                print(p)
                 pred_class = np.zeros([self.dater.num_of_classes], dtype=np.int)
                 pred_class[np.argmax(p)] = 1
             doc_prediction.append(pred_class)
             print("pred: " + str(pred_class) + "\n" + "true: " + str(self.test_data.label_doc[i]))
             self.eval_log.write("File:" + self.test_data.file_id[i] + "\n")
             self.eval_log.write("pred: " + str(pred_class) + "\n" +
-                                "true: " + str(self.test_data.label_doc[i]) + "\n\n")
+                                "true: " + str(self.test_data.label_doc[i]) + "\n")
 
         logging.info("")
         self.eval_log.write("\n")
@@ -190,6 +195,45 @@ class Evaluator:
         doc_acc = correct / total_doc
         print("Doc ACC: " + str(doc_acc))
         self.eval_log.write("Doc ACC: " + str(doc_acc) + "\n\n")
+
+        y_true = np.array(self.test_data.label_doc).astype(bool)
+        y_pred = np.array(doc_prediction).astype(bool)
+
+        mi_prec = precision_score(y_true=y_true, y_pred=y_pred, average="micro")
+        logging.info("micro prec:\t" + str(mi_prec))
+        self.eval_log.write("micro prec:\t" + str(mi_prec) + "\n")
+
+        mi_recall = recall_score(y_true=y_true, y_pred=y_pred, average="micro")
+        logging.info("micro recall:\t" + str(mi_recall))
+        self.eval_log.write("micro recall:\t" + str(mi_recall) + "\n")
+
+        mi_f1 = f1_score(y_true=y_true, y_pred=y_pred, average="micro")
+        logging.info("micro f1:\t" + str(mi_f1))
+        self.eval_log.write("micro f1:\t" + str(mi_f1) + "\n")
+
+        ma_prec = precision_score(y_true=y_true, y_pred=y_pred, average='macro')
+        logging.info("macro prec:\t" + str(ma_prec))
+        self.eval_log.write("macro prec:\t" + str(ma_prec) + "\n")
+
+        ma_recall = recall_score(y_true=y_true, y_pred=y_pred, average='macro')
+        logging.info("macro recall:\t" + str(ma_recall))
+        self.eval_log.write("macro recall:\t" + str(ma_recall) + "\n")
+
+        ma_f1 = f1_score(y_true=y_true, y_pred=y_pred, average='macro')
+        logging.info("macro f1:\t" + str(ma_f1))
+        self.eval_log.write("macro f1:\t" + str(ma_f1) + "\n")
+
+        jaccard = jaccard_similarity_score(y_true=y_true, y_pred=y_pred)
+        logging.info("jaccard:\t" + str(jaccard))
+        self.eval_log.write("jaccard:\t" + str(jaccard) + "\n")
+
+        hamming = hamming_loss(y_true=y_true, y_pred=y_pred)
+        logging.info("hamming:\t" + str(hamming))
+        self.eval_log.write("hamming:\t" + str(hamming) + "\n")
+
+        acc = accuracy_score(y_true=y_true, y_pred=y_pred)
+        logging.info("acc:\t" + str(acc))
+        self.eval_log.write("acc:\t" + str(acc) + "\n\n\n\n")
 
     def doc_accuracy(self, all_predictions):
         self.eval_log.write(" ### Document Accuracy ### \n")
@@ -276,11 +320,11 @@ if __name__ == "__main__":
     if mode == "ML_One":
         dater = DataHelperMLNormal(doc_level=LoadMethod.SENT, embed_type="glove",
                                    embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv",
-                                   total_fold=5, t_fold_index=0)
+                                   total_fold=5, t_fold_index=3)
     elif mode == "ML_2CH":
-        dater = DataHelperML2CH(doc_level="sent", embed_dim=300,
-                                target_doc_len=400, target_sent_len=50,
-                                num_fold=5, fold_index=1, truth_file="2_authors.csv")
+        dater = DataHelperML2CH(doc_level=LoadMethod.SENT, embed_type="both",
+                                embed_dim=300, target_sent_len=50, target_doc_len=None, train_csv_file="labels.csv",
+                                total_fold=5, t_fold_index=2)
 
     e = Evaluator()
     e.load(dater)
