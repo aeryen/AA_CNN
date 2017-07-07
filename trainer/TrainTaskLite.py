@@ -79,7 +79,6 @@ class TrainTask:
         logging.info("setting: %s is %s", "dropout", dropout)
         logging.info("setting: %s is %s", "batch_normalize", batch_normalize)
         logging.info("setting: %s is %s", "elu", elu)
-        logging.info("setting: %s is %s", "n_conv", n_conv)
         logging.info("setting: %s is %s", "fc", fc)
 
         with tf.Graph().as_default():
