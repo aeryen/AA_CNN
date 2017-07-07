@@ -163,7 +163,7 @@ class TrainTask:
                 saver = tf.train.Saver(var_list=tf.global_variables(), max_to_keep=self.max_to_keep)
 
                 # Initialize all variables
-                if self.restore_dir is not None:
+                if self.restore_dir is None:
                     sess.run(tf.global_variables_initializer())
 
             if "One" in self.input_component or "2CH" in self.input_component:
