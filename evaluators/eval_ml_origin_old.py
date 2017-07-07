@@ -310,7 +310,7 @@ class Evaluator:
 if __name__ == "__main__":
     step = None
     dater = None
-    mode = "ML_One"  # ML_One / ML_2CH / PAN11
+    mode = "ML_2CH"  # ML_One / ML_2CH / PAN11
     if mode == "ML_One":
         dater = DataHelperMLNormal(doc_level=LoadMethod.SENT, embed_type="glove",
                                    embed_dim=300, target_sent_len=50, target_doc_len=400, train_csv_file="labels.csv",
@@ -319,8 +319,6 @@ if __name__ == "__main__":
         dater = DataHelperML2CH(doc_level="sent", embed_dim=300,
                                 target_doc_len=400, target_sent_len=50,
                                 num_fold=5, fold_index=1, truth_file="2_authors.csv")
-    elif mode == "PAN11":
-        dater = DataHelperPan11(1)
 
     e = Evaluator()
     e.load(dater)
