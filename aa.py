@@ -73,7 +73,7 @@ if __name__ == "__main__":
     elif input_component == "ML_2CH":
         dater = DataHelperML2CH(doc_level=LoadMethod.SENT, embed_type="both",
                                 embed_dim=300, target_sent_len=50, target_doc_len=None, train_csv_file=truth_file,
-                                total_fold=5, t_fold_index=1)
+                                total_fold=5, t_fold_index=4)
         ev = evaler_one.Evaluator()
     elif input_component == "ML_Six":
         dater = DataHelperMulMol6(doc_level="sent", num_fold=5, fold_index=4, embed_type="glove",
@@ -97,7 +97,8 @@ if __name__ == "__main__":
                            batch_size=64, evaluate_every=100, checkpoint_every=500, max_to_keep=8)
     else:
         tt = tr.TrainTask(data_helper=dater, am=am, input_component=input_component, exp_name=middle_component,
-                          batch_size=64, evaluate_every=1000, checkpoint_every=2000, max_to_keep=8)
+                          batch_size=64, evaluate_every=1000, checkpoint_every=2000, max_to_keep=8,
+                          restore_path="C:\\Users\\aeryen\\Desktop\\AA\\AA_CNN\\runs\\ML_2CH_NCrossSizeParallelConvNFC\\170706_1499363406_labels.csv")
     start = timer()
     # n_fc variable controls how many fc layers you got at the end, n_conv does that for conv layers
 
